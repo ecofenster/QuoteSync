@@ -1,0 +1,67 @@
+{
+  "project": "QuoteSync",
+  "root": "C:\\QuoteSync\\web",
+  "timezone": "Europe/London",
+  "created_utc": "2026-01-30T12:21:10Z",
+  "baseline": {
+    "file": "src/App.tsx",
+    "note": "Last known good working baseline. App.tsx was manually overwritten from app.txt and app runs via npm run dev.",
+    "last_confirmed_local": "2026-01-30 12:21:10",
+    "size_bytes": 62385,
+    "last_write_time_local": "2026-01-30 11:44:58",
+    "backup_reference": "App.tsx.before_baseline_lockin_20260130_122110.bak"
+  },
+  "safety_rules": [
+    "Backup before every script to C:\\\\QuoteSync\\\\web\\\\_backups with name format <file>.before_<description>_YYYYMMDD_HHMMSS.bak",
+    "No partial / in-place edits. For large files like src/App.tsx, scripts must restore snapshot or write complete file atomically.",
+    "Fail fast: if expected inputs/paths are missing, abort without writing."
+  ],
+  "ui_rules": [
+    "No design/look/style changes unless explicitly requested by user. Style is locked."
+  ],
+  "functional_model": {
+    "clients": {
+      "types": [
+        "Business",
+        "Individual"
+      ],
+      "reference_format": "EF-CL-###",
+      "rule": "Auto incremental"
+    },
+    "projects": {
+      "rule": "Always belong to a Client; selected from Client context"
+    },
+    "estimates": {
+      "rule": "Always belong to a Project; created within Project; no manual estimate name",
+      "reference_format": "EF-EST-YYYY-###"
+    },
+    "orders_future": {
+      "rule": "Created from accepted Estimate",
+      "reference_format": "EF-ORD-YYYY-###"
+    },
+    "positions": {
+      "rule": "Always belong to an Estimate; added within Estimate view"
+    }
+  },
+  "scripts": [
+    {
+      "name": "baseline-lockin-manifest.ps1",
+      "touches": [
+        "manifest.json",
+        "README.manifest.md"
+      ],
+      "notes": "Creates/updates manifest files; does not modify UI files."
+    }
+  ],
+  "structure": {
+    "key_paths": [
+      "src/App.tsx (BASELINE)",
+      "src/*",
+      "_backups/*",
+      "package.json"
+    ]
+  },
+  "references": [
+    "Orgadata LogiKal help: https://help.orgadata.com/en/documentation/"
+  ]
+}

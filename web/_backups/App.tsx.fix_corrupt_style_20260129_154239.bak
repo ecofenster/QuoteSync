@@ -1,0 +1,1493 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
+
+/**
+ * QuoteSync Prototype (UI-only)
+ * - Customers (Business / Individual)
+ * - Projects
+ * - Estimates (basic scaffold)
+ * - Position wizard (Logikal-style steps)
+ * - Supplier/product/product-type seeded lists (editable later in admin)
+ *
+ * NOTE: This is a single-file prototype for rapid iteration.
+ */
+
+type CustomerType = "Business" | "Individual";
+
+type Customer = {
+  id: string;
+  clientRef: string;
+  type: CustomerType;
+
+  // Business
+  businessName?: string;
+  contactPerson?: string;
+
+  // Individual
+  clientName?: string;
+
+  email: string;
+  mobile?: string;
+  home?: string;
+
+  // Address (invoice)
+  invoiceAddress1?: string;
+  invoiceAddress2?: string;
+  invoiceTown?: string;
+  invoiceCity?: string;
+  invoiceCounty?: string;
+  invoicePostcode?: string;
+  invoiceCountry?: string;
+
+  // Office address (Business)
+  officeAddress1?: string;
+  officeAddress2?: string;
+  officeTown?: string;
+  officeCity?: string;
+  officeCounty?: string;
+  officePostcode?: string;
+  officeCountry?: string;
+
+  notes?: string;
+
+  createdAt: number;
+};
+
+type Project = {
+  id: string;
+  customerId: string;
+  name: string;
+  ref?: string;
+
+  // Site address
+  siteAddress1?: string;
+  siteAddress2?: string;
+  siteTown?: string;
+  siteCity?: string;
+  siteCounty?: string;
+  sitePostcode?: string;
+  siteCountry?: string;
+
+  createdAt: number;
+};
+
+type EstimateStatus = "Draft" | "Sent" | "Accepted" | "Completed";
+
+type Estimate = {
+  id: string;
+  projectId: string;
+  estimateRef: string;
+  revision: number;
+  status: EstimateStatus;
+  createdAt: number;
+};
+
+type ProductType =
+  | "uPVC"
+  | "uPVC Alu Clad"
+  | "Timber"
+  | "Timber Aluminium Clad"
+  | "Aluminium"
+  | "Steel";
+
+type SupplierSystemType =
+  | "Windows"
+  | "Single Door"
+  | "French Doors"
+  | "Lift and Slide Doors"
+  | "Entrance Doors";
+
+type SupplierProduct = {
+  productType: ProductType;
+  name: string;
+  systemTypes: SupplierSystemType[];
+};
+
+type Supplier = {
+  id: string;
+  manufacturer: string;
+  products: SupplierProduct[];
+};
+
+type InsertionType = "Fixed" | "Window" | "Single Door" | "French Doors" | "Lift & Slide" | "Entrance Door";
+
+type Position = {
+  id: string;
+  estimateId: string;
+
+  positionRef: string;
+  roomName?: string;
+  qty: number;
+
+  supplier?: string; // manufacturer
+  productType?: ProductType;
+  product?: string; // product name
+
+  insertion: InsertionType;
+
+  widthMm: number;
+  heightMm: number;
+
+  // fields grid
+  fieldsX: number;
+  fieldsY: number;
+
+  // optional explicit segment sizes (future)
+  colWidthsMm?: number[];
+  rowHeightsMm?: number[];
+
+  createdAt: number;
+};
+
+const seededSuppliers: Supplier[] = [
+  {
+    id: "sup-internorm",
+    manufacturer: "Internorm",
+    products: [
+      // uPVC
+      { productType: "uPVC", name: "KF520", systemTypes: ["Windows"] },
+      { productType: "uPVC", name: "KF410", systemTypes: ["Windows"] },
+      { productType: "uPVC", name: "KF320", systemTypes: ["Windows"] },
+      { productType: "uPVC", name: "KF310", systemTypes: ["Windows"] },
+
+      // uPVC Alu Clad
+      { productType: "uPVC Alu Clad", name: "KV440", systemTypes: ["Windows"] },
+      { productType: "uPVC Alu Clad", name: "KV350", systemTypes: ["Windows"] },
+      { productType: "uPVC Alu Clad", name: "KF520 (Alu Clad)", systemTypes: ["Windows"] },
+      { productType: "uPVC Alu Clad", name: "KF310 (Alu Clad)", systemTypes: ["Windows"] },
+      { productType: "uPVC Alu Clad", name: "KF320 (Alu Clad)", systemTypes: ["Windows"] },
+
+      // Timber Aluminium Clad
+      { productType: "Timber Aluminium Clad", name: "HV450", systemTypes: ["Windows"] },
+      { productType: "Timber Aluminium Clad", name: "HF410", systemTypes: ["Windows", "French Doors"] },
+      { productType: "Timber Aluminium Clad", name: "HF510", systemTypes: ["Windows", "French Doors"] },
+      { productType: "Timber Aluminium Clad", name: "HT410", systemTypes: ["Single Door", "Entrance Doors"] },
+      { productType: "Timber Aluminium Clad", name: "HT400", systemTypes: ["Single Door", "Entrance Doors"] },
+      { productType: "Timber Aluminium Clad", name: "HT310", systemTypes: ["Single Door", "Entrance Doors"] },
+      { productType: "Timber Aluminium Clad", name: "HS330", systemTypes: ["Lift and Slide Doors"] },
+
+      // Aluminium
+      { productType: "Aluminium", name: "AT500", systemTypes: ["Windows"] },
+      { productType: "Aluminium", name: "AT510", systemTypes: ["Windows"] },
+      { productType: "Aluminium", name: "AT520", systemTypes: ["Windows"] },
+      { productType: "Aluminium", name: "AT530", systemTypes: ["Windows"] },
+      { productType: "Aluminium", name: "AT540", systemTypes: ["Windows"] },
+    ],
+  },
+  {
+    id: "sup-eko-okna",
+    manufacturer: "Eko Okna",
+    products: [
+      // uPVC
+      { productType: "uPVC", name: "Synego", systemTypes: ["Windows", "Single Door", "French Doors"] },
+      { productType: "uPVC", name: "Ideal 4000", systemTypes: ["Windows"] },
+      { productType: "uPVC", name: "Ideal 4000 Casement", systemTypes: ["Windows"] },
+      { productType: "uPVC", name: "Ideal 70", systemTypes: ["Windows"] },
+      { productType: "uPVC", name: "EkoSun 70", systemTypes: ["Windows"] },
+      { productType: "uPVC", name: "BluEvolution 82", systemTypes: ["Windows"] },
+      { productType: "uPVC", name: "Ideal 8000", systemTypes: ["Windows"] },
+      { productType: "uPVC", name: "Ideal Neo", systemTypes: ["Windows"] },
+      { productType: "uPVC", name: "GreenEvolution Flex", systemTypes: ["Windows"] },
+      { productType: "uPVC", name: "Energeto Neo", systemTypes: ["Windows"] },
+      { productType: "uPVC", name: "Ideal 4000 (New)", systemTypes: ["Windows"] },
+      { productType: "uPVC", name: "Ideal 5000", systemTypes: ["Windows"] },
+      { productType: "uPVC", name: "Ideal 7000 (New)", systemTypes: ["Windows"] },
+      { productType: "uPVC", name: "Ideal 7000 NL", systemTypes: ["Windows"] },
+      { productType: "uPVC", name: "Energeto 8000", systemTypes: ["Windows"] },
+      { productType: "uPVC", name: "Nordline", systemTypes: ["Windows"] },
+      { productType: "uPVC", name: "BluEvolution 92", systemTypes: ["Windows"] },
+      { productType: "uPVC", name: "EkoSun 6", systemTypes: ["Windows"] },
+      { productType: "uPVC", name: "EkoSun NL", systemTypes: ["Windows"] },
+      { productType: "uPVC", name: "EkoSun 7", systemTypes: ["Windows"] },
+      { productType: "uPVC", name: "S8000", systemTypes: ["Windows"] },
+      { productType: "uPVC", name: "S9000", systemTypes: ["Windows"] },
+
+      // Timber
+      { productType: "Timber", name: "Esperia Life 80", systemTypes: ["Windows"] },
+      { productType: "Timber", name: "Naturo 68", systemTypes: ["Windows"] },
+      { productType: "Timber", name: "Naturo 80", systemTypes: ["Windows"] },
+      { productType: "Timber", name: "Naturo 92", systemTypes: ["Windows"] },
+
+      // Timber Aluminium Clad
+      { productType: "Timber Aluminium Clad", name: "Esperia Life 74 Alu", systemTypes: ["Windows"] },
+      { productType: "Timber Aluminium Clad", name: "Naturo 68 Alu", systemTypes: ["Windows"] },
+      { productType: "Timber Aluminium Clad", name: "Naturo 80 Alu", systemTypes: ["Windows"] },
+
+      // Aluminium
+      { productType: "Aluminium", name: "MB-79N", systemTypes: ["Windows"] },
+      { productType: "Aluminium", name: "Cortizo Casement", systemTypes: ["Windows"] },
+      { productType: "Aluminium", name: "Slimeline 38", systemTypes: ["Windows"] },
+      { productType: "Aluminium", name: "MB-86 Casement", systemTypes: ["Windows"] },
+      { productType: "Aluminium", name: "MB-79N Casement", systemTypes: ["Windows"] },
+      { productType: "Aluminium", name: "MB-45", systemTypes: ["Windows"] },
+      { productType: "Aluminium", name: "Masterline 8", systemTypes: ["Windows"] },
+      { productType: "Aluminium", name: "VS600", systemTypes: ["Windows"] },
+      { productType: "Aluminium", name: "MB-60", systemTypes: ["Windows"] },
+      { productType: "Aluminium", name: "MB-104 Passive", systemTypes: ["Windows"] },
+      { productType: "Aluminium", name: "MB-Ferroline", systemTypes: ["Windows"] },
+      { productType: "Aluminium", name: "Ecofutural", systemTypes: ["Windows"] },
+      { productType: "Aluminium", name: "Superial", systemTypes: ["Windows"] },
+      { productType: "Aluminium", name: "Genesis", systemTypes: ["Windows"] },
+      { productType: "Aluminium", name: "Imperial", systemTypes: ["Windows"] },
+      { productType: "Aluminium", name: "MaxLight", systemTypes: ["Windows"] },
+      { productType: "Aluminium", name: "Decalu 88 Standard", systemTypes: ["Windows"] },
+      { productType: "Aluminium", name: "Decalu 94 Retro", systemTypes: ["Windows"] },
+      { productType: "Aluminium", name: "Decalu 100 Steel", systemTypes: ["Windows"] },
+      { productType: "Aluminium", name: "Decalu 88 Hidden", systemTypes: ["Windows"] },
+
+      // Steel
+      { productType: "Steel", name: "Unico XS", systemTypes: ["Windows"] },
+      { productType: "Steel", name: "Presto", systemTypes: ["Windows"] },
+      { productType: "Steel", name: "Unico XS Casement", systemTypes: ["Windows"] },
+      { productType: "Steel", name: "Unico", systemTypes: ["Windows"] },
+    ],
+  },
+];
+
+function uid(prefix: string) {
+  return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
+}
+
+function formatDate(ts: number) {
+  const d = new Date(ts);
+  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
+}
+
+function clampInt(n: any, min: number, max: number, fallback: number) {
+  const v = Math.floor(Number(n));
+  if (!Number.isFinite(v)) return fallback;
+  return Math.max(min, Math.min(max, v));
+
+function clampNum(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+// Allow free typing: if empty or non-numeric, keep previous
+function parseNumberLoose(raw: string, prev: number) {
+  const s = (raw ?? "").toString().trim();
+  if (s === "") return prev;
+  const n = Number(s);
+  if (!Number.isFinite(n)) return prev;
+  return n;
+}
+const Button: React.FC<{
+  children: React.ReactNode;
+  onClick?: () => void;
+  variant?: "primary" | "secondary" | "ghost";
+  disabled?: boolean;
+  style?: React.CSSProperties;
+}> = ({ children, onClick, variant = "primary", disabled, style }) => {
+  const base: React.CSSProperties = {
+    border: "none",
+    borderRadius: 999,
+    padding: "10px 14px",
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.6 : 1,
+    transition: "transform 0.02s ease-in-out",
+  };
+  const variants: Record<string, React.CSSProperties> = {
+    primary: { background: "#111827", color: "white" },
+    secondary: { background: "#f4f4f5", color: "#111827" },
+    ghost: { background: "transparent", color: "#111827" },
+  };
+  return (
+    <button
+      onClick={disabled ? undefined : onClick}
+      style={{ ...base, ...variants[variant], .....style }}
+      onMouseDown={(e) => {
+        if (disabled) return;
+        (e.currentTarget as any)...style.transform = "scale(0.98)";
+      }}
+      onMouseUp={(e) => {
+        (e.currentTarget as any)...style.transform = "scale(1)";
+      }}
+    >
+      {children}
+    </button>
+  );
+};
+
+const Input: React.FC<{
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  type?: string;
+  style?: React.CSSProperties;
+}> = ({ value, onChange, placeholder, type = "text", style }) => {
+  return (
+    <input
+      value={value}
+      type={type}
+      placeholder={placeholder}
+      onChange={(e) => onChange(e.target.value)}
+      style={{
+        width: "100%",
+        borderRadius: 12,
+        border: "1px solid #e4e4e7",
+        padding: "10px 12px",
+        fontSize: 14,
+        outline: "none",
+        .....style,
+      }}
+    />
+  );
+};
+
+const Select: React.FC<{
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  style?: React.CSSProperties;
+}> = ({ value, onChange, options, style }) => {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      style={{
+        width: "100%",
+        borderRadius: 12,
+        border: "1px solid #e4e4e7",
+        padding: "10px 12px",
+        fontSize: 14,
+        outline: "none",
+        background: "white",
+        .....style,
+      }}
+    >
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+  );
+};
+
+const Card: React.FC<{ children: React.ReactNode; style?: React.CSSProperties }> = ({ children, style }) => {
+  return (
+    <div
+      style={{
+        borderRadius: 18,
+        border: "1px solid rgb(228, 228, 231)",
+        background: "white",
+        padding: 16,
+        boxShadow: "rgba(0, 0, 0, 0.06) 0px 1px 2px",
+        .....style,
+      }}
+    >
+      {children}
+    </div>
+  );
+};
+
+const H1: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: -0.2, color: "#111827" }}>{children}</div>
+);
+
+const H2: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <div style={{ fontSize: 16, fontWeight: 800, color: "#111827" }}>{children}</div>
+);
+
+const H3: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <div style={{ fontSize: 14, fontWeight: 800, color: "#111827" }}>{children}</div>
+);
+
+const Muted: React.FC<{ children: React.ReactNode; style?: React.CSSProperties }> = ({ children, style }) => (
+  <div style={{ fontSize: 13, color: "#6b7280", .....style }}>{children}</div>
+);
+
+const Pill: React.FC<{ children: React.ReactNode; tone?: "green" | "gray" }> = ({ children, tone = "gray" }) => {
+  const tones: Record<string, React.CSSProperties> = {
+    gray: { background: "#f4f4f5", color: "#111827" },
+    green: { background: "rgba(95,188,79,0.15)", color: "#14532d" },
+  };
+  return (
+    <span style={{ padding: "4px 10px", borderRadius: 999, fontSize: 12, fontWeight: 700, ...tones[tone] }}>
+      {children}
+    </span>
+  );
+};
+
+const Divider: React.FC = () => <div style={{ height: 1, background: "#e4e4e7", margin: "14px 0" }} />;
+
+type NavKey = "businessCustomers" | "individualCustomers" | "projectPrefs" | "addressDb" | "tools";
+
+export default function App() {
+  const [nav, setNav] = useState<NavKey>("businessCustomers");
+
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [estimates, setEstimates] = useState<Estimate[]>([]);
+  const [positions, setPositions] = useState<Position[]>([]);
+
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [selectedEstimateId, setSelectedEstimateId] = useState<string | null>(null);
+
+  const selectedCustomer = useMemo(
+    () => customers.find((c) => c.id === selectedCustomerId) || null,
+    [customers, selectedCustomerId]
+  );
+  const selectedProject = useMemo(
+    () => projects.find((p) => p.id === selectedProjectId) || null,
+    [projects, selectedProjectId]
+  );
+  const selectedEstimate = useMemo(
+    () => estimates.find((e) => e.id === selectedEstimateId) || null,
+    [estimates, selectedEstimateId]
+  );
+
+  const businessCustomers = customers.filter((c) => c.type === "Business");
+  const individualCustomers = customers.filter((c) => c.type === "Individual");
+
+  const projectList = useMemo(() => {
+    if (!selectedCustomerId) return [];
+    return projects.filter((p) => p.customerId === selectedCustomerId).sort((a, b) => b.createdAt - a.createdAt);
+  }, [projects, selectedCustomerId]);
+
+  const estimateList = useMemo(() => {
+    if (!selectedProjectId) return [];
+    return estimates.filter((e) => e.projectId === selectedProjectId).sort((a, b) => b.createdAt - a.createdAt);
+  }, [estimates, selectedProjectId]);
+
+  const estimatePositions = useMemo(() => {
+    if (!selectedEstimateId) return [];
+    return positions.filter((p) => p.estimateId === selectedEstimateId).sort((a, b) => a.positionRef.localeCompare(b.positionRef));
+  }, [positions, selectedEstimateId]);
+
+  // Supplier helpers
+  const supplierOptions = seededSuppliers.map((s) => ({ value: s.manufacturer, label: s.manufacturer }));
+
+  const productTypeOptions: { value: ProductType; label: string }[] = [
+    { value: "uPVC", label: "uPVC" },
+    { value: "uPVC Alu Clad", label: "uPVC Alu Clad" },
+    { value: "Timber", label: "Timber" },
+    { value: "Timber Aluminium Clad", label: "Timber Aluminium Clad" },
+    { value: "Aluminium", label: "Aluminium" },
+    { value: "Steel", label: "Steel" },
+  ];
+
+  function productsFor(manufacturer: string, productType?: ProductType) {
+    const s = seededSuppliers.find((x) => x.manufacturer === manufacturer);
+    if (!s) return [];
+    let prods = s.products;
+    if (productType) prods = prods.filter((p) => p.productType === productType);
+    // "don’t worry about filtering later" — for now, show all under every product type selection (as requested)
+    // but we still return by supplier; productType dropdown can be used later to filter when admin config is ready.
+    return prods.map((p) => p.name);
+  }
+
+  // Add customer modal
+  const [showAddCustomer, setShowAddCustomer] = useState(false);
+  const [draftType, setDraftType] = useState<CustomerType>("Business");
+  const [draftBusinessName, setDraftBusinessName] = useState("");
+  const [draftContactPerson, setDraftContactPerson] = useState("");
+  const [draftClientName, setDraftClientName] = useState("");
+
+  const [draftEmail, setDraftEmail] = useState("");
+  const [draftMobile, setDraftMobile] = useState("");
+  const [draftHome, setDraftHome] = useState("");
+
+  // Business phone mapping requested
+  const [draftBusinessTel, setDraftBusinessTel] = useState("");
+  const [draftContactMobileOffice, setDraftContactMobileOffice] = useState("");
+
+  // Office address (Business)
+  const [draftOfficeAddress1, setDraftOfficeAddress1] = useState("");
+  const [draftOfficeAddress2, setDraftOfficeAddress2] = useState("");
+  const [draftOfficeTown, setDraftOfficeTown] = useState("");
+  const [draftOfficeCity, setDraftOfficeCity] = useState("");
+  const [draftOfficeCounty, setDraftOfficeCounty] = useState("");
+  const [draftOfficePostcode, setDraftOfficePostcode] = useState("");
+  const [draftOfficeCountry, setDraftOfficeCountry] = useState("UK");
+
+  // Invoice address
+  const [draftInvoiceAddress1, setDraftInvoiceAddress1] = useState("");
+  const [draftInvoiceAddress2, setDraftInvoiceAddress2] = useState("");
+  const [draftInvoiceTown, setDraftInvoiceTown] = useState("");
+  const [draftInvoiceCity, setDraftInvoiceCity] = useState("");
+  const [draftInvoiceCounty, setDraftInvoiceCounty] = useState("");
+  const [draftInvoicePostcode, setDraftInvoicePostcode] = useState("");
+  const [draftInvoiceCountry, setDraftInvoiceCountry] = useState("UK");
+
+  const [draftNotes, setDraftNotes] = useState("");
+
+  function resetCustomerDraft() {
+    setDraftType("Business");
+    setDraftBusinessName("");
+    setDraftContactPerson("");
+    setDraftClientName("");
+    setDraftEmail("");
+    setDraftMobile("");
+    setDraftHome("");
+    setDraftBusinessTel("");
+    setDraftContactMobileOffice("");
+    setDraftOfficeAddress1("");
+    setDraftOfficeAddress2("");
+    setDraftOfficeTown("");
+    setDraftOfficeCity("");
+    setDraftOfficeCounty("");
+    setDraftOfficePostcode("");
+    setDraftOfficeCountry("UK");
+    setDraftInvoiceAddress1("");
+    setDraftInvoiceAddress2("");
+    setDraftInvoiceTown("");
+    setDraftInvoiceCity("");
+    setDraftInvoiceCounty("");
+    setDraftInvoicePostcode("");
+    setDraftInvoiceCountry("UK");
+    setDraftNotes("");
+  }
+
+  function addCustomer() {
+    const type = draftType;
+    if (!draftEmail.trim()) return;
+
+    const c: Customer = {
+      id: uid("cust"),
+      clientRef: nextClientRef(customers),
+      type,
+      businessName: type === "Business" ? draftBusinessName.trim() : undefined,
+      contactPerson: type === "Business" ? draftContactPerson.trim() : undefined,
+      clientName: type === "Individual" ? draftClientName.trim() : draftBusinessName.trim(),
+      email: draftEmail.trim(),
+      mobile: type === "Business" ? draftContactMobileOffice.trim() : draftMobile.trim(),
+      home: type === "Business" ? draftBusinessTel.trim() : draftHome.trim(),
+
+      officeAddress1: type === "Business" ? draftOfficeAddress1.trim() : undefined,
+      officeAddress2: type === "Business" ? draftOfficeAddress2.trim() : undefined,
+      officeTown: type === "Business" ? draftOfficeTown.trim() : undefined,
+      officeCity: type === "Business" ? draftOfficeCity.trim() : undefined,
+      officeCounty: type === "Business" ? draftOfficeCounty.trim() : undefined,
+      officePostcode: type === "Business" ? draftOfficePostcode.trim() : undefined,
+      officeCountry: type === "Business" ? draftOfficeCountry.trim() : undefined,
+
+      invoiceAddress1: draftInvoiceAddress1.trim(),
+      invoiceAddress2: draftInvoiceAddress2.trim(),
+      invoiceTown: draftInvoiceTown.trim(),
+      invoiceCity: draftInvoiceCity.trim(),
+      invoiceCounty: draftInvoiceCounty.trim(),
+      invoicePostcode: draftInvoicePostcode.trim(),
+      invoiceCountry: draftInvoiceCountry.trim(),
+
+      notes: draftNotes.trim(),
+      createdAt: Date.now(),
+    };
+
+    setCustomers((prev) => [c, ...prev]);
+    setSelectedCustomerId(c.id);
+    setSelectedProjectId(null);
+    setSelectedEstimateId(null);
+    setShowAddCustomer(false);
+    resetCustomerDraft();
+  }
+
+  // Add project modal
+  const [showAddProject, setShowAddProject] = useState(false);
+  const [draftProjectName, setDraftProjectName] = useState("");
+  const [draftProjectRef, setDraftProjectRef] = useState("");
+
+  const [draftSiteAddress1, setDraftSiteAddress1] = useState("");
+  const [draftSiteAddress2, setDraftSiteAddress2] = useState("");
+  const [draftSiteTown, setDraftSiteTown] = useState("");
+  const [draftSiteCity, setDraftSiteCity] = useState("");
+  const [draftSiteCounty, setDraftSiteCounty] = useState("");
+  const [draftSitePostcode, setDraftSitePostcode] = useState("");
+  const [draftSiteCountry, setDraftSiteCountry] = useState("UK");
+
+  function resetProjectDraft() {
+    setDraftProjectName("");
+    setDraftProjectRef("");
+    setDraftSiteAddress1("");
+    setDraftSiteAddress2("");
+    setDraftSiteTown("");
+    setDraftSiteCity("");
+    setDraftSiteCounty("");
+    setDraftSitePostcode("");
+    setDraftSiteCountry("UK");
+  }
+
+  function addProject() {
+    if (!selectedCustomerId) return;
+    if (!draftProjectName.trim()) return;
+
+    const p: Project = {
+      id: uid("proj"),
+      customerId: selectedCustomerId,
+      name: draftProjectName.trim(),
+      ref: draftProjectRef.trim() || undefined,
+
+      siteAddress1: draftSiteAddress1.trim(),
+      siteAddress2: draftSiteAddress2.trim(),
+      siteTown: draftSiteTown.trim(),
+      siteCity: draftSiteCity.trim(),
+      siteCounty: draftSiteCounty.trim(),
+      sitePostcode: draftSitePostcode.trim(),
+      siteCountry: draftSiteCountry.trim(),
+
+      createdAt: Date.now(),
+    };
+
+    setProjects((prev) => [p, ...prev]);
+    setSelectedProjectId(p.id);
+    setSelectedEstimateId(null);
+    setShowAddProject(false);
+    resetProjectDraft();
+  }
+
+  // Estimates
+  function addEstimate() {
+    if (!selectedProjectId) return;
+
+    const year = new Date().getFullYear();
+    const estimateRef = nextEstimateRef(estimates, year);
+
+    const e: Estimate = {
+      id: uid("est"),
+      projectId: selectedProjectId,
+      estimateRef,
+      revision: 1,
+      status: "Draft",
+      createdAt: Date.now(),
+    };
+
+    setEstimates((prev) => [e, ...prev]);
+    setSelectedEstimateId(e.id);
+  }
+
+  function toggleEstimateComplete(id: string) {
+    setEstimates((prev) =>
+      prev.map((e) => {
+        if (e.id !== id) return e;
+        return { ...e, status: e.status === "Completed" ? "Draft" : "Completed" };
+      })
+    );
+  }
+
+  // Positions wizard
+  const [showPositionWizard, setShowPositionWizard] = useState(false);
+  const [posStep, setPosStep] = useState<1 | 2 | 3 | 4>(1);
+
+  const [posDraft, setPosDraft] = useState<{
+    positionRef: string;
+    roomName: string;
+    qty: number;
+
+    supplier: string;
+    productType: ProductType;
+    product: string;
+
+    insertion: InsertionType;
+
+    widthMm: string;
+    heightMm: string;
+
+    fieldsX: number;
+    fieldsY: number;
+  }>({
+    positionRef: "W-001",
+    roomName: "",
+    qty: 1,
+
+    supplier: "",
+    productType: "uPVC",
+    product: "",
+
+    insertion: "Fixed",
+
+    widthMm: "1000",
+    heightMm: "1200",
+
+    fieldsX: 1,
+    fieldsY: 1,
+  });
+
+  const availableProducts = useMemo(() => {
+    // per user: for now show all products under every productType selection (later admin config will refine)
+    if (!posDraft.supplier) return [];
+    return productsFor(posDraft.supplier);
+  }, [posDraft.supplier, posDraft.productType]);
+
+  function openAddPosition() {
+    if (!selectedEstimateId) return;
+    setShowPositionWizard(true);
+    setPosStep(1);
+  }
+
+  function closePositionWizard() {
+    setShowPositionWizard(false);
+  }
+
+  function savePosition() {
+    if (!selectedEstimateId) return;
+
+    const width = clampInt(posDraft.widthMm, 100, 100000, 1000);
+    const height = clampInt(posDraft.heightMm, 100, 100000, 1200);
+
+    const p: Position = {
+      id: uid("pos"),
+      estimateId: selectedEstimateId,
+      positionRef: posDraft.positionRef.trim() || "W-001",
+      roomName: posDraft.roomName.trim() || undefined,
+      qty: clampInt(posDraft.qty, 1, 999, 1),
+
+      supplier: posDraft.supplier || undefined,
+      productType: posDraft.productType || undefined,
+      product: posDraft.product || undefined,
+
+      insertion: posDraft.insertion,
+
+      widthMm: width,
+      heightMm: height,
+
+      fieldsX: clampInt(posDraft.fieldsX, 1, 4, 1),
+      fieldsY: clampInt(posDraft.fieldsY, 1, 4, 1),
+
+      createdAt: Date.now(),
+    };
+
+    setPositions((prev) => [p, ...prev]);
+    setShowPositionWizard(false);
+  }
+
+  // Layout
+  const sidebarWidth = 280;
+
+  const navItems: { key: NavKey; label: string; group?: string }[] = [
+    { key: "businessCustomers", label: "Business Customers", group: "Customers" },
+    { key: "individualCustomers", label: "Individual Customers", group: "Customers" },
+    { key: "projectPrefs", label: "Project Preferences", group: "Preferences" },
+    { key: "addressDb", label: "Address Database", group: "Preferences" },
+    { key: "tools", label: "Tools", group: "Tools" },
+  ];
+
+  const logoUrl = "/quotesync-logo.png";
+
+  const pageTitle =
+    nav === "businessCustomers"
+      ? "Business Customers"
+      : nav === "individualCustomers"
+      ? "Individual Customers"
+      : nav === "projectPrefs"
+      ? "Preferences"
+      : nav === "addressDb"
+      ? "Preferences"
+      : "Tools";
+
+  return (
+    <div style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif", background: "rgb(244, 244, 245)", minHeight: "100vh", padding: 16 }}>
+      <div style={{ width: "100%", margin: "0 auto", padding: 16, display: "grid", gridTemplateColumns: `${sidebarWidth}px 1fr`, gap: 16 }}>
+        <Card style={{ padding: 12 }}>
+          <div style={{ padding: "6px 6px 12px" }}>
+            <img alt="QuoteSync" src={logoUrl} style={{ width: "100%", maxWidth: "260px", height: "78px", objectFit: "contain", display: "block" }} />
+          </div>
+
+          {(() => {
+            let currentGroup = "";
+            return navItems.map((it) => {
+              const groupChanged = it.group && it.group !== currentGroup;
+              if (groupChanged) currentGroup = it.group || "";
+              return (
+                <div key={it.key}>
+                  {groupChanged && (
+                    <div style={{ marginTop: 10, marginBottom: 6, fontSize: 12, fontWeight: 900, color: "#111827", textTransform: "uppercase", letterSpacing: 0.6 }}>
+                      {currentGroup}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => setNav(it.key)}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      border: "none",
+                      background: nav === it.key ? "#111827" : "transparent",
+                      color: nav === it.key ? "white" : "#111827",
+                      padding: "10px 12px",
+                      borderRadius: 999,
+                      fontWeight: nav === it.key ? 800 : 700,
+                      fontSize: 14,
+                      cursor: "pointer",
+                      marginBottom: 6,
+                    }}
+                  >
+                    {it.label}
+                  </button>
+                </div>
+              );
+            });
+          })()}
+        </Card>
+
+        <div style={{ display: "grid", gap: 16 }}>
+          <Card>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <div>
+                <H1>{pageTitle}</H1>
+                <Muted style={{ marginTop: 4 }}>
+                  {nav === "businessCustomers"
+                    ? "Create clients, start estimates, and manage revisions."
+                    : nav === "individualCustomers"
+                    ? "Individual customers, enquiries, and estimates."
+                    : nav === "projectPrefs"
+                    ? "Default settings (placeholder)."
+                    : nav === "addressDb"
+                    ? "Postcode/town lists (placeholder)."
+                    : "Tools (placeholder)."}
+                </Muted>
+              </div>
+
+              {nav === "businessCustomers" || nav === "individualCustomers" ? (
+                <Button
+                  onClick={() => {
+                    setShowAddCustomer(true);
+                    resetCustomerDraft();
+                    setDraftType(nav === "businessCustomers" ? "Business" : "Individual");
+                  }}
+                >
+                  Add Client
+                </Button>
+              ) : null}
+            </div>
+
+            {(nav === "businessCustomers" || nav === "individualCustomers") && (
+              <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "360px 1fr", gap: 14 }}>
+                <Card style={{ padding: 12 }}>
+                  <H3>Clients</H3>
+                  <div style={{ marginTop: 8, display: "grid", gap: 8, maxHeight: 520, overflow: "auto" }}>
+                    {(nav === "businessCustomers" ? businessCustomers : individualCustomers).length === 0 && (
+                      <Muted>No clients yet.</Muted>
+                    )}
+                    {(nav === "businessCustomers" ? businessCustomers : individualCustomers).map((c) => (
+                      <div
+                        key={c.id}
+                        onClick={() => {
+                          setSelectedCustomerId(c.id);
+                          setSelectedProjectId(null);
+                          setSelectedEstimateId(null);
+                        }}
+                        style={{
+                          border: "1px solid #e4e4e7",
+                          borderRadius: 14,
+                          padding: 10,
+                          cursor: "pointer",
+                          background: selectedCustomerId === c.id ? "rgba(95,188,79,0.10)" : "white",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                          <div style={{ fontWeight: 900, color: "#111827", fontSize: 14 }}>
+                            {c.clientRef} — {c.type === "Business" ? (c.businessName || c.clientName || "Business") : (c.clientName || "Individual")}
+                          </div>
+                          <Pill tone="gray">{c.type}</Pill>
+                        </div>
+                        <Muted style={{ marginTop: 4 }}>
+                          {c.email}
+                        </Muted>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+
+                <div style={{ display: "grid", gap: 14 }}>
+                  <Card>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <H2>Projects</H2>
+                      <Button
+                        variant="secondary"
+                        disabled={!selectedCustomerId}
+                        onClick={() => {
+                          setShowAddProject(true);
+                          resetProjectDraft();
+                        }}
+                      >
+                        Add Project
+                      </Button>
+                    </div>
+
+                    {!selectedCustomerId ? (
+                      <Muted style={{ marginTop: 10 }}>Select a client to see projects.</Muted>
+                    ) : projectList.length === 0 ? (
+                      <Muted style={{ marginTop: 10 }}>No projects yet.</Muted>
+                    ) : (
+                      <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                        {projectList.map((p) => (
+                          <div
+                            key={p.id}
+                            onClick={() => {
+                              setSelectedProjectId(p.id);
+                              setSelectedEstimateId(null);
+                            }}
+                            style={{
+                              border: "1px solid #e4e4e7",
+                              borderRadius: 14,
+                              padding: 12,
+                              cursor: "pointer",
+                              background: selectedProjectId === p.id ? "rgba(95,188,79,0.10)" : "white",
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                              <div style={{ fontWeight: 900, color: "#111827" }}>{p.name}</div>
+                              {p.ref ? <Pill tone="gray">{p.ref}</Pill> : null}
+                            </div>
+                            <Muted style={{ marginTop: 6 }}>Created {formatDate(p.createdAt)}</Muted>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </Card>
+
+                  <Card>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <H2>Estimates</H2>
+                      <Button
+                        variant="secondary"
+                        disabled={!selectedProjectId}
+                        onClick={() => {
+                          setShowAddEstimate(true);
+                          setDraftEstimateName("");
+                        }}
+                      >
+                        Add Estimate
+                      </Button>
+                    </div>
+
+                    {!selectedProjectId ? (
+                      <Muted style={{ marginTop: 10 }}>Select a project to see estimates.</Muted>
+                    ) : estimateList.length === 0 ? (
+                      <Muted style={{ marginTop: 10 }}>No estimates yet.</Muted>
+                    ) : (
+                      <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                        {estimateList.map((e) => (
+                          <div
+                            key={e.id}
+                            onClick={() => setSelectedEstimateId(e.id)}
+                            style={{
+                              border: "1px solid #e4e4e7",
+                              borderRadius: 14,
+                              padding: 12,
+                              cursor: "pointer",
+                              background: selectedEstimateId === e.id ? "rgba(95,188,79,0.10)" : "white",
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                              <div style={{ fontWeight: 900, color: "#111827" }}>
+                                {e.estimateRef} <span style={{ color: "#6b7280", fontWeight: 800 }}>R{e.revision}</span>
+                              </div>
+                              <Pill tone={e.status === "Completed" ? "green" : "gray"}>{e.status}</Pill>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10 }}>
+                              <Muted>Created {formatDate(e.createdAt)}</Muted>
+                              <Button variant="ghost" onClick={() => toggleEstimateComplete(e.id)}>
+                                Toggle Complete
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <Divider />
+
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <H2>Positions</H2>
+                      <Button disabled={!selectedEstimateId} onClick={openAddPosition}>
+                        Add Position
+                      </Button>
+                    </div>
+
+                    {!selectedEstimateId ? (
+                      <Muted style={{ marginTop: 10 }}>Select an estimate to add positions.</Muted>
+                    ) : estimatePositions.length === 0 ? (
+                      <Muted style={{ marginTop: 10 }}>No positions yet.</Muted>
+                    ) : (
+                      <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                        {estimatePositions.map((p) => (
+                          <div
+                            key={p.id}
+                            style={{
+                              border: "1px solid #e4e4e7",
+                              borderRadius: 14,
+                              padding: 12,
+                              background: "white",
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                              <div style={{ fontWeight: 900, color: "#111827" }}>{p.positionRef}</div>
+                              <Pill>{p.insertion}</Pill>
+                            </div>
+                            <Muted style={{ marginTop: 6 }}>
+                              {p.widthMm}×{p.heightMm}mm • {p.fieldsX}×{p.fieldsY} fields • Qty {p.qty}
+                            </Muted>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </Card>
+                </div>
+              </div>
+            )}
+
+            {nav === "projectPrefs" && (
+              <div style={{ marginTop: 14 }}>
+                <Muted>Project preferences will be configured later (admin side).</Muted>
+              </div>
+            )}
+            {nav === "addressDb" && (
+              <div style={{ marginTop: 14 }}>
+                <Muted>Address/postcode database will be configured later (admin side).</Muted>
+              </div>
+            )}
+            {nav === "tools" && (
+              <div style={{ marginTop: 14 }}>
+                <Muted>Tools area placeholder.</Muted>
+              </div>
+            )}
+          </Card>
+        </div>
+      </div>
+
+      {/* Add Customer Modal */}
+      {showAddCustomer && (
+        <div style={modalOverlay}>
+          <div style={modalCard}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <H2>Add Client</H2>
+              <Button variant="secondary" onClick={() => setShowAddCustomer(false)}>
+                Close
+              </Button>
+            </div>
+
+            <Divider />
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div>
+                <div style={labelStyle}>Client type</div>
+                <Select
+                  value={draftType}
+                  onChange={(v) => setDraftType(v as CustomerType)}
+                  options={[
+                    { value: "Business", label: "Business" },
+                    { value: "Individual", label: "Individual" },
+                  ]}
+                />
+              </div>
+
+              <div>
+                <div style={labelStyle}>Email</div>
+                <Input value={draftEmail} onChange={setDraftEmail} placeholder="email@domain.com" />
+              </div>
+            </div>
+
+            <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
+              {draftType === "Business" ? (
+                <>
+                  <div>
+                    <div style={labelStyle}>Business name</div>
+                    <Input value={draftBusinessName} onChange={setDraftBusinessName} placeholder="Business name" />
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <div>
+                      <div style={labelStyle}>Contact person</div>
+                      <Input value={draftContactPerson} onChange={setDraftContactPerson} placeholder="Contact person" />
+                    </div>
+                    <div>
+                      <div style={labelStyle}>Contact persons mobile/office number</div>
+                      <Input value={draftContactMobileOffice} onChange={setDraftContactMobileOffice} placeholder="Mobile/office number" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={labelStyle}>Business telephone number</div>
+                    <Input value={draftBusinessTel} onChange={setDraftBusinessTel} placeholder="Business telephone" />
+                  </div>
+
+                  <Divider />
+
+                  <H3>Office address</H3>
+                  <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
+                    <Input value={draftOfficeAddress1} onChange={setDraftOfficeAddress1} placeholder="Address line 1" />
+                    <Input value={draftOfficeAddress2} onChange={setDraftOfficeAddress2} placeholder="Address line 2" />
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <Input value={draftOfficeTown} onChange={setDraftOfficeTown} placeholder="Town" />
+                      <Input value={draftOfficeCity} onChange={setDraftOfficeCity} placeholder="City" />
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <Input value={draftOfficeCounty} onChange={setDraftOfficeCounty} placeholder="County" />
+                      <Input value={draftOfficePostcode} onChange={setDraftOfficePostcode} placeholder="Postcode" />
+                    </div>
+                    <Input value={draftOfficeCountry} onChange={setDraftOfficeCountry} placeholder="Country" />
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <div style={labelStyle}>Client name</div>
+                  <Input value={draftClientName} onChange={setDraftClientName} placeholder="Client name" />
+                </div>
+              )}
+
+              {draftType === "Individual" && (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div>
+                    <div style={labelStyle}>Mobile</div>
+                    <Input value={draftMobile} onChange={setDraftMobile} placeholder="Mobile" />
+                  </div>
+                  <div>
+                    <div style={labelStyle}>Home</div>
+                    <Input value={draftHome} onChange={setDraftHome} placeholder="Home telephone" />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <Divider />
+
+            <H3>Invoice address</H3>
+            <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
+              <Input value={draftInvoiceAddress1} onChange={setDraftInvoiceAddress1} placeholder="Address line 1" />
+              <Input value={draftInvoiceAddress2} onChange={setDraftInvoiceAddress2} placeholder="Address line 2" />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <Input value={draftInvoiceTown} onChange={setDraftInvoiceTown} placeholder="Town" />
+                <Input value={draftInvoiceCity} onChange={setDraftInvoiceCity} placeholder="City" />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <Input value={draftInvoiceCounty} onChange={setDraftInvoiceCounty} placeholder="County" />
+                <Input value={draftInvoicePostcode} onChange={setDraftInvoicePostcode} placeholder="Postcode" />
+              </div>
+              <Input value={draftInvoiceCountry} onChange={setDraftInvoiceCountry} placeholder="Country" />
+            </div>
+
+            <Divider />
+
+            <div>
+              <div style={labelStyle}>Notes</div>
+              <textarea
+                value={draftNotes}
+                onChange={(e) => setDraftNotes(e.target.value)}
+                placeholder="Notes (optional)"
+                style={{
+                  width: "100%",
+                  minHeight: 90,
+                  borderRadius: 14,
+                  border: "1px solid #e4e4e7",
+                  padding: "10px 12px",
+                  fontSize: 14,
+                  outline: "none",
+                  resize: "vertical",
+                }}
+              />
+            </div>
+
+            <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <Button variant="secondary" onClick={() => setShowAddCustomer(false)}>
+                Cancel
+              </Button>
+              <Button onClick={addCustomer} disabled={!draftEmail.trim()}>
+                Save Client
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Project Modal */}
+      {showAddProject && (
+        <div style={modalOverlay}>
+          <div style={modalCard}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <H2>Add Project</H2>
+              <Button variant="secondary" onClick={() => setShowAddProject(false)}>
+                Close
+              </Button>
+            </div>
+
+            <Divider />
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div>
+                <div style={labelStyle}>Project name</div>
+                <Input value={draftProjectName} onChange={setDraftProjectName} placeholder="Project name" />
+              </div>
+              <div>
+                <div style={labelStyle}>Project reference</div>
+                <Input value={draftProjectRef} onChange={setDraftProjectRef} placeholder="(optional)" />
+              </div>
+            </div>
+
+            <Divider />
+
+            <H3>Site address</H3>
+            <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
+              <Input value={draftSiteAddress1} onChange={setDraftSiteAddress1} placeholder="Address line 1" />
+              <Input value={draftSiteAddress2} onChange={setDraftSiteAddress2} placeholder="Address line 2" />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <Input value={draftSiteTown} onChange={setDraftSiteTown} placeholder="Town" />
+                <Input value={draftSiteCity} onChange={setDraftSiteCity} placeholder="City" />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <Input value={draftSiteCounty} onChange={setDraftSiteCounty} placeholder="County" />
+                <Input value={draftSitePostcode} onChange={setDraftSitePostcode} placeholder="Postcode" />
+              </div>
+              <Input value={draftSiteCountry} onChange={setDraftSiteCountry} placeholder="Country" />
+            </div>
+
+            <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <Button variant="secondary" onClick={() => setShowAddProject(false)}>
+                Cancel
+              </Button>
+              <Button onClick={addProject} disabled={!draftProjectName.trim()}>
+                Save Project
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Position Wizard */}
+      {showPositionWizard && (
+        <div style={modalOverlay}>
+          <div style={{ ...modalCard, maxWidth: 980 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <H2>Add Position</H2>
+              <Button variant="secondary" onClick={closePositionWizard}>
+                Close
+              </Button>
+            </div>
+
+            <Divider />
+
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {[
+                { s: 1, label: "1. Position" },
+                { s: 2, label: "2. Supplier & Product" },
+                { s: 3, label: "3. Dimensions" },
+                { s: 4, label: "4. Configuration" },
+              ].map((it) => (
+                <div
+                  key={it.s}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 999,
+                    border: "1px solid #e4e4e7",
+                    background: posStep === (it.s as any) ? "#111827" : "white",
+                    color: posStep === (it.s as any) ? "white" : "#111827",
+                    fontSize: 13,
+                    fontWeight: 900,
+                  }}
+                >
+                  {it.label}
+                </div>
+              ))}
+            </div>
+
+            <Divider />
+
+            <div style={{ display: "grid", gap: 12 }}>
+              {posStep === 1 && (
+                <div style={{ display: "grid", gap: 12 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <div>
+                      <div style={labelStyle}>Position ref</div>
+                      <Input value={posDraft.positionRef} onChange={(v) => setPosDraft((p) => ({ ...p, positionRef: v }))} placeholder="W-001" />
+                    </div>
+                    <div>
+                      <div style={labelStyle}>Quantity</div>
+                      <Input value={String(posDraft.qty)} onChange={(v) => setPosDraft((p) => ({ ...p, qty: clampInt(v, 1, 999, 1) }))} type="number" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={labelStyle}>Room / location</div>
+                    <Input value={posDraft.roomName} onChange={(v) => setPosDraft((p) => ({ ...p, roomName: v }))} placeholder="e.g. Kitchen" />
+                  </div>
+
+                  <div>
+                    <div style={labelStyle}>Insertion</div>
+                    <Select
+                      value={posDraft.insertion}
+                      onChange={(v) => setPosDraft((p) => ({ ...p, insertion: v as InsertionType }))}
+                      options={[
+                        { value: "Fixed", label: "Fixed" },
+                        { value: "Window", label: "Window" },
+                        { value: "Single Door", label: "Single Door" },
+                        { value: "French Doors", label: "French Doors" },
+                        { value: "Lift & Slide", label: "Lift & Slide" },
+                        { value: "Entrance Door", label: "Entrance Door" },
+                      ]}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {posStep === 2 && (
+                <div style={{ display: "grid", gap: 12 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <div>
+                      <div style={labelStyle}>Supplier</div>
+                      <Select
+                        value={posDraft.supplier}
+                        onChange={(v) =>
+                          setPosDraft((p) => ({
+                            ...p,
+                            supplier: v,
+                            product: "",
+                          }))
+                        }
+                        options={[{ value: "", label: "Select supplier..." }, ...supplierOptions]}
+                      />
+                    </div>
+                    <div>
+                      <div style={labelStyle}>Product type</div>
+                      <Select
+                        value={posDraft.productType}
+                        onChange={(v) => setPosDraft((p) => ({ ...p, productType: v as ProductType }))}
+                        options={productTypeOptions.map((o) => ({ value: o.value, label: o.label }))}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={labelStyle}>Product</div>
+                    <Select
+                      value={posDraft.product}
+                      onChange={(v) => setPosDraft((p) => ({ ...p, product: v }))}
+                      options={[
+                        { value: "", label: posDraft.supplier ? "Select product..." : "Select supplier first" },
+                        ...(posDraft.supplier ? availableProducts.map((x) => ({ value: x, label: x })) : []),
+                      ]}
+                    />
+                  </div>
+
+                  <Muted>
+                    Note: product filtering by product type/system type will be refined later in Admin. For now, supplier products are available regardless of product type selection.
+                  </Muted>
+                </div>
+              )}
+
+              {posStep === 3 && (
+                <div style={{ display: "grid", gap: 12 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <div>
+                      <div style={labelStyle}>Total width (mm)</div>
+                      <Input value={posDraft.widthMm} onChange={(v) => setPosDraft((p) => ({ ...p, widthMm: v }))} type="number" />
+                    </div>
+                    <div>
+                      <div style={labelStyle}>Total height (mm)</div>
+                      <Input value={posDraft.heightMm} onChange={(v) => setPosDraft((p) => ({ ...p, heightMm: v }))} type="number" />
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <div>
+                      <div style={labelStyle}>Fields across</div>
+                      <Select
+                        value={String(posDraft.fieldsX)}
+                        onChange={(v) => setPosDraft((p) => ({ ...p, fieldsX: clampInt(v, 1, 4, 1) }))}
+                        options={[1, 2, 3, 4].map((n) => ({ value: String(n), label: String(n) }))}
+                      />
+                    </div>
+                    <div>
+                      <div style={labelStyle}>Fields up</div>
+                      <Select
+                        value={String(posDraft.fieldsY)}
+                        onChange={(v) => setPosDraft((p) => ({ ...p, fieldsY: clampInt(v, 1, 4, 1) }))}
+                        options={[1, 2, 3, 4].map((n) => ({ value: String(n), label: String(n) }))}
+                      />
+                    </div>
+                  </div>
+
+                  <Muted>
+                    Next step will generate a technical preview. We’ll add Logikal-style split sizing (e.g. 1000/500) in the next pass.
+                  </Muted>
+                </div>
+              )}
+
+              {posStep === 4 && (
+                <div style={{ display: "grid", gridTemplateColumns: "340px 1fr", gap: 12 }}>
+                  <div style={{ display: "grid", gap: 12 }}>
+                    <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12 }}>
+                      <H3>Position information</H3>
+                      <div style={{ marginTop: 8, fontSize: 14, color: "#3f3f46", display: "grid", gap: 6 }}>
+                        <div><b>Ref:</b> {posDraft.positionRef}</div>
+                        <div><b>Room:</b> {posDraft.roomName || "—"}</div>
+                        <div><b>Qty:</b> {posDraft.qty}</div>
+                        <div><b>Supplier:</b> {posDraft.supplier || "—"}</div>
+                        <div><b>Product type:</b> {posDraft.productType || "—"}</div>
+                        <div><b>Product:</b> {posDraft.product || "—"}</div>
+                        <div><b>Size:</b> {posDraft.widthMm}×{posDraft.heightMm}</div>
+                        <div><b>Grid:</b> {posDraft.fieldsX}×{posDraft.fieldsY}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12, height: 360 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                      <H3>Preview</H3>
+                      <Pill>{posDraft.insertion}</Pill>
+                    </div>
+                    <div style={{ marginTop: 10, fontSize: 12, color: "#71717a" }}>
+                      Technical drawing placeholder (UI-only).
+                    </div>
+                    <div style={{ marginTop: 12, borderRadius: 14, border: "1px solid #e4e4e7", height: 260, display: "flex", alignItems: "center", justifyContent: "center", color: "#a1a1aa" }}>
+                      Drawing
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div style={{ marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <Button
+                variant="secondary"
+                onClick={() => setPosStep((s) => (s === 1 ? 1 : ((s - 1) as any)))}
+                disabled={posStep === 1}
+              >
+                Back
+              </Button>
+
+              <div style={{ display: "flex", gap: 10 }}>
+                {posStep < 4 ? (
+                  <Button
+                    onClick={() => setPosStep((s) => ((s + 1) as any))}
+                    disabled={posStep === 2 && !posDraft.supplier}
+                  >
+                    Next
+                  </Button>
+                ) : (
+                  <Button onClick={savePosition}>Save Position</Button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const modalOverlay: React.CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(17,24,39,0.45)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 16,
+  zIndex: 999,
+};
+
+const modalCard: React.CSSProperties = {
+  width: "100%",
+  maxWidth: 720,
+  background: "white",
+  borderRadius: 20,
+  border: "1px solid #e4e4e7",
+  boxShadow: "rgba(0,0,0,0.18) 0px 10px 30px",
+  padding: 16,
+  maxHeight: "92vh",
+  overflow: "auto",
+};
+
+const labelStyle: React.CSSProperties = { fontSize: 13, color: "#3f3f46", fontWeight: 700, marginBottom: 6 };
+
+
+

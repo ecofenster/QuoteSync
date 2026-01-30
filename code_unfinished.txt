@@ -1,0 +1,922 @@
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+function Fail($m){ Write-Host "ERROR: $m" -ForegroundColor Red; throw $m }
+function Ok($m){ Write-Host "OK: $m" -ForegroundColor Green }
+
+$Web = "C:\QuoteSync\web"
+$App = Join-Path $Web "src\App.tsx"
+$BakDir = Join-Path $Web "_backups"
+
+Write-Host "Run directory:" (Get-Location).Path
+Set-Location $Web
+Write-Host "Now in:" (Get-Location).Path
+
+if (-not (Test-Path $App)) { Fail "Missing: $App" }
+if (-not (Test-Path $BakDir)) { New-Item -ItemType Directory -Path $BakDir | Out-Null }
+
+$stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+Copy-Item $App (Join-Path $BakDir "App.tsx.before_restore_$stamp.bak") -Force
+Ok "Backup saved to: $BakDir\App.tsx.before_restore_$stamp.bak"
+
+# --- Restore a known-good App.tsx (from your app.txt), with required fixes applied:
+#  - GridEditor import has semicolon
+#  - Position type includes optional colWidthsMm/rowHeightsMm
+#  - Preview placeholder replaced with GridEditor
+$AppTsx = @'
+import React, { useMemo, useState } from "react";
+import GridEditor from "./components/GridEditor";
+
+/* =========================
+   Types
+========================= */
+
+type MenuKey =
+  | "customers_business"
+  | "customers_individual"
+  | "project_preferences"
+  | "address_database"
+  | "reports"
+  | "cad_drawing"
+  | "remote_support";
+
+type ClientType = "Business" | "Individual";
+type EstimateStatus = "Draft" | "Completed";
+
+type ProductType = "uPVC" | "uPVC Alu Clad" | "Timber" | "Timber Aluminium Clad" | "Aluminium" | "Steel";
+
+type View =
+  | "customers"
+  | "estimate_workspace";
+
+type Client = {
+  id: string;
+  type: ClientType;
+  clientRef: string; // EF-CL-001
+  clientName: string; // Individual: name, Business: display name (usually business name)
+  email: string;
+  mobile: string;
+  home: string;
+
+  projectName: string;
+  projectAddress: string;
+  invoiceAddress: string;
+
+  businessName?: string;
+  contactPerson?: string;
+
+  estimates: Estimate[];
+};
+
+type Estimate = {
+  id: string;
+  estimateRef: string;        // EF-2026-001 or EF-2026-001-01
+  baseEstimateRef: string;    // EF-2026-001
+  revisionNo: number;         // 0 = base, 1..n revisions
+  status: EstimateStatus;
+  positions: Position[];
+};
+
+type Position = {
+  id: string;
+  positionRef: string;
+  qty: number;
+  roomName: string;
+
+  supplier: string;
+  product: string;
+
+  productType: ProductType;
+
+  widthMm: number;
+  heightMm: number;
+  fieldsX: number;
+  fieldsY: number;
+
+  // Optional per-split sizing (GridEditor)
+  colWidthsMm?: number[];
+  rowHeightsMm?: number[];
+
+  insertion: string;
+};
+
+/* =========================
+   Helpers
+========================= */
+
+function uid() {
+  return Math.random().toString(16).slice(2) + Date.now().toString(16);
+}
+
+function pad3(n: number) {
+  const s = String(n);
+  return s.length >= 3 ? s : "0".repeat(3 - s.length) + s;
+}
+function clampNum(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+// Allow free typing: if empty or non-numeric, keep previous
+function parseNumberLoose(raw: string, prev: number) {
+  const s = (raw ?? "").toString().trim();
+  if (s === "") return prev;
+  const n = Number(s);
+  if (!Number.isFinite(n)) return prev;
+  return n;
+}
+
+function nextClientRef(n: number) {
+  return `EF-CL-${pad3(n)}`;
+}
+
+function nextEstimateBaseRef(year: number, n: number) {
+  return `EF-${year}-${pad3(n)}`;
+}
+
+function estimateRefWithRevision(base: string, revisionNo: number) {
+  if (revisionNo <= 0) return base;
+  return `${base}-${String(revisionNo).padStart(2, "0")}`;
+}
+
+/* =========================
+   Supplier catalog (seed defaults)
+   - Stored in DB later
+   - For now: seeded + editable later via Admin
+   - ProductType currently does NOT filter product list (captured only)
+========================= */
+
+const PRODUCT_TYPES: ProductType[] = ["uPVC", "uPVC Alu Clad", "Timber", "Timber Aluminium Clad", "Aluminium", "Steel"];
+
+type SupplierCatalog = {
+  name: string;
+  productsByType: Partial<Record<ProductType, string[]>>;
+};
+
+const SUPPLIERS: SupplierCatalog[] = [
+  {
+    name: "Internorm",
+    productsByType: {
+      "uPVC": ["KF520", "KF410", "KF320", "KF310"],
+      "uPVC Alu Clad": ["KV440", "KV350", "KF520", "KF310", "KF320"],
+      "Timber": [],
+      "Timber Aluminium Clad": ["HV450", "HF410", "HF510", "HT410", "HT400", "HT310", "HS330"],
+      "Aluminium": ["AT500", "AT510", "AT520", "AT530", "AT540"],
+    },
+  },
+  {
+    name: "Eko Okna",
+    productsByType: {
+      "uPVC": [
+        "Synego",
+        "Ideal 4000",
+        "Ideal 4000 Casement",
+        "Ideal 70",
+        "EkoSun 70",
+        "BluEvolution 82",
+        "Ideal 8000",
+        "Ideal Neo",
+        "GreenEvolution Flex",
+        "Energeto Neo",
+        "Ideal 4000 (New)",
+        "Ideal 5000",
+        "Ideal 7000 (New)",
+        "Ideal 7000 NL",
+        "Energeto 8000",
+        "Nordline",
+        "BluEvolution 92",
+        "EkoSun 6",
+        "EkoSun NL",
+        "EkoSun 7",
+        "S8000",
+        "S9000",
+      ],
+      "Timber": ["Esperia Life 80", "Naturo 68", "Naturo 80", "Naturo 92"],
+      "Timber Aluminium Clad": ["Esperia Life 74 Alu", "Naturo 68 Alu", "Naturo 80 Alu"],
+      "Aluminium": [
+        "MB-79N",
+        "Cortizon Casement",
+        "Slimeline 38",
+        "MB-86 Casement",
+        "MB-79N Casement",
+        "MB-45",
+        "Masterline 8",
+        "VS600",
+        "MB-60",
+        "MB-104 Passive",
+        "MB-Ferroline",
+        "Ecofutural",
+        "Superial",
+        "Genesis",
+        "Imperial",
+        "MaxLight",
+        "Decalu 88 Standard",
+        "Decalu 94 Retro",
+        "Decalu 100 Steel",
+        "Decalu 88 Hidden",
+      ],
+      "Steel": ["Unico XS", "Presto", "Unico XS Casement", "Unico"],
+    },
+  },
+];
+
+function getSupplier(name: string) {
+  return SUPPLIERS.find((s) => s.name === name) ?? null;
+}
+
+function allProductsForSupplier(name: string) {
+  const s = getSupplier(name);
+  if (!s) return [];
+  const all = Object.values(s.productsByType).flat().filter(Boolean) as string[];
+  // de-dupe + stable sort
+  return Array.from(new Set(all)).sort((a, b) => a.localeCompare(b));
+}
+
+/* =========================
+   UI primitives (inline only)
+========================= */
+
+function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <div
+      style={{
+        borderRadius: 18,
+        border: "1px solid #e4e4e7",
+        background: "#fff",
+        padding: 16,
+        boxShadow: "0 1px 2px rgba(0,0,0,.06)",
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function H1({ children }: { children: React.ReactNode }) {
+  return <h1 style={{ fontSize: 22, margin: 0, fontWeight: 800, color: "#18181b" }}>{children}</h1>;
+}
+
+function H2({ children }: { children: React.ReactNode }) {
+  return <h2 style={{ fontSize: 16, margin: 0, fontWeight: 800, color: "#18181b" }}>{children}</h2>;
+}
+
+function H3({ children }: { children: React.ReactNode }) {
+  return <h3 style={{ fontSize: 14, margin: 0, fontWeight: 800, color: "#18181b" }}>{children}</h3>;
+}
+
+function Small({ children }: { children: React.ReactNode }) {
+  return <div style={{ fontSize: 12, color: "#71717a" }}>{children}</div>;
+}
+
+function Button({
+  children,
+  onClick,
+  variant = "primary",
+  disabled,
+  style,
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  variant?: "primary" | "secondary";
+  disabled?: boolean;
+  style?: React.CSSProperties;
+}) {
+  const isPrimary = variant === "primary";
+  return (
+    <button
+      type="button"
+      disabled={!!disabled}
+      onClick={onClick}
+      style={{
+        borderRadius: 18,
+        border: isPrimary ? "none" : "1px solid #e4e4e7",
+        background: isPrimary ? "#18181b" : "#fff",
+        color: isPrimary ? "#fff" : "#3f3f46",
+        padding: "10px 14px",
+        fontSize: 14,
+        fontWeight: 800,
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.55 : 1,
+        ...style,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Input({
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  type?: string;
+}) {
+  return (
+    <input
+      type={type}
+      value={value}
+      placeholder={placeholder}
+      onChange={(e) => onChange(e.target.value)}
+      style={{
+        width: "100%",
+        borderRadius: 12,
+        border: "1px solid #e4e4e7",
+        padding: "10px 12px",
+        fontSize: 14,
+        outline: "none",
+      }}
+    />
+  );
+}
+
+function TextArea({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <textarea
+      value={value}
+      placeholder={placeholder}
+      onChange={(e) => onChange(e.target.value)}
+      rows={4}
+      style={{
+        width: "100%",
+        borderRadius: 12,
+        border: "1px solid #e4e4e7",
+        padding: "10px 12px",
+        fontSize: 14,
+        outline: "none",
+        resize: "vertical",
+      }}
+    />
+  );
+}
+
+function Pill({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        borderRadius: 999,
+        padding: "4px 10px",
+        fontSize: 12,
+        fontWeight: 800,
+        background: "#f4f4f5",
+        color: "#18181b",
+        border: "1px solid #e4e4e7",
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+function SidebarItem({
+  label,
+  active,
+  onClick,
+  indent,
+}: {
+  label: string;
+  active?: boolean;
+  onClick?: () => void;
+  indent?: boolean;
+}) {
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        borderRadius: 14,
+        padding: "10px 12px",
+        marginBottom: 6,
+        cursor: "pointer",
+        background: active ? "#18181b" : "transparent",
+        color: active ? "#fff" : "#3f3f46",
+        fontSize: 14,
+        fontWeight: active ? 800 : 600,
+        paddingLeft: indent ? 24 : 12,
+      }}
+    >
+      {label}
+    </div>
+  );
+}
+
+/* =========================
+   Main App
+========================= */
+
+export default function App() {
+  const [menu, setMenu] = useState<MenuKey>("customers_business");
+  const [view, setView] = useState<View>("customers");
+
+  // In-memory counters
+  const [clientCounter, setClientCounter] = useState(1);
+  const [estimateCounter, setEstimateCounter] = useState(1);
+
+  // Stores
+  const [clients, setClients] = useState<Client[]>([]);
+
+  // Selection
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const selectedClient = useMemo(
+    () => clients.find((c) => c.id === selectedClientId) ?? null,
+    [clients, selectedClientId]
+  );
+
+  const [selectedEstimateId, setSelectedEstimateId] = useState<string | null>(null);
+  const selectedEstimate = useMemo(() => {
+    if (!selectedClient) return null;
+    return selectedClient.estimates.find((e) => e.id === selectedEstimateId) ?? null;
+  }, [selectedClient, selectedEstimateId]);
+
+  // Revision tickboxes
+  const [revisionSelection, setRevisionSelection] = useState<Record<string, boolean>>({});
+
+  // Add client UI
+  const [showAddClient, setShowAddClient] = useState(false);
+
+  // Client form drafts
+  const [draftClientName, setDraftClientName] = useState(""); // Individual only
+  const [draftEmail, setDraftEmail] = useState("");
+
+  // Individual contact numbers
+  const [draftMobile, setDraftMobile] = useState("");
+  const [draftHome, setDraftHome] = useState("");
+
+  // Business-specific
+  const [draftBusinessName, setDraftBusinessName] = useState("");
+  const [draftContactPerson, setDraftContactPerson] = useState("");
+  const [draftBusinessTel, setDraftBusinessTel] = useState(""); // business telephone number
+  const [draftContactMobileOffice, setDraftContactMobileOffice] = useState(""); // contact person's mobile/office number
+
+  const [draftProjectName, setDraftProjectName] = useState("");
+
+  // Project address (structured)
+  const [draftProjectAddr1, setDraftProjectAddr1] = useState("");
+  const [draftProjectAddr2, setDraftProjectAddr2] = useState("");
+  const [draftProjectTown, setDraftProjectTown] = useState("");
+  const [draftProjectCity, setDraftProjectCity] = useState("");
+  const [draftProjectCounty, setDraftProjectCounty] = useState("");
+  const [draftProjectPostcode, setDraftProjectPostcode] = useState("");
+  const [draftProjectCountry, setDraftProjectCountry] = useState("");
+
+  // Office address (Business)
+  const [draftOfficeAddr1, setDraftOfficeAddr1] = useState("");
+  const [draftOfficeAddr2, setDraftOfficeAddr2] = useState("");
+  const [draftOfficeTown, setDraftOfficeTown] = useState("");
+  const [draftOfficeCity, setDraftOfficeCity] = useState("");
+  const [draftOfficeCounty, setDraftOfficeCounty] = useState("");
+  const [draftOfficePostcode, setDraftOfficePostcode] = useState("");
+  const [draftOfficeCountry, setDraftOfficeCountry] = useState("");
+
+  // Invoice address (structured)
+  const [draftInvoiceAddr1, setDraftInvoiceAddr1] = useState("");
+  const [draftInvoiceAddr2, setDraftInvoiceAddr2] = useState("");
+  const [draftInvoiceTown, setDraftInvoiceTown] = useState("");
+  const [draftInvoiceCity, setDraftInvoiceCity] = useState("");
+  const [draftInvoiceCounty, setDraftInvoiceCounty] = useState("");
+  const [draftInvoicePostcode, setDraftInvoicePostcode] = useState("");
+  const [draftInvoiceCountry, setDraftInvoiceCountry] = useState("");
+
+  // Position wizard (UI-only)
+  const [showPositionWizard, setShowPositionWizard] = useState(false);
+  const [posStep, setPosStep] = useState<1 | 2 | 3 | 4>(1);
+  const [posDraft, setPosDraft] = useState<Position>(() => ({
+    id: uid(),
+    positionRef: "W-001",
+    qty: 1,
+    roomName: "",
+    supplier: "",
+    product: "",
+    productType: "uPVC",
+    widthMm: 1000,
+    heightMm: 1200,
+    fieldsX: 1,
+    fieldsY: 1,
+    colWidthsMm: undefined,
+    rowHeightsMm: undefined,
+    insertion: "Fixed",
+  }));
+
+  // Derived
+  const activeClientType: ClientType = menu === "customers_business" ? "Business" : "Individual";
+  const filteredClients = useMemo(
+    () => clients.filter((c) => c.type === activeClientType),
+    [clients, activeClientType]
+  );
+
+  function selectMenu(k: MenuKey) {
+    setMenu(k);
+    if (k === "customers_business" || k === "customers_individual") {
+      setView("customers");
+      setSelectedClientId(null);
+      setSelectedEstimateId(null);
+      setRevisionSelection({});
+      setShowAddClient(false);
+      setShowPositionWizard(false);
+    } else {
+      setView("customers");
+      setShowPositionWizard(false);
+    }
+  }
+
+  function resetClientDrafts() {
+    setDraftClientName("");
+    setDraftProjectName("");
+
+    setDraftEmail("");
+
+    setDraftMobile("");
+    setDraftHome("");
+
+    setDraftBusinessName("");
+    setDraftContactPerson("");
+    setDraftBusinessTel("");
+    setDraftContactMobileOffice("");
+
+    setDraftProjectAddr1("");
+    setDraftProjectAddr2("");
+    setDraftProjectTown("");
+    setDraftProjectCity("");
+    setDraftProjectCounty("");
+    setDraftProjectPostcode("");
+    setDraftProjectCountry("");
+
+    setDraftOfficeAddr1("");
+    setDraftOfficeAddr2("");
+    setDraftOfficeTown("");
+    setDraftOfficeCity("");
+    setDraftOfficeCounty("");
+    setDraftOfficePostcode("");
+    setDraftOfficeCountry("");
+
+    setDraftInvoiceAddr1("");
+    setDraftInvoiceAddr2("");
+    setDraftInvoiceTown("");
+    setDraftInvoiceCity("");
+    setDraftInvoiceCounty("");
+    setDraftInvoicePostcode("");
+    setDraftInvoiceCountry("");
+  }
+
+  function openAddClient() {
+    setShowAddClient(true);
+    resetClientDrafts();
+  }
+
+  function closeAddClient() {
+    setShowAddClient(false);
+  }
+
+  function createClient(type: ClientType) {
+    const fmtAddr = (a: {
+      line1: string; line2: string; town: string; city: string; county: string; postcode: string; country: string;
+    }) => {
+      const parts = [
+        a.line1?.trim(),
+        a.line2?.trim(),
+        a.town?.trim(),
+        a.city?.trim(),
+        a.county?.trim(),
+        a.postcode?.trim(),
+        a.country?.trim(),
+      ].filter(Boolean) as string[];
+      return parts.join("\n");
+    };
+
+    const projectAddressStr = fmtAddr({
+      line1: draftProjectAddr1, line2: draftProjectAddr2, town: draftProjectTown, city: draftProjectCity,
+      county: draftProjectCounty, postcode: draftProjectPostcode, country: draftProjectCountry,
+    });
+
+    const officeAddressStr = fmtAddr({
+      line1: draftOfficeAddr1, line2: draftOfficeAddr2, town: draftOfficeTown, city: draftOfficeCity,
+      county: draftOfficeCounty, postcode: draftOfficePostcode, country: draftOfficeCountry,
+    });
+
+    const invoiceAddressStr = fmtAddr({
+      line1: draftInvoiceAddr1, line2: draftInvoiceAddr2, town: draftInvoiceTown, city: draftInvoiceCity,
+      county: draftInvoiceCounty, postcode: draftInvoicePostcode, country: draftInvoiceCountry,
+    });
+
+    const newClient: Client = {
+      id: uid(),
+      type,
+      clientRef: nextClientRef(clientCounter),
+      clientName: type === "Individual" ? draftClientName.trim() : draftBusinessName.trim(),
+      email: draftEmail.trim(),
+      mobile: type === "Business" ? draftContactMobileOffice.trim() : draftMobile.trim(),
+      home: type === "Business" ? draftBusinessTel.trim() : draftHome.trim(),
+      projectName: draftProjectName.trim(),
+      projectAddress: projectAddressStr,
+      invoiceAddress: invoiceAddressStr,
+      businessName: type === "Business" ? draftBusinessName.trim() : undefined,
+      contactPerson: type === "Business" ? draftContactPerson.trim() : undefined,
+      estimates: [],
+    };
+
+    setClients((prev) => [newClient, ...prev]);
+    setClientCounter((n) => n + 1);
+    setShowAddClient(false);
+    resetClientDrafts();
+  }
+
+  function openEstimateWorkspace(clientId: string, estimateId: string) {
+    setSelectedClientId(clientId);
+    setSelectedEstimateId(estimateId);
+    setView("estimate_workspace");
+    setShowPositionWizard(false);
+  }
+
+  function createEstimateForClient(client: Client) {
+    const year = new Date().getFullYear();
+    const base = nextEstimateBaseRef(year, estimateCounter);
+
+    const est: Estimate = {
+      id: uid(),
+      estimateRef: base,
+      baseEstimateRef: base,
+      revisionNo: 0,
+      status: "Draft",
+      positions: [],
+    };
+
+    setEstimateCounter((n) => n + 1);
+
+    setClients((prev) =>
+      prev.map((c) => (c.id === client.id ? { ...c, estimates: [est, ...c.estimates] } : c))
+    );
+
+    openEstimateWorkspace(client.id, est.id);
+  }
+
+  function toggleEstimateCompleted() {
+    if (!selectedClient || !selectedEstimate) return;
+
+    setClients((prev) =>
+      prev.map((c) => {
+        if (c.id !== selectedClient.id) return c;
+        return {
+          ...c,
+          estimates: c.estimates.map((e) => {
+            if (e.id !== selectedEstimate.id) return e;
+            return { ...e, status: e.status === "Completed" ? "Draft" : "Completed" };
+          }),
+        };
+      })
+    );
+  }
+
+  function createRevisionsFromSelectionAndOpenNewest() {
+    if (!selectedClient) return;
+
+    let newestCreatedId: string | null = null;
+
+    setClients((prev) =>
+      prev.map((c) => {
+        if (c.id !== selectedClient.id) return c;
+
+        const toAdd: Estimate[] = [];
+
+        for (const est of c.estimates) {
+          if (!revisionSelection[est.id]) continue;
+
+          const nextRevNo = Math.max(0, ...c.estimates.filter((e) => e.baseEstimateRef === est.baseEstimateRef).map((e) => e.revisionNo)) + 1;
+
+          const clone: Estimate = {
+            ...est,
+            id: uid(),
+            revisionNo: nextRevNo,
+            status: "Draft",
+            estimateRef: estimateRefWithRevision(est.baseEstimateRef, nextRevNo),
+            positions: est.positions.map((p) => ({ ...p })),
+          };
+
+          newestCreatedId = clone.id;
+          toAdd.push(clone);
+        }
+
+        if (toAdd.length === 0) return c;
+        return { ...c, estimates: [...toAdd, ...c.estimates] };
+      })
+    );
+
+    setRevisionSelection({});
+
+    if (newestCreatedId) {
+      openEstimateWorkspace(selectedClient.id, newestCreatedId);
+    }
+  }
+
+  function startAddPosition() {
+    if (!selectedClient || !selectedEstimate) return;
+
+    const nextIndex = (selectedEstimate.positions?.length ?? 0) + 1;
+
+    setPosStep(1);
+    setPosDraft({
+      id: uid(),
+      positionRef: `W-${pad3(nextIndex)}`,
+      qty: 1,
+      roomName: "",
+      supplier: "",
+      product: "",
+      productType: "uPVC",
+      widthMm: 1000,
+      heightMm: 1200,
+      fieldsX: 1,
+      fieldsY: 1,
+      colWidthsMm: undefined,
+      rowHeightsMm: undefined,
+      insertion: "Fixed",
+    });
+    setShowPositionWizard(true);
+  }
+
+  function savePositionToEstimate() {
+    if (!selectedClient || !selectedEstimate) return;
+
+    const newPos = {
+      colWidthsMm: Array.isArray((posDraft as any).colWidthsMm) ? (posDraft as any).colWidthsMm : undefined,
+      rowHeightsMm: Array.isArray((posDraft as any).rowHeightsMm) ? (posDraft as any).rowHeightsMm : undefined,
+      ...posDraft,
+      id: uid(),
+      widthMm: clampNum(Math.round(posDraft.widthMm || 0), 300, 6000),
+      heightMm: clampNum(Math.round(posDraft.heightMm || 0), 300, 6000),
+      fieldsX: clampNum(Math.round(posDraft.fieldsX || 1), 1, 8),
+      fieldsY: clampNum(Math.round(posDraft.fieldsY || 1), 1, 8),
+    };
+
+    setClients((prev) =>
+      prev.map((c) => {
+        if (c.id !== selectedClient.id) return c;
+        return {
+          ...c,
+          estimates: c.estimates.map((e) => {
+            if (e.id !== selectedEstimate.id) return e;
+            return { ...e, positions: [newPos, ...e.positions] };
+          }),
+        };
+      })
+    );
+
+    setShowPositionWizard(false);
+    setPosStep(1);
+  }
+
+  function saveEstimateAndReturnToCustomer() {
+    if (!selectedClient || !selectedEstimate) return;
+
+    setClients((prev) =>
+      prev.map((c) => {
+        if (c.id !== selectedClient.id) return c;
+        return {
+          ...c,
+          estimates: c.estimates.map((e) => {
+            if (e.id !== selectedEstimate.id) return e;
+            return { ...e, status: "Completed" };
+          }),
+        };
+      })
+    );
+
+    // Return to customer screen, keep client selected
+    setView("customers");
+    setShowPositionWizard(false);
+    setRevisionSelection({});
+  }
+
+  function stepLabel(s: 1 | 2 | 3 | 4) {
+    return s === 1 ? "Position" : s === 2 ? "Supplier & Product" : s === 3 ? "Dimensions" : "Configuration";
+  }
+
+  return (
+    <div style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif", background: "#f4f4f5", minHeight: "100vh" }}>
+      <div style={{ width: "100%", margin: "0", padding: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 16 }}>
+          {/* Sidebar */}
+          <Card style={{ padding: 12 }}>
+            <div style={{ padding: "6px 6px 12px 6px" }}>
+              <img
+                src="/quotesync-logo.png"
+                alt="QuoteSync"
+                style={{
+                  width: "100%",
+                  maxWidth: 260,
+                  height: 78,
+                  objectFit: "contain",
+                  display: "block",
+                }}
+              />
+            </div>
+
+            <div style={{ marginTop: 14 }}>
+              <H3>Customers</H3>
+              <div style={{ marginTop: 8 }}>
+                <SidebarItem label="Business Customers" active={menu === "customers_business"} onClick={() => selectMenu("customers_business")} />
+                <SidebarItem label="Individual Customers" active={menu === "customers_individual"} onClick={() => selectMenu("customers_individual")} />
+              </div>
+            </div>
+
+            <div style={{ marginTop: 14 }}>
+              <H3>Preferences</H3>
+              <div style={{ marginTop: 8 }}>
+                <SidebarItem label="Project Preferences" active={menu === "project_preferences"} onClick={() => selectMenu("project_preferences")} />
+                <SidebarItem label="Address Database" active={menu === "address_database"} onClick={() => selectMenu("address_database")} />
+              </div>
+            </div>
+
+            <div style={{ marginTop: 14 }}>
+              <H3>Tools</H3>
+              <div style={{ marginTop: 8 }}>
+                <SidebarItem label="Reports" active={menu === "reports"} onClick={() => selectMenu("reports")} />
+                <SidebarItem label="CAD Drawing" active={menu === "cad_drawing"} onClick={() => selectMenu("cad_drawing")} />
+                <SidebarItem label="Remote Support" active={menu === "remote_support"} onClick={() => selectMenu("remote_support")} />
+              </div>
+            </div>
+          </Card>
+
+          {/* Main */}
+          <div style={{ display: "grid", gap: 16 }}>
+            {/* CUSTOMERS LIST */}
+            {(menu === "customers_business" || menu === "customers_individual") && view === "customers" && (
+              <Card style={{ minHeight: 520 }}>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                  <div>
+                    <H2>{menu === "customers_business" ? "Business Customers" : "Individual Customers"}</H2>
+                    <Small>Create clients, start estimates, and manage revisions.</Small>
+                  </div>
+                  <Button variant="primary" onClick={openAddClient}>
+                    Add Client
+                  </Button>
+                </div>
+
+                {/* Add client panel */}
+                {showAddClient && (
+                  <div style={{ marginTop: 14, borderRadius: 16, border: "1px solid #e4e4e7", padding: 12, background: "#fff" }}>
+                    <H3>Add {menu === "customers_business" ? "Business" : "Individual"} Client</H3>
+
+                    <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
+                      {/* Business form */}
+                      {menu === "customers_business" && (
+                        <>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                            <div>
+                              <div style={labelStyle}>Business name</div>
+                              <Input value={draftBusinessName} onChange={setDraftBusinessName} placeholder="Ecofenster Ltd" />
+                            </div>
+                            <div>
+                              <div style={labelStyle}>Contact person</div>
+                              <Input value={draftContactPerson} onChange={setDraftContactPerson} placeholder="Name" />
+                            </div>
+                          </div>
+
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                            <div>
+                              <div style={labelStyle}>Email</div>
+                              <Input value={draftEmail} onChange={setDraftEmail} placeholder="email@example.com" />
+                            </div>
+                            <div>
+                              <div style={labelStyle}>Contact Persons Mobile/Office Number</div>
+                              <Input value={draftContactMobileOffice} onChange={setDraftContactMobileOffice} placeholder="07... / 01..." />
+                            </div>
+                          </div>
+
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                            <div>
+                              <div style={labelStyle}>Business telephone number</div>
+                              <Input value={draftBusinessTel} onChange={setDraftBusinessTel} placeholder="01..." />
+                            </div>
+                            <div />
+                          </div>
+
+                          <div>
+                            <div style={labelStyle}>Project name</div>
+                            <Input value={draftProjectName} onChange={setDraftProjectName} placeholder="Project" />
+                          </div>
+
+                          <div style={{ marginTop: 4 }}>
+                            <div style={labelStyle}>Project address</div>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                              <Input value={draftProjectAddr1} onChange={setDraftProjectAddr1} placeholder="Address line 1" />
+                              <Input value={draftProjectAddr2} onChange={setDraftProjectAddr2} placeholder="Address line 2" />
+                            </div>
+                            <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                              <Input value={draftProjectTown} onChange={setDraftProjectTown} placeholder="Town" />
+                              <Input value={draftProjectCity} onChange={setDraftProjectCity} placeholder="City" />
+                            </div>
+                            <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                              <Input value={draftProjectCounty} onChange={setDraftProjectCounty} placeholder
