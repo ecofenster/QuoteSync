@@ -109,48 +109,6 @@ function estimateRefWithRevision(base: string, revisionNo: number) {
   return `${base}-${String(revisionNo).padStart(2, "0")}`;
 }
 
-const DEFAULT_CUSTOMER_ADDRESS = [
-  "4 Glebe Road",
-  "Cowdenbeath",
-  "Fife",
-  "KY4 9FA",
-].join("\n");
-
-function makeDefaultClients(): Client[] {
-  return [
-    {
-      id: uid(),
-      type: "Business",
-      clientRef: nextClientRef(1),
-      clientName: "Ecofenster Ltd",
-      businessName: "Ecofenster Ltd",
-      contactPerson: "",
-      email: "",
-      mobile: "07882 809 453",
-      home: "",
-      projectName: "",
-      projectAddress: DEFAULT_CUSTOMER_ADDRESS,
-      invoiceAddress: DEFAULT_CUSTOMER_ADDRESS,
-      estimates: [],
-    },
-    {
-      id: uid(),
-      type: "Individual",
-      clientRef: nextClientRef(2),
-      clientName: "Craig Ferguson",
-      businessName: "",
-      contactPerson: "",
-      email: "",
-      mobile: "07882 809 453",
-      home: "",
-      projectName: "",
-      projectAddress: DEFAULT_CUSTOMER_ADDRESS,
-      invoiceAddress: DEFAULT_CUSTOMER_ADDRESS,
-      estimates: [],
-    },
-  ];
-}
-
 /* =========================
    Supplier catalog (seed defaults)
    - Stored in DB later
@@ -471,11 +429,11 @@ export default function App() {
   const [view, setView] = useState<View>("customers");
 
   // In-memory counters
-  const [clientCounter, setClientCounter] = useState(3);
+  const [clientCounter, setClientCounter] = useState(1);
   const [estimateCounter, setEstimateCounter] = useState(1);
 
   // Stores
-  const [clients, setClients] = useState<Client[]>(() => makeDefaultClients());
+  const [clients, setClients] = useState<Client[]>([]);
 
   // Selection
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
