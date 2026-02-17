@@ -1,3 +1,41 @@
+# QuoteSync Patch — Estimate reference prefix (default EF-EST-YYYY-###, future-configurable)
+# Updates: C:\Github\QuoteSync\web\src\App.tsx
+#
+# Run from: PS C:\Github\QuoteSync\web\ps1_patches>
+#
+# This script will:
+# - Set-Location to C:\Github\QuoteSync\web
+# - Backup src\App.tsx to C:\Github\QuoteSync\_backups\quotesync_patch\
+# - Overwrite src\App.tsx with the patched full file content
+
+$ErrorActionPreference = "Stop"
+
+function Ok($m){ Write-Host "OK: $m" -ForegroundColor Green }
+function Fail($m){ Write-Host "ERROR: $m" -ForegroundColor Red; throw $m }
+
+$patchDir = "C:\Github\QuoteSync\web\ps1_patches"
+$webDir   = "C:\Github\QuoteSync\web"
+
+if ((Get-Location).Path -ne $patchDir) {
+  Fail "Run this from: PS $patchDir>  (current: $((Get-Location).Path))"
+}
+
+Set-Location $webDir
+Write-Host "Run directory: $((Get-Location).Path)"
+
+$target = Join-Path (Get-Location) "src\App.tsx"
+if (-not (Test-Path $target)) { Fail "Missing file: $target" }
+
+# Backup
+$stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$backupRoot = "C:\Github\QuoteSync\_backups\quotesync_patch"
+New-Item -ItemType Directory -Force -Path $backupRoot | Out-Null
+$backupPath = Join-Path $backupRoot "App.tsx.$stamp.bak"
+Copy-Item -Force $target $backupPath
+Ok "Backed up App.tsx -> $backupPath"
+
+# Write full updated App.tsx
+$AppTsx = @'
 import React, { useEffect, useMemo, useState } from "react";
 import GridEditor from "./components/GridEditor";
 
@@ -110,7 +148,6 @@ type Position = {
   fieldsY: number;
 
   insertion: string;
-  cellInsertions: Record<string, string>; // key: \"col,row\"
   colWidthsMm?: number[];
   rowHeightsMm?: number[];
 
@@ -132,26 +169,6 @@ function uid() {
 function pad3(n: number) {
   const s = String(n);
   return s.length >= 3 ? s : "0".repeat(3 - s.length) + s;
-}
-
-function keyForCell(col: number, row: number) {
-  return `${col},${row}`;
-}
-
-function normalizeCellInsertions(
-  fieldsX: number,
-  fieldsY: number,
-  existing: Record<string, string> | undefined,
-  fallback: string
-) {
-  const out: Record<string, string> = {};
-  for (let r = 0; r < fieldsY; r++) {
-    for (let c = 0; c < fieldsX; c++) {
-      const k = keyForCell(c, r);
-      out[k] = existing?.[k] ?? fallback;
-    }
-  }
-  return out;
 }
 
 function clampNum(n: number, min: number, max: number) {
@@ -977,16 +994,10 @@ export default function App() {
     fieldsX: 1,
     fieldsY: 1,
     insertion: "Fixed",
-    cellInsertions: { "0,0": "Fixed" },
     positionType: "Window",
     useEstimateDefaults: true,
     overrides: {},
   }));
-
-  // Add Position / Configuration step helpers
-  const [draftSelectedCell, setDraftSelectedCell] = useState<{ col: number; row: number }>({ col: 0, row: 0 });
-  const [previewView, setPreviewView] = useState<"Inside" | "Outside">("Inside");
-  const [openingStd, setOpeningStd] = useState<"DIN" | "UK">("DIN");
 
   const activeClientType: ClientType = menu === "customers_business" ? "Business" : "Individual";
   const filteredClients = useMemo(() => clients.filter((c) => c.type === activeClientType), [clients, activeClientType]);
@@ -1068,7 +1079,6 @@ export default function App() {
     const nextIndex = (selectedEstimate.positions?.length ?? 0) + 1;
 
     setPosStep(1);
-      setDraftSelectedCell({ col: 0, row: 0 });
     setPosDraft({
       id: uid(),
       positionRef: `W-${pad3(nextIndex)}`,
@@ -1238,23 +1248,16 @@ export default function App() {
                   </Button>
                 </div>
 
-                                {showAddClient && (
-                  <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", padding: 12, background: "#fff" }}>
-                    <div style={{ display: "grid", gap: 10 }}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                        <H3>Add client</H3>
-                        <Small>Type: {menu === "customers_business" ? "Business" : "Individual"}</Small>
-                      </div>
+                {showAddClient && (
+                  <div style={{ marginTop: 14, borderRadius: 16, border: "1px solid #e4e4e7", padding: 12, background: "#fff" }}>
+                    <H3>Add {menu === "customers_business" ? "Business" : "Individual"} Client</H3>
 
+                    <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
                       {menu === "customers_business" ? (
                         <>
                           <div>
                             <div style={labelStyle}>Business name</div>
-                            <Input value={draftBusinessName} onChange={setDraftBusinessName} placeholder="Company Ltd" />
-                          </div>
-                          <div>
-                            <div style={labelStyle}>Contact name</div>
-                            <Input value={draftClientName} onChange={setDraftClientName} placeholder="Name" />
+                            <Input value={draftBusinessName} onChange={setDraftBusinessName} placeholder="Ecofenster Ltd" />
                           </div>
                         </>
                       ) : (
@@ -1293,7 +1296,8 @@ export default function App() {
                     </div>
                   </div>
                 )}
-{/* Customers list */}
+
+                {/* Customers list */}
                 <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
                   {filteredClients.length === 0 && <div style={{ fontSize: 13, color: "#71717a" }}>No clients yet.</div>}
 
@@ -1549,39 +1553,11 @@ export default function App() {
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                             <div>
                               <div style={labelStyle}>Fields (width)</div>
-                              <Input
-                                type="number"
-                                value={String(posDraft.fieldsX)}
-                                onChange={(v) =>
-                                  setPosDraft((p) => {
-                                    const fx = Math.max(1, Math.min(16, Number(v || 1)));
-                                    return {
-                                      ...p,
-                                      fieldsX: fx,
-                                      colWidthsMm: scaleSplitsToTotal(p.widthMm, p.colWidthsMm ?? [], fx),
-                                      cellInsertions: normalizeCellInsertions(fx, p.fieldsY, p.cellInsertions, p.insertion),
-                                    };
-                                  })
-                                }
-                              />
+                              <Input type="number" value={String(posDraft.fieldsX)} onChange={(v) => setPosDraft((p) => ({ ...p, fieldsX: Math.max(1, Math.min(16, Number(v || 1))) }))} />
                             </div>
                             <div>
                               <div style={labelStyle}>Fields (height)</div>
-                              <Input
-                                type="number"
-                                value={String(posDraft.fieldsY)}
-                                onChange={(v) =>
-                                  setPosDraft((p) => {
-                                    const fy = Math.max(1, Math.min(16, Number(v || 1)));
-                                    return {
-                                      ...p,
-                                      fieldsY: fy,
-                                      rowHeightsMm: scaleSplitsToTotal(p.heightMm, p.rowHeightsMm ?? [], fy),
-                                      cellInsertions: normalizeCellInsertions(p.fieldsX, fy, p.cellInsertions, p.insertion),
-                                    };
-                                  })
-                                }
-                              />
+                              <Input type="number" value={String(posDraft.fieldsY)} onChange={(v) => setPosDraft((p) => ({ ...p, fieldsY: Math.max(1, Math.min(16, Number(v || 1))) }))} />
                             </div>
                           </div>
                         </div>
@@ -1589,60 +1565,19 @@ export default function App() {
 
                       {posStep === 3 && (
                         <div style={{ display: "grid", gridTemplateColumns: "420px 1fr", gap: 16 }}>
-                          {/* Left column */}
                           <div style={{ display: "grid", gap: 12 }}>
                             <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12 }}>
                               <H3>Insertion</H3>
-
-                              <div style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                                <div style={{ fontSize: 12, color: "#71717a" }}>
-                                  Selected field: #{draftSelectedCell.row * posDraft.fieldsX + draftSelectedCell.col + 1}
-                                </div>
-
-                                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                                  <select
-                                    value={openingStd}
-                                    onChange={(e) => setOpeningStd(e.target.value as any)}
-                                    style={{ borderRadius: 10, border: "1px solid #e4e4e7", padding: "6px 10px", fontSize: 12 }}
-                                    title="Opening convention"
-                                  >
-                                    <option value="DIN">DIN</option>
-                                    <option value="UK">UK</option>
-                                  </select>
-
-                                  <select
-                                    value={previewView}
-                                    onChange={(e) => setPreviewView(e.target.value as any)}
-                                    style={{ borderRadius: 10, border: "1px solid #e4e4e7", padding: "6px 10px", fontSize: 12 }}
-                                    title="View"
-                                  >
-                                    <option value="Inside">Inside</option>
-                                    <option value="Outside">Outside</option>
-                                  </select>
-                                </div>
-                              </div>
-
                               <div style={{ marginTop: 8 }}>
                                 <select
-                                  value={(posDraft.cellInsertions ?? {})[keyForCell(draftSelectedCell.col, draftSelectedCell.row)] ?? posDraft.insertion}
-                                  onChange={(e) =>
-                                    setPosDraft((p) => ({
-                                      ...p,
-                                      cellInsertions: {
-                                        ...(p.cellInsertions ?? {}),
-                                        [keyForCell(draftSelectedCell.col, draftSelectedCell.row)]: e.target.value,
-                                      },
-                                    }))
-                                  }
+                                  value={posDraft.insertion}
+                                  onChange={(e) => setPosDraft((p) => ({ ...p, insertion: e.target.value }))}
                                   style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
                                 >
                                   <option>Fixed</option>
                                   <option>Turn</option>
                                   <option>Tilt</option>
                                   <option>Tilt & Turn</option>
-                                  <option>Top Hung</option>
-                                  <option>Side Hung</option>
-                                  <option>Reversible</option>
                                 </select>
                               </div>
                             </div>
@@ -1658,7 +1593,9 @@ export default function App() {
                                   />
                                   Use estimate defaults for this position
                                 </label>
-                                <Small>When unticked, you can override the same defaults below (same option set as “Supplier & Product Defaults”).</Small>
+                                <Small>
+                                  When unticked, you can override the same defaults below (same option set as “Supplier & Product Defaults”).
+                                </Small>
                               </div>
                             </div>
 
@@ -1676,57 +1613,42 @@ export default function App() {
                             )}
                           </div>
 
-                          {/* Right column */}
-                          <div style={{ display: "grid", gap: 12 }}>
-                            <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12 }}>
-                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                                <H3>Preview</H3>
-                                <Pill>{posDraft.insertion}</Pill>
-                              </div>
+                          <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12 }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                              <H3>Preview</H3>
+                              <Pill>{posDraft.insertion}</Pill>
+                            </div>
 
-                              <div style={{ marginTop: 12 }}>
-                                <GridEditor
-                                  pos={{
-                                    widthMm: posDraft.widthMm,
-                                    heightMm: posDraft.heightMm,
-                                    fieldsX: posDraft.fieldsX,
-                                    fieldsY: posDraft.fieldsY,
-                                    insertion: posDraft.insertion,
-                                    cellInsertions: posDraft.cellInsertions,
-                                    colWidthsMm: posDraft.colWidthsMm,
-                                    rowHeightsMm: posDraft.rowHeightsMm,
-                                  }}
-                                  selectedCell={draftSelectedCell}
-                                  onSelectCell={setDraftSelectedCell}
-                                  view={previewView}
-                                  openingStd={openingStd}
-                                  setPos={(fn: any) =>
-                                    setPosDraft((p) => {
-                                      const next = fn(p);
-                                      const fx = next.fieldsX ?? p.fieldsX;
-                                      const fy = next.fieldsY ?? p.fieldsY;
-                                      const ins = (next.insertion ?? p.insertion) as any;
-                                      const cellInsertions = normalizeCellInsertions(
-                                        fx,
-                                        fy,
-                                        next.cellInsertions ?? p.cellInsertions,
-                                        ins
-                                      );
-                                      return { ...p, ...next, cellInsertions };
-                                    })
-                                  }
-                                />
-                              </div>
+                            <div style={{ marginTop: 12 }}>
+                              <GridEditor
+                                pos={{
+                                  widthMm: posDraft.widthMm,
+                                  heightMm: posDraft.heightMm,
+                                  fieldsX: posDraft.fieldsX,
+                                  fieldsY: posDraft.fieldsY,
+                                  insertion: posDraft.insertion,
+                                  colWidthsMm: posDraft.colWidthsMm,
+                                  rowHeightsMm: posDraft.rowHeightsMm,
+                                }}
+                                setPos={(fn: any) =>
+                                  setPosDraft((p) => {
+                                    const next = fn(p);
+                                    return { ...p, ...next };
+                                  })
+                                }
+                              />
+                            </div>
 
-                              <div style={{ marginTop: 12, borderTop: "1px solid #e4e4e7", paddingTop: 10 }}>
-                                <H3>Summary</H3>
-                                <Small>
-                                  {(() => {
-                                    const eff = effectiveDefaultsForPosition(selectedEstimate, posDraft);
-                                    return `${eff.supplier || "—"} / ${eff.productType || "—"} / ${eff.product || "—"} • Hinge: ${eff.hingeType} • Glass: ${eff.glassType} Ug ${eff.ugValue} G ${eff.gValue}`;
-                                  })()}
-                                </Small>
-                              </div>
+                            <div style={{ marginTop: 12, borderTop: "1px solid #e4e4e7", paddingTop: 10 }}>
+                              <H3>Summary</H3>
+                              <Small>
+                                Effective defaults:
+                                {" "}
+                                {(() => {
+                                  const eff = effectiveDefaultsForPosition(selectedEstimate, posDraft);
+                                  return `${eff.supplier || "—"} / ${eff.productType || "—"} / ${eff.product || "—"} • Hinge: ${eff.hingeType} • Glass: ${eff.glassType} Ug ${eff.ugValue} G ${eff.gValue}`;
+                                })()}
+                              </Small>
                             </div>
                           </div>
                         </div>
@@ -1758,13 +1680,16 @@ export default function App() {
     </div>
   );
 }
+'@
 
+# Sanity check: ensure the new prefix logic exists
+if ($AppTsx -notmatch "DEFAULT_ESTIMATE_REF_PREFIX") { Fail "Internal: payload missing DEFAULT_ESTIMATE_REF_PREFIX." }
+if ($AppTsx -notmatch "getEstimateRefPrefix") { Fail "Internal: payload missing getEstimateRefPrefix()." }
+if ($AppTsx -notmatch "quotesync\.estimateRefPrefix") { Fail "Internal: payload missing storage key." }
+if ($AppTsx -notmatch "EF-EST") { Fail "Internal: payload missing EF-EST default." }
 
+Set-Content -Path $target -Value $AppTsx -Encoding UTF8
+Ok "Wrote updated App.tsx -> $target"
 
-
-
-
-
-
-
-
+Write-Host ""
+Write-Host "Done. Restart dev server if needed." -ForegroundColor Cyan

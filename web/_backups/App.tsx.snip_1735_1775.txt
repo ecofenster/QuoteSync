@@ -1,0 +1,37 @@
+App.tsx lines 1735..1769
+================================
+ 1735 |                     </div>
+ 1736 | 
+ 1737 |                     <div style={{ marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+ 1738 |                       <Button variant="secondary" onClick={() => setPosStep((s) => (s === 1 ? 1 : ((s - 1) as any)))} disabled={posStep === 1}>
+ 1739 |                         Back
+ 1740 |                       </Button>
+ 1741 | 
+ 1742 |                       {posStep < 3 ? (
+ 1743 |                         <Button variant="primary" onClick={() => setPosStep((s) => ((s + 1) as any))}>
+ 1744 |                           Next
+ 1745 |                         </Button>
+ 1746 |                       ) : (
+ 1747 |                         <Button variant="primary" onClick={savePositionToEstimate}>
+ 1748 |                           Save Position
+ 1749 |                         </Button>
+ 1750 |                       )}
+ 1751 |                     </div>
+ 1752 |                   </div>
+ 1753 |                 )}
+ 1754 |               </Card>
+ 1755 |             )}
+ 1756 |           </div>
+ 1757 |         </div>
+ 1758 |       </div>
+ 1759 |     </div>
+ 1760 |   );
+ 1761 | }
+ 1762 | 
+ 1763 | 
+ 1764 | 
+ 1765 | 
+ 1766 | 
+ 1767 | 
+ 1768 | 
+ 1769 | 

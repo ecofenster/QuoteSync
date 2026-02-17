@@ -1,0 +1,5 @@
+Snapshot created (no code changes)
+- Backed up: .\_backups\App.tsx.snapshot_20260210_115037.bak
+- Wrote: .\directory-tree.txt
+Notes:
+- If you ever see PowerShell prompt change to '>>', you likely started a here-string by accident (e.g. typing @"). Press Ctrl+C to cancel.

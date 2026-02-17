@@ -1238,23 +1238,16 @@ export default function App() {
                   </Button>
                 </div>
 
-                                {showAddClient && (
-                  <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", padding: 12, background: "#fff" }}>
-                    <div style={{ display: "grid", gap: 10 }}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                        <H3>Add client</H3>
-                        <Small>Type: {menu === "customers_business" ? "Business" : "Individual"}</Small>
-                      </div>
+                {showAddClient && (
+                  <div style={{ marginTop: 14, borderRadius: 16, border: "1px solid #e4e4e7", padding: 12, background: "#fff" }}>
+                    <H3>Add {menu === "customers_business" ? "Business" : "Individual"} Client</H3>
 
+                    <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
                       {menu === "customers_business" ? (
                         <>
                           <div>
                             <div style={labelStyle}>Business name</div>
-                            <Input value={draftBusinessName} onChange={setDraftBusinessName} placeholder="Company Ltd" />
-                          </div>
-                          <div>
-                            <div style={labelStyle}>Contact name</div>
-                            <Input value={draftClientName} onChange={setDraftClientName} placeholder="Name" />
+                            <Input value={draftBusinessName} onChange={setDraftBusinessName} placeholder="Ecofenster Ltd" />
                           </div>
                         </>
                       ) : (
@@ -1291,9 +1284,11 @@ export default function App() {
                         </Button>
                       </div>
                     </div>
+                          </div>
                   </div>
                 )}
-{/* Customers list */}
+
+                {/* Customers list */}
                 <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
                   {filteredClients.length === 0 && <div style={{ fontSize: 13, color: "#71717a" }}>No clients yet.</div>}
 
@@ -1589,16 +1584,16 @@ export default function App() {
 
                       {posStep === 3 && (
                         <div style={{ display: "grid", gridTemplateColumns: "420px 1fr", gap: 16 }}>
-                          {/* Left column */}
                           <div style={{ display: "grid", gap: 12 }}>
-                            <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12 }}>
-                              <H3>Insertion</H3>
+                            <div>
 
-                              <div style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                          <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12 }}>
+                              <H3>Insertion</H3>
+                              <div style={{ marginTop: 8 }}>
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                                 <div style={{ fontSize: 12, color: "#71717a" }}>
                                   Selected field: #{draftSelectedCell.row * posDraft.fieldsX + draftSelectedCell.col + 1}
                                 </div>
-
                                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                                   <select
                                     value={openingStd}
@@ -1609,7 +1604,6 @@ export default function App() {
                                     <option value="DIN">DIN</option>
                                     <option value="UK">UK</option>
                                   </select>
-
                                   <select
                                     value={previewView}
                                     onChange={(e) => setPreviewView(e.target.value as any)}
@@ -1621,15 +1615,14 @@ export default function App() {
                                   </select>
                                 </div>
                               </div>
-
                               <div style={{ marginTop: 8 }}>
                                 <select
-                                  value={(posDraft.cellInsertions ?? {})[keyForCell(draftSelectedCell.col, draftSelectedCell.row)] ?? posDraft.insertion}
+                                  value={posDraft.cellInsertions[keyForCell(draftSelectedCell.col, draftSelectedCell.row)] ?? posDraft.insertion}
                                   onChange={(e) =>
                                     setPosDraft((p) => ({
                                       ...p,
                                       cellInsertions: {
-                                        ...(p.cellInsertions ?? {}),
+                                        ...p.cellInsertions,
                                         [keyForCell(draftSelectedCell.col, draftSelectedCell.row)]: e.target.value,
                                       },
                                     }))
@@ -1647,7 +1640,9 @@ export default function App() {
                               </div>
                             </div>
 
-                            <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12 }}>
+                            <div>
+
+                          <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12 }}>
                               <H3>Use estimate defaults</H3>
                               <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
                                 <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700 }}>
@@ -1658,7 +1653,9 @@ export default function App() {
                                   />
                                   Use estimate defaults for this position
                                 </label>
-                                <Small>When unticked, you can override the same defaults below (same option set as “Supplier & Product Defaults”).</Small>
+                                <Small>
+                                  When unticked, you can override the same defaults below (same option set as “Supplier & Product Defaults”).
+                                </Small>
                               </div>
                             </div>
 
@@ -1676,57 +1673,56 @@ export default function App() {
                             )}
                           </div>
 
-                          {/* Right column */}
-                          <div style={{ display: "grid", gap: 12 }}>
-                            <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12 }}>
-                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                                <H3>Preview</H3>
-                                <Pill>{posDraft.insertion}</Pill>
-                              </div>
+                          <div>
 
-                              <div style={{ marginTop: 12 }}>
-                                <GridEditor
-                                  pos={{
-                                    widthMm: posDraft.widthMm,
-                                    heightMm: posDraft.heightMm,
-                                    fieldsX: posDraft.fieldsX,
-                                    fieldsY: posDraft.fieldsY,
-                                    insertion: posDraft.insertion,
-                                    cellInsertions: posDraft.cellInsertions,
-                                    colWidthsMm: posDraft.colWidthsMm,
-                                    rowHeightsMm: posDraft.rowHeightsMm,
-                                  }}
-                                  selectedCell={draftSelectedCell}
-                                  onSelectCell={setDraftSelectedCell}
-                                  view={previewView}
-                                  openingStd={openingStd}
-                                  setPos={(fn: any) =>
-                                    setPosDraft((p) => {
-                                      const next = fn(p);
-                                      const fx = next.fieldsX ?? p.fieldsX;
-                                      const fy = next.fieldsY ?? p.fieldsY;
-                                      const ins = (next.insertion ?? p.insertion) as any;
-                                      const cellInsertions = normalizeCellInsertions(
-                                        fx,
-                                        fy,
-                                        next.cellInsertions ?? p.cellInsertions,
-                                        ins
-                                      );
-                                      return { ...p, ...next, cellInsertions };
-                                    })
-                                  }
-                                />
-                              </div>
+                          <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12 }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                              <H3>Preview</H3>
+                              <Pill>{posDraft.insertion}</Pill>
+                            </div>
 
-                              <div style={{ marginTop: 12, borderTop: "1px solid #e4e4e7", paddingTop: 10 }}>
-                                <H3>Summary</H3>
-                                <Small>
-                                  {(() => {
-                                    const eff = effectiveDefaultsForPosition(selectedEstimate, posDraft);
-                                    return `${eff.supplier || "—"} / ${eff.productType || "—"} / ${eff.product || "—"} • Hinge: ${eff.hingeType} • Glass: ${eff.glassType} Ug ${eff.ugValue} G ${eff.gValue}`;
-                                  })()}
-                                </Small>
-                              </div>
+                            <div style={{ marginTop: 12 }}>
+                              <GridEditor
+                                pos={{
+                                  widthMm: posDraft.widthMm,
+                                  heightMm: posDraft.heightMm,
+                                  fieldsX: posDraft.fieldsX,
+                                  fieldsY: posDraft.fieldsY,
+                                  insertion: posDraft.insertion,
+                                  cellInsertions: posDraft.cellInsertions,
+                                  colWidthsMm: posDraft.colWidthsMm,
+                                  rowHeightsMm: posDraft.rowHeightsMm,
+                                }}
+                                selectedCell={draftSelectedCell}
+                                onSelectCell={setDraftSelectedCell}
+                                view={previewView}
+                                openingStd={openingStd}
+                                setPos={(fn: any) =>
+                                  setPosDraft((p) => {
+                                    const next = fn(p);
+                                    // ensure new fields get a default insertion
+                                    const cellInsertions = normalizeCellInsertions(
+                                      next.fieldsX ?? p.fieldsX,
+                                      next.fieldsY ?? p.fieldsY,
+                                      next.cellInsertions ?? p.cellInsertions,
+                                      (next.insertion ?? p.insertion) as any
+                                    );
+                                    return { ...p, ...next, cellInsertions };
+                                  })
+                                }
+                              />
+                            </div>
+
+                            <div style={{ marginTop: 12, borderTop: "1px solid #e4e4e7", paddingTop: 10 }}>
+                              <H3>Summary</H3>
+                              <Small>
+                                Effective defaults:
+                                {" "}
+                                {(() => {
+                                  const eff = effectiveDefaultsForPosition(selectedEstimate, posDraft);
+                                  return `${eff.supplier || "—"} / ${eff.productType || "—"} / ${eff.product || "—"} • Hinge: ${eff.hingeType} • Glass: ${eff.glassType} Ug ${eff.ugValue} G ${eff.gValue}`;
+                                })()}
+                              </Small>
                             </div>
                           </div>
                         </div>
@@ -1748,6 +1744,7 @@ export default function App() {
                         </Button>
                       )}
                     </div>
+                          </div>
                   </div>
                 )}
               </Card>
@@ -1758,13 +1755,6 @@ export default function App() {
     </div>
   );
 }
-
-
-
-
-
-
-
 
 
 

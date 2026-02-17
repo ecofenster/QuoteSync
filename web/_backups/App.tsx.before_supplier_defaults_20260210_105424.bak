@@ -1,0 +1,1840 @@
+import React, { useEffect, useMemo, useState } from "react";
+import GridEditor from "./components/GridEditor";
+
+/* =========================
+   Types
+========================= */
+
+type MenuKey =
+  | "customers_business"
+  | "customers_individual"
+  | "project_preferences"
+  | "address_database"
+  | "reports"
+  | "cad_drawing"
+  | "remote_support";
+
+type ClientType = "Business" | "Individual";
+type EstimateStatus = "Draft" | "Completed";
+
+type ProductType = "uPVC" | "uPVC Alu Clad" | "Timber" | "Timber Aluminium Clad" | "Aluminium" | "Steel";
+
+type View =
+  | "customers"
+  | "estimate_defaults"        // Supplier & Product Defaults screen (estimate-level)
+  | "estimate_workspace";      // Positions + Position wizard (no supplier/product step)
+
+type HingeType = "Concealed" | "Exposed 130Kg" | "Exposed 180Kg";
+
+type Client = {
+  id: string;
+  type: ClientType;
+  clientRef: string;
+  clientName: string;
+  email: string;
+  mobile: string;
+  home: string;
+
+  projectName: string;
+  projectAddress: string;
+  invoiceAddress: string;
+
+  businessName?: string;
+  contactPerson?: string;
+
+  estimates: Estimate[];
+};
+
+type EstimateDefaults = {
+  supplier: string;
+  productType: ProductType;
+  product: string;
+
+  // Finishes (typed + selectable per product type)
+  externalFinish: string;
+  internalFinish: string;
+
+  // Hinges
+  hingeType: HingeType;
+
+  // Timber-only
+  woodType: string;
+
+  // Glazing
+  glassType: "Double" | "Triple";
+  ugValue: string;   // renamed from U -> Ug
+  gValue: string;    // auto set from ug selection (for now constant 0.53)
+  glazingBarsRequired: boolean;
+  glazingBarOption: string;
+
+  // Window handle
+  windowHandleType: "Type 1" | "Type 2" | "Type 3" | "Type 4" | "Type 5";
+  lockableHandle: boolean; // (renamed from door multipoint locking in earlier drafts)
+
+  // Door-only tickboxes
+  doorMultipointLocking: boolean;
+  electricalOperation: boolean;
+  dayLatch: boolean;
+
+  // Accessories
+  internalCillRequired: boolean;
+  externalSillRequired: boolean;
+  cillDepthMm: number;
+  cillEndCapType: "Cladding/Render End Cap" | "Brick Type End Cap";
+
+  // Frame extensions (per side)
+  frameExtLeftMm: number;
+  frameExtRightMm: number;
+  frameExtTopMm: number;
+  frameExtBottomMm: number;
+
+  // Sun protection
+  sunProtectionRequired: boolean;
+  sunProtectionType: string;
+};
+
+type Estimate = {
+  id: string;
+  estimateRef: string;
+  baseEstimateRef: string;
+  revisionNo: number;
+  status: EstimateStatus;
+
+  defaults: EstimateDefaults;
+
+  positions: Position[];
+};
+
+type Position = {
+  id: string;
+  positionRef: string;
+  qty: number;
+  roomName: string;
+
+  // whether this position is using estimate defaults
+  useEstimateDefaults: boolean;
+
+  // Supplier/product (can override)
+  supplier: string;
+  productType: ProductType;
+  product: string;
+
+  // Dimensions
+  widthMm: number;
+  heightMm: number;
+  fieldsX: number;
+  fieldsY: number;
+
+  insertion: string;
+  colWidthsMm?: number[];
+  rowHeightsMm?: number[];
+
+  // classification
+  positionType: "Window" | "Door";
+
+  // defaults/overrides (mirrors EstimateDefaults)
+  woodType: string;
+  externalFinish: string;
+  internalFinish: string;
+  hingeType: HingeType;
+
+  glassType: "Double" | "Triple";
+  ugValue: string;
+  gValue: string;
+  glazingBarsRequired: boolean;
+  glazingBarOption: string;
+
+  windowHandleType: "Type 1" | "Type 2" | "Type 3" | "Type 4" | "Type 5";
+  lockableHandle: boolean;
+
+  doorMultipointLocking: boolean;
+  electricalOperation: boolean;
+  dayLatch: boolean;
+
+  internalCillRequired: boolean;
+  externalSillRequired: boolean;
+  cillDepthMm: number;
+  cillEndCapType: "Cladding/Render End Cap" | "Brick Type End Cap";
+
+  frameExtLeftMm: number;
+  frameExtRightMm: number;
+  frameExtTopMm: number;
+  frameExtBottomMm: number;
+
+  sunProtectionRequired: boolean;
+  sunProtectionType: string;
+};
+
+/* =========================
+   Helpers
+========================= */
+
+function uid() {
+  return Math.random().toString(16).slice(2) + Date.now().toString(16);
+}
+function pad3(n: number) {
+  const s = String(n);
+  return s.length >= 3 ? s : "0".repeat(3 - s.length) + s;
+}
+function clampNum(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+function parseNumberLoose(raw: string, prev: number) {
+  const s = (raw ?? "").toString().trim();
+  if (s === "") return prev;
+  const n = Number(s);
+  if (!Number.isFinite(n)) return prev;
+  return n;
+}
+
+function nextClientRef(n: number) {
+  return `EF-CL-${pad3(n)}`;
+}
+function nextEstimateBaseRef(year: number, n: number) {
+  return `EF-${year}-${pad3(n)}`;
+}
+function estimateRefWithRevision(base: string, revisionNo: number) {
+  if (revisionNo <= 0) return base;
+  return `${base}-${String(revisionNo).padStart(2, "0")}`;
+}
+
+const PRODUCT_TYPES: ProductType[] = ["uPVC", "uPVC Alu Clad", "Timber", "Timber Aluminium Clad", "Aluminium", "Steel"];
+
+type SupplierCatalog = {
+  name: string;
+  productsByType: Partial<Record<ProductType, string[]>>;
+};
+
+const SUPPLIERS: SupplierCatalog[] = [
+  {
+    name: "Internorm",
+    productsByType: {
+      uPVC: ["KF520", "KF410", "KF320", "KF310"],
+      "uPVC Alu Clad": ["KV440", "KV350", "KF520", "KF310", "KF320"],
+      Timber: [],
+      "Timber Aluminium Clad": ["HV450", "HF410", "HF510", "HT410", "HT400", "HT310", "HS330"],
+      Aluminium: ["AT500", "AT510", "AT520", "AT530", "AT540"],
+      Steel: [],
+    },
+  },
+  {
+    name: "Eko Okna",
+    productsByType: {
+      uPVC: [
+        "Synego",
+        "Ideal 4000",
+        "Ideal 70",
+        "BluEvolution 82",
+        "Ideal 8000",
+        "BluEvolution 92",
+        "S9000",
+      ],
+      Timber: ["Naturo 68", "Naturo 80", "Naturo 92"],
+      "Timber Aluminium Clad": ["Naturo 68 Alu", "Naturo 80 Alu"],
+      Aluminium: ["MB-79N", "Slimeline 38", "Masterline 8", "MB-104 Passive"],
+      Steel: ["Unico XS", "Unico"],
+    },
+  },
+];
+
+function getSupplier(name: string) {
+  return SUPPLIERS.find((s) => s.name === name) ?? null;
+}
+function allProductsForSupplier(name: string) {
+  const s = getSupplier(name);
+  if (!s) return [];
+  const all = Object.values(s.productsByType).flat().filter(Boolean) as string[];
+  return Array.from(new Set(all)).sort((a, b) => a.localeCompare(b));
+}
+function firstProductForSupplier(name: string) {
+  return allProductsForSupplier(name)[0] ?? "";
+}
+function isTimberProductType(t: ProductType) {
+  return t === "Timber" || t === "Timber Aluminium Clad";
+}
+
+const WOOD_TYPES = [
+  "Finger Jointed Pine",
+  "Pine",
+  "Spruce",
+  "Larch",
+  "Oak",
+  "Accoya",
+  "Meranti",
+  "Mahogany",
+];
+
+const HINGE_TYPES: HingeType[] = ["Concealed", "Exposed 130Kg", "Exposed 180Kg"];
+
+const GLAZING_BAR_OPTIONS = ["Standard", "Slim", "Wide"];
+
+const SUN_PROTECTION_OPTIONS = [
+  "Shutters",
+  "Roller blinds",
+  "Venetian blinds (external)",
+  "Venetian blinds (internal)",
+];
+
+const WINDOW_HANDLE_TYPES: EstimateDefaults["windowHandleType"][] = ["Type 1", "Type 2", "Type 3", "Type 4", "Type 5"];
+
+function ugOptionsForGlassType(gt: "Double" | "Triple") {
+  return gt === "Double"
+    ? ["1.1", "1.2"]
+    : ["0.4", "0.5", "0.6", "0.7", "0.8"];
+}
+
+function computeGValueFromUg(_ug: string) {
+  // per your instruction: keep everything at 0.53 for now
+  return "0.53";
+}
+
+/* Finish lists (for now: Ext Type 1/2, Int Type 1/2 for each product type) */
+const FINISH_OPTIONS: Record<ProductType, { external: string[]; internal: string[] }> = {
+  uPVC: { external: ["Ext Type 1", "Ext Type 2"], internal: ["Int Type 1", "Int Type 2"] },
+  "uPVC Alu Clad": { external: ["Ext Type 1", "Ext Type 2"], internal: ["Int Type 1", "Int Type 2"] },
+  Timber: { external: ["Ext Type 1", "Ext Type 2"], internal: ["Int Type 1", "Int Type 2"] },
+  "Timber Aluminium Clad": { external: ["Ext Type 1", "Ext Type 2"], internal: ["Int Type 1", "Int Type 2"] },
+  Aluminium: { external: ["Ext Type 1", "Ext Type 2"], internal: ["Int Type 1", "Int Type 2"] },
+  Steel: { external: ["Ext Type 1", "Ext Type 2"], internal: ["Int Type 1", "Int Type 2"] },
+};
+
+function cillDepthOptions(): number[] {
+  const out: number[] = [];
+  // 50..110 step 20
+  for (let v = 50; v <= 110; v += 20) out.push(v);
+  // 130..210 step 15
+  for (let v = 130; v <= 210; v += 15) out.push(v);
+  // 210..400 step 20 (include 210 if not already)
+  for (let v = 210; v <= 400; v += 20) out.push(v);
+  // de-dupe sort
+  return Array.from(new Set(out)).sort((a, b) => a - b);
+}
+
+function frameExtensionOptions(): number[] {
+  // allow 0..100 in 25mm increments as per your earlier note
+  return [0, 25, 50, 75, 100];
+}
+
+function makeDefaultEstimateDefaults(): EstimateDefaults {
+  const supplier = SUPPLIERS[0]?.name ?? "";
+  const productType: ProductType = "uPVC";
+  const product = supplier ? firstProductForSupplier(supplier) : "";
+
+  const glassType: "Double" | "Triple" = "Double";
+  const ugValue = ugOptionsForGlassType(glassType)[0];
+  const gValue = computeGValueFromUg(ugValue);
+
+  return {
+    supplier,
+    productType,
+    product,
+
+    externalFinish: FINISH_OPTIONS[productType].external[0] ?? "",
+    internalFinish: FINISH_OPTIONS[productType].internal[0] ?? "",
+
+    hingeType: "Concealed",
+
+    woodType: WOOD_TYPES[0],
+
+    glassType,
+    ugValue,
+    gValue,
+    glazingBarsRequired: false,
+    glazingBarOption: GLAZING_BAR_OPTIONS[0],
+
+    windowHandleType: "Type 1",
+    lockableHandle: true,
+
+    doorMultipointLocking: true,
+    electricalOperation: false,
+    dayLatch: false,
+
+    internalCillRequired: false,
+    externalSillRequired: false,
+    cillDepthMm: 50,
+    cillEndCapType: "Cladding/Render End Cap",
+
+    frameExtLeftMm: 0,
+    frameExtRightMm: 0,
+    frameExtTopMm: 0,
+    frameExtBottomMm: 0,
+
+    sunProtectionRequired: false,
+    sunProtectionType: SUN_PROTECTION_OPTIONS[0],
+  };
+}
+
+function makePositionFromEstimateDefaults(nextRef: string, d: EstimateDefaults): Position {
+  return {
+    id: uid(),
+    positionRef: nextRef,
+    qty: 1,
+    roomName: "",
+
+    useEstimateDefaults: true,
+
+    supplier: d.supplier,
+    productType: d.productType,
+    product: d.product,
+
+    widthMm: 1000,
+    heightMm: 1200,
+    fieldsX: 1,
+    fieldsY: 1,
+
+    insertion: "Fixed",
+
+    positionType: "Window",
+
+    woodType: d.woodType,
+    externalFinish: d.externalFinish,
+    internalFinish: d.internalFinish,
+    hingeType: d.hingeType,
+
+    glassType: d.glassType,
+    ugValue: d.ugValue,
+    gValue: d.gValue,
+    glazingBarsRequired: d.glazingBarsRequired,
+    glazingBarOption: d.glazingBarOption,
+
+    windowHandleType: d.windowHandleType,
+    lockableHandle: d.lockableHandle,
+
+    doorMultipointLocking: d.doorMultipointLocking,
+    electricalOperation: d.electricalOperation,
+    dayLatch: d.dayLatch,
+
+    internalCillRequired: d.internalCillRequired,
+    externalSillRequired: d.externalSillRequired,
+    cillDepthMm: d.cillDepthMm,
+    cillEndCapType: d.cillEndCapType,
+
+    frameExtLeftMm: d.frameExtLeftMm,
+    frameExtRightMm: d.frameExtRightMm,
+    frameExtTopMm: d.frameExtTopMm,
+    frameExtBottomMm: d.frameExtBottomMm,
+
+    sunProtectionRequired: d.sunProtectionRequired,
+    sunProtectionType: d.sunProtectionType,
+  };
+}
+
+function applyEstimateDefaultsToPosition(p: Position, d: EstimateDefaults): Position {
+  if (!p.useEstimateDefaults) return p;
+  return {
+    ...p,
+    supplier: d.supplier,
+    productType: d.productType,
+    product: d.product,
+
+    woodType: d.woodType,
+    externalFinish: d.externalFinish,
+    internalFinish: d.internalFinish,
+    hingeType: d.hingeType,
+
+    glassType: d.glassType,
+    ugValue: d.ugValue,
+    gValue: d.gValue,
+    glazingBarsRequired: d.glazingBarsRequired,
+    glazingBarOption: d.glazingBarOption,
+
+    windowHandleType: d.windowHandleType,
+    lockableHandle: d.lockableHandle,
+
+    doorMultipointLocking: d.doorMultipointLocking,
+    electricalOperation: d.electricalOperation,
+    dayLatch: d.dayLatch,
+
+    internalCillRequired: d.internalCillRequired,
+    externalSillRequired: d.externalSillRequired,
+    cillDepthMm: d.cillDepthMm,
+    cillEndCapType: d.cillEndCapType,
+
+    frameExtLeftMm: d.frameExtLeftMm,
+    frameExtRightMm: d.frameExtRightMm,
+    frameExtTopMm: d.frameExtTopMm,
+    frameExtBottomMm: d.frameExtBottomMm,
+
+    sunProtectionRequired: d.sunProtectionRequired,
+    sunProtectionType: d.sunProtectionType,
+  };
+}
+
+const DEFAULT_CUSTOMER_ADDRESS = ["4 Glebe Road", "Cowdenbeath", "Fife", "KY4 9FA"].join("\n");
+
+function makeDefaultClients(): Client[] {
+  return [
+    {
+      id: uid(),
+      type: "Business",
+      clientRef: nextClientRef(1),
+      clientName: "Ecofenster Ltd",
+      businessName: "Ecofenster Ltd",
+      contactPerson: "",
+      email: "",
+      mobile: "07882 809 453",
+      home: "",
+      projectName: "",
+      projectAddress: DEFAULT_CUSTOMER_ADDRESS,
+      invoiceAddress: DEFAULT_CUSTOMER_ADDRESS,
+      estimates: [],
+    },
+    {
+      id: uid(),
+      type: "Individual",
+      clientRef: nextClientRef(2),
+      clientName: "Craig Ferguson",
+      businessName: "",
+      contactPerson: "",
+      email: "",
+      mobile: "07882 809 453",
+      home: "",
+      projectName: "",
+      projectAddress: DEFAULT_CUSTOMER_ADDRESS,
+      invoiceAddress: DEFAULT_CUSTOMER_ADDRESS,
+      estimates: [],
+    },
+  ];
+}
+
+/* =========================
+   UI primitives
+========================= */
+
+function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <div
+      style={{
+        borderRadius: 18,
+        border: "1px solid #e4e4e7",
+        background: "#fff",
+        padding: 16,
+        boxShadow: "0 1px 2px rgba(0,0,0,.06)",
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+function H2({ children }: { children: React.ReactNode }) {
+  return <h2 style={{ fontSize: 16, margin: 0, fontWeight: 800, color: "#18181b" }}>{children}</h2>;
+}
+function H3({ children }: { children: React.ReactNode }) {
+  return <h3 style={{ fontSize: 14, margin: 0, fontWeight: 800, color: "#18181b" }}>{children}</h3>;
+}
+function Small({ children }: { children: React.ReactNode }) {
+  return <div style={{ fontSize: 12, color: "#71717a" }}>{children}</div>;
+}
+function Button({
+  children,
+  onClick,
+  variant = "primary",
+  disabled,
+  style,
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  variant?: "primary" | "secondary";
+  disabled?: boolean;
+  style?: React.CSSProperties;
+}) {
+  const isPrimary = variant === "primary";
+  return (
+    <button
+      type="button"
+      disabled={!!disabled}
+      onClick={onClick}
+      style={{
+        borderRadius: 18,
+        border: isPrimary ? "none" : "1px solid #e4e4e7",
+        background: isPrimary ? "#18181b" : "#fff",
+        color: isPrimary ? "#fff" : "#3f3f46",
+        padding: "10px 14px",
+        fontSize: 14,
+        fontWeight: 800,
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.55 : 1,
+        ...style,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+function Input({
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  type?: string;
+}) {
+  return (
+    <input
+      type={type}
+      value={value}
+      placeholder={placeholder}
+      onChange={(e) => onChange(e.target.value)}
+      style={{
+        width: "100%",
+        borderRadius: 12,
+        border: "1px solid #e4e4e7",
+        padding: "10px 12px",
+        fontSize: 14,
+        outline: "none",
+      }}
+    />
+  );
+}
+function Pill({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        borderRadius: 999,
+        padding: "4px 10px",
+        fontSize: 12,
+        fontWeight: 800,
+        background: "#f4f4f5",
+        color: "#18181b",
+        border: "1px solid #e4e4e7",
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+function SidebarItem({ label, active, onClick }: { label: string; active?: boolean; onClick?: () => void }) {
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        borderRadius: 14,
+        padding: "10px 12px",
+        marginBottom: 6,
+        cursor: "pointer",
+        background: active ? "#18181b" : "transparent",
+        color: active ? "#fff" : "#3f3f46",
+        fontSize: 14,
+        fontWeight: active ? 800 : 600,
+      }}
+    >
+      {label}
+    </div>
+  );
+}
+
+const labelStyle: React.CSSProperties = { fontSize: 13, color: "#3f3f46", fontWeight: 700, marginBottom: 6 };
+
+/* =========================
+   App
+========================= */
+
+export default function App() {
+  const [menu, setMenu] = useState<MenuKey>("customers_business");
+  const [view, setView] = useState<View>("customers");
+
+  const [clientCounter, setClientCounter] = useState(3);
+  const [estimateCounter, setEstimateCounter] = useState(1);
+
+  const [clients, setClients] = useState<Client[]>(() => makeDefaultClients());
+
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const selectedClient = useMemo(() => clients.find((c) => c.id === selectedClientId) ?? null, [clients, selectedClientId]);
+
+  const [selectedEstimateId, setSelectedEstimateId] = useState<string | null>(null);
+  const selectedEstimate = useMemo(() => {
+    if (!selectedClient) return null;
+    return selectedClient.estimates.find((e) => e.id === selectedEstimateId) ?? null;
+  }, [selectedClient, selectedEstimateId]);
+
+  // Estimate picker modal for multiple estimates
+  const [showEstimatePicker, setShowEstimatePicker] = useState(false);
+
+  // Add client UI
+  const [showAddClient, setShowAddClient] = useState(false);
+  const activeClientType: ClientType = menu === "customers_business" ? "Business" : "Individual";
+  const filteredClients = useMemo(() => clients.filter((c) => c.type === activeClientType), [clients, activeClientType]);
+
+  // Minimal drafts (keep simple)
+  const [draftClientName, setDraftClientName] = useState("");
+  const [draftBusinessName, setDraftBusinessName] = useState("");
+  const [draftEmail, setDraftEmail] = useState("");
+  const [draftMobile, setDraftMobile] = useState("");
+  const [draftHome, setDraftHome] = useState("");
+
+  // Supplier & Product Defaults draft (estimate-level) for current estimate
+  const [defaultsDraft, setDefaultsDraft] = useState<EstimateDefaults>(() => makeDefaultEstimateDefaults());
+
+  // Position wizard (no supplier/product step)
+  const [showPositionWizard, setShowPositionWizard] = useState(false);
+  const [posStep, setPosStep] = useState<1 | 2 | 3>(1); // 1 position, 2 dimensions, 3 configuration
+  const [posDraft, setPosDraft] = useState<Position | null>(null);
+
+  function selectMenu(k: MenuKey) {
+    setMenu(k);
+    setView("customers");
+    setSelectedClientId(null);
+    setSelectedEstimateId(null);
+    setShowAddClient(false);
+    setShowPositionWizard(false);
+    setShowEstimatePicker(false);
+  }
+
+  function openAddClient() {
+    setShowAddClient(true);
+    setDraftClientName("");
+    setDraftBusinessName("");
+    setDraftEmail("");
+    setDraftMobile("");
+    setDraftHome("");
+  }
+
+  function createClient(type: ClientType) {
+    const newClient: Client = {
+      id: uid(),
+      type,
+      clientRef: nextClientRef(clientCounter),
+      clientName: type === "Individual" ? draftClientName.trim() : draftBusinessName.trim(),
+      email: draftEmail.trim(),
+      mobile: draftMobile.trim(),
+      home: draftHome.trim(),
+      projectName: "",
+      projectAddress: DEFAULT_CUSTOMER_ADDRESS,
+      invoiceAddress: DEFAULT_CUSTOMER_ADDRESS,
+      businessName: type === "Business" ? draftBusinessName.trim() : undefined,
+      contactPerson: "",
+      estimates: [],
+    };
+    setClients((prev) => [newClient, ...prev]);
+    setClientCounter((n) => n + 1);
+    setShowAddClient(false);
+  }
+
+  function openEstimateWorkspace(clientId: string, estimateId: string) {
+    setSelectedClientId(clientId);
+    setSelectedEstimateId(estimateId);
+    setView("estimate_workspace");
+    setShowPositionWizard(false);
+    setShowEstimatePicker(false);
+  }
+
+  function openEstimateDefaults(clientId: string, estimateId: string) {
+    setSelectedClientId(clientId);
+    setSelectedEstimateId(estimateId);
+
+    // Load defaults into draft
+    const c = clients.find((x) => x.id === clientId);
+    const e = c?.estimates.find((x) => x.id === estimateId);
+    if (e) setDefaultsDraft(e.defaults);
+
+    setView("estimate_defaults");
+    setShowPositionWizard(false);
+    setShowEstimatePicker(false);
+  }
+
+  function createEstimateForClient(client: Client) {
+    const year = new Date().getFullYear();
+    const base = nextEstimateBaseRef(year, estimateCounter);
+
+    const defaults = makeDefaultEstimateDefaults();
+
+    const est: Estimate = {
+      id: uid(),
+      estimateRef: base,
+      baseEstimateRef: base,
+      revisionNo: 0,
+      status: "Draft",
+      defaults,
+      positions: [],
+    };
+
+    setEstimateCounter((n) => n + 1);
+
+    setClients((prev) =>
+      prev.map((c) => (c.id === client.id ? { ...c, estimates: [est, ...c.estimates] } : c))
+    );
+
+    // go to supplier/product defaults screen immediately
+    setSelectedClientId(client.id);
+    setSelectedEstimateId(est.id);
+    setDefaultsDraft(defaults);
+    setView("estimate_defaults");
+  }
+
+  function openClient(c: Client) {
+    setSelectedClientId(c.id);
+
+    if (c.estimates.length === 0) {
+      // no estimates -> go straight to create (which goes to defaults screen)
+      createEstimateForClient(c);
+      return;
+    }
+
+    if (c.estimates.length === 1) {
+      // one estimate -> open estimate picker not needed; go to defaults screen for that estimate
+      openEstimateDefaults(c.id, c.estimates[0].id);
+      return;
+    }
+
+    // multiple estimates -> open picker modal
+    setShowEstimatePicker(true);
+  }
+
+  function saveEstimateDefaultsAndContinue() {
+    if (!selectedClient || !selectedEstimate) return;
+
+    // enforce product list sanity
+    const supplier = defaultsDraft.supplier;
+    const product = defaultsDraft.product;
+    const allowed = supplier ? allProductsForSupplier(supplier) : [];
+    const fixedProduct = allowed.includes(product) ? product : (allowed[0] ?? "");
+
+    const d: EstimateDefaults = {
+      ...defaultsDraft,
+      product: fixedProduct,
+      // enforce g value (for now constant 0.53)
+      gValue: computeGValueFromUg(defaultsDraft.ugValue),
+    };
+
+    setClients((prev) =>
+      prev.map((c) => {
+        if (c.id !== selectedClient.id) return c;
+        return {
+          ...c,
+          estimates: c.estimates.map((e) => {
+            if (e.id !== selectedEstimate.id) return e;
+            // update defaults; also update any positions still using defaults
+            const nextPositions = e.positions.map((p) => applyEstimateDefaultsToPosition(p, d));
+            return { ...e, defaults: d, positions: nextPositions };
+          }),
+        };
+      })
+    );
+
+    openEstimateWorkspace(selectedClient.id, selectedEstimate.id);
+  }
+
+  function startAddPosition(initialStep: 1 | 2 | 3 = 1) {
+    if (!selectedClient || !selectedEstimate) return;
+
+    const nextIndex = (selectedEstimate.positions?.length ?? 0) + 1;
+    const nextRef = `W-${pad3(nextIndex)}`;
+
+    const p = makePositionFromEstimateDefaults(nextRef, selectedEstimate.defaults);
+    setPosDraft(p);
+    setPosStep(initialStep);
+    setShowPositionWizard(true);
+  }
+
+  function savePositionToEstimate() {
+    if (!selectedClient || !selectedEstimate || !posDraft) return;
+
+    const fixed: Position = {
+      ...posDraft,
+      id: uid(),
+      widthMm: clampNum(Math.round(posDraft.widthMm || 0), 300, 6000),
+      heightMm: clampNum(Math.round(posDraft.heightMm || 0), 300, 6000),
+      fieldsX: clampNum(Math.round(posDraft.fieldsX || 1), 1, 16),
+      fieldsY: clampNum(Math.round(posDraft.fieldsY || 1), 1, 16),
+    };
+
+    setClients((prev) =>
+      prev.map((c) => {
+        if (c.id !== selectedClient.id) return c;
+        return {
+          ...c,
+          estimates: c.estimates.map((e) => {
+            if (e.id !== selectedEstimate.id) return e;
+            return { ...e, positions: [fixed, ...e.positions] };
+          }),
+        };
+      })
+    );
+
+    setShowPositionWizard(false);
+    setPosStep(1);
+    setPosDraft(null);
+  }
+
+  function stepLabel(s: 1 | 2 | 3) {
+    return s === 1 ? "Position" : s === 2 ? "Dimensions" : "Configuration";
+  }
+
+  // keep defaults draft g-value synced with ug selection
+  useEffect(() => {
+    setDefaultsDraft((d) => ({ ...d, gValue: computeGValueFromUg(d.ugValue) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultsDraft.ugValue]);
+
+  // keep ug options valid when glassType changes
+  useEffect(() => {
+    const opts = ugOptionsForGlassType(defaultsDraft.glassType);
+    if (!opts.includes(defaultsDraft.ugValue)) {
+      setDefaultsDraft((d) => ({ ...d, ugValue: opts[0], gValue: computeGValueFromUg(opts[0]) }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultsDraft.glassType]);
+
+  // if product type changes, reset finish suggestions (keep typed value if it exists)
+  useEffect(() => {
+    const pt = defaultsDraft.productType;
+    const extOpts = FINISH_OPTIONS[pt]?.external ?? [];
+    const intOpts = FINISH_OPTIONS[pt]?.internal ?? [];
+    setDefaultsDraft((d) => ({
+      ...d,
+      externalFinish: d.externalFinish || (extOpts[0] ?? ""),
+      internalFinish: d.internalFinish || (intOpts[0] ?? ""),
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultsDraft.productType]);
+
+  return (
+    <div style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif", background: "#f4f4f5", minHeight: "100vh" }}>
+      <div style={{ width: "100%", margin: "0", padding: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 16 }}>
+          {/* Sidebar */}
+          <Card style={{ padding: 12 }}>
+            <div style={{ padding: "6px 6px 12px 6px" }}>
+              <img
+                src="/quotesync-logo.png"
+                alt="QuoteSync"
+                style={{ width: "100%", maxWidth: 260, height: 78, objectFit: "contain", display: "block" }}
+              />
+            </div>
+
+            <div style={{ marginTop: 14 }}>
+              <H3>Customers</H3>
+              <div style={{ marginTop: 8 }}>
+                <SidebarItem label="Business Customers" active={menu === "customers_business"} onClick={() => selectMenu("customers_business")} />
+                <SidebarItem label="Individual Customers" active={menu === "customers_individual"} onClick={() => selectMenu("customers_individual")} />
+              </div>
+            </div>
+
+            <div style={{ marginTop: 14 }}>
+              <H3>Preferences</H3>
+              <div style={{ marginTop: 8 }}>
+                <SidebarItem label="Project Preferences" active={menu === "project_preferences"} onClick={() => selectMenu("project_preferences")} />
+                <SidebarItem label="Address Database" active={menu === "address_database"} onClick={() => selectMenu("address_database")} />
+              </div>
+            </div>
+
+            <div style={{ marginTop: 14 }}>
+              <H3>Tools</H3>
+              <div style={{ marginTop: 8 }}>
+                <SidebarItem label="Reports" active={menu === "reports"} onClick={() => selectMenu("reports")} />
+                <SidebarItem label="CAD Drawing" active={menu === "cad_drawing"} onClick={() => selectMenu("cad_drawing")} />
+                <SidebarItem label="Remote Support" active={menu === "remote_support"} onClick={() => selectMenu("remote_support")} />
+              </div>
+            </div>
+          </Card>
+
+          {/* Main */}
+          <div style={{ display: "grid", gap: 16 }}>
+
+            {/* CUSTOMERS */}
+            {(menu === "customers_business" || menu === "customers_individual") && view === "customers" && (
+              <Card style={{ minHeight: 520 }}>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                  <div>
+                    <H2>{menu === "customers_business" ? "Business Customers" : "Individual Customers"}</H2>
+                    <Small>Create clients, start estimates, and manage revisions.</Small>
+                  </div>
+                  <Button variant="primary" onClick={openAddClient}>Add Client</Button>
+                </div>
+
+                {showAddClient && (
+                  <div style={{ marginTop: 14, borderRadius: 16, border: "1px solid #e4e4e7", padding: 12, background: "#fff" }}>
+                    <H3>Add {menu === "customers_business" ? "Business" : "Individual"} Client</H3>
+
+                    <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
+                      {menu === "customers_business" ? (
+                        <>
+                          <div>
+                            <div style={labelStyle}>Business name</div>
+                            <Input value={draftBusinessName} onChange={setDraftBusinessName} placeholder="Ecofenster Ltd" />
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                            <div>
+                              <div style={labelStyle}>Email</div>
+                              <Input value={draftEmail} onChange={setDraftEmail} placeholder="email@example.com" />
+                            </div>
+                            <div>
+                              <div style={labelStyle}>Telephone</div>
+                              <Input value={draftHome} onChange={setDraftHome} placeholder="01..." />
+                            </div>
+                          </div>
+                          <div>
+                            <div style={labelStyle}>Mobile / Office</div>
+                            <Input value={draftMobile} onChange={setDraftMobile} placeholder="07..." />
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div>
+                            <div style={labelStyle}>Client name</div>
+                            <Input value={draftClientName} onChange={setDraftClientName} placeholder="Name" />
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                            <div>
+                              <div style={labelStyle}>Email</div>
+                              <Input value={draftEmail} onChange={setDraftEmail} placeholder="email@example.com" />
+                            </div>
+                            <div>
+                              <div style={labelStyle}>Mobile</div>
+                              <Input value={draftMobile} onChange={setDraftMobile} placeholder="07..." />
+                            </div>
+                          </div>
+                          <div>
+                            <div style={labelStyle}>Home</div>
+                            <Input value={draftHome} onChange={setDraftHome} placeholder="01..." />
+                          </div>
+                        </>
+                      )}
+
+                      <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+                        <Button variant="secondary" onClick={() => setShowAddClient(false)}>Cancel</Button>
+                        <Button variant="primary" onClick={() => createClient(menu === "customers_business" ? "Business" : "Individual")}>Create Client</Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Customers list */}
+                <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
+                  {filteredClients.length === 0 && <div style={{ fontSize: 13, color: "#71717a" }}>No clients yet.</div>}
+
+                  {filteredClients.map((c) => (
+                    <div
+                      key={c.id}
+                      style={{
+                        borderRadius: 16,
+                        border: "1px solid #e4e4e7",
+                        padding: 12,
+                        background: "#fff",
+                        display: "grid",
+                        gap: 10,
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                          <H3>{c.clientName}</H3>
+                          <Pill>{c.clientRef}</Pill>
+                          <Small>{c.estimates.length} estimate(s)</Small>
+                        </div>
+
+                        <div style={{ display: "flex", gap: 10 }}>
+                          <Button variant="primary" onClick={() => openClient(c)}>Open</Button>
+                          <Button variant="secondary" onClick={() => createEstimateForClient(c)}>New Estimate</Button>
+                        </div>
+                      </div>
+
+                      <div style={{ fontSize: 12, color: "#71717a" }}>
+                        {c.projectName || "No project name"} • {c.projectAddress ? c.projectAddress.split("\n")[0] : "No project address"}
+                      </div>
+
+                      {c.estimates.length > 0 && (
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          {c.estimates.slice(0, 3).map((e) => (
+                            <Pill key={e.id}>{e.estimateRef}</Pill>
+                          ))}
+                          {c.estimates.length > 3 && <Small>+{c.estimates.length - 3} more</Small>}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Estimate picker modal */}
+                {showEstimatePicker && selectedClient && (
+                  <div
+                    style={{
+                      position: "fixed",
+                      inset: 0,
+                      background: "rgba(0,0,0,.35)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: 16,
+                      zIndex: 50,
+                    }}
+                    onClick={() => setShowEstimatePicker(false)}
+                  >
+                    <div
+                      style={{
+                        width: "min(860px, 100%)",
+                        borderRadius: 18,
+                        background: "#fff",
+                        border: "1px solid #e4e4e7",
+                        boxShadow: "0 10px 30px rgba(0,0,0,.25)",
+                        padding: 16,
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                        <div>
+                          <H2>Open Estimate</H2>
+                          <Small>{selectedClient.clientName} • choose an estimate</Small>
+                        </div>
+                        <Button variant="secondary" onClick={() => setShowEstimatePicker(false)}>Close</Button>
+                      </div>
+
+                      <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                        {selectedClient.estimates.map((e) => (
+                          <div
+                            key={e.id}
+                            style={{
+                              borderRadius: 14,
+                              border: "1px solid #e4e4e7",
+                              padding: 12,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 10,
+                            }}
+                          >
+                            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                              <Pill>{e.estimateRef}</Pill>
+                              <Small>{e.status} • {e.positions.length} position(s)</Small>
+                            </div>
+                            <Button variant="primary" onClick={() => openEstimateDefaults(selectedClient.id, e.id)}>Open</Button>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
+                        <Button variant="primary" onClick={() => createEstimateForClient(selectedClient)}>New Estimate</Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </Card>
+            )}
+
+            {/* SUPPLIER & PRODUCT DEFAULTS (Estimate-level screen) */}
+            {view === "estimate_defaults" && selectedClient && selectedEstimate && (
+              <Card style={{ minHeight: 520 }}>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                  <div>
+                    <H2>Supplier & Product Defaults</H2>
+                    <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      <Pill>{selectedClient.clientRef}</Pill>
+                      <Pill>{selectedEstimate.estimateRef}</Pill>
+                      <Small>{selectedClient.clientName}</Small>
+                    </div>
+                    <Small style={{ marginTop: 6 } as any}>
+                      These defaults apply to all new positions. You can override per position later.
+                    </Small>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <Button variant="secondary" onClick={() => setView("customers")}>Back</Button>
+                    <Button variant="primary" onClick={saveEstimateDefaultsAndContinue}>Continue</Button>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                  {/* Supplier/product */}
+                  <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", padding: 12 }}>
+                    <H3>Supplier & Product</H3>
+
+                    <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
+                      <div>
+                        <div style={labelStyle}>Supplier</div>
+                        <select
+                          value={defaultsDraft.supplier}
+                          onChange={(e) => {
+                            const supplier = e.target.value;
+                            const nextProduct = supplier ? firstProductForSupplier(supplier) : "";
+                            setDefaultsDraft((d) => ({ ...d, supplier, product: nextProduct }));
+                          }}
+                          style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                        >
+                          <option value="">Select supplier…</option>
+                          {SUPPLIERS.map((s) => (
+                            <option key={s.name} value={s.name}>{s.name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <div style={labelStyle}>Product type</div>
+                        <select
+                          value={defaultsDraft.productType}
+                          onChange={(e) => setDefaultsDraft((d) => ({ ...d, productType: e.target.value as ProductType }))}
+                          style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                        >
+                          {PRODUCT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+
+                      <div>
+                        <div style={labelStyle}>Product</div>
+                        <select
+                          value={defaultsDraft.product}
+                          onChange={(e) => setDefaultsDraft((d) => ({ ...d, product: e.target.value }))}
+                          disabled={!defaultsDraft.supplier}
+                          style={{
+                            width: "100%",
+                            borderRadius: 12,
+                            border: "1px solid #e4e4e7",
+                            padding: "10px 12px",
+                            fontSize: 14,
+                            background: !defaultsDraft.supplier ? "#fafafa" : "#fff",
+                            color: !defaultsDraft.supplier ? "#a1a1aa" : "#18181b",
+                          }}
+                        >
+                          <option value="">{defaultsDraft.supplier ? "Select product…" : "Select supplier first…"}</option>
+                          {allProductsForSupplier(defaultsDraft.supplier).map((p) => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                      </div>
+
+                      {isTimberProductType(defaultsDraft.productType) && (
+                        <div>
+                          <div style={labelStyle}>Wood type</div>
+                          <select
+                            value={defaultsDraft.woodType}
+                            onChange={(e) => setDefaultsDraft((d) => ({ ...d, woodType: e.target.value }))}
+                            style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                          >
+                            {WOOD_TYPES.map((w) => <option key={w} value={w}>{w}</option>)}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Finishes + Hinges */}
+                  <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", padding: 12 }}>
+                    <H3>Finishes & Hinges</H3>
+
+                    <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
+                      <div>
+                        <div style={labelStyle}>External finish</div>
+                        <input
+                          list="extFinishList"
+                          value={defaultsDraft.externalFinish}
+                          onChange={(e) => setDefaultsDraft((d) => ({ ...d, externalFinish: e.target.value }))}
+                          placeholder="Type to search…"
+                          style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14, outline: "none" }}
+                        />
+                        <datalist id="extFinishList">
+                          {(FINISH_OPTIONS[defaultsDraft.productType]?.external ?? []).map((x) => (
+                            <option key={x} value={x} />
+                          ))}
+                        </datalist>
+                      </div>
+
+                      <div>
+                        <div style={labelStyle}>Internal finish</div>
+                        <input
+                          list="intFinishList"
+                          value={defaultsDraft.internalFinish}
+                          onChange={(e) => setDefaultsDraft((d) => ({ ...d, internalFinish: e.target.value }))}
+                          placeholder="Type to search…"
+                          style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14, outline: "none" }}
+                        />
+                        <datalist id="intFinishList">
+                          {(FINISH_OPTIONS[defaultsDraft.productType]?.internal ?? []).map((x) => (
+                            <option key={x} value={x} />
+                          ))}
+                        </datalist>
+                      </div>
+
+                      <div>
+                        <div style={labelStyle}>Hinges</div>
+                        <select
+                          value={defaultsDraft.hingeType}
+                          onChange={(e) => setDefaultsDraft((d) => ({ ...d, hingeType: e.target.value as HingeType }))}
+                          style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                        >
+                          {HINGE_TYPES.map((h) => <option key={h} value={h}>{h}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Glazing */}
+                  <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", padding: 12 }}>
+                    <H3>Glazing</H3>
+
+                    <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700 }}>
+                        <input
+                          type="checkbox"
+                          checked={defaultsDraft.glazingBarsRequired}
+                          onChange={(e) => setDefaultsDraft((d) => ({ ...d, glazingBarsRequired: e.target.checked }))}
+                        />
+                        Glazing bars required
+                      </label>
+
+                      {defaultsDraft.glazingBarsRequired && (
+                        <div>
+                          <div style={labelStyle}>Glazing bar option</div>
+                          <select
+                            value={defaultsDraft.glazingBarOption}
+                            onChange={(e) => setDefaultsDraft((d) => ({ ...d, glazingBarOption: e.target.value }))}
+                            style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                          >
+                            {GLAZING_BAR_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                          </select>
+                        </div>
+                      )}
+
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                        <div>
+                          <div style={labelStyle}>Glass type</div>
+                          <select
+                            value={defaultsDraft.glassType}
+                            onChange={(e) => setDefaultsDraft((d) => ({ ...d, glassType: e.target.value as any }))}
+                            style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                          >
+                            <option value="Double">Double</option>
+                            <option value="Triple">Triple</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <div style={labelStyle}>Ug value required</div>
+                          <select
+                            value={defaultsDraft.ugValue}
+                            onChange={(e) => setDefaultsDraft((d) => ({ ...d, ugValue: e.target.value, gValue: computeGValueFromUg(e.target.value) }))}
+                            style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                          >
+                            {ugOptionsForGlassType(defaultsDraft.glassType).map((u) => <option key={u} value={u}>{u}</option>)}
+                          </select>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div style={labelStyle}>G value</div>
+                        <Input value={defaultsDraft.gValue} onChange={(v) => setDefaultsDraft((d) => ({ ...d, gValue: v }))} />
+                        <Small>For now this stays at 0.53 based on the selected Ug.</Small>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Handles + Door defaults */}
+                  <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", padding: 12 }}>
+                    <H3>Handles & Door Options</H3>
+
+                    <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 140px", gap: 12, alignItems: "end" }}>
+                        <div>
+                          <div style={labelStyle}>Window handle type</div>
+                          <select
+                            value={defaultsDraft.windowHandleType}
+                            onChange={(e) => setDefaultsDraft((d) => ({ ...d, windowHandleType: e.target.value as any }))}
+                            style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                          >
+                            {WINDOW_HANDLE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                        </div>
+
+                        {/* placeholder image */}
+                        <div
+                          style={{
+                            height: 74,
+                            borderRadius: 14,
+                            border: "1px solid #e4e4e7",
+                            background: "#fafafa",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: 12,
+                            color: "#71717a",
+                          }}
+                        >
+                          handle img
+                        </div>
+                      </div>
+
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700 }}>
+                        <input
+                          type="checkbox"
+                          checked={defaultsDraft.lockableHandle}
+                          onChange={(e) => setDefaultsDraft((d) => ({ ...d, lockableHandle: e.target.checked }))}
+                        />
+                        Lockable handle
+                      </label>
+
+                      <div style={{ borderTop: "1px solid #e4e4e7", paddingTop: 10 }}>
+                        <Small>Door-only defaults</Small>
+                        <div style={{ display: "grid", gap: 10, marginTop: 8 }}>
+                          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700 }}>
+                            <input
+                              type="checkbox"
+                              checked={defaultsDraft.doorMultipointLocking}
+                              onChange={(e) => setDefaultsDraft((d) => ({ ...d, doorMultipointLocking: e.target.checked }))}
+                            />
+                            Multipoint locking
+                          </label>
+
+                          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700 }}>
+                            <input
+                              type="checkbox"
+                              checked={defaultsDraft.electricalOperation}
+                              onChange={(e) => setDefaultsDraft((d) => ({ ...d, electricalOperation: e.target.checked }))}
+                            />
+                            Electrical operation
+                          </label>
+
+                          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700 }}>
+                            <input
+                              type="checkbox"
+                              checked={defaultsDraft.dayLatch}
+                              onChange={(e) => setDefaultsDraft((d) => ({ ...d, dayLatch: e.target.checked }))}
+                            />
+                            Day latch
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Accessories */}
+                  <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", padding: 12 }}>
+                    <H3>Accessories</H3>
+
+                    <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700 }}>
+                        <input
+                          type="checkbox"
+                          checked={defaultsDraft.internalCillRequired}
+                          onChange={(e) => setDefaultsDraft((d) => ({ ...d, internalCillRequired: e.target.checked }))}
+                        />
+                        Window cill internally required
+                      </label>
+
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700 }}>
+                        <input
+                          type="checkbox"
+                          checked={defaultsDraft.externalSillRequired}
+                          onChange={(e) => setDefaultsDraft((d) => ({ ...d, externalSillRequired: e.target.checked }))}
+                        />
+                        Window sill externally required
+                      </label>
+
+                      <div>
+                        <div style={labelStyle}>Window cill depth</div>
+                        <select
+                          value={String(defaultsDraft.cillDepthMm)}
+                          onChange={(e) => setDefaultsDraft((d) => ({ ...d, cillDepthMm: Number(e.target.value) }))}
+                          style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                        >
+                          {cillDepthOptions().map((v) => <option key={v} value={v}>{v} mm</option>)}
+                        </select>
+                      </div>
+
+                      <div>
+                        <div style={labelStyle}>Cill end cap type</div>
+                        <select
+                          value={defaultsDraft.cillEndCapType}
+                          onChange={(e) => setDefaultsDraft((d) => ({ ...d, cillEndCapType: e.target.value as any }))}
+                          style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                        >
+                          <option value="Cladding/Render End Cap">Cladding/Render End Cap</option>
+                          <option value="Brick Type End Cap">Brick Type End Cap</option>
+                        </select>
+                      </div>
+
+                      <div style={{ borderTop: "1px solid #e4e4e7", paddingTop: 10 }}>
+                        <H3>Frame Extensions</H3>
+                        <Small>Set per side (left/right/top/bottom).</Small>
+
+                        <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                          <div>
+                            <div style={labelStyle}>Left</div>
+                            <select
+                              value={String(defaultsDraft.frameExtLeftMm)}
+                              onChange={(e) => setDefaultsDraft((d) => ({ ...d, frameExtLeftMm: Number(e.target.value) }))}
+                              style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                            >
+                              {frameExtensionOptions().map((v) => <option key={v} value={v}>{v} mm</option>)}
+                            </select>
+                          </div>
+
+                          <div>
+                            <div style={labelStyle}>Right</div>
+                            <select
+                              value={String(defaultsDraft.frameExtRightMm)}
+                              onChange={(e) => setDefaultsDraft((d) => ({ ...d, frameExtRightMm: Number(e.target.value) }))}
+                              style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                            >
+                              {frameExtensionOptions().map((v) => <option key={v} value={v}>{v} mm</option>)}
+                            </select>
+                          </div>
+
+                          <div>
+                            <div style={labelStyle}>Top</div>
+                            <select
+                              value={String(defaultsDraft.frameExtTopMm)}
+                              onChange={(e) => setDefaultsDraft((d) => ({ ...d, frameExtTopMm: Number(e.target.value) }))}
+                              style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                            >
+                              {frameExtensionOptions().map((v) => <option key={v} value={v}>{v} mm</option>)}
+                            </select>
+                          </div>
+
+                          <div>
+                            <div style={labelStyle}>Bottom</div>
+                            <select
+                              value={String(defaultsDraft.frameExtBottomMm)}
+                              onChange={(e) => setDefaultsDraft((d) => ({ ...d, frameExtBottomMm: Number(e.target.value) }))}
+                              style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                            >
+                              {frameExtensionOptions().map((v) => <option key={v} value={v}>{v} mm</option>)}
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ borderTop: "1px solid #e4e4e7", paddingTop: 10 }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700 }}>
+                          <input
+                            type="checkbox"
+                            checked={defaultsDraft.sunProtectionRequired}
+                            onChange={(e) => setDefaultsDraft((d) => ({ ...d, sunProtectionRequired: e.target.checked }))}
+                          />
+                          Sun protection required
+                        </label>
+
+                        {defaultsDraft.sunProtectionRequired && (
+                          <div style={{ marginTop: 10 }}>
+                            <div style={labelStyle}>Sun protection type</div>
+                            <select
+                              value={defaultsDraft.sunProtectionType}
+                              onChange={(e) => setDefaultsDraft((d) => ({ ...d, sunProtectionType: e.target.value }))}
+                              style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                            >
+                              {SUN_PROTECTION_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Summary block */}
+                  <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", padding: 12 }}>
+                    <H3>Summary</H3>
+                    <div style={{ marginTop: 10, display: "grid", gap: 6, fontSize: 13, color: "#3f3f46" }}>
+                      <div><b>Supplier:</b> {defaultsDraft.supplier || "—"}</div>
+                      <div><b>Product type:</b> {defaultsDraft.productType}</div>
+                      <div><b>Product:</b> {defaultsDraft.product || "—"}</div>
+                      {isTimberProductType(defaultsDraft.productType) && <div><b>Wood:</b> {defaultsDraft.woodType}</div>}
+                      <div><b>Ext finish:</b> {defaultsDraft.externalFinish || "—"}</div>
+                      <div><b>Int finish:</b> {defaultsDraft.internalFinish || "—"}</div>
+                      <div><b>Hinges:</b> {defaultsDraft.hingeType}</div>
+                      <div><b>Glazing:</b> {defaultsDraft.glassType} • Ug {defaultsDraft.ugValue} • g {defaultsDraft.gValue}</div>
+                      <div><b>Handle:</b> {defaultsDraft.windowHandleType} • {defaultsDraft.lockableHandle ? "Lockable" : "Non-lockable"}</div>
+                      <div><b>Cill depth:</b> {defaultsDraft.cillDepthMm} mm • <b>End cap:</b> {defaultsDraft.cillEndCapType}</div>
+                      <div><b>Frame ext:</b> L {defaultsDraft.frameExtLeftMm} / R {defaultsDraft.frameExtRightMm} / T {defaultsDraft.frameExtTopMm} / B {defaultsDraft.frameExtBottomMm}</div>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            )}
+
+            {/* ESTIMATE WORKSPACE */}
+            {view === "estimate_workspace" && selectedClient && selectedEstimate && (
+              <Card style={{ minHeight: 520, display: "flex", flexDirection: "column" }}>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                  <div>
+                    <H2>Estimate</H2>
+                    <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      <Pill>{selectedClient.clientRef}</Pill>
+                      <Pill>{selectedEstimate.estimateRef}</Pill>
+                      <Small>{selectedClient.clientName}</Small>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <Button variant="secondary" onClick={() => openEstimateDefaults(selectedClient.id, selectedEstimate.id)}>Supplier & Product</Button>
+                    <Button variant="secondary" onClick={() => setView("customers")}>Back</Button>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 16 }}>
+                  <Button variant="primary" onClick={() => startAddPosition(1)} style={{ width: "100%" }}>
+                    Add Position
+                  </Button>
+                </div>
+
+                <div style={{ marginTop: 16, borderTop: "1px solid #e4e4e7", paddingTop: 12, flex: 1 }}>
+                  <H3>Positions</H3>
+                  <Small>Positions added to this estimate appear below.</Small>
+
+                  <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                    {selectedEstimate.positions.length === 0 && <div style={{ fontSize: 13, color: "#71717a" }}>No positions yet.</div>}
+
+                    {selectedEstimate.positions.map((p) => (
+                      <div
+                        key={p.id}
+                        style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 10, background: "#fff" }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                          <div style={{ fontWeight: 900, fontSize: 13 }}>{p.positionRef}</div>
+                          <div style={{ fontSize: 12, color: "#71717a" }}>
+                            Qty {p.qty} • {p.widthMm}×{p.heightMm} • {p.fieldsX}×{p.fieldsY}
+                          </div>
+                        </div>
+                        <div style={{ marginTop: 4, fontSize: 12, color: "#71717a" }}>
+                          {p.roomName || "—"} • {p.supplier || "—"} • {p.productType || "—"} / {p.product || "—"} • {p.useEstimateDefaults ? "Defaults" : "Overridden"}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Position wizard inline panel */}
+                {showPositionWizard && posDraft && (
+                  <div style={{ marginTop: 14, borderRadius: 14, border: "1px solid #e4e4e7", padding: 12, background: "#fff" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                      <H3>Add Position</H3>
+                      <Button variant="secondary" onClick={() => { setShowPositionWizard(false); setPosDraft(null); }} style={{ borderRadius: 14, padding: "8px 10px" }}>
+                        Close
+                      </Button>
+                    </div>
+
+                    <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {[1, 2, 3].map((s) => (
+                        <div
+                          key={s}
+                          style={{
+                            borderRadius: 14,
+                            border: "1px solid " + (posStep === s ? "#18181b" : "#e4e4e7"),
+                            background: posStep === s ? "#18181b" : "#fff",
+                            color: posStep === s ? "#fff" : "#3f3f46",
+                            padding: "8px 10px",
+                            fontSize: 14,
+                            fontWeight: 800,
+                          }}
+                        >
+                          {s}. {stepLabel(s as any)}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div style={{ marginTop: 12, borderRadius: 14, border: "1px solid #e4e4e7", padding: 12 }}>
+                      {posStep === 1 && (
+                        <div style={{ display: "grid", gap: 12 }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                            <div>
+                              <div style={labelStyle}>Position reference</div>
+                              <Input value={posDraft.positionRef} onChange={(v) => setPosDraft((p) => ({ ...p, positionRef: v }))} />
+                            </div>
+                            <div>
+                              <div style={labelStyle}>Quantity</div>
+                              <Input
+                                type="number"
+                                value={String(posDraft.qty)}
+                                onChange={(v) => setPosDraft((p) => ({ ...p, qty: Math.max(1, Math.min(999, Number(v || 1))) }))}
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <div style={labelStyle}>Room name</div>
+                            <Input value={posDraft.roomName} onChange={(v) => setPosDraft((p) => ({ ...p, roomName: v }))} />
+                          </div>
+
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                            <div>
+                              <div style={labelStyle}>Position type</div>
+                              <select
+                                value={posDraft.positionType}
+                                onChange={(e) => setPosDraft((p) => ({ ...p, positionType: e.target.value as any }))}
+                                style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                              >
+                                <option value="Window">Window</option>
+                                <option value="Door">Door</option>
+                              </select>
+                            </div>
+
+                            <div style={{ display: "flex", alignItems: "flex-end" }}>
+                              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 800 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={posDraft.useEstimateDefaults}
+                                  onChange={(e) => {
+                                    const use = e.target.checked;
+                                    setPosDraft((p) => {
+                                      const next = { ...p, useEstimateDefaults: use };
+                                      return use && selectedEstimate ? applyEstimateDefaultsToPosition(next, selectedEstimate.defaults) : next;
+                                    });
+                                  }}
+                                />
+                                Use estimate defaults
+                              </label>
+                            </div>
+                          </div>
+
+                          {/* Optional override for supplier/product ONLY when not using defaults */}
+                          {!posDraft.useEstimateDefaults && (
+                            <div style={{ borderRadius: 14, border: "1px dashed #e4e4e7", padding: 12 }}>
+                              <Small>Override supplier/product for this position</Small>
+
+                              <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
+                                <div>
+                                  <div style={labelStyle}>Supplier</div>
+                                  <select
+                                    value={posDraft.supplier}
+                                    onChange={(e) => {
+                                      const supplier = e.target.value;
+                                      const nextProduct = supplier ? firstProductForSupplier(supplier) : "";
+                                      setPosDraft((p) => ({ ...p, supplier, product: nextProduct }));
+                                    }}
+                                    style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                                  >
+                                    <option value="">Select supplier…</option>
+                                    {SUPPLIERS.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
+                                  </select>
+                                </div>
+
+                                <div>
+                                  <div style={labelStyle}>Product type</div>
+                                  <select
+                                    value={posDraft.productType}
+                                    onChange={(e) => setPosDraft((p) => ({ ...p, productType: e.target.value as ProductType }))}
+                                    style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                                  >
+                                    {PRODUCT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                                  </select>
+                                </div>
+
+                                <div>
+                                  <div style={labelStyle}>Product</div>
+                                  <select
+                                    value={posDraft.product}
+                                    onChange={(e) => setPosDraft((p) => ({ ...p, product: e.target.value }))}
+                                    disabled={!posDraft.supplier}
+                                    style={{
+                                      width: "100%",
+                                      borderRadius: 12,
+                                      border: "1px solid #e4e4e7",
+                                      padding: "10px 12px",
+                                      fontSize: 14,
+                                      background: !posDraft.supplier ? "#fafafa" : "#fff",
+                                      color: !posDraft.supplier ? "#a1a1aa" : "#18181b",
+                                    }}
+                                  >
+                                    <option value="">{posDraft.supplier ? "Select product…" : "Select supplier first…"}</option>
+                                    {allProductsForSupplier(posDraft.supplier).map((p) => <option key={p} value={p}>{p}</option>)}
+                                  </select>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {posStep === 2 && (
+                        <div style={{ display: "grid", gap: 12 }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                            <div>
+                              <div style={labelStyle}>Total width (mm)</div>
+                              <Input type="number" value={String(posDraft.widthMm)} onChange={(v) => setPosDraft((p) => ({ ...p, widthMm: parseNumberLoose(v, p.widthMm) }))} />
+                            </div>
+                            <div>
+                              <div style={labelStyle}>Total height (mm)</div>
+                              <Input type="number" value={String(posDraft.heightMm)} onChange={(v) => setPosDraft((p) => ({ ...p, heightMm: parseNumberLoose(v, p.heightMm) }))} />
+                            </div>
+                          </div>
+
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                            <div>
+                              <div style={labelStyle}>Fields (width)</div>
+                              <Input type="number" value={String(posDraft.fieldsX)} onChange={(v) => setPosDraft((p) => ({ ...p, fieldsX: Math.max(1, Math.min(16, Number(v || 1))) }))} />
+                            </div>
+                            <div>
+                              <div style={labelStyle}>Fields (height)</div>
+                              <Input type="number" value={String(posDraft.fieldsY)} onChange={(v) => setPosDraft((p) => ({ ...p, fieldsY: Math.max(1, Math.min(16, Number(v || 1))) }))} />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {posStep === 3 && (
+                        <div style={{ display: "grid", gridTemplateColumns: "380px 1fr", gap: 16 }}>
+                          {/* Left config */}
+                          <div style={{ display: "grid", gap: 12 }}>
+                            <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12 }}>
+                              <H3>Insertion</H3>
+                              <div style={{ marginTop: 8 }}>
+                                <select
+                                  value={posDraft.insertion}
+                                  onChange={(e) => setPosDraft((p) => ({ ...p, insertion: e.target.value }))}
+                                  style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                                >
+                                  <option>Fixed</option>
+                                  <option>Turn</option>
+                                  <option>Tilt</option>
+                                  <option>Tilt & Turn</option>
+                                </select>
+                              </div>
+                            </div>
+
+                            <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12 }}>
+                              <H3>Grid editor</H3>
+                              <Small>Click split lines to remove. (Per-position override)</Small>
+                              <div style={{ marginTop: 10 }}>
+                                <GridEditor pos={posDraft as any} setPos={setPosDraft as any} />
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Right preview placeholder */}
+                          <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12 }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                              <H3>Preview</H3>
+                              <Pill>{posDraft.insertion}</Pill>
+                            </div>
+                            <Small>Technical drawing placeholder (UI-only).</Small>
+
+                            <div style={{ marginTop: 12, borderRadius: 14, border: "1px solid #e4e4e7", height: 320, display: "flex", alignItems: "center", justifyContent: "center", color: "#a1a1aa" }}>
+                              Drawing
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <Button variant="secondary" onClick={() => setPosStep((s) => (s === 1 ? 1 : ((s - 1) as any)))} disabled={posStep === 1}>
+                        Back
+                      </Button>
+
+                      {posStep < 3 ? (
+                        <Button variant="primary" onClick={() => setPosStep((s) => ((s + 1) as any))}>
+                          Next
+                        </Button>
+                      ) : (
+                        <Button variant="primary" onClick={savePositionToEstimate}>
+                          Save Position
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </Card>
+            )}
+
+            {/* Placeholder screens */}
+            {(menu === "project_preferences" || menu === "address_database" || menu === "reports" || menu === "cad_drawing" || menu === "remote_support") && (
+              <Card style={{ minHeight: 520 }}>
+                <H2>{menu.replaceAll("_", " ")}</H2>
+                <Small>Placeholder screen.</Small>
+              </Card>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,11 @@
+QuoteSync Known-Good Snapshot
+Label: known_good_20260217_152114
+Date:  2026-02-17 15:21:17
+Root:  C:\Github\QuoteSync\web
+
+Notes:
+- App is in working state: configuration view renders and runs.
+- This snapshot is intended as a rollback point.
+
+Git:
+- Tag: known_good_20260217_152114

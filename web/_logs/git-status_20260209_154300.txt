@@ -1,0 +1,26 @@
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   src/App.tsx
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	../quotesync-tree.txt
+	CHANGELOG.md
+	_backups/App.tsx.before_fix_20260209_115654.bak
+	_backups/App.tsx.before_supplier_defaults_20260209_151458.bak
+	_backups/package.json.20260209_134308.bak
+	_backups/src_App.tsx.20260209_134308.bak
+	_backups/src_components_GridEditor.tsx.20260209_134308.bak
+	_backups/src_main.tsx.20260209_134308.bak
+	_backups/tsconfig.json.20260209_134308.bak
+	_backups/vite.config.ts.20260209_134308.bak
+	_logs/
+	_manifests/
+	_project/
+	directory-tree.txt
+
+no changes added to commit (use "git add" and/or "git commit -a")

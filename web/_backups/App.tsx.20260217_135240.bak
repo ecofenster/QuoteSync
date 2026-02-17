@@ -1624,12 +1624,12 @@ export default function App() {
 
                               <div style={{ marginTop: 8 }}>
                                 <select
-                                  value={(posDraft.cellInsertions ?? {})[keyForCell(draftSelectedCell.col, draftSelectedCell.row)] ?? posDraft.insertion}
+                                  value={posDraft.cellInsertions[keyForCell(draftSelectedCell.col, draftSelectedCell.row)] ?? posDraft.insertion}
                                   onChange={(e) =>
                                     setPosDraft((p) => ({
                                       ...p,
                                       cellInsertions: {
-                                        ...(p.cellInsertions ?? {}),
+                                        ...p.cellInsertions,
                                         [keyForCell(draftSelectedCell.col, draftSelectedCell.row)]: e.target.value,
                                       },
                                     }))
@@ -1758,8 +1758,6 @@ export default function App() {
     </div>
   );
 }
-
-
 
 
 

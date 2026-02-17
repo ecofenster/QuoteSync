@@ -1,0 +1,43 @@
+App.tsx lines 1605..1645
+================================
+ 1605 |                                     onChange={(e) => setOpeningStd(e.target.value as any)}
+ 1606 |                                     style={{ borderRadius: 10, border: "1px solid #e4e4e7", padding: "6px 10px", fontSize: 12 }}
+ 1607 |                                     title="Opening convention"
+ 1608 |                                   >
+ 1609 |                                     <option value="DIN">DIN</option>
+ 1610 |                                     <option value="UK">UK</option>
+ 1611 |                                   </select>
+ 1612 | 
+ 1613 |                                   <select
+ 1614 |                                     value={previewView}
+ 1615 |                                     onChange={(e) => setPreviewView(e.target.value as any)}
+ 1616 |                                     style={{ borderRadius: 10, border: "1px solid #e4e4e7", padding: "6px 10px", fontSize: 12 }}
+ 1617 |                                     title="View"
+ 1618 |                                   >
+ 1619 |                                     <option value="Inside">Inside</option>
+ 1620 |                                     <option value="Outside">Outside</option>
+ 1621 |                                   </select>
+ 1622 |                                 </div>
+ 1623 |                               </div>
+ 1624 | 
+ 1625 |                               <div style={{ marginTop: 8 }}>
+ 1626 |                                 <select
+ 1627 |                                   value={posDraft.cellInsertions[keyForCell(draftSelectedCell.col, draftSelectedCell.row)] ?? posDraft.insertion}
+ 1628 |                                   onChange={(e) =>
+ 1629 |                                     setPosDraft((p) => ({
+ 1630 |                                       ...p,
+ 1631 |                                       cellInsertions: {
+ 1632 |                                         ...p.cellInsertions,
+ 1633 |                                         [keyForCell(draftSelectedCell.col, draftSelectedCell.row)]: e.target.value,
+ 1634 |                                       },
+ 1635 |                                     }))
+ 1636 |                                   }
+ 1637 |                                   style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+ 1638 |                                 >
+ 1639 |                                   <option>Fixed</option>
+ 1640 |                                   <option>Turn</option>
+ 1641 |                                   <option>Tilt</option>
+ 1642 |                                   <option>Tilt & Turn</option>
+ 1643 |                                   <option>Top Hung</option>
+ 1644 |                                   <option>Side Hung</option>
+ 1645 |                                   <option>Reversible</option>

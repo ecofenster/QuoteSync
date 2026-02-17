@@ -58,7 +58,6 @@ function labelForInsertion(ins: string) {
 function cellIndex1Based(col: number, row: number, fieldsX: number) {
   return row * fieldsX + col + 1;
 
-}
 
 function keyForCell(col: number, row: number) {
   return `${col},${row}`;
@@ -88,6 +87,7 @@ function makeDashProps(dashed: boolean) {
   return dashed ? { strokeDasharray: "6 6" } : {};
 }
 
+}
 
 export default function GridEditor({
   pos,
@@ -109,12 +109,6 @@ export default function GridEditor({
   const fx = clamp(Math.round(pos.fieldsX || 1), 1, 16);
   const fy = clamp(Math.round(pos.fieldsY || 1), 1, 16);
 
-
-  const cellInsertions = useMemo(
-    () => normalizeCellInsertions(fx, fy, pos.cellInsertions, pos.insertion),
-    [fx, fy, pos.cellInsertions, pos.insertion]
-  );
-  const allFixed = useMemo(() => Object.values(cellInsertions).every(isFixedInsertion), [cellInsertions]);
   // Keep local edit strings for slash input UX
   const [colStr, setColStr] = useState("");
   const [rowStr, setRowStr] = useState("");
@@ -600,9 +594,6 @@ const glassH = sashOuterH - sashProfile * 2;
     </div>
   );
 }
-
-
-
 
 
 
