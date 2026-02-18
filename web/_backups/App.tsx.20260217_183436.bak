@@ -6,10 +6,9 @@ import GridEditor from "./components/GridEditor";
 ========================= */
 
 type MenuKey =
-  | "client_database"
-  | "project_preferences"
-  | "address_database"
-  | "reports"
+  | "customers_business"
+  | "customers_individual"
+  | "project_preferences"| "reports"
   | "cad_drawing"
   | "remote_support";
 
@@ -24,7 +23,11 @@ type ProductType =
   | "Aluminium"
   | "Steel";
 
-type View = "customers" | "estimate_picker" | "estimate_defaults" | "estimate_workspace";
+type View =
+  | "customers"
+  | "estimate_picker"
+  | "estimate_defaults"
+  | "estimate_workspace";
 
 type Client = {
   id: string;
@@ -105,7 +108,7 @@ type Position = {
   fieldsY: number;
 
   insertion: string;
-  cellInsertions: Record<string, string>; // key: "col,row"
+  cellInsertions: Record<string, string>; // key: \"col,row\"
   colWidthsMm?: number[];
   rowHeightsMm?: number[];
 
@@ -133,7 +136,12 @@ function keyForCell(col: number, row: number) {
   return `${col},${row}`;
 }
 
-function normalizeCellInsertions(fieldsX: number, fieldsY: number, existing: Record<string, string> | undefined, fallback: string) {
+function normalizeCellInsertions(
+  fieldsX: number,
+  fieldsY: number,
+  existing: Record<string, string> | undefined,
+  fallback: string
+) {
   const out: Record<string, string> = {};
   for (let r = 0; r < fieldsY; r++) {
     for (let c = 0; c < fieldsX; c++) {
@@ -245,13 +253,20 @@ const UG_TRIPLE = ["0.4", "0.5", "0.6", "0.7", "0.8"];
 
 const HANDLE_TYPES: EstimateDefaults["windowHandleType"][] = ["Type 1", "Type 2", "Type 3", "Type 4", "Type 5"];
 
-const SUN_PROTECTION: EstimateDefaults["sunProtectionType"][] = ["Shutters", "Roller blinds", "Venetian blinds (external)", "Venetian blinds (internal)"];
+const SUN_PROTECTION: EstimateDefaults["sunProtectionType"][] = [
+  "Shutters",
+  "Roller blinds",
+  "Venetian blinds (external)",
+  "Venetian blinds (internal)",
+];
 
 function buildCillDepthOptions(): number[] {
   const out: number[] = [];
   for (let v = 50; v <= 110; v += 20) out.push(v);
   for (let v = 130; v <= 210; v += 15) out.push(v);
   for (let v = 230; v <= 400; v += 20) out.push(v);
+  // ensure 210 included already; ensure 230+ is correct step from "210 up to 400 in 20mm"
+  // (we start at 230 to avoid duplicating 210 and preserve 20mm increments)
   return out;
 }
 
@@ -309,7 +324,7 @@ function makeDefaultClients(): Client[] {
       clientRef: nextClientRef(1),
       clientName: "Ecofenster Ltd",
       businessName: "Ecofenster Ltd",
-      contactPerson: "",
+      contactPerson: type === "Business" ? draftClientName.trim() : "",
       email: "",
       mobile: "07882 809 453",
       home: "",
@@ -324,7 +339,7 @@ function makeDefaultClients(): Client[] {
       clientRef: nextClientRef(2),
       clientName: "Craig Ferguson",
       businessName: "",
-      contactPerson: "",
+      contactPerson: type === "Business" ? draftClientName.trim() : "",
       email: "",
       mobile: "07882 809 453",
       home: "",
@@ -458,7 +473,15 @@ function Pill({ children }: { children: React.ReactNode }) {
   );
 }
 
-function SidebarItem({ label, active, onClick }: { label: string; active?: boolean; onClick?: () => void }) {
+function SidebarItem({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active?: boolean;
+  onClick?: () => void;
+}) {
   return (
     <div
       onClick={onClick}
@@ -597,11 +620,21 @@ function DefaultsEditor({
           <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div>
               <div style={labelStyle}>External finish</div>
-              <Input value={value.externalFinish} onChange={(v) => onChange({ ...value, externalFinish: v })} list={"ext-finish-" + title} placeholder="Select or type…" />
+              <Input
+                value={value.externalFinish}
+                onChange={(v) => onChange({ ...value, externalFinish: v })}
+                list={"ext-finish-" + title}
+                placeholder="Select or type…"
+              />
             </div>
             <div>
               <div style={labelStyle}>Internal finish</div>
-              <Input value={value.internalFinish} onChange={(v) => onChange({ ...value, internalFinish: v })} list={"int-finish-" + title} placeholder="Select or type…" />
+              <Input
+                value={value.internalFinish}
+                onChange={(v) => onChange({ ...value, internalFinish: v })}
+                list={"int-finish-" + title}
+                placeholder="Select or type…"
+              />
             </div>
           </div>
         </div>
@@ -731,7 +764,11 @@ function DefaultsEditor({
 
           <div style={{ marginTop: 10 }}>
             <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 14, fontWeight: 700 }}>
-              <input type="checkbox" checked={value.internalCillRequired} onChange={(e) => onChange({ ...value, internalCillRequired: e.target.checked })} />
+              <input
+                type="checkbox"
+                checked={value.internalCillRequired}
+                onChange={(e) => onChange({ ...value, internalCillRequired: e.target.checked })}
+              />
               Lockable handle
             </label>
             <Small>This was previously “door multipoint locking” — now aligned to your “lockable handle” wording.</Small>
@@ -745,17 +782,29 @@ function DefaultsEditor({
 
             <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
               <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 14, fontWeight: 700 }}>
-                <input type="checkbox" checked={value.doorMultipointLocking} onChange={(e) => onChange({ ...value, doorMultipointLocking: e.target.checked })} />
+                <input
+                  type="checkbox"
+                  checked={value.doorMultipointLocking}
+                  onChange={(e) => onChange({ ...value, doorMultipointLocking: e.target.checked })}
+                />
                 Multipoint locking
               </label>
 
               <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 14, fontWeight: 700 }}>
-                <input type="checkbox" checked={value.electricalOperation} onChange={(e) => onChange({ ...value, electricalOperation: e.target.checked })} />
+                <input
+                  type="checkbox"
+                  checked={value.electricalOperation}
+                  onChange={(e) => onChange({ ...value, electricalOperation: e.target.checked })}
+                />
                 Electrical operation
               </label>
 
               <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 14, fontWeight: 700 }}>
-                <input type="checkbox" checked={value.dayLatch} onChange={(e) => onChange({ ...value, dayLatch: e.target.checked })} />
+                <input
+                  type="checkbox"
+                  checked={value.dayLatch}
+                  onChange={(e) => onChange({ ...value, dayLatch: e.target.checked })}
+                />
                 Day latch
               </label>
             </div>
@@ -769,12 +818,20 @@ function DefaultsEditor({
           <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 14, fontWeight: 700 }}>
-                <input type="checkbox" checked={value.internalCillRequired} onChange={(e) => onChange({ ...value, internalCillRequired: e.target.checked })} />
+                <input
+                  type="checkbox"
+                  checked={value.internalCillRequired}
+                  onChange={(e) => onChange({ ...value, internalCillRequired: e.target.checked })}
+                />
                 Window cill internally required
               </label>
 
               <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 14, fontWeight: 700 }}>
-                <input type="checkbox" checked={value.externalSillRequired} onChange={(e) => onChange({ ...value, externalSillRequired: e.target.checked })} />
+                <input
+                  type="checkbox"
+                  checked={value.externalSillRequired}
+                  onChange={(e) => onChange({ ...value, externalSillRequired: e.target.checked })}
+                />
                 Window sill externally required
               </label>
             </div>
@@ -839,7 +896,11 @@ function DefaultsEditor({
 
             <div>
               <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 14, fontWeight: 700 }}>
-                <input type="checkbox" checked={value.sunProtectionRequired} onChange={(e) => onChange({ ...value, sunProtectionRequired: e.target.checked })} />
+                <input
+                  type="checkbox"
+                  checked={value.sunProtectionRequired}
+                  onChange={(e) => onChange({ ...value, sunProtectionRequired: e.target.checked })}
+                />
                 Sun protection required
               </label>
 
@@ -870,7 +931,6 @@ function DefaultsEditor({
 /* =========================
    Main App
 ========================= */
-
 function scaleSplitsToTotal(splits: number[] | undefined, total: number, parts: number, minEach = 1): number[] {
   const safeParts = Math.max(1, Math.floor(parts || 1));
   const safeTotal = Math.max(minEach * safeParts, Math.floor(total || 0));
@@ -927,34 +987,8 @@ function scaleSplitsToTotal(splits: number[] | undefined, total: number, parts: 
   return scaled;
 }
 
-function ClientSummary({ c }: { c: Client }) {
-  const headline = c.type === "Business" ? (c.businessName || c.clientName) : c.clientName;
-  const sub = c.type === "Business" ? (c.contactPerson ? `Contact: ${c.contactPerson}` : "Contact: —") : "Individual";
-
-  return (
-    <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12, background: "#fff" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <div style={{ display: "grid", gap: 4 }}>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <H3>{headline}</H3>
-            <Pill>{c.clientRef}</Pill>
-            <Small>{c.type}</Small>
-          </div>
-          <Small>{sub}</Small>
-        </div>
-
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {c.email ? <Pill>{c.email}</Pill> : <Pill>Email: —</Pill>}
-          {c.mobile ? <Pill>Mob: {c.mobile}</Pill> : <Pill>Mob: —</Pill>}
-          {c.home ? <Pill>Home: {c.home}</Pill> : null}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function App() {
-  const [menu, setMenu] = useState<MenuKey>("client_database");
+  const [menu, setMenu] = useState<MenuKey>("customers_business");
   const [view, setView] = useState<View>("customers");
 
   const [clientCounter, setClientCounter] = useState(3);
@@ -975,17 +1009,16 @@ export default function App() {
   const [pickerClientId, setPickerClientId] = useState<string | null>(null);
   const pickerClient = useMemo(() => clients.find((c) => c.id === pickerClientId) ?? null, [clients, pickerClientId]);
 
-  // Add client UI
+  // Add client UI (kept simple; your current add form can be re-merged if needed)
   const [showAddClient, setShowAddClient] = useState(false);
-  const [draftClientType, setDraftClientType] = useState<ClientType>("Individual");
-  const [draftClientName, setDraftClientName] = useState("");
+  const [addClientIsBusiness, setAddClientIsBusiness] = useState(false);
+const [draftClientName, setDraftClientName] = useState("");
   const [draftBusinessName, setDraftBusinessName] = useState("");
-  const [draftContactName, setDraftContactName] = useState("");
   const [draftEmail, setDraftEmail] = useState("");
   const [draftMobile, setDraftMobile] = useState("");
   const [draftHome, setDraftHome] = useState("");
 
-  // Position wizard
+  // Position wizard (supplier/product removed from flow)
   const [showPositionWizard, setShowPositionWizard] = useState(false);
   const [posStep, setPosStep] = useState<1 | 2 | 3>(1); // 1 Position, 2 Dimensions, 3 Configuration
   const [posDraft, setPosDraft] = useState<Position>(() => ({
@@ -1004,11 +1037,13 @@ export default function App() {
     overrides: {},
   }));
 
+  // Add Position / Configuration step helpers
   const [draftSelectedCell, setDraftSelectedCell] = useState<{ col: number; row: number }>({ col: 0, row: 0 });
   const [previewView, setPreviewView] = useState<"Inside" | "Outside">("Inside");
   const [openingStd, setOpeningStd] = useState<"DIN" | "UK">("DIN");
 
-  const filteredClients = useMemo(() => clients, [clients]);
+  const activeClientType: ClientType = menu === "customers_business" ? "Business" : "Individual";
+  const filteredClients = useMemo(() => clients.filter((c) => c.type === activeClientType), [clients, activeClientType]);
 
   function selectMenu(k: MenuKey) {
     setMenu(k);
@@ -1017,6 +1052,13 @@ export default function App() {
     setSelectedEstimateId(null);
     setPickerClientId(null);
     setShowAddClient(false);
+    setShowPositionWizard(false);
+  }
+
+  function openEstimateWorkspace(clientId: string, estimateId: string) {
+    setSelectedClientId(clientId);
+    setSelectedEstimateId(estimateId);
+    setView("estimate_workspace");
     setShowPositionWizard(false);
   }
 
@@ -1033,7 +1075,7 @@ export default function App() {
 
     const est: Estimate = {
       id: uid(),
-      estimateRef: estimateRefWithRevision(base, 0),
+      estimateRef: base,
       baseEstimateRef: base,
       revisionNo: 0,
       status: "Draft",
@@ -1043,11 +1085,17 @@ export default function App() {
 
     setEstimateCounter((n) => n + 1);
 
-    setClients((prev) => prev.map((c) => (c.id === client.id ? { ...c, estimates: [est, ...c.estimates] } : c)));
+    setClients((prev) =>
+      prev.map((c) => (c.id === client.id ? { ...c, estimates: [est, ...c.estimates] } : c))
+    );
 
-    // go to Supplier & Product Defaults screen immediately
-    openEstimateDefaults(client.id, est.id);
-  }
+    // IMPORTANT: go to Supplier & Product Defaults screen immediately
+    setSelectedClientId(client.id);
+    setSelectedEstimateId(est.id);
+    setPickerClientId(null);
+    setView("estimate_defaults");
+    setShowPositionWizard(false);
+}
 
   function openClient(client: Client) {
     setSelectedClientId(client.id);
@@ -1078,7 +1126,7 @@ export default function App() {
     const nextIndex = (selectedEstimate.positions?.length ?? 0) + 1;
 
     setPosStep(1);
-    setDraftSelectedCell({ col: 0, row: 0 });
+      setDraftSelectedCell({ col: 0, row: 0 });
     setPosDraft({
       id: uid(),
       positionRef: `W-${pad3(nextIndex)}`,
@@ -1092,7 +1140,6 @@ export default function App() {
       positionType: "Window",
       useEstimateDefaults: true,
       overrides: {},
-      cellInsertions: { "0,0": "Fixed" },
     });
     setShowPositionWizard(true);
   }
@@ -1107,7 +1154,6 @@ export default function App() {
       heightMm: clampNum(Math.round(posDraft.heightMm || 0), 300, 6000),
       fieldsX: clampNum(Math.round(posDraft.fieldsX || 1), 1, 16),
       fieldsY: clampNum(Math.round(posDraft.fieldsY || 1), 1, 16),
-      cellInsertions: normalizeCellInsertions(posDraft.fieldsX, posDraft.fieldsY, posDraft.cellInsertions, posDraft.insertion),
     };
 
     setClients((prev) =>
@@ -1115,7 +1161,10 @@ export default function App() {
         if (c.id !== selectedClient.id) return c;
         return {
           ...c,
-          estimates: c.estimates.map((e) => (e.id !== selectedEstimate.id ? e : { ...e, positions: [newPos, ...e.positions] })),
+          estimates: c.estimates.map((e) => {
+            if (e.id !== selectedEstimate.id) return e;
+            return { ...e, positions: [newPos, ...e.positions] };
+          }),
         };
       })
     );
@@ -1130,6 +1179,7 @@ export default function App() {
 
   function effectiveDefaultsForPosition(est: Estimate, pos: Position): EstimateDefaults {
     if (pos.useEstimateDefaults) return est.defaults;
+    // merge estimate defaults + overrides
     return { ...est.defaults, ...pos.overrides };
   }
 
@@ -1138,33 +1188,38 @@ export default function App() {
     setClients((prev) =>
       prev.map((c) => {
         if (c.id !== selectedClient.id) return c;
-        return { ...c, estimates: c.estimates.map((e) => (e.id === selectedEstimate.id ? { ...e, defaults: next } : e)) };
+        return {
+          ...c,
+          estimates: c.estimates.map((e) => (e.id === selectedEstimate.id ? { ...e, defaults: next } : e)),
+        };
       })
     );
   }
 
   function setPositionDefaultsOverride(next: EstimateDefaults) {
-    setPosDraft((p) => ({ ...p, overrides: { ...next } }));
+    // store only as overrides (differences are fine later; for now store full)
+    setPosDraft((p) => ({
+      ...p,
+      overrides: {
+        ...next,
+      },
+    }));
   }
 
   function createClient(type: ClientType) {
-    const businessName = draftBusinessName.trim();
-    const contactPerson = draftContactName.trim();
-    const clientName = type === "Business" ? businessName || "Business" : draftClientName.trim() || "Client";
-
     const newClient: Client = {
       id: uid(),
       type,
       clientRef: nextClientRef(clientCounter),
-      clientName,
+      clientName: type === "Individual" ? draftClientName.trim() : draftBusinessName.trim(),
       email: draftEmail.trim(),
       mobile: draftMobile.trim(),
       home: draftHome.trim(),
       projectName: "",
       projectAddress: DEFAULT_CUSTOMER_ADDRESS,
       invoiceAddress: DEFAULT_CUSTOMER_ADDRESS,
-      businessName: type === "Business" ? businessName : undefined,
-      contactPerson: type === "Business" ? contactPerson : undefined,
+      businessName: type === "Business" ? draftBusinessName.trim() : undefined,
+      contactPerson: type === "Business" ? draftClientName.trim() : "",
       estimates: [],
     };
 
@@ -1172,24 +1227,11 @@ export default function App() {
     setClientCounter((n) => n + 1);
 
     setShowAddClient(false);
-    setDraftClientType("Individual");
     setDraftClientName("");
     setDraftBusinessName("");
-    setDraftContactName("");
     setDraftEmail("");
     setDraftMobile("");
     setDraftHome("");
-  }
-
-  function openAddClientPanel() {
-    setDraftClientType("Individual");
-    setDraftClientName("");
-    setDraftBusinessName("");
-    setDraftContactName("");
-    setDraftEmail("");
-    setDraftMobile("");
-    setDraftHome("");
-    setShowAddClient(true);
   }
 
   return (
@@ -1215,7 +1257,8 @@ export default function App() {
             <div style={{ marginTop: 14 }}>
               <H3>Customers</H3>
               <div style={{ marginTop: 8 }}>
-                <SidebarItem label="Client Database" active={menu === "client_database"} onClick={() => selectMenu("client_database")} />
+                <SidebarItem label="Business Customers" active={menu === "customers_business"} onClick={() => selectMenu("customers_business")} />
+                <SidebarItem label="Individual Customers" active={menu === "customers_individual"} onClick={() => selectMenu("customers_individual")} />
               </div>
             </div>
 
@@ -1223,8 +1266,7 @@ export default function App() {
               <H3>Preferences</H3>
               <div style={{ marginTop: 8 }}>
                 <SidebarItem label="Project Preferences" active={menu === "project_preferences"} onClick={() => selectMenu("project_preferences")} />
-                <SidebarItem label="Address Database" active={menu === "address_database"} onClick={() => selectMenu("address_database")} />
-              </div>
+</div>
             </div>
 
             <div style={{ marginTop: 14 }}>
@@ -1240,87 +1282,92 @@ export default function App() {
           {/* Main */}
           <div style={{ display: "grid", gap: 16 }}>
             {/* CUSTOMERS LIST */}
-            {menu === "client_database" && view === "customers" && (
+            {(menu === "customers_business" || menu === "customers_individual") && view === "customers" && (
               <Card style={{ minHeight: 520 }}>
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
                   <div>
-                    <H2>Client Database</H2>
+                    <H2>{menu === "customers_business" ? "Business Customers" : "Individual Customers"}</H2>
                     <Small>Open a client to choose an estimate (or create one).</Small>
                   </div>
 
-                  <Button variant="primary" onClick={openAddClientPanel}>
+                  <Button variant="primary" onClick={() => { setAddClientIsBusiness(false); setShowAddClient(true); }}>
                     Add Client
                   </Button>
                 </div>
 
-                {showAddClient && (
-                  <div style={{ marginTop: 14, borderRadius: 16, border: "1px solid #e4e4e7", padding: 12, background: "#fff" }}>
+                                {showAddClient && (
+                  <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", padding: 12, background: "#fff" }}>
                     <div style={{ display: "grid", gap: 10 }}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                        <H3>Add client</H3>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+  <H3>Add client</H3>
+  <Small>Type: {addClientIsBusiness ? "Business" : "Individual"}</Small>
+</div>
 
-                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                            <input
-                              type="checkbox"
-                              checked={draftClientType === "Business"}
-                              onChange={(e) => setDraftClientType(e.currentTarget.checked ? "Business" : "Individual")}
-                            />
-                            <span style={{ fontSize: 12, fontWeight: 800, color: "#3f3f46" }}>Business customer</span>
-                          </label>
+<div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 2 }}>
+  <input
+    type="checkbox"
+    checked={addClientIsBusiness}
+    onChange={(e) => setAddClientIsBusiness(e.currentTarget.checked)}
+  />
+  <Small>Business customer</Small>
+</div>
 
-                          <Small>Type: {draftClientType}</Small>
-                        </div>
-                      </div>
+{addClientIsBusiness ? (
+  <>
+    <div style={{ display: "grid", gap: 10, marginTop: 6 }}>
+      <div>
+        <div style={labelStyle}>Business name</div>
+        <Input value={draftBusinessName} onChange={setDraftBusinessName} placeholder="Company Ltd" />
+      </div>
+      <div>
+        <div style={labelStyle}>Contact name</div>
+        <Input value={draftClientName} onChange={setDraftClientName} placeholder="Name" />
+      </div>
+    </div>
+  </>
+) : (
+  <>
+    <div style={{ marginTop: 6 }}>
+      <div style={labelStyle}>Client name</div>
+      <Input value={draftClientName} onChange={setDraftClientName} placeholder="Name" />
+    </div>
+  </>
+)}
 
-                      {draftClientType === "Business" ? (
-                        <>
-                          <div>
-                            <div style={labelStyle}>Business name</div>
-                            <Input value={draftBusinessName} onChange={setDraftBusinessName} placeholder="Company Ltd" />
-                          </div>
+<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 8 }}>
+  <div>
+    <div style={labelStyle}>Email</div>
+    <Input value={draftEmail} onChange={setDraftEmail} placeholder="email@example.com" />
+  </div>
+  <div>
+    <div style={labelStyle}>Mobile</div>
+    <Input value={draftMobile} onChange={setDraftMobile} placeholder="07..." />
+  </div>
+</div>
 
-                          <div>
-                            <div style={labelStyle}>Contact name</div>
-                            <Input value={draftContactName} onChange={setDraftContactName} placeholder="Name" />
-                          </div>
-                        </>
-                      ) : (
-                        <div>
-                          <div style={labelStyle}>Client name</div>
-                          <Input value={draftClientName} onChange={setDraftClientName} placeholder="Name" />
-                        </div>
-                      )}
+<div style={{ marginTop: 8 }}>
+  <div style={labelStyle}>Home</div>
+  <Input value={draftHome} onChange={setDraftHome} placeholder="01..." />
+</div>
 
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                        <div>
-                          <div style={labelStyle}>Email</div>
-                          <Input value={draftEmail} onChange={setDraftEmail} placeholder="email@example.com" />
-                        </div>
-                        <div>
-                          <div style={labelStyle}>Mobile</div>
-                          <Input value={draftMobile} onChange={setDraftMobile} placeholder="07..." />
-                        </div>
-                      </div>
-
-                      <div>
-                        <div style={labelStyle}>Home</div>
-                        <Input value={draftHome} onChange={setDraftHome} placeholder="01..." />
-                      </div>
-
-                      <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-                        <Button variant="secondary" onClick={() => setShowAddClient(false)}>
-                          Cancel
-                        </Button>
-                        <Button variant="primary" onClick={() => createClient(draftClientType)}>
-                          Create Client
-                        </Button>
-                      </div>
+<div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+  <Button
+    variant="secondary"
+    onClick={() => {
+      setShowAddClient(false);
+      setAddClientIsBusiness(false);
+    }}
+  >
+    Cancel
+  </Button>
+  <Button variant="primary" onClick={() => createClient(addClientIsBusiness ? "Business" : "Individual")}>
+    Create Client
+  </Button>
+</div>
                     </div>
                   </div>
                 )}
-
-                {/* Customers list */}
+{/* Customers list */}
                 <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
                   {filteredClients.length === 0 && <div style={{ fontSize: 13, color: "#71717a" }}>No clients yet.</div>}
 
@@ -1338,7 +1385,7 @@ export default function App() {
                     >
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                          <H3>{c.type === "Business" ? (c.businessName || c.clientName) : c.clientName}</H3>
+                          <H3>{c.clientName}</H3>
                           <Pill>{c.clientRef}</Pill>
                           <Small>{c.estimates.length} estimates</Small>
                         </div>
@@ -1365,59 +1412,47 @@ export default function App() {
             {/* ESTIMATE PICKER */}
             {view === "estimate_picker" && pickerClient && (
               <Card style={{ minHeight: 520 }}>
-                <div style={{ display: "grid", gap: 12 }}>
-                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-                    <div>
-                      <H2>Choose an estimate</H2>
-                      <Small>
-                        {pickerClient.clientName} • {pickerClient.clientRef}
-                      </Small>
-                    </div>
-
-                    <div style={{ display: "flex", gap: 10 }}>
-                      <Button variant="secondary" onClick={() => setView("customers")}>
-                        Back
-                      </Button>
-                      <Button variant="primary" onClick={() => createEstimateForClient(pickerClient)}>
-                        New Estimate
-                      </Button>
-                    </div>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                  <div>
+                    <H2>Choose an estimate</H2>
+                    <Small>{pickerClient.clientName} • {pickerClient.clientRef}</Small>
                   </div>
 
-                  <ClientSummary c={pickerClient} />
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <Button variant="secondary" onClick={() => setView("customers")}>Back</Button>
+                    <Button variant="primary" onClick={() => createEstimateForClient(pickerClient)}>New Estimate</Button>
+                  </div>
+                </div>
 
-                  <div style={{ marginTop: 2, display: "grid", gap: 10 }}>
-                    {pickerClient.estimates.map((e) => (
-                      <div
-                        key={e.id}
-                        style={{
-                          borderRadius: 14,
-                          border: "1px solid #e4e4e7",
-                          padding: 10,
-                          background: "#fff",
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          gap: 10,
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                          <Pill>{e.estimateRef}</Pill>
-                          <Small>{e.status}</Small>
-                          <Small>{e.positions.length} positions</Small>
-                        </div>
-
-                        <Button variant="primary" onClick={() => openEstimateFromPicker(e.id)}>
-                          Open
-                        </Button>
+                <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                  {pickerClient.estimates.map((e) => (
+                    <div
+                      key={e.id}
+                      style={{
+                        borderRadius: 14,
+                        border: "1px solid #e4e4e7",
+                        padding: 10,
+                        background: "#fff",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 10,
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <Pill>{e.estimateRef}</Pill>
+                        <Small>{e.status}</Small>
+                        <Small>{e.positions.length} positions</Small>
                       </div>
-                    ))}
-                  </div>
+
+                      <Button variant="primary" onClick={() => openEstimateFromPicker(e.id)}>Open</Button>
+                    </div>
+                  ))}
                 </div>
               </Card>
             )}
 
-            {/* ESTIMATE DEFAULTS */}
+            {/* ESTIMATE DEFAULTS (Supplier & Product Defaults screen) */}
             {view === "estimate_defaults" && selectedClient && selectedEstimate && (
               <Card style={{ minHeight: 520 }}>
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
@@ -1432,18 +1467,12 @@ export default function App() {
                   </div>
 
                   <div style={{ display: "flex", gap: 10 }}>
-                    <Button variant="secondary" onClick={() => setView("customers")}>
-                      Back
-                    </Button>
-                    <Button variant="primary" onClick={() => setView("estimate_workspace")}>
-                      Continue
-                    </Button>
+                    <Button variant="secondary" onClick={() => setView("customers")}>Back</Button>
+                    <Button variant="primary" onClick={() => setView("estimate_workspace")}>Continue</Button>
                   </div>
                 </div>
 
-                <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
-                  <ClientSummary c={selectedClient} />
-
+                <div style={{ marginTop: 14 }}>
                   <DefaultsEditor
                     title="Estimate Defaults"
                     productType={selectedEstimate.defaults.productType}
@@ -1470,17 +1499,9 @@ export default function App() {
                   </div>
 
                   <div style={{ display: "flex", gap: 10 }}>
-                    <Button variant="secondary" onClick={() => setView("estimate_defaults")}>
-                      Supplier & Product Defaults
-                    </Button>
-                    <Button variant="secondary" onClick={() => setView("customers")}>
-                      Back
-                    </Button>
+                    <Button variant="secondary" onClick={() => setView("estimate_defaults")}>Supplier & Product Defaults</Button>
+                    <Button variant="secondary" onClick={() => setView("customers")}>Back</Button>
                   </div>
-                </div>
-
-                <div style={{ marginTop: 12 }}>
-                  <ClientSummary c={selectedClient} />
                 </div>
 
                 <div style={{ marginTop: 16 }}>
@@ -1497,7 +1518,15 @@ export default function App() {
                     {selectedEstimate.positions.length === 0 && <div style={{ fontSize: 13, color: "#71717a" }}>No positions yet.</div>}
 
                     {selectedEstimate.positions.map((p) => (
-                      <div key={p.id} style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 10, background: "#fff" }}>
+                      <div
+                        key={p.id}
+                        style={{
+                          borderRadius: 14,
+                          border: "1px solid #e4e4e7",
+                          padding: 10,
+                          background: "#fff",
+                        }}
+                      >
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                           <div style={{ fontWeight: 900, fontSize: 13 }}>{p.positionRef}</div>
                           <div style={{ fontSize: 12, color: "#71717a" }}>
@@ -1551,7 +1580,11 @@ export default function App() {
                             </div>
                             <div>
                               <div style={labelStyle}>Quantity</div>
-                              <Input type="number" value={String(posDraft.qty)} onChange={(v) => setPosDraft((p) => ({ ...p, qty: Math.max(1, Math.min(999, Number(v || 1))) }))} />
+                              <Input
+                                type="number"
+                                value={String(posDraft.qty)}
+                                onChange={(v) => setPosDraft((p) => ({ ...p, qty: Math.max(1, Math.min(999, Number(v || 1))) }))}
+                              />
                             </div>
                           </div>
 
@@ -1599,7 +1632,7 @@ export default function App() {
                                     return {
                                       ...p,
                                       fieldsX: fx,
-                                      colWidthsMm: scaleSplitsToTotal(p.colWidthsMm, p.widthMm, fx),
+                                      colWidthsMm: scaleSplitsToTotal(p.widthMm, p.colWidthsMm ?? [], fx),
                                       cellInsertions: normalizeCellInsertions(fx, p.fieldsY, p.cellInsertions, p.insertion),
                                     };
                                   })
@@ -1617,7 +1650,7 @@ export default function App() {
                                     return {
                                       ...p,
                                       fieldsY: fy,
-                                      rowHeightsMm: scaleSplitsToTotal(p.rowHeightsMm, p.heightMm, fy),
+                                      rowHeightsMm: scaleSplitsToTotal(p.heightMm, p.rowHeightsMm ?? [], fy),
                                       cellInsertions: normalizeCellInsertions(p.fieldsX, fy, p.cellInsertions, p.insertion),
                                     };
                                   })
@@ -1641,12 +1674,22 @@ export default function App() {
                                 </div>
 
                                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                                  <select value={openingStd} onChange={(e) => setOpeningStd(e.target.value as any)} style={{ borderRadius: 10, border: "1px solid #e4e4e7", padding: "6px 10px", fontSize: 12 }} title="Opening convention">
+                                  <select
+                                    value={openingStd}
+                                    onChange={(e) => setOpeningStd(e.target.value as any)}
+                                    style={{ borderRadius: 10, border: "1px solid #e4e4e7", padding: "6px 10px", fontSize: 12 }}
+                                    title="Opening convention"
+                                  >
                                     <option value="DIN">DIN</option>
                                     <option value="UK">UK</option>
                                   </select>
 
-                                  <select value={previewView} onChange={(e) => setPreviewView(e.target.value as any)} style={{ borderRadius: 10, border: "1px solid #e4e4e7", padding: "6px 10px", fontSize: 12 }} title="View">
+                                  <select
+                                    value={previewView}
+                                    onChange={(e) => setPreviewView(e.target.value as any)}
+                                    style={{ borderRadius: 10, border: "1px solid #e4e4e7", padding: "6px 10px", fontSize: 12 }}
+                                    title="View"
+                                  >
                                     <option value="Inside">Inside</option>
                                     <option value="Outside">Outside</option>
                                   </select>
@@ -1659,7 +1702,10 @@ export default function App() {
                                   onChange={(e) =>
                                     setPosDraft((p) => ({
                                       ...p,
-                                      cellInsertions: { ...(p.cellInsertions ?? {}), [keyForCell(draftSelectedCell.col, draftSelectedCell.row)]: e.target.value },
+                                      cellInsertions: {
+                                        ...(p.cellInsertions ?? {}),
+                                        [keyForCell(draftSelectedCell.col, draftSelectedCell.row)]: e.target.value,
+                                      },
                                     }))
                                   }
                                   style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
@@ -1679,7 +1725,11 @@ export default function App() {
                               <H3>Use estimate defaults</H3>
                               <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
                                 <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700 }}>
-                                  <input type="checkbox" checked={posDraft.useEstimateDefaults} onChange={(e) => setPosDraft((p) => ({ ...p, useEstimateDefaults: e.target.checked }))} />
+                                  <input
+                                    type="checkbox"
+                                    checked={posDraft.useEstimateDefaults}
+                                    onChange={(e) => setPosDraft((p) => ({ ...p, useEstimateDefaults: e.target.checked }))}
+                                  />
                                   Use estimate defaults for this position
                                 </label>
                                 <Small>When unticked, you can override the same defaults below (same option set as “Supplier & Product Defaults”).</Small>
@@ -1690,7 +1740,10 @@ export default function App() {
                               <DefaultsEditor
                                 title="Position Overrides"
                                 productType={(posDraft.overrides.productType as ProductType) || selectedEstimate.defaults.productType}
-                                value={{ ...selectedEstimate.defaults, ...posDraft.overrides }}
+                                value={{
+                                  ...selectedEstimate.defaults,
+                                  ...posDraft.overrides,
+                                }}
                                 onChange={(next) => setPositionDefaultsOverride(next)}
                                 showDoorOptions={posDraft.positionType === "Door"}
                               />
@@ -1727,7 +1780,12 @@ export default function App() {
                                       const fx = next.fieldsX ?? p.fieldsX;
                                       const fy = next.fieldsY ?? p.fieldsY;
                                       const ins = (next.insertion ?? p.insertion) as any;
-                                      const cellInsertions = normalizeCellInsertions(fx, fy, next.cellInsertions ?? p.cellInsertions, ins);
+                                      const cellInsertions = normalizeCellInsertions(
+                                        fx,
+                                        fy,
+                                        next.cellInsertions ?? p.cellInsertions,
+                                        ins
+                                      );
                                       return { ...p, ...next, cellInsertions };
                                     })
                                   }
@@ -1768,18 +1826,20 @@ export default function App() {
                 )}
               </Card>
             )}
-
-            {/* Fallback for other menus */}
-            {menu !== "client_database" && (
-              <Card style={{ minHeight: 520 }}>
-                <H2>{menu.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase())}</H2>
-                <Small>Placeholder screen.</Small>
-              </Card>
-            )}
           </div>
         </div>
       </div>
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
 
