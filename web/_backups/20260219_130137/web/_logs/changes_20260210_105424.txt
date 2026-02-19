@@ -1,0 +1,13 @@
+Change: Supplier & Product Defaults flow + estimate picker + position wizard (no supplier step) + refinements
+- Open/New Estimate routes to Supplier & Product Defaults
+- Multiple estimates: show estimate picker list
+- Position wizard uses estimate defaults / overrides (same option set)
+- Finishes: typeahead dropdown (datalist) per product type (placeholder lists)
+- Hinges options: Concealed / Exposed 130Kg / Exposed 180Kg
+- Glazing: Ug values per double/triple; G fixed at 0.53 placeholder
+- Handle types: Type 1..5 with placeholder image
+- Doors: multipoint locking + electrical operation + day latch
+- Accessories: cill depth ranges + end cap types + per-side frame extensions
+- Directory tree generator fixed (TrimStart)
+
+Backup: .\_backups\App.tsx.before_supplier_defaults_20260210_105424.bak

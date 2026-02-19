@@ -1,3 +1,4 @@
+
 import React, { useEffect, useMemo, useState } from "react";
 import GridEditor from "./components/GridEditor";
 
@@ -412,12 +413,16 @@ function Input({
   placeholder,
   type = "text",
   list,
+  disabled,
+  readOnly,
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   type?: string;
   list?: string;
+  disabled?: boolean;
+  readOnly?: boolean;
 }) {
   return (
     <input
@@ -425,6 +430,8 @@ function Input({
       value={value}
       placeholder={placeholder}
       list={list}
+      disabled={disabled}
+      readOnly={readOnly}
       onChange={(e) => onChange(e.target.value)}
       style={{
         width: "100%",
@@ -927,6 +934,167 @@ function scaleSplitsToTotal(splits: number[] | undefined, total: number, parts: 
   return scaled;
 }
 
+function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => void }) {
+  const partsP = (c.projectAddress || "").split(/\r?\n/).map((s) => (s || "").trim()).filter(Boolean);
+  while (partsP.length < 7) partsP.push("");
+  const [p1, p2, p3, pt, pc, pco, pp] = [partsP[0] || "", partsP[1] || "", partsP[2] || "", partsP[3] || "", partsP[4] || "", partsP[5] || "", partsP[6] || ""];
+
+  const invDifferent = ((c.invoiceAddress || "").trim() !== (c.projectAddress || "").trim());
+  const partsI = (c.invoiceAddress || "").split(/\r?\n/).map((s) => (s || "").trim()).filter(Boolean);
+  while (partsI.length < 7) partsI.push("");
+  const [i1, i2, i3, it, ic, ico, ip] = [partsI[0] || "", partsI[1] || "", partsI[2] || "", partsI[3] || "", partsI[4] || "", partsI[5] || "", partsI[6] || ""];
+
+  return (
+    <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", padding: 12, background: "#fff" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <H3>Client contact information</H3>
+        <Button variant="secondary" onClick={onEdit}>Edit</Button>
+      </div>
+
+      <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input type="checkbox" checked={c.type === "Business"} disabled />
+            <span style={{ fontSize: 12, fontWeight: 800, color: "#3f3f46" }}>Business customer</span>
+          </label>
+          <Small>Type: {c.type}</Small>
+        </div>
+
+        {c.type === "Business" ? (
+          <>
+            <div>
+              <div style={labelStyle}>Business name</div>
+              <Input value={c.businessName || c.clientName || ""} onChange={() => {}} disabled />
+            </div>
+            <div>
+              <div style={labelStyle}>Contact name</div>
+              <Input value={c.contactPerson || ""} onChange={() => {}} disabled />
+            </div>
+          </>
+        ) : (
+          <div>
+            <div style={labelStyle}>Client name</div>
+            <Input value={c.clientName || ""} onChange={() => {}} disabled />
+          </div>
+        )}
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div>
+            <div style={labelStyle}>Email</div>
+            <Input value={c.email || ""} onChange={() => {}} disabled />
+          </div>
+          <div>
+            <div style={labelStyle}>Mobile</div>
+            <Input value={c.mobile || ""} onChange={() => {}} disabled />
+          </div>
+        </div>
+
+        <div>
+          <div style={labelStyle}>Home</div>
+          <Input value={c.home || ""} onChange={() => {}} disabled />
+        </div>
+
+        <div style={{ marginTop: 10, borderTop: "1px solid #e4e4e7", paddingTop: 10 }}>
+          <H3>Project site address</H3>
+
+          <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div>
+                <div style={labelStyle}>Address line 1</div>
+                <Input value={p1} onChange={() => {}} disabled />
+              </div>
+              <div>
+                <div style={labelStyle}>Address line 2</div>
+                <Input value={p2} onChange={() => {}} disabled />
+              </div>
+            </div>
+
+            <div>
+              <div style={labelStyle}>Address line 3</div>
+              <Input value={p3} onChange={() => {}} disabled />
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div>
+                <div style={labelStyle}>Town</div>
+                <Input value={pt} onChange={() => {}} disabled />
+              </div>
+              <div>
+                <div style={labelStyle}>City</div>
+                <Input value={pc} onChange={() => {}} disabled />
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div>
+                <div style={labelStyle}>County</div>
+                <Input value={pco} onChange={() => {}} disabled />
+              </div>
+              <div>
+                <div style={labelStyle}>Postcode</div>
+                <Input value={pp} onChange={() => {}} disabled />
+              </div>
+            </div>
+
+            <div style={{ marginTop: 6 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 800 }}>
+                <input type="checkbox" checked={invDifferent} disabled />
+                Invoice address if different
+              </label>
+            </div>
+
+            {invDifferent && (
+              <div style={{ marginTop: 10, borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
+                <H3>Invoice address</H3>
+
+                <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <div>
+                      <div style={labelStyle}>Address line 1</div>
+                      <Input value={i1} onChange={() => {}} disabled />
+                    </div>
+                    <div>
+                      <div style={labelStyle}>Address line 2</div>
+                      <Input value={i2} onChange={() => {}} disabled />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={labelStyle}>Address line 3</div>
+                    <Input value={i3} onChange={() => {}} disabled />
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <div>
+                      <div style={labelStyle}>Town</div>
+                      <Input value={it} onChange={() => {}} disabled />
+                    </div>
+                    <div>
+                      <div style={labelStyle}>City</div>
+                      <Input value={ic} onChange={() => {}} disabled />
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <div>
+                      <div style={labelStyle}>County</div>
+                      <Input value={ico} onChange={() => {}} disabled />
+                    </div>
+                    <div>
+                      <div style={labelStyle}>Postcode</div>
+                      <Input value={ip} onChange={() => {}} disabled />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ClientSummary({ c }: { c: Client }) {
   const headline = c.type === "Business" ? (c.businessName || c.clientName) : c.clientName;
   const sub = c.type === "Business" ? (c.contactPerson ? `Contact: ${c.contactPerson}` : "Contact: —") : "Individual";
@@ -977,13 +1145,143 @@ export default function App() {
 
   // Add client UI
   const [showAddClient, setShowAddClient] = useState(false);
+  // client edit mode
+  const [editingClientId, setEditingClientId] = useState<string | null>(null);
+
+  function splitAddress7(addr: string): [string, string, string, string, string, string, string] {
+    const parts = (addr || "")
+      .split(/\r?\n/)
+      .map((s) => (s || "").trim())
+      .filter(Boolean);
+    while (parts.length < 7) parts.push("");
+    return [parts[0] || "", parts[1] || "", parts[2] || "", parts[3] || "", parts[4] || "", parts[5] || "", parts[6] || ""];
+  }
+
+  function openEditClientPanel(c: Client) {
+    setView("customers");
+    setEditingClientId(c.id);
+
+    setDraftClientType(c.type === "Business" ? "Business" : "Individual");
+    setDraftClientName(c.clientName || "");
+    setDraftBusinessName(c.businessName || "");
+    setDraftContactName(c.contactPerson || "");
+
+    setDraftProjectName(c.projectName || "");
+
+    setDraftEmail(c.email || "");
+    setDraftMobile(c.mobile || "");
+    setDraftHome(c.home || "");
+
+    const [pa1, pa2, pa3, pt, pc, pco, pp] = splitAddress7(c.projectAddress || "");
+    setDraftProjAddress1(pa1);
+    setDraftProjAddress2(pa2);
+    setDraftProjAddress3(pa3);
+    setDraftProjTown(pt);
+    setDraftProjCity(pc);
+    setDraftProjCounty(pco);
+    setDraftProjPostcode(pp);
+
+    const invoiceDifferentNow = ((c.invoiceAddress || "").trim() !== (c.projectAddress || "").trim());
+    setInvoiceDifferent(invoiceDifferentNow);
+
+    const [ia1, ia2, ia3, it, ic, ico, ip] = splitAddress7(c.invoiceAddress || "");
+    setDraftInvAddress1(ia1);
+    setDraftInvAddress2(ia2);
+    setDraftInvAddress3(ia3);
+    setDraftInvTown(it);
+    setDraftInvCity(ic);
+    setDraftInvCounty(ico);
+    setDraftInvPostcode(ip);
+
+    setShowAddClient(true);
+  }
+
+  function updateClient(type: ClientType) {
+    if (!editingClientId) return;
+
+    const projectAddress =
+      [
+        draftProjAddress1,
+        draftProjAddress2,
+        draftProjAddress3,
+        draftProjTown,
+        draftProjCity,
+        draftProjCounty,
+        draftProjPostcode,
+      ]
+        .map((s) => (s || "").trim())
+        .filter(Boolean)
+        .join("\n") || DEFAULT_CUSTOMER_ADDRESS;
+
+    const invoiceAddress = invoiceDifferent
+      ? ([
+          draftInvAddress1,
+          draftInvAddress2,
+          draftInvAddress3,
+          draftInvTown,
+          draftInvCity,
+          draftInvCounty,
+          draftInvPostcode,
+        ]
+          .map((s) => (s || "").trim())
+          .filter(Boolean)
+          .join("\n") || projectAddress)
+      : projectAddress;
+
+    const businessName = (draftBusinessName || "").trim();
+    const contactPerson = (draftContactName || "").trim();
+    const clientName = type === "Business" ? (businessName || "Business") : ((draftClientName || "").trim() || "Client");
+
+    setClients((prev) =>
+      prev.map((c) =>
+        c.id !== editingClientId
+          ? c
+          : {
+              ...c,
+              type,
+              clientName,
+              businessName: type === "Business" ? businessName : undefined,
+              contactPerson: type === "Business" ? contactPerson : undefined,
+              email: (draftEmail || "").trim(),
+              mobile: (draftMobile || "").trim(),
+              home: (draftHome || "").trim(),
+              projectName: (draftProjectName || "").trim(),
+              projectAddress,
+              invoiceAddress,
+            }
+      )
+    );
+
+    setShowAddClient(false);
+    setEditingClientId(null);
+  }
+
   const [draftClientType, setDraftClientType] = useState<ClientType>("Individual");
   const [draftClientName, setDraftClientName] = useState("");
   const [draftBusinessName, setDraftBusinessName] = useState("");
   const [draftContactName, setDraftContactName] = useState("");
+  const [draftProjectName, setDraftProjectName] = useState("");
   const [draftEmail, setDraftEmail] = useState("");
   const [draftMobile, setDraftMobile] = useState("");
   const [draftHome, setDraftHome] = useState("");
+  // Add client: Project + Invoice addresses
+  const [draftProjAddress1, setDraftProjAddress1] = useState("");
+  const [draftProjAddress2, setDraftProjAddress2] = useState("");
+  const [draftProjAddress3, setDraftProjAddress3] = useState("");
+  const [draftProjTown, setDraftProjTown] = useState("");
+  const [draftProjCity, setDraftProjCity] = useState("");
+  const [draftProjCounty, setDraftProjCounty] = useState("");
+  const [draftProjPostcode, setDraftProjPostcode] = useState("");
+
+  const [invoiceDifferent, setInvoiceDifferent] = useState(false);
+  const [draftInvAddress1, setDraftInvAddress1] = useState("");
+  const [draftInvAddress2, setDraftInvAddress2] = useState("");
+  const [draftInvAddress3, setDraftInvAddress3] = useState("");
+  const [draftInvTown, setDraftInvTown] = useState("");
+  const [draftInvCity, setDraftInvCity] = useState("");
+  const [draftInvCounty, setDraftInvCounty] = useState("");
+  const [draftInvPostcode, setDraftInvPostcode] = useState("");
+
 
   // Position wizard
   const [showPositionWizard, setShowPositionWizard] = useState(false);
@@ -1050,24 +1348,15 @@ export default function App() {
   }
 
   function openClient(client: Client) {
-    setSelectedClientId(client.id);
+  setSelectedClientId(client.id);
 
-    if (client.estimates.length === 0) {
-      createEstimateForClient(client);
-      return;
-    }
+  // Open should show the client in the database flow (choose estimate),
+  // not jump straight to Supplier & Product Defaults.
+  setPickerClientId(client.id);
+  setView("estimate_picker");
+}
 
-    if (client.estimates.length === 1) {
-      openEstimateDefaults(client.id, client.estimates[0].id);
-      return;
-    }
-
-    // multiple estimates => show picker list
-    setPickerClientId(client.id);
-    setView("estimate_picker");
-  }
-
-  function openEstimateFromPicker(estimateId: string) {
+function openEstimateFromPicker(estimateId: string) {
     if (!pickerClientId) return;
     openEstimateDefaults(pickerClientId, estimateId);
   }
@@ -1148,6 +1437,43 @@ export default function App() {
   }
 
   function createClient(type: ClientType) {
+    const projectAddressStr = [
+      draftProjAddress1.trim(),
+      draftProjAddress2.trim(),
+      draftProjAddress3.trim(),
+      draftProjTown.trim(),
+      draftProjCity.trim(),
+      draftProjCounty.trim(),
+      draftProjPostcode.trim(),
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const invoiceAddressStr = invoiceDifferent
+      ? [
+          draftInvAddress1.trim(),
+          draftInvAddress2.trim(),
+          draftInvAddress3.trim(),
+          draftInvTown.trim(),
+          draftInvCity.trim(),
+          draftInvCounty.trim(),
+          draftInvPostcode.trim(),
+        ]
+          .filter(Boolean)
+          .join("\n")
+      : projectAddressStr;
+    const projectAddress = [
+      draftProjAddress1, draftProjAddress2, draftProjAddress3,
+      draftProjTown, draftProjCity, draftProjCounty, draftProjPostcode,
+    ].map((s) => (s || "").trim()).filter(Boolean).join("\n") || DEFAULT_CUSTOMER_ADDRESS;
+
+    const invoiceAddress = invoiceDifferent
+      ? ([
+          draftInvAddress1, draftInvAddress2, draftInvAddress3,
+          draftInvTown, draftInvCity, draftInvCounty, draftInvPostcode,
+        ].map((s) => (s || "").trim()).filter(Boolean).join("\n") || projectAddress)
+      : projectAddress;
+
     const businessName = draftBusinessName.trim();
     const contactPerson = draftContactName.trim();
     const clientName = type === "Business" ? businessName || "Business" : draftClientName.trim() || "Client";
@@ -1161,8 +1487,8 @@ export default function App() {
       mobile: draftMobile.trim(),
       home: draftHome.trim(),
       projectName: "",
-      projectAddress: DEFAULT_CUSTOMER_ADDRESS,
-      invoiceAddress: DEFAULT_CUSTOMER_ADDRESS,
+      projectAddress,
+      invoiceAddress,
       businessName: type === "Business" ? businessName : undefined,
       contactPerson: type === "Business" ? contactPerson : undefined,
       estimates: [],
@@ -1179,9 +1505,26 @@ export default function App() {
     setDraftEmail("");
     setDraftMobile("");
     setDraftHome("");
+    setDraftProjAddress1("");
+    setDraftProjAddress2("");
+    setDraftProjAddress3("");
+    setDraftProjTown("");
+    setDraftProjCity("");
+    setDraftProjCounty("");
+    setDraftProjPostcode("");
+
+    setInvoiceDifferent(false);
+    setDraftInvAddress1("");
+    setDraftInvAddress2("");
+    setDraftInvAddress3("");
+    setDraftInvTown("");
+    setDraftInvCity("");
+    setDraftInvCounty("");
+    setDraftInvPostcode("");
   }
 
   function openAddClientPanel() {
+    setEditingClientId(null);
     setDraftClientType("Individual");
     setDraftClientName("");
     setDraftBusinessName("");
@@ -1189,6 +1532,23 @@ export default function App() {
     setDraftEmail("");
     setDraftMobile("");
     setDraftHome("");
+    setDraftProjectName("");
+    setDraftProjAddress1("");
+    setDraftProjAddress2("");
+    setDraftProjAddress3("");
+    setDraftProjTown("");
+    setDraftProjCity("");
+    setDraftProjCounty("");
+    setDraftProjPostcode("");
+
+    setInvoiceDifferent(false);
+    setDraftInvAddress1("");
+    setDraftInvAddress2("");
+    setDraftInvAddress3("");
+    setDraftInvTown("");
+    setDraftInvCity("");
+    setDraftInvCounty("");
+    setDraftInvPostcode("");
     setShowAddClient(true);
   }
 
@@ -1249,7 +1609,7 @@ export default function App() {
                   </div>
 
                   <Button variant="primary" onClick={openAddClientPanel}>
-                    Add Client
+                    Add new client
                   </Button>
                 </div>
 
@@ -1257,7 +1617,7 @@ export default function App() {
                   <div style={{ marginTop: 14, borderRadius: 16, border: "1px solid #e4e4e7", padding: 12, background: "#fff" }}>
                     <div style={{ display: "grid", gap: 10 }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                        <H3>Add client</H3>
+                        <H3>Client contact information</H3>
 
                         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                           <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
@@ -1308,12 +1668,117 @@ export default function App() {
                         <Input value={draftHome} onChange={setDraftHome} placeholder="01..." />
                       </div>
 
+                      <div>
+                        <div style={labelStyle}>Project name</div>
+                        <Input value={draftProjectName} onChange={setDraftProjectName} placeholder="Project name" />
+                      </div>
+                      <div style={{ marginTop: 10, borderTop: "1px solid #e4e4e7", paddingTop: 10 }}>
+                        <H3>Project site address</H3>
+
+                        <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                            <div>
+                              <div style={labelStyle}>Address line 1</div>
+                              <Input value={draftProjAddress1} onChange={setDraftProjAddress1} placeholder="Address line 1" />
+                            </div>
+                            <div>
+                              <div style={labelStyle}>Address line 2</div>
+                              <Input value={draftProjAddress2} onChange={setDraftProjAddress2} placeholder="Address line 2" />
+                            </div>
+                          </div>
+
+                          <div>
+                            <div style={labelStyle}>Address line 3</div>
+                            <Input value={draftProjAddress3} onChange={setDraftProjAddress3} placeholder="Address line 3" />
+                          </div>
+
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                            <div>
+                              <div style={labelStyle}>Town</div>
+                              <Input value={draftProjTown} onChange={setDraftProjTown} placeholder="Town" />
+                            </div>
+                            <div>
+                              <div style={labelStyle}>City</div>
+                              <Input value={draftProjCity} onChange={setDraftProjCity} placeholder="City" />
+                            </div>
+                          </div>
+
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                            <div>
+                              <div style={labelStyle}>County</div>
+                              <Input value={draftProjCounty} onChange={setDraftProjCounty} placeholder="County" />
+                            </div>
+                            <div>
+                              <div style={labelStyle}>Postcode</div>
+                              <Input value={draftProjPostcode} onChange={setDraftProjPostcode} placeholder="Postcode" />
+                            </div>
+                          </div>
+
+                          <div style={{ marginTop: 6 }}>
+                            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 800 }}>
+                              <input
+                                type="checkbox"
+                                checked={invoiceDifferent}
+                                onChange={(e) => setInvoiceDifferent(e.currentTarget.checked)}
+                              />
+                              Invoice address if different
+                            </label>
+                          </div>
+
+                          {invoiceDifferent && (
+                            <div style={{ marginTop: 10, borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
+                              <H3>Invoice address</H3>
+
+                              <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                                  <div>
+                                    <div style={labelStyle}>Address line 1</div>
+                                    <Input value={draftInvAddress1} onChange={setDraftInvAddress1} placeholder="Address line 1" />
+                                  </div>
+                                  <div>
+                                    <div style={labelStyle}>Address line 2</div>
+                                    <Input value={draftInvAddress2} onChange={setDraftInvAddress2} placeholder="Address line 2" />
+                                  </div>
+                                </div>
+
+                                <div>
+                                  <div style={labelStyle}>Address line 3</div>
+                                  <Input value={draftInvAddress3} onChange={setDraftInvAddress3} placeholder="Address line 3" />
+                                </div>
+
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                                  <div>
+                                    <div style={labelStyle}>Town</div>
+                                    <Input value={draftInvTown} onChange={setDraftInvTown} placeholder="Town" />
+                                  </div>
+                                  <div>
+                                    <div style={labelStyle}>City</div>
+                                    <Input value={draftInvCity} onChange={setDraftInvCity} placeholder="City" />
+                                  </div>
+                                </div>
+
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                                  <div>
+                                    <div style={labelStyle}>County</div>
+                                    <Input value={draftInvCounty} onChange={setDraftInvCounty} placeholder="County" />
+                                  </div>
+                                  <div>
+                                    <div style={labelStyle}>Postcode</div>
+                                    <Input value={draftInvPostcode} onChange={setDraftInvPostcode} placeholder="Postcode" />
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
                       <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-                        <Button variant="secondary" onClick={() => setShowAddClient(false)}>
+                        <Button variant="secondary" onClick={() => { setShowAddClient(false); setEditingClientId(null); }}>
                           Cancel
                         </Button>
-                        <Button variant="primary" onClick={() => createClient(draftClientType)}>
-                          Create Client
+                        <Button variant="primary" onClick={() => (editingClientId ? updateClient(draftClientType) : createClient(draftClientType))}>
+                          {editingClientId ? "Save Changes" : "Create Client"}
                         </Button>
                       </div>
                     </div>
@@ -1384,7 +1849,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  <ClientSummary c={pickerClient} />
+                  <ClientDetailsReadonly c={pickerClient} onEdit={() => openEditClientPanel(pickerClient)} />
 
                   <div style={{ marginTop: 2, display: "grid", gap: 10 }}>
                     {pickerClient.estimates.map((e) => (
@@ -1782,4 +2247,15 @@ export default function App() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
 
