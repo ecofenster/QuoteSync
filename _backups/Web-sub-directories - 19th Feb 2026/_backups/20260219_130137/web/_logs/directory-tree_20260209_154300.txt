@@ -1,0 +1,54 @@
+QuoteSync Directory Tree
+Generated: 2026-02-09 15:43:01
+Root: C:\Github\QuoteSync\web
+Git: 250e8e0
+
+[DIR ]  _backups
+[DIR ]  _logs
+[DIR ]  _manifests
+[FILE]  _manifests\directory_manifest_20260209_134308_250e8e0.txt  (3438 bytes)
+[DIR ]  _project
+[FILE]  _project\CHANGELOG.md  (1113 bytes)
+[FILE]  _project\directory-tree.txt  (242434 bytes)
+[FILE]  .gitignore  (277 bytes)
+[FILE]  CHANGELOG.md  (358 bytes)
+[FILE]  directory-tree.txt  (242327 bytes)
+[FILE]  eslint.config.js  (639 bytes)
+[FILE]  index.html  (365 bytes)
+[FILE]  manifest.json  (1973 bytes)
+[DIR ]  node_modules
+[FILE]  package-lock.json  (115795 bytes)
+[FILE]  package.json  (734 bytes)
+[DIR ]  public
+[FILE]  public\quotesync-logo.png  (284365 bytes)
+[FILE]  public\quotesync-logo1.png  (4275 bytes)
+[FILE]  public\vite.svg  (1497 bytes)
+[FILE]  README.manifest.md  (1212 bytes)
+[FILE]  README.md  (2628 bytes)
+[DIR ]  src
+[FILE]  src\App - Copy - broken.tsx  (0 bytes)
+[FILE]  src\App.css  (85 bytes)
+[FILE]  src\App.tsx  (78033 bytes)
+[FILE]  src\App.tsx.bak_20260128_143038  (46604 bytes)
+[FILE]  src\App.tsx.bak_20260128_143417  (46874 bytes)
+[FILE]  src\App.tsx.bak_20260128_151025  (46870 bytes)
+[FILE]  src\App.tsx.bak_20260128_151206  (46930 bytes)
+[FILE]  src\App.tsx.bak_20260128_151629  (47122 bytes)
+[FILE]  src\App.tsx.bak_20260128_154228  (47072 bytes)
+[FILE]  src\App.tsx.bak_20260128_155938  (60158 bytes)
+[FILE]  src\App.tsx.bak_20260128_160655  (59983 bytes)
+[FILE]  src\App.tsx.bak_20260128_165438  (62145 bytes)
+[FILE]  src\App.tsx.bak_20260128_170348  (62385 bytes)
+[FILE]  src\App.tsx.bak_20260128_171013  (62387 bytes)
+[FILE]  src\app.txt  (62385 bytes)
+[DIR ]  src\assets
+[FILE]  src\assets\quotesync-logo.png  (4275 bytes)
+[FILE]  src\assets\react.svg  (4126 bytes)
+[DIR ]  src\components
+[FILE]  src\components\GridEditor.tsx  (10715 bytes)
+[FILE]  src\index.css  (323 bytes)
+[FILE]  src\main.tsx  (240 bytes)
+[FILE]  tsconfig.app.json  (760 bytes)
+[FILE]  tsconfig.json  (126 bytes)
+[FILE]  tsconfig.node.json  (679 bytes)
+[FILE]  vite.config.ts  (168 bytes)

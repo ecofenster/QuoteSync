@@ -1,0 +1,29 @@
+Snapshot: 20260210_122633
+RunDir: C:\Github\QuoteSync\web
+
+Backups: .\_backups\*.20260210_122633.bak
+Tree: .\directory-tree.txt
+
+Git status (porcelain):
+M web/src/App.tsx
+?? quotesync-tree.txt
+?? web/CHANGELOG.md
+?? web/_backups/App.tsx.20260210_122633.bak
+?? web/_backups/App.tsx.before_fix_20260209_115654.bak
+?? web/_backups/App.tsx.before_supplier_defaults_20260209_151458.bak
+?? web/_backups/App.tsx.before_supplier_defaults_20260210_105424.bak
+?? web/_backups/App.tsx.snapshot_20260210_115037.bak
+?? web/_backups/GridEditor.tsx.20260210_122633.bak
+?? web/_backups/package.json.20260209_134308.bak
+?? web/_backups/package.json.20260210_122633.bak
+?? web/_backups/src_App.tsx.20260209_134308.bak
+?? web/_backups/src_components_GridEditor.tsx.20260209_134308.bak
+?? web/_backups/src_main.tsx.20260209_134308.bak
+?? web/_backups/tsconfig.json.20260209_134308.bak
+?? web/_backups/tsconfig.json.20260210_122633.bak
+?? web/_backups/vite.config.ts.20260209_134308.bak
+?? web/_backups/vite.config.ts.20260210_122633.bak
+?? web/_logs/
+?? web/_manifests/
+?? web/_project/
+?? web/directory-tree.txt

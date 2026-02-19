@@ -1,0 +1,14 @@
+/* QuoteSync baseline: theme-neutral mount point + prevent horizontal overflow */
+html, body { margin: 0; padding: 0; width: 100%; }
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body { overflow-x: hidden; }
+
+#root {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
