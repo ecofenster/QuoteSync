@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import GridEditor from "./components/GridEditor";
 import EstimatePickerTabs from "./features/estimatePicker/EstimatePickerTabs";
-import * as Models from "./models/types";
+import type * as Models from "./models/types";
 
 /* =========================
    Helpers

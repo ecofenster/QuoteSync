@@ -1,8 +1,8 @@
-﻿
+
 import React, { useEffect, useMemo, useState } from "react";
 import GridEditor from "./components/GridEditor";
 import EstimatePickerTabs from "./features/estimatePicker/EstimatePickerTabs";
-import * as Models from "./models/types";
+import type * as Models from "./models/types";
 
 /* =========================
    Helpers
@@ -192,7 +192,7 @@ const DEFAULT_CUSTOMER_ADDRESS = ["4 Glebe Road", "Cowdenbeath", "Fife", "KY4 9F
 function makeDefaultClients(): Client[] {
   return [
     {
-      id: Models.asClientId(uid()),
+      id: uid(),
       type: "Business",
       clientRef: nextClientRef(1),
       clientName: "Ecofenster Ltd",
@@ -207,7 +207,7 @@ function makeDefaultClients(): Client[] {
       estimates: [],
     },
     {
-      id: Models.asClientId(uid()),
+      id: uid(),
       type: "Individual",
       clientRef: nextClientRef(2),
       clientName: "Craig Ferguson",
@@ -1017,28 +1017,35 @@ export default function App() {
 
   const [clients, setClients] = useState<Client[]>(() => makeDefaultClients());
 
-  const [selectedClientId, setSelectedClientId] = useState<Models.ClientId | null>(null);
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const selectedClient = useMemo(() => clients.find((c) => c.id === selectedClientId) ?? null, [clients, selectedClientId]);
 
-  const [selectedEstimateId, setSelectedEstimateId] = useState<Models.EstimateId | null>(null);
+  const [selectedEstimateId, setSelectedEstimateId] = useState<string | null>(null);
   const selectedEstimate = useMemo(() => {
     if (!selectedClient) return null;
     return selectedClient.estimates.find((e) => e.id === selectedEstimateId) ?? null;
   }, [selectedClient, selectedEstimateId]);
 
   // estimate picker
-  const [pickerClientId, setPickerClientId] = useState<Models.ClientId | null>(null);
+  const [pickerClientId, setPickerClientId] = useState<string | null>(null);
   const pickerClient = useMemo(() => clients.find((c) => c.id === pickerClientId) ?? null, [clients, pickerClientId]);
 
   // estimate picker tabs (Estimate Picker only)
+  type EstimatePickerTab =
+  | "client_info"
+  | "estimates"
+  | "orders"
+  | "client_notes"
+  | "files";
 
+type EstimateOutcome = "Open" | "Lost" | "Order";
 
 const [estimatePickerTab, setEstimatePickerTab] =
-  useState<Models.EstimatePickerTab>("client_info");
-  const [estimateOutcomeById, setEstimateOutcomeById] = useState<Record<Models.EstimateId, Models.EstimateOutcome>>({});
-  const [clientNotes, setClientNotes] = useState<Models.ClientNote[]>([]);
+  useState<EstimatePickerTab>("client_info");
+  const [estimateOutcomeById, setEstimateOutcomeById] = useState<Record<string, EstimateOutcome>>({});
+  const [clientNotes, setClientNotes] = useState<Array<{ id: string; html: string; createdAt: string; createdBy: string }>>([]);
   const [clientNoteDraftHtml, setClientNoteDraftHtml] = useState<string>("");
-  const [clientFiles, setClientFiles] = useState<Models.ClientFile[]>([]);
+  const [clientFiles, setClientFiles] = useState<Array<{ id: string; label: string; url: string; addedAt: string; addedBy: string; fileNames?: string[] }>>([]);
   const [clientFileLabel, setClientFileLabel] = useState<string>("");
   const [clientFileUrl, setClientFileUrl] = useState<string>("");
   const [clientFileNames, setClientFileNames] = useState<string[]>([]);
@@ -1048,7 +1055,7 @@ const [estimatePickerTab, setEstimatePickerTab] =
   // Add client UI
   const [showAddClient, setShowAddClient] = useState(false);
   // client edit mode
-  const [editingClientId, setEditingClientId] = useState<Models.ClientId | null>(null);
+  const [editingClientId, setEditingClientId] = useState<string | null>(null);
 
   function splitAddress7(addr: string): [string, string, string, string, string, string, string] {
     const parts = (addr || "")
@@ -1189,7 +1196,7 @@ const [estimatePickerTab, setEstimatePickerTab] =
   const [showPositionWizard, setShowPositionWizard] = useState(false);
   const [posStep, setPosStep] = useState<1 | 2 | 3>(1); // 1 Position, 2 Dimensions, 3 Configuration
   const [posDraft, setPosDraft] = useState<Position>(() => ({
-    id: Models.asPositionId(uid()),
+    id: uid(),
     positionRef: "W-001",
     qty: 1,
     roomName: "",
@@ -1232,7 +1239,7 @@ const [estimatePickerTab, setEstimatePickerTab] =
     const base = nextEstimateBaseRef(year, estimateCounter);
 
     const est: Estimate = {
-      id: Models.asEstimateId(uid()),
+      id: uid(),
       estimateRef: estimateRefWithRevision(base, 0),
       baseEstimateRef: base,
       revisionNo: 0,
@@ -1271,7 +1278,7 @@ function openEstimateFromPicker(estimateId: string) {
     setPosStep(1);
     setDraftSelectedCell({ col: 0, row: 0 });
     setPosDraft({
-      id: Models.asPositionId(uid()),
+      id: uid(),
       positionRef: `W-${pad3(nextIndex)}`,
       qty: 1,
       roomName: "",
@@ -1293,7 +1300,7 @@ function openEstimateFromPicker(estimateId: string) {
 
     const newPos: Position = {
       ...posDraft,
-      id: Models.asPositionId(uid()),
+      id: uid(),
       widthMm: clampNum(Math.round(posDraft.widthMm || 0), 300, 6000),
       heightMm: clampNum(Math.round(posDraft.heightMm || 0), 300, 6000),
       fieldsX: clampNum(Math.round(posDraft.fieldsX || 1), 1, 16),
@@ -1381,7 +1388,7 @@ function openEstimateFromPicker(estimateId: string) {
     const clientName = type === "Business" ? businessName || "Business" : draftClientName.trim() || "Client";
 
     const newClient: Client = {
-      id: Models.asClientId(uid()),
+      id: uid(),
       type,
       clientRef: nextClientRef(clientCounter),
       clientName,
