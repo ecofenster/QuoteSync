@@ -1576,8 +1576,7 @@ function openEstimateFromPicker(estimateId: string) {
               <H3>Customers</H3>
               <div style={{ marginTop: 8 }}>
                 <SidebarItem label="Client Database" active={menu === "client_database"} onClick={() => selectMenu("client_database")} />
-                              <SidebarItem label="Follow Ups" active={((menu as any) === "follow_ups")} onClick={() => selectMenu(("follow_ups" as any))} />
-</div>
+              </div>
             </div>
 
             <div style={{ marginTop: 14 }}>
@@ -1626,18 +1625,7 @@ function openEstimateFromPicker(estimateId: string) {
                               type="checkbox"
                               checked={draftClientType === "Business"}
                               onChange={(e) => setDraftClientType(e.currentTarget.checked ? "Business" : "Individual")}
-                            
-            
-            
-            {menu === "follow_ups" && view === "customers" && (
-              <Card style={{ minHeight: 520 }}>
-                <div style={{ padding: 10 }}>
-                  <H2>Follow Ups</H2>
-                  <Small>Coming soon.</Small>
-                </div>
-              </Card>
-            )}
-/>
+                            />
                             <span style={{ fontSize: 12, fontWeight: 800, color: "#3f3f46" }}>Business customer</span>
                           </label>
 
@@ -2259,9 +2247,6 @@ function openEstimateFromPicker(estimateId: string) {
     </div>
   );
 }
-
-
-
 
 
 

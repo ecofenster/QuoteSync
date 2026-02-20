@@ -1627,9 +1627,7 @@ function openEstimateFromPicker(estimateId: string) {
                               checked={draftClientType === "Business"}
                               onChange={(e) => setDraftClientType(e.currentTarget.checked ? "Business" : "Individual")}
                             
-            
-            
-            {menu === "follow_ups" && view === "customers" && (
+            {((menu as any) === "follow_ups") && view === "customers" && (
               <Card style={{ minHeight: 520 }}>
                 <div style={{ padding: 10 }}>
                   <H2>Follow Ups</H2>
@@ -2259,8 +2257,6 @@ function openEstimateFromPicker(estimateId: string) {
     </div>
   );
 }
-
-
 
 
 
