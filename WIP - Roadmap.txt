@@ -1,0 +1,39 @@
+Feature roadmap
+
+Client database
+
+This will need a search/filter function, we need to be able to list active estimates, lost estimates are hidden but a toggle to show lost estimates is available. In addition to this. 
+
+Choose estimate
+
+We need to be able to show how many positions are within the estimate, what the m2 of the estimate is, the linear meterage of the estimate for the list of estimates show. In addition, we need to be able tmark this estimate and sent to the client, in future that will automatically input into a client side portal in the relevant area. As this will tie into the client number, their email address and contact information. This will generate and email and or a text message / WhatsApp message to the client, to advise a new estimate is available to view, it will include a link to the portal for them to login. They can then view / download their estimate and they can view all other open estimates assigned to them.
+
+What should also happen, as product data sheets if uploaded, as well as relevant section details for the product quoted should be made available to the client within their portal, as well as warranty inforamtion and terms of sale. 
+
+Orders
+
+Choose an estimate needs to be renamed to something like "choose your order", this will also work in the same way as estimates but it will also do a few things differently, what I want to happen is pretty automated. Once the order has been sent to the client, it will be marked for pending sign off from client. They receive this order in the portal to sign off, the review the order, they sign the order and date the sign off, this then auto updates as beeing signed off and the user / compant notified the order has been approved. This then marks it as being ready for invoicing, the invoice is generated to the customer, a copy of this invoice is added into QuoteSync (maybe apis required for invoicing software required). 
+
+A new menu item for "Orders" will be required, this will be a stepped order progress bar, which auto completes at certain milestones. So 0% at post sign off, next stage signed off by client and whatever percentage that would be, invoiced by company, paid by client, order signed off at factory, in production, production end date, schedule delivery date, installation date if being supplied. 
+
+Project preferences should be changed to "Documents"
+
+The menu tree should be as follows
+
+Preferences
+-Technical documents (when clicked, sub menu items appear)
+--Supplier 1
+--Supplier 2
+--Supplier 3
+--Supplier 4
+
+This menu will contained relevant documents and should be available to be switched from list view to grid view, grid view being the the default. The main listing will be something like "Windows, Doors, Sliding Doors, Lift and Slide Doors with option to be able to add new positions". Upon selection, a list of relevant system such as "uPVC, uPVC Alu, Aluminium, Timber, Timber Aluminium, Steel. Once selected again, product, such as Ideal 4000, Ideal 8000. Once selected It will advise different options "Jamb (side), Head (top), Sill (bottom), Threshold (doors), once selected then it shows the relevant documents for that particular product. Is it too much of clicking? Maybe, but it all entered correctly then it should make things clear. 
+
+Next menu item should be Warranties, with one document being available based on the supplier selected and product (just in case they are different). 
+
+Next menu item should be "Typical Details" - which should be made available to the client also in the portal based on the product, typical details will need to be done, for timber frame, brick, check reveals, thresholds, standard frame and wide frame for doors. Clear information of shown as to how the systems are designed to drain and highlight drainage systems that may need to be considered externally for sliding doors.
+
+
+
+
+

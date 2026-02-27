@@ -1,0 +1,177 @@
+# =====================================================================
+# QuoteSync — Phase 4B (v4): Extract DefaultsEditor component from App.tsx
+# Script: 20260227_03_phase4b_extract_defaults_editor_v4.ps1
+# Run from: PS C:\Github\QuoteSync\web\ps1_patches>
+#
+# Fix: use CRLF-tolerant anchors and anchor on `function DefaultsEditor` itself.
+# Adds diagnostics: if block not found, prints nearby lines for `function DefaultsEditor`
+# and `Main App` markers, then fails.
+# =====================================================================
+
+$ErrorActionPreference = "Stop"
+
+function Ok($m){ Write-Host "OK: $m" -ForegroundColor Green }
+function Info($m){ Write-Host "INFO: $m" -ForegroundColor Cyan }
+function Warn($m){ Write-Host "WARN: $m" -ForegroundColor Yellow }
+function Fail($m){ Write-Host "ERROR: $m" -ForegroundColor Red; throw $m }
+
+function Get-Text([string]$path){
+  if (!(Test-Path $path)) { Fail "Missing file: $path" }
+  return [System.IO.File]::ReadAllText($path, [System.Text.Encoding]::UTF8)
+}
+function Set-Text([string]$path, [string]$text){
+  $dir = Split-Path -Parent $path
+  if (!(Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+  [System.IO.File]::WriteAllText($path, $text, [System.Text.Encoding]::UTF8)
+}
+function Backup-File([string]$root, [string]$absPath, [string]$backupRoot){
+  if (!(Test-Path $absPath)) { Fail "Cannot backup missing file: $absPath" }
+  $rel = (Resolve-Path $absPath).Path.Substring((Resolve-Path $root).Path.Length).TrimStart('\')
+  $dest = Join-Path $backupRoot $rel
+  $destDir = Split-Path -Parent $dest
+  if (!(Test-Path $destDir)) { New-Item -ItemType Directory -Force -Path $destDir | Out-Null }
+  Copy-Item -Force $absPath $dest
+  Ok "Backed up $rel -> $dest"
+}
+
+function Ensure-NotPresent([string]$name, [string]$text, [string]$needle){
+  if ($text -match [regex]::Escape($needle)) { Fail "Refusing to re-apply (already present): $name contains '$needle'" }
+}
+
+function Find-Context([string]$text, [string]$needle, [int]$lines=20){
+  $arr = $text -split "`r?`n"
+  $idx = -1
+  for ($i=0; $i -lt $arr.Length; $i++){
+    if ($arr[$i] -like "*$needle*") { $idx = $i; break }
+  }
+  if ($idx -lt 0) { return @() }
+  $start = [Math]::Max(0, $idx - $lines)
+  $end = [Math]::Min($arr.Length-1, $idx + $lines)
+  $out = @()
+  for ($j=$start; $j -le $end; $j++){
+    $out += ("{0,5}: {1}" -f ($j+1), $arr[$j])
+  }
+  return $out
+}
+
+# --- Resolve project root (web) from ps1_patches ---
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$root = Resolve-Path (Join-Path $scriptDir "..")  # ...\web
+Set-Location $root
+Info "Run directory: $root"
+
+$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$backupRoot = Join-Path $root "_backups\$timestamp"
+New-Item -ItemType Directory -Force -Path $backupRoot | Out-Null
+Ok "Backup folder: $backupRoot"
+
+$appPath = Join-Path $root "src\App.tsx"
+$targetPath = Join-Path $root "src\features\estimateDefaults\DefaultsEditor.tsx"
+$catalogPath = Join-Path $root "src\features\catalog\defaultCatalog.ts"
+$edefPath = Join-Path $root "src\features\estimateDefaults\defaultEstimateDefaults.ts"
+
+if (!(Test-Path $catalogPath)) { Fail "Missing prerequisite: src\features\catalog\defaultCatalog.ts" }
+if (!(Test-Path $edefPath)) { Fail "Missing prerequisite: src\features\estimateDefaults\defaultEstimateDefaults.ts (run Phase 4A first)" }
+
+Backup-File $root $appPath $backupRoot
+if (Test-Path $targetPath) { Fail "Refusing to overwrite existing file: src\features\estimateDefaults\DefaultsEditor.tsx" }
+
+$appTxt = Get-Text $appPath
+Ensure-NotPresent "App.tsx" $appTxt './features/estimateDefaults/DefaultsEditor'
+
+# Block pattern:
+# - locate the Defaults Editor comment header (any text after it)
+# - capture from that comment through the end of function DefaultsEditor
+# - stop right before the Main App comment header
+$blockPattern = '(?s)/\*\s*=+\s*\r?\n\s*Defaults Editor[^\r\n]*\r?\n\s*=+\s*\*/\s*\r?\n\s*\r?\nfunction DefaultsEditor\([\s\S]*?\r?\n\}\s*\r?\n\s*\r?\n(?=/\*\s*=+\s*\r?\n\s*Main App)'
+$rx = [regex]::new($blockPattern, [System.Text.RegularExpressions.RegexOptions]::Multiline)
+$matches = $rx.Matches($appTxt)
+
+if ($matches.Count -ne 1) {
+  Warn "Could not match DefaultsEditor block uniquely (expected 1, got $($matches.Count))."
+  Warn "Diagnostics: showing context for 'function DefaultsEditor' and 'Main App' markers (if present)."
+  $ctx1 = Find-Context $appTxt "function DefaultsEditor" 25
+  if ($ctx1.Count -gt 0) { $ctx1 | ForEach-Object { Write-Host $_ } } else { Warn "No 'function DefaultsEditor' found." }
+  Write-Host ""
+  $ctx2 = Find-Context $appTxt "Main App" 25
+  if ($ctx2.Count -gt 0) { $ctx2 | ForEach-Object { Write-Host $_ } } else { Warn "No 'Main App' marker found." }
+  Fail "Ambiguous (expected 1 match, got $($matches.Count)): App.tsx DefaultsEditor block"
+}
+
+$block = $matches[0].Value
+$blockOut = $block -replace 'function DefaultsEditor\(', 'export default function DefaultsEditor('
+
+$header = @"
+// Auto-generated by QuoteSync Phase 4B extraction patch.
+// Moved from src/App.tsx (no UI/layout/logic changes).
+import React, { useEffect } from "react";
+import * as Models from "../../models/types";
+import type { EstimateDefaults } from "../../models/types";
+import { PRODUCT_TYPES, SUPPLIERS, WOOD_TYPES, FINISHES_BY_TYPE, allProductsForSupplier, firstProductForSupplier, isTimberProductType } from "../catalog/defaultCatalog";
+import { HINGE_TYPES, UG_DOUBLE, UG_TRIPLE, HANDLE_TYPES, SUN_PROTECTION, CILL_DEPTHS, FRAME_EXTS } from "./defaultEstimateDefaults";
+
+function H3({ children }: { children: React.ReactNode }) {
+  return <h3 style={{ fontSize: 14, margin: 0, fontWeight: 800, color: "#18181b" }}>{children}</h3>;
+}
+function Small({ children }: { children: React.ReactNode }) {
+  return <div style={{ fontSize: 12, color: "#71717a" }}>{children}</div>;
+}
+function Input({
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+  list,
+  disabled,
+  readOnly,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  type?: string;
+  list?: string;
+  disabled?: boolean;
+  readOnly?: boolean;
+}) {
+  return (
+    <input
+      type={type}
+      value={value}
+      placeholder={placeholder}
+      list={list}
+      disabled={disabled}
+      readOnly={readOnly}
+      onChange={(e) => onChange(e.target.value)}
+      style={{
+        width: "100%",
+        borderRadius: 12,
+        border: "1px solid #e4e4e7",
+        padding: "10px 12px",
+        fontSize: 14,
+        outline: "none",
+      }}
+    />
+  );
+}
+
+const labelStyle: React.CSSProperties = { fontSize: 13, color: "#3f3f46", fontWeight: 700, marginBottom: 6 };
+
+"@
+
+Set-Text $targetPath ($header + $blockOut.TrimStart("`r","`n") + "`r`n")
+Ok "Created: src\features\estimateDefaults\DefaultsEditor.tsx"
+
+# Remove block from App.tsx
+$appTxt2 = $rx.Replace($appTxt, "`r`n", 1)
+
+# Insert import after EstimatePickerTabs import
+$impRx = [regex]::new('(?m)^import EstimatePickerTabs from "\./features/estimatePicker/EstimatePickerTabs";\r?\n')
+$impM = $impRx.Matches($appTxt2)
+if ($impM.Count -ne 1) { Fail "Ambiguous (expected 1 match, got $($impM.Count)): App.tsx EstimatePickerTabs import anchor" }
+$appTxt2 = $impRx.Replace($appTxt2, $impM[0].Value + 'import DefaultsEditor from "./features/estimateDefaults/DefaultsEditor";' + "`r`n", 1)
+
+Set-Text $appPath $appTxt2
+Ok "Patched: src\App.tsx"
+
+Ok "Phase 4B complete: DefaultsEditor extracted."
+Info "Next: npm run dev"

@@ -1,9 +1,8 @@
-
-import React, { useEffect, useMemo, useRef, useState } from "react";
+﻿
+import React, { useEffect, useMemo, useState } from "react";
 import GridEditor from "./components/GridEditor";
-import EstimatePickerFeature, { type EstimatePickerFeatureHandle } from "./features/estimatePicker/EstimatePickerFeature";
+import EstimatePickerTabs from "./features/estimatePicker/EstimatePickerTabs";
 import DefaultsEditor from "./features/estimateDefaults/DefaultsEditor";
-import { DEFAULT_CUSTOMER_ADDRESS, makeDefaultClients } from "./features/clients/defaultClients";
 import * as Models from "./models/types";
 import {
   PRODUCT_TYPES,
@@ -90,6 +89,42 @@ function estimateRefWithRevision(base: string, revisionNo: number) {
 
 
 
+const DEFAULT_CUSTOMER_ADDRESS = ["4 Glebe Road", "Cowdenbeath", "Fife", "KY4 9FA"].join("\n");
+
+function makeDefaultClients(): Client[] {
+  return [
+    {
+      id: Models.asClientId(uid()),
+      type: "Business",
+      clientRef: nextClientRef(1),
+      clientName: "Ecofenster Ltd",
+      businessName: "Ecofenster Ltd",
+      contactPerson: "",
+      email: "",
+      mobile: "07882 809 453",
+      home: "",
+      projectName: "",
+      projectAddress: DEFAULT_CUSTOMER_ADDRESS,
+      invoiceAddress: DEFAULT_CUSTOMER_ADDRESS,
+      estimates: [],
+    },
+    {
+      id: Models.asClientId(uid()),
+      type: "Individual",
+      clientRef: nextClientRef(2),
+      clientName: "Craig Ferguson",
+      businessName: "",
+      contactPerson: "",
+      email: "",
+      mobile: "07882 809 453",
+      home: "",
+      projectName: "",
+      projectAddress: DEFAULT_CUSTOMER_ADDRESS,
+      invoiceAddress: DEFAULT_CUSTOMER_ADDRESS,
+      estimates: [],
+    },
+  ];
+}
 
 /* =========================
    UI primitives (inline only)
@@ -493,13 +528,10 @@ export default function App() {
   const [menu, setMenu] = useState<Models.MenuKey>("client_database");
   const [view, setView] = useState<Models.View>("customers");
 
-  const estimatePickerRef = useRef<EstimatePickerFeatureHandle>(null);
-
-
   const [clientCounter, setClientCounter] = useState(3);
   const [estimateCounter, setEstimateCounter] = useState(1);
 
-  const [clients, setClients] = useState<Client[]>(() => makeDefaultClients({ uid, nextClientRef }));
+  const [clients, setClients] = useState<Client[]>(() => makeDefaultClients());
 
   const [selectedClientId, setSelectedClientId] = useState<Models.ClientId | null>(null);
   const selectedClient = useMemo(() => clients.find((c) => c.id === selectedClientId) ?? null, [clients, selectedClientId]);
@@ -509,6 +541,26 @@ export default function App() {
     if (!selectedClient) return null;
     return selectedClient.estimates.find((e) => e.id === selectedEstimateId) ?? null;
   }, [selectedClient, selectedEstimateId]);
+
+  // estimate picker
+  const [pickerClientId, setPickerClientId] = useState<Models.ClientId | null>(null);
+  const pickerClient = useMemo(() => clients.find((c) => c.id === pickerClientId) ?? null, [clients, pickerClientId]);
+
+  // estimate picker tabs (Estimate Picker only)
+
+
+const [estimatePickerTab, setEstimatePickerTab] =
+  useState<Models.EstimatePickerTab>("client_info");
+  const [estimateOutcomeById, setEstimateOutcomeById] = useState<Record<Models.EstimateId, Models.EstimateOutcome>>({});
+  const [clientNotes, setClientNotes] = useState<Models.ClientNote[]>([]);
+  const [clientNoteDraftHtml, setClientNoteDraftHtml] = useState<string>("");
+  const [clientFiles, setClientFiles] = useState<Models.ClientFile[]>([]);
+  const [clientFileLabel, setClientFileLabel] = useState<string>("");
+  const [clientFileUrl, setClientFileUrl] = useState<string>("");
+  const [clientFileNames, setClientFileNames] = useState<string[]>([]);
+  const activeUserName = "User";
+
+
   // Add client UI
   const [showAddClient, setShowAddClient] = useState(false);
   // client edit mode
@@ -679,7 +731,7 @@ export default function App() {
     setView("customers");
     setSelectedClientId(null);
     setSelectedEstimateId(null);
-    estimatePickerRef.current?.clear();
+    setPickerClientId(null);
     setShowAddClient(false);
     setShowPositionWizard(false);
   }
@@ -718,10 +770,14 @@ export default function App() {
 
   // Open should show the client in the database flow (choose estimate),
   // not jump straight to Supplier & Product Defaults.
-  estimatePickerRef.current?.open(client.id);
+  setPickerClientId(client.id);
   setView("estimate_picker");
 }
 
+function openEstimateFromPicker(estimateId: string) {
+    if (!pickerClientId) return;
+    openEstimateDefaults(pickerClientId, estimateId);
+  }
 
   function startAddPosition() {
     if (!selectedEstimate) return;
@@ -1203,18 +1259,64 @@ export default function App() {
             )}
 
                                     {/* ESTIMATE PICKER */}
+            {view === "estimate_picker" && pickerClient && (
+              <Card style={{ minHeight: 520 }}>
+                <div style={{ display: "grid", gap: 12 }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                    <div>
+                      <H2>Choose an estimate</H2>
+                      <Small>
+                        {pickerClient.clientName} • {pickerClient.clientRef}
+                      </Small>
+                    </div>
 
-            {/* ESTIMATE PICKER */}
-            {view === "estimate_picker" && (
-              <EstimatePickerFeature
-                ref={estimatePickerRef}
-                clients={clients}
-                onBack={() => setView("customers")}
-                openEditClientPanel={openEditClientPanel}
-                createEstimateForClient={createEstimateForClient}
-                openEstimateDefaults={(clientId, estimateId) => openEstimateDefaults(clientId, estimateId)}
-              />
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <Button
+                        variant="secondary"
+                        onClick={() => {
+                          setEstimatePickerTab("client_info");
+                          setView("customers");
+                        }}
+                      >
+                        Back
+                      </Button>
+                      <Button
+                        variant="primary"
+                        onClick={() => {
+                          setEstimatePickerTab("client_info");
+                          createEstimateForClient(pickerClient);
+                        }}
+                      >
+                        New Estimate
+                      </Button>
+                    </div>
+                  </div>
+
+                  <EstimatePickerTabs
+                    estimatePickerTab={estimatePickerTab}
+                    setEstimatePickerTab={setEstimatePickerTab}
+                    pickerClient={pickerClient}
+                    openEditClientPanel={openEditClientPanel}
+                    openEstimateFromPicker={openEstimateFromPicker}
+                    estimateOutcomeById={estimateOutcomeById}
+                    setEstimateOutcomeById={setEstimateOutcomeById}
+                    clientNoteDraftHtml={clientNoteDraftHtml}
+                    setClientNoteDraftHtml={setClientNoteDraftHtml}
+                    clientNotes={clientNotes}
+                    setClientNotes={setClientNotes}
+                    activeUserName={activeUserName}
+                    clientFileLabel={clientFileLabel}
+                    setClientFileLabel={setClientFileLabel}
+                    clientFileUrl={clientFileUrl}
+                    setClientFileUrl={setClientFileUrl}
+                    clientFileNames={clientFileNames}
+                    setClientFileNames={setClientFileNames}
+                    clientFiles={clientFiles}
+                    setClientFiles={setClientFiles}
+                  />                </div>
+              </Card>
             )}
+
             {/* ESTIMATE DEFAULTS */}
             {view === "estimate_defaults" && selectedClient && selectedEstimate && (
               <Card style={{ minHeight: 520 }}>

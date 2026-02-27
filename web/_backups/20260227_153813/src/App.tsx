@@ -1,9 +1,7 @@
-
-import React, { useEffect, useMemo, useRef, useState } from "react";
+﻿
+import React, { useEffect, useMemo, useState } from "react";
 import GridEditor from "./components/GridEditor";
-import EstimatePickerFeature, { type EstimatePickerFeatureHandle } from "./features/estimatePicker/EstimatePickerFeature";
-import DefaultsEditor from "./features/estimateDefaults/DefaultsEditor";
-import { DEFAULT_CUSTOMER_ADDRESS, makeDefaultClients } from "./features/clients/defaultClients";
+import EstimatePickerTabs from "./features/estimatePicker/EstimatePickerTabs";
 import * as Models from "./models/types";
 import {
   PRODUCT_TYPES,
@@ -90,6 +88,42 @@ function estimateRefWithRevision(base: string, revisionNo: number) {
 
 
 
+const DEFAULT_CUSTOMER_ADDRESS = ["4 Glebe Road", "Cowdenbeath", "Fife", "KY4 9FA"].join("\n");
+
+function makeDefaultClients(): Client[] {
+  return [
+    {
+      id: Models.asClientId(uid()),
+      type: "Business",
+      clientRef: nextClientRef(1),
+      clientName: "Ecofenster Ltd",
+      businessName: "Ecofenster Ltd",
+      contactPerson: "",
+      email: "",
+      mobile: "07882 809 453",
+      home: "",
+      projectName: "",
+      projectAddress: DEFAULT_CUSTOMER_ADDRESS,
+      invoiceAddress: DEFAULT_CUSTOMER_ADDRESS,
+      estimates: [],
+    },
+    {
+      id: Models.asClientId(uid()),
+      type: "Individual",
+      clientRef: nextClientRef(2),
+      clientName: "Craig Ferguson",
+      businessName: "",
+      contactPerson: "",
+      email: "",
+      mobile: "07882 809 453",
+      home: "",
+      projectName: "",
+      projectAddress: DEFAULT_CUSTOMER_ADDRESS,
+      invoiceAddress: DEFAULT_CUSTOMER_ADDRESS,
+      estimates: [],
+    },
+  ];
+}
 
 /* =========================
    UI primitives (inline only)
@@ -241,6 +275,392 @@ function SidebarItem({ label, active, onClick }: { label: string; active?: boole
 
 const labelStyle: React.CSSProperties = { fontSize: 13, color: "#3f3f46", fontWeight: 700, marginBottom: 6 };
 
+/* =========================
+   Defaults Editor (Estimate-level + Position "Use estimate defaults")
+========================= */
+
+function DefaultsEditor({
+  title,
+  productType,
+  value,
+  onChange,
+  showDoorOptions,
+}: {
+  title: string;
+  productType: Models.ProductType;
+  value: EstimateDefaults;
+  onChange: (next: EstimateDefaults) => void;
+  showDoorOptions: boolean;
+}) {
+  const finishes = FINISHES_BY_TYPE[productType];
+
+  // keep G fixed at 0.53 for now (per your instruction)
+  useEffect(() => {
+    if (value.gValue !== "0.53") onChange({ ...value, gValue: "0.53" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value.ugValue, value.glassType]);
+
+  const ugOptions = value.glassType === "Double" ? UG_DOUBLE : UG_TRIPLE;
+
+  return (
+    <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12 }}>
+      <H3>{title}</H3>
+
+      <div style={{ marginTop: 12, display: "grid", gap: 14 }}>
+        {/* Supplier & Product */}
+        <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12 }}>
+          <H3>Supplier & Product</H3>
+
+          <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
+            <div>
+              <div style={labelStyle}>Supplier</div>
+              <select
+                value={value.supplier}
+                onChange={(e) => {
+                  const supplier = e.target.value;
+                  const nextProd = supplier ? firstProductForSupplier(supplier) : "";
+                  onChange({ ...value, supplier, product: nextProd });
+                }}
+                style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+              >
+                <option value="">Select supplier…</option>
+                {SUPPLIERS.map((s) => (
+                  <option key={s.name} value={s.name}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <div style={labelStyle}>Product type</div>
+              <select
+                value={value.productType}
+                onChange={(e) => onChange({ ...value, productType: e.target.value as Models.ProductType })}
+                style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+              >
+                {PRODUCT_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <div style={labelStyle}>Product</div>
+              <select
+                value={value.product}
+                onChange={(e) => onChange({ ...value, product: e.target.value })}
+                disabled={!value.supplier}
+                style={{
+                  width: "100%",
+                  borderRadius: 12,
+                  border: "1px solid #e4e4e7",
+                  padding: "10px 12px",
+                  fontSize: 14,
+                  background: !value.supplier ? "#fafafa" : "#fff",
+                  color: !value.supplier ? "#a1a1aa" : "#18181b",
+                }}
+              >
+                <option value="">{value.supplier ? "Select product…" : "Select supplier first…"}</option>
+                {allProductsForSupplier(value.supplier).map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Finishes */}
+        <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12 }}>
+          <H3>Finishes</H3>
+
+          <datalist id={"ext-finish-" + title}>
+            {finishes.external.map((x) => (
+              <option key={x} value={x} />
+            ))}
+          </datalist>
+          <datalist id={"int-finish-" + title}>
+            {finishes.internal.map((x) => (
+              <option key={x} value={x} />
+            ))}
+          </datalist>
+
+          <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <div style={labelStyle}>External finish</div>
+              <Input value={value.externalFinish} onChange={(v) => onChange({ ...value, externalFinish: v })} list={"ext-finish-" + title} placeholder="Select or type…" />
+            </div>
+            <div>
+              <div style={labelStyle}>Internal finish</div>
+              <Input value={value.internalFinish} onChange={(v) => onChange({ ...value, internalFinish: v })} list={"int-finish-" + title} placeholder="Select or type…" />
+            </div>
+          </div>
+        </div>
+
+        {/* Hinges + Wood */}
+        <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12 }}>
+          <H3>Hardware</H3>
+
+          <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <div style={labelStyle}>Hinges</div>
+              <select
+                value={value.hingeType}
+                onChange={(e) => onChange({ ...value, hingeType: e.target.value as any })}
+                style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+              >
+                {HINGE_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {isTimberProductType(value.productType) ? (
+              <div>
+                <div style={labelStyle}>Wood type</div>
+                <select
+                  value={value.woodType}
+                  onChange={(e) => onChange({ ...value, woodType: e.target.value })}
+                  style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                >
+                  {WOOD_TYPES.map((w) => (
+                    <option key={w} value={w}>
+                      {w}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div />
+            )}
+          </div>
+        </div>
+
+        {/* Glazing */}
+        <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12 }}>
+          <H3>Glazing</H3>
+
+          <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+            <div>
+              <div style={labelStyle}>Glass</div>
+              <select
+                value={value.glassType}
+                onChange={(e) => {
+                  const glassType = e.target.value as "Double" | "Triple";
+                  const nextUg = glassType === "Double" ? "1.1" : "0.4";
+                  onChange({ ...value, glassType, ugValue: nextUg, gValue: "0.53" });
+                }}
+                style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+              >
+                <option value="Double">Double</option>
+                <option value="Triple">Triple</option>
+              </select>
+            </div>
+
+            <div>
+              <div style={labelStyle}>Ug value required</div>
+              <select
+                value={value.ugValue}
+                onChange={(e) => onChange({ ...value, ugValue: e.target.value, gValue: "0.53" })}
+                style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+              >
+                {ugOptions.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <div style={labelStyle}>G value</div>
+              <Input value={value.gValue} onChange={(v) => onChange({ ...value, gValue: v })} />
+              <Small>Placeholder: fixed at 0.53 for now</Small>
+            </div>
+          </div>
+        </div>
+
+        {/* Window Handle */}
+        <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12 }}>
+          <H3>Window Handle</H3>
+
+          <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 160px", gap: 12, alignItems: "center" }}>
+            <div>
+              <div style={labelStyle}>Handle type</div>
+              <select
+                value={value.windowHandleType}
+                onChange={(e) => onChange({ ...value, windowHandleType: e.target.value as any })}
+                style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+              >
+                {HANDLE_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div
+              style={{
+                height: 96,
+                borderRadius: 12,
+                border: "1px solid #e4e4e7",
+                background: "#fafafa",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#71717a",
+                fontWeight: 800,
+                fontSize: 12,
+              }}
+            >
+              Handle image
+            </div>
+          </div>
+
+          <div style={{ marginTop: 10 }}>
+            <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 14, fontWeight: 700 }}>
+              <input type="checkbox" checked={value.internalCillRequired} onChange={(e) => onChange({ ...value, internalCillRequired: e.target.checked })} />
+              Lockable handle
+            </label>
+            <Small>This was previously “door multipoint locking” — now aligned to your “lockable handle” wording.</Small>
+          </div>
+        </div>
+
+        {/* Door options */}
+        {showDoorOptions && (
+          <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12 }}>
+            <H3>Door options</H3>
+
+            <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+              <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 14, fontWeight: 700 }}>
+                <input type="checkbox" checked={value.doorMultipointLocking} onChange={(e) => onChange({ ...value, doorMultipointLocking: e.target.checked })} />
+                Multipoint locking
+              </label>
+
+              <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 14, fontWeight: 700 }}>
+                <input type="checkbox" checked={value.electricalOperation} onChange={(e) => onChange({ ...value, electricalOperation: e.target.checked })} />
+                Electrical operation
+              </label>
+
+              <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 14, fontWeight: 700 }}>
+                <input type="checkbox" checked={value.dayLatch} onChange={(e) => onChange({ ...value, dayLatch: e.target.checked })} />
+                Day latch
+              </label>
+            </div>
+          </div>
+        )}
+
+        {/* Accessories */}
+        <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12 }}>
+          <H3>Accessories</H3>
+
+          <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 14, fontWeight: 700 }}>
+                <input type="checkbox" checked={value.internalCillRequired} onChange={(e) => onChange({ ...value, internalCillRequired: e.target.checked })} />
+                Window cill internally required
+              </label>
+
+              <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 14, fontWeight: 700 }}>
+                <input type="checkbox" checked={value.externalSillRequired} onChange={(e) => onChange({ ...value, externalSillRequired: e.target.checked })} />
+                Window sill externally required
+              </label>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div>
+                <div style={labelStyle}>Window cill depth</div>
+                <select
+                  value={String(value.cillDepthMm)}
+                  onChange={(e) => onChange({ ...value, cillDepthMm: Number(e.target.value) })}
+                  style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                >
+                  {CILL_DEPTHS.map((d) => (
+                    <option key={d} value={d}>
+                      {d} mm
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <div style={labelStyle}>Cill end cap type</div>
+                <select
+                  value={value.cillEndCapType}
+                  onChange={(e) => onChange({ ...value, cillEndCapType: e.target.value as any })}
+                  style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                >
+                  <option value="Cladding/Render End Cap">Cladding/Render End Cap</option>
+                  <option value="Brick Type End Cap">Brick Type End Cap</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <H3>Frame extensions</H3>
+              <Small>Set each side independently.</Small>
+
+              <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12 }}>
+                {[
+                  ["Left", "frameExtLeftMm"],
+                  ["Right", "frameExtRightMm"],
+                  ["Top", "frameExtTopMm"],
+                  ["Bottom", "frameExtBottomMm"],
+                ].map(([label, key]) => (
+                  <div key={key}>
+                    <div style={labelStyle}>{label}</div>
+                    <select
+                      value={String((value as any)[key])}
+                      onChange={(e) => onChange({ ...value, [key]: Number(e.target.value) } as any)}
+                      style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                    >
+                      {FRAME_EXTS.map((mm) => (
+                        <option key={mm} value={mm}>
+                          {mm} mm
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 14, fontWeight: 700 }}>
+                <input type="checkbox" checked={value.sunProtectionRequired} onChange={(e) => onChange({ ...value, sunProtectionRequired: e.target.checked })} />
+                Sun protection required
+              </label>
+
+              {value.sunProtectionRequired && (
+                <div style={{ marginTop: 10 }}>
+                  <div style={labelStyle}>Type</div>
+                  <select
+                    value={value.sunProtectionType}
+                    onChange={(e) => onChange({ ...value, sunProtectionType: e.target.value as any })}
+                    style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                  >
+                    {SUN_PROTECTION.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /* =========================
    Main App
@@ -493,13 +913,10 @@ export default function App() {
   const [menu, setMenu] = useState<Models.MenuKey>("client_database");
   const [view, setView] = useState<Models.View>("customers");
 
-  const estimatePickerRef = useRef<EstimatePickerFeatureHandle>(null);
-
-
   const [clientCounter, setClientCounter] = useState(3);
   const [estimateCounter, setEstimateCounter] = useState(1);
 
-  const [clients, setClients] = useState<Client[]>(() => makeDefaultClients({ uid, nextClientRef }));
+  const [clients, setClients] = useState<Client[]>(() => makeDefaultClients());
 
   const [selectedClientId, setSelectedClientId] = useState<Models.ClientId | null>(null);
   const selectedClient = useMemo(() => clients.find((c) => c.id === selectedClientId) ?? null, [clients, selectedClientId]);
@@ -509,6 +926,26 @@ export default function App() {
     if (!selectedClient) return null;
     return selectedClient.estimates.find((e) => e.id === selectedEstimateId) ?? null;
   }, [selectedClient, selectedEstimateId]);
+
+  // estimate picker
+  const [pickerClientId, setPickerClientId] = useState<Models.ClientId | null>(null);
+  const pickerClient = useMemo(() => clients.find((c) => c.id === pickerClientId) ?? null, [clients, pickerClientId]);
+
+  // estimate picker tabs (Estimate Picker only)
+
+
+const [estimatePickerTab, setEstimatePickerTab] =
+  useState<Models.EstimatePickerTab>("client_info");
+  const [estimateOutcomeById, setEstimateOutcomeById] = useState<Record<Models.EstimateId, Models.EstimateOutcome>>({});
+  const [clientNotes, setClientNotes] = useState<Models.ClientNote[]>([]);
+  const [clientNoteDraftHtml, setClientNoteDraftHtml] = useState<string>("");
+  const [clientFiles, setClientFiles] = useState<Models.ClientFile[]>([]);
+  const [clientFileLabel, setClientFileLabel] = useState<string>("");
+  const [clientFileUrl, setClientFileUrl] = useState<string>("");
+  const [clientFileNames, setClientFileNames] = useState<string[]>([]);
+  const activeUserName = "User";
+
+
   // Add client UI
   const [showAddClient, setShowAddClient] = useState(false);
   // client edit mode
@@ -679,7 +1116,7 @@ export default function App() {
     setView("customers");
     setSelectedClientId(null);
     setSelectedEstimateId(null);
-    estimatePickerRef.current?.clear();
+    setPickerClientId(null);
     setShowAddClient(false);
     setShowPositionWizard(false);
   }
@@ -718,10 +1155,14 @@ export default function App() {
 
   // Open should show the client in the database flow (choose estimate),
   // not jump straight to Supplier & Product Defaults.
-  estimatePickerRef.current?.open(client.id);
+  setPickerClientId(client.id);
   setView("estimate_picker");
 }
 
+function openEstimateFromPicker(estimateId: string) {
+    if (!pickerClientId) return;
+    openEstimateDefaults(pickerClientId, estimateId);
+  }
 
   function startAddPosition() {
     if (!selectedEstimate) return;
@@ -1203,18 +1644,64 @@ export default function App() {
             )}
 
                                     {/* ESTIMATE PICKER */}
+            {view === "estimate_picker" && pickerClient && (
+              <Card style={{ minHeight: 520 }}>
+                <div style={{ display: "grid", gap: 12 }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                    <div>
+                      <H2>Choose an estimate</H2>
+                      <Small>
+                        {pickerClient.clientName} • {pickerClient.clientRef}
+                      </Small>
+                    </div>
 
-            {/* ESTIMATE PICKER */}
-            {view === "estimate_picker" && (
-              <EstimatePickerFeature
-                ref={estimatePickerRef}
-                clients={clients}
-                onBack={() => setView("customers")}
-                openEditClientPanel={openEditClientPanel}
-                createEstimateForClient={createEstimateForClient}
-                openEstimateDefaults={(clientId, estimateId) => openEstimateDefaults(clientId, estimateId)}
-              />
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <Button
+                        variant="secondary"
+                        onClick={() => {
+                          setEstimatePickerTab("client_info");
+                          setView("customers");
+                        }}
+                      >
+                        Back
+                      </Button>
+                      <Button
+                        variant="primary"
+                        onClick={() => {
+                          setEstimatePickerTab("client_info");
+                          createEstimateForClient(pickerClient);
+                        }}
+                      >
+                        New Estimate
+                      </Button>
+                    </div>
+                  </div>
+
+                  <EstimatePickerTabs
+                    estimatePickerTab={estimatePickerTab}
+                    setEstimatePickerTab={setEstimatePickerTab}
+                    pickerClient={pickerClient}
+                    openEditClientPanel={openEditClientPanel}
+                    openEstimateFromPicker={openEstimateFromPicker}
+                    estimateOutcomeById={estimateOutcomeById}
+                    setEstimateOutcomeById={setEstimateOutcomeById}
+                    clientNoteDraftHtml={clientNoteDraftHtml}
+                    setClientNoteDraftHtml={setClientNoteDraftHtml}
+                    clientNotes={clientNotes}
+                    setClientNotes={setClientNotes}
+                    activeUserName={activeUserName}
+                    clientFileLabel={clientFileLabel}
+                    setClientFileLabel={setClientFileLabel}
+                    clientFileUrl={clientFileUrl}
+                    setClientFileUrl={setClientFileUrl}
+                    clientFileNames={clientFileNames}
+                    setClientFileNames={setClientFileNames}
+                    clientFiles={clientFiles}
+                    setClientFiles={setClientFiles}
+                  />                </div>
+              </Card>
             )}
+
             {/* ESTIMATE DEFAULTS */}
             {view === "estimate_defaults" && selectedClient && selectedEstimate && (
               <Card style={{ minHeight: 520 }}>

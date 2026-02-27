@@ -71,25 +71,6 @@ function Button({
   );
 }
 
-function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  const { style, disabled, ...rest } = props;
-
-  // Minimal local primitive; matches existing file's inline styling approach.
-  const base: React.CSSProperties = {
-    width: "100%",
-    boxSizing: "border-box",
-    padding: "10px 12px",
-    borderRadius: 14,
-    border: "1px solid #e4e4e7",
-    background: disabled ? "#f4f4f5" : "#ffffff",
-    color: "#111827",
-    fontSize: 14,
-    outline: "none",
-  };
-
-  return <input {...rest} disabled={disabled} style={{ ...base, ...(style as any) }} />;
-}
-
 function Pill({ children }: { children: React.ReactNode }) {
   return (
     <span
