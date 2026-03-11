@@ -1,0 +1,33 @@
+QuoteSync SNAPSHOT
+Generated: 2026-03-05 11:28:25
+WebRoot: C:\Github\QuoteSync\web
+RunDir: C:\Github\QuoteSync\web\ps1_patches
+
+Environment:
+  Node: v22.18.0
+  npm : 11.6.0
+  Git: <not detected>
+
+Hot files (SHA256):
+  - src\models\types.ts | exists=True | FFA786EDDEF2CF96431BB04BA11AB749A85DA25664D5748512F8A0FAAFB79CA5
+  - src\App.tsx | exists=True | FFA271D2703BFAF823EDB43C1E1D7EA2E33D4138E04C506EEFDF6EEA142EB277
+  - src\features\estimatePicker\EstimatePickerTabs.tsx | exists=True | E1B42777E6B3D834B28E993097B063B3890F7ACD5A71149A55F12DC364BE4D60
+  - src\features\estimatePicker\EstimatePickerFeature.tsx | exists=True | 6FA65F08BFE5C42E00B896B0043A8FA86FBA5608FC756B5165F549405A7205A4
+  - src\features\followUps\FollowUpsFeature.tsx | exists=True | 5C0DC2AEB7BE48F32F611F6BD66AE0C43E9553151C4B2FBACD41673B6D5A3E92
+
+src tree (bytes  relativePath):
+85  src\App.css
+69268  src\App.tsx
+4275  src\assets\quotesync-logo.png
+4126  src\assets\react.svg
+21494  src\components\GridEditor.tsx
+2712  src\features\catalog\defaultCatalog.ts
+2464  src\features\clients\defaultClients.ts
+2060  src\features\estimateDefaults\defaultEstimateDefaults.ts
+17643  src\features\estimateDefaults\DefaultsEditor.tsx
+9541  src\features\estimatePicker\EstimatePickerFeature.tsx
+39459  src\features\estimatePicker\EstimatePickerTabs.tsx
+22691  src\features\followUps\FollowUpsFeature.tsx
+323  src\index.css
+240  src\main.tsx
+3709  src\models\types.ts

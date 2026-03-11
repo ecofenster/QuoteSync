@@ -1,0 +1,36 @@
+# QuoteSync Patch Log
+
+Each entry should include:
+- Date/time
+- Patch script filename
+- Summary of change
+- Files changed
+
+---
+
+## 2026-03-05 10:07:39
+Short note about what changed
+
+## 2026-03-05 10:50:33
+UI: Align Estimate actions headers (Status label inline)
+
+- Patch: 20260305_fix_estimate_actions_alignment.ps1
+- Files: src\\features\\estimatePicker\\EstimatePickerTabs.tsx
+
+## 2026-03-05 11:28:25
+Follow Ups: 4-panel grid + Add Note bottom-right (linked to Client Notes) [v2]
+
+- Patch: 20260305_followups_grid4_add_note_v2.ps1
+- Files: src\features\followUps\FollowUpsFeature.tsx, src\features\estimatePicker\EstimatePickerFeature.tsx
+
+## 2026-03-05 11:38:16
+Hotfix: FollowUpsFeature JSX wrapper/tag balance (fix Vite adjacent JSX elements error)
+
+- Patch: 20260305_followups_fix_jsx_wrap_v4.ps1
+- Files: src\features\followUps\FollowUpsFeature.tsx
+
+## 2026-03-05 11:57:56
+Persist Client Notes per-client via localStorage (qs_client_notes_v1_<clientId>)
+
+- Patch: 20260305_link_client_notes_to_localstorage.ps1
+- Files: src\features\estimatePicker\EstimatePickerFeature.tsx

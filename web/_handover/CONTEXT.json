@@ -1,0 +1,22 @@
+{
+  "project": "QuoteSync CRM / Estimating platform",
+  "repo_root": "C:\\Github\\QuoteSync\\web",
+  "patch_dir": "C:\\Github\\QuoteSync\\web\\ps1_patches",
+  "backup_dir": "C:\\Github\\QuoteSync\\web\\_backups",
+  "handover_dir": "C:\\Github\\QuoteSync\\web\\_handover",
+  "savepoint": "2026-03-04",
+  "rules": [
+    "No manual edits requested from user; deliver PowerShell patch scripts only.",
+    "Scripts run from PS C:\\Github\\QuoteSync\\web\\ps1_patches and auto-detect web root.",
+    "Always backup before modifying files into C:\\Github\\QuoteSync\\web\\_backups.",
+    "Never corrupt JSX; preserve style={{ ... }} double braces.",
+    "Never replace files with placeholders; patch real existing code only."
+  ],
+  "hot_files": [
+    "src\\models\\types.ts",
+    "src\\App.tsx",
+    "src\\features\\estimatePicker\\EstimatePickerTabs.tsx",
+    "src\\features\\estimatePicker\\EstimatePickerFeature.tsx",
+    "src\\features\\followUps\\FollowUpsFeature.tsx"
+  ]
+}

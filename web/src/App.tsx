@@ -1,10 +1,11 @@
-
+﻿
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import GridEditor from "./components/GridEditor";
 import EstimatePickerFeature, { type EstimatePickerFeatureHandle } from "./features/estimatePicker/EstimatePickerFeature";
 import DefaultsEditor from "./features/estimateDefaults/DefaultsEditor";
 import { DEFAULT_CUSTOMER_ADDRESS, makeDefaultClients } from "./features/clients/defaultClients";
 import * as Models from "./models/types";
+import type { Client, Estimate, Position, EstimateDefaults, ClientType } from "./models/types";
 import {
   PRODUCT_TYPES,
   SUPPLIERS,
@@ -25,6 +26,7 @@ import {
   FRAME_EXTS,
   makeDefaultEstimateDefaults,
 } from "./features/estimateDefaults/defaultEstimateDefaults";
+import FollowUpsFeature from "./features/followUps/FollowUpsFeature";
 
 /* =========================
    Helpers
@@ -259,7 +261,7 @@ function scaleSplitsToTotal(splits: number[] | undefined, total: number, parts: 
 
   const sum = arr.reduce((a, b) => a + b, 0);
 
-  // If sum is zero (shouldn't happen), fall back
+  // If sum is zero (shouldn''t happen), fall back
   if (sum <= 0) {
     const base = Math.floor(safeTotal / safeParts);
     arr = Array.from({ length: safeParts }, () => Math.max(minEach, base));
@@ -465,7 +467,7 @@ function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => void })
 
 function ClientSummary({ c }: { c: Client }) {
   const headline = c.type === "Business" ? (c.businessName || c.clientName) : c.clientName;
-  const sub = c.type === "Business" ? (c.contactPerson ? `Contact: ${c.contactPerson}` : "Contact: —") : "Individual";
+  const sub = c.type === "Business" ? (c.contactPerson ? `Contact: ${c.contactPerson}` : "Contact: â€”") : "Individual";
 
   return (
     <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12, background: "#fff" }}>
@@ -480,8 +482,8 @@ function ClientSummary({ c }: { c: Client }) {
         </div>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {c.email ? <Pill>{c.email}</Pill> : <Pill>Email: —</Pill>}
-          {c.mobile ? <Pill>Mob: {c.mobile}</Pill> : <Pill>Mob: —</Pill>}
+          {c.email ? <Pill>{c.email}</Pill> : <Pill>Email: â€”</Pill>}
+          {c.mobile ? <Pill>Mob: {c.mobile}</Pill> : <Pill>Mob: â€”</Pill>}
           {c.home ? <Pill>Home: {c.home}</Pill> : null}
         </div>
       </div>
@@ -496,7 +498,10 @@ export default function App() {
   const estimatePickerRef = useRef<EstimatePickerFeatureHandle>(null);
 
 
-  const [clientCounter, setClientCounter] = useState(3);
+  
+
+  const [estimatePickerClientId, setEstimatePickerClientId] = useState<Models.ClientId | null>(null);
+const [clientCounter, setClientCounter] = useState(3);
   const [estimateCounter, setEstimateCounter] = useState(1);
 
   const [clients, setClients] = useState<Client[]>(() => makeDefaultClients({ uid, nextClientRef }));
@@ -672,13 +677,64 @@ export default function App() {
   const [previewView, setPreviewView] = useState<"Inside" | "Outside">("Inside");
   const [openingStd, setOpeningStd] = useState<"DIN" | "UK">("DIN");
 
-  const filteredClients = useMemo(() => clients, [clients]);
+  const [clientDbSearch, setClientDbSearch] = useState("");
+  const [clientDbFilter, setClientDbFilter] = useState<"All" | "Open" | "Orders" | "Lost">("All");
+  const [clientDbSort, setClientDbSort] = useState<"asc" | "desc">("asc");
+
+  function loadEstimateOutcomesForClient(clientId: string): Record<string, string> {
+    try {
+      const raw = localStorage.getItem(`qs_estimate_outcomes_v1_${clientId}`);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? (parsed as Record<string, string>) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function clientMatchesFilter(c: Client): boolean {
+    if (clientDbFilter === "All") return true;
+    const outcomes = loadEstimateOutcomesForClient(c.id);
+    const wanted = clientDbFilter === "Orders" ? "Order" : clientDbFilter === "Lost" ? "Lost" : "Open";
+    return (c.estimates ?? []).some((e) => (outcomes[e.id] ?? "Open") === wanted);
+  }
+
+  const filteredClients = useMemo(() => {
+    const q = clientDbSearch.trim().toLowerCase();
+
+    const list = clients.filter((c) => {
+      if (!clientMatchesFilter(c)) return false;
+      if (!q) return true;
+
+      const name = (c.type === "Business" ? (c.businessName || c.clientName) : c.clientName) || "";
+      const hay = [
+        name,
+        c.clientRef || "",
+        c.projectName || "",
+        c.projectAddress || "",
+        c.email || "",
+        c.mobile || "",
+      ].join(" ").toLowerCase();
+
+      return hay.includes(q);
+    });
+
+    list.sort((a, b) => {
+      const an = ((a.type === "Business" ? (a.businessName || a.clientName) : a.clientName) || "").toLowerCase();
+      const bn = ((b.type === "Business" ? (b.businessName || b.clientName) : b.clientName) || "").toLowerCase();
+      return clientDbSort === "asc" ? an.localeCompare(bn) : bn.localeCompare(an);
+    });
+
+    return list;
+  }, [clients, clientDbSearch, clientDbFilter, clientDbSort]);
 
   function selectMenu(k: Models.MenuKey) {
     setMenu(k);
     setView("customers");
     setSelectedClientId(null);
     setSelectedEstimateId(null);
+            setEstimatePickerClientId(null);
+setEstimatePickerClientId(null);
     estimatePickerRef.current?.clear();
     setShowAddClient(false);
     setShowPositionWizard(false);
@@ -716,14 +772,11 @@ export default function App() {
   function openClient(client: Client) {
   setSelectedClientId(client.id);
 
-  // Open should show the client in the database flow (choose estimate),
-  // not jump straight to Supplier & Product Defaults.
-  estimatePickerRef.current?.open(client.id);
+  // Store the selected client in App state first, then switch view.
+  // (Fixes blank screen: ref isn''t mounted yet when called from Customers list)
+  setEstimatePickerClientId(client.id);
   setView("estimate_picker");
-}
-
-
-  function startAddPosition() {
+}function startAddPosition() {
     if (!selectedEstimate) return;
 
     const nextIndex = (selectedEstimate.positions?.length ?? 0) + 1;
@@ -965,7 +1018,7 @@ export default function App() {
             {/* CUSTOMERS LIST */}
             {menu === "client_database" && view === "customers" && (
               <Card style={{ minHeight: 520 }}>
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                   <div>
                     <H2>Client Database</H2>
                     <Small>Open a client to choose an estimate (or create one).</Small>
@@ -974,6 +1027,40 @@ export default function App() {
                   <Button variant="primary" onClick={openAddClientPanel}>
                     Add new client
                   </Button>
+                </div>
+
+                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                    <div style={{ flex: "1 1 320px", maxWidth: 520 }}>
+                      <Input
+                        value={clientDbSearch}
+                        onChange={setClientDbSearch}
+                        placeholder="Search clients, refs, project names or address"
+                      />
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <Small>Sort</Small>
+                      <Button variant={clientDbSort === "asc" ? "primary" : "secondary"} onClick={() => setClientDbSort("asc")}>
+                        Ascending
+                      </Button>
+                      <Button variant={clientDbSort === "desc" ? "primary" : "secondary"} onClick={() => setClientDbSort("desc")}>
+                        Descending
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {(["All", "Open", "Orders", "Lost"] as const).map((opt) => (
+                      <Button
+                        key={opt}
+                        variant={clientDbFilter === opt ? "primary" : "secondary"}
+                        onClick={() => setClientDbFilter(opt)}
+                      >
+                        {opt}
+                      </Button>
+                    ))}
+                  </div>
                 </div>
 
                 {showAddClient && (
@@ -1185,7 +1272,7 @@ export default function App() {
                       </div>
 
                       <div style={{ fontSize: 12, color: "#71717a" }}>
-                        {c.projectName || "No project name"} • {c.projectAddress ? c.projectAddress.split("\n")[0] : "No project address"}
+                        {c.projectName || "No project name"} â€¢ {c.projectAddress ? c.projectAddress.split("\n")[0] : "No project address"}
                       </div>
                     </div>
                   ))}
@@ -1194,12 +1281,13 @@ export default function App() {
             )}
 
                         {menu === "follow_ups" && view === "customers" && (
-              <Card style={{ minHeight: 520 }}>
-                <div style={{ padding: 10 }}>
-                  <H2>Follow Ups</H2>
-                  <Small>Coming soon.</Small>
-                </div>
-              </Card>
+              <FollowUpsFeature
+                clients={clients}
+                onOpenClient={(clientId) => {
+                  setEstimatePickerClientId(clientId);
+                  setView("estimate_picker");
+                }}
+              />
             )}
 
                                     {/* ESTIMATE PICKER */}
@@ -1208,8 +1296,11 @@ export default function App() {
             {view === "estimate_picker" && (
               <EstimatePickerFeature
                 ref={estimatePickerRef}
+                clientId={estimatePickerClientId}
+                initialClientId={estimatePickerClientId}
+                onConsumedInitialClientId={() => setEstimatePickerClientId(null)}
                 clients={clients}
-                onBack={() => setView("customers")}
+                onBack={() => { setEstimatePickerClientId(null); estimatePickerRef.current?.clear(); setView("customers"); }}
                 openEditClientPanel={openEditClientPanel}
                 createEstimateForClient={createEstimateForClient}
                 openEstimateDefaults={(clientId, estimateId) => openEstimateDefaults(clientId, estimateId)}
@@ -1226,7 +1317,7 @@ export default function App() {
                       <Pill>{selectedEstimate.estimateRef}</Pill>
                       <Small>{selectedClient.clientName}</Small>
                     </div>
-                    <Small>Set estimate-level defaults here. Add Position will use these when “Use estimate defaults” is on.</Small>
+                    <Small>Set estimate-level defaults here. Add Position will use these when â€œUse estimate defaultsâ€ is on.</Small>
                   </div>
 
                   <div style={{ display: "flex", gap: 10 }}>
@@ -1264,7 +1355,7 @@ export default function App() {
                       <Pill>{selectedEstimate.estimateRef}</Pill>
                       <Small>{selectedClient.clientName}</Small>
                     </div>
-                    <Small>Supplier/Product Defaults are set separately. Add Position starts at Position → Dimensions → Configuration.</Small>
+                    <Small>Supplier/Product Defaults are set separately. Add Position starts at Position â†’ Dimensions â†’ Configuration.</Small>
                   </div>
 
                   <div style={{ display: "flex", gap: 10 }}>
@@ -1299,11 +1390,11 @@ export default function App() {
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                           <div style={{ fontWeight: 900, fontSize: 13 }}>{p.positionRef}</div>
                           <div style={{ fontSize: 12, color: "#71717a" }}>
-                            Qty {p.qty} • {p.widthMm}×{p.heightMm} • {p.fieldsX}×{p.fieldsY}
+                            Qty {p.qty} â€¢ {p.widthMm}Ã—{p.heightMm} â€¢ {p.fieldsX}Ã—{p.fieldsY}
                           </div>
                         </div>
                         <div style={{ marginTop: 4, fontSize: 12, color: "#71717a" }}>
-                          {p.roomName || "—"} • {p.positionType} • {p.useEstimateDefaults ? "Using estimate defaults" : "Overrides"}
+                          {p.roomName || "â€”"} â€¢ {p.positionType} â€¢ {p.useEstimateDefaults ? "Using estimate defaults" : "Overrides"}
                         </div>
                       </div>
                     ))}
@@ -1480,7 +1571,7 @@ export default function App() {
                                   <input type="checkbox" checked={posDraft.useEstimateDefaults} onChange={(e) => setPosDraft((p) => ({ ...p, useEstimateDefaults: e.target.checked }))} />
                                   Use estimate defaults for this position
                                 </label>
-                                <Small>When unticked, you can override the same defaults below (same option set as “Supplier & Product Defaults”).</Small>
+                                <Small>When unticked, you can override the same defaults below (same option set as â€œSupplier & Product Defaultsâ€).</Small>
                               </div>
                             </div>
 
@@ -1537,7 +1628,7 @@ export default function App() {
                                 <Small>
                                   {(() => {
                                     const eff = effectiveDefaultsForPosition(selectedEstimate, posDraft);
-                                    return `${eff.supplier || "—"} / ${eff.productType || "—"} / ${eff.product || "—"} • Hinge: ${eff.hingeType} • Glass: ${eff.glassType} Ug ${eff.ugValue} G ${eff.gValue}`;
+                                    return `${eff.supplier || "â€”"} / ${eff.productType || "â€”"} / ${eff.product || "â€”"} â€¢ Hinge: ${eff.hingeType} â€¢ Glass: ${eff.glassType} Ug ${eff.ugValue} G ${eff.gValue}`;
                                   })()}
                                 </Small>
                               </div>
@@ -1567,8 +1658,24 @@ export default function App() {
               </Card>
             )}
 
+            {/* CLIENT DATABASE VIEW FALLBACK (Phase 4F) */}
+            {menu === "client_database" && view !== "customers" && view !== "estimate_picker" && view !== "estimate_defaults" && view !== "estimate_workspace" && (
+              <Card style={{ minHeight: 520 }}>
+                <div style={{ display: "grid", gap: 10 }}>
+                  <H2>Client Database</H2>
+                  <Small>
+                    Main panel is blank because view is not recognised: <b>{String(view)}</b>
+                  </Small>
+                  <Small>Click reset to return to Customers.</Small>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <Button variant="primary" onClick={() => setView("customers")}>Reset to Customers</Button>
+                    <Button variant="secondary" onClick={() => { setMenu("client_database"); setView("customers"); }}>Reset Menu + View</Button>
+                  </div>
+                </div>
+              </Card>
+            )}
             {/* Fallback for other menus */}
-            {menu !== "client_database" && (
+            {menu !== "client_database" && menu !== "follow_ups" && (
               <Card style={{ minHeight: 520 }}>
                 <H2>{menu.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase())}</H2>
                 <Small>Placeholder screen.</Small>
@@ -1580,6 +1687,14 @@ export default function App() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
 
 
 

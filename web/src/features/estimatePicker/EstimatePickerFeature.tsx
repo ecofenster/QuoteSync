@@ -1,4 +1,4 @@
-import React, { forwardRef, useImperativeHandle, useMemo, useState } from "react";
+﻿import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import type { Client, ClientId, EstimateId, EstimateOutcome, EstimatePickerTab, ClientNote, ClientFile } from "../../models/types";
 import EstimatePickerTabs from "./EstimatePickerTabs";
 
@@ -8,7 +8,13 @@ export type EstimatePickerFeatureHandle = {
 };
 
 type Props = {
-  clients: Client[];
+  
+  clientId?: Models.ClientId | null;
+clients: Client[];
+
+  // When App switches to this view, it passes the client id here so we can open reliably after mount.
+  initialClientId?: ClientId | null;
+  onConsumedInitialClientId?: () => void;
 
   onBack: () => void;
   openEditClientPanel: (c: Client) => void;
@@ -87,12 +93,23 @@ function Button({
    Feature container
 ========================= */
 
-const EstimatePickerFeature = forwardRef<EstimatePickerFeatureHandle, Props>(function EstimatePickerFeature(props, ref) {
-  const { clients, onBack, openEditClientPanel, createEstimateForClient, openEstimateDefaults } = props;
+const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Props>(function EstimatePickerFeature(props, ref) {
+  const { clientId, clients, onBack, openEditClientPanel, createEstimateForClient, openEstimateDefaults } = props;
 
   // estimate picker (moved from App.tsx)
   const [pickerClientId, setPickerClientId] = useState<ClientId | null>(null);
+
+  // Sync selected client from parent (fixes blank screen when switching views)
+  useEffect(() => {
+    if (typeof clientId === "undefined") return;
+    setPickerClientId(clientId ?? null);
+  }, [clientId]);
   const pickerClient = useMemo(() => clients.find((c) => c.id === pickerClientId) ?? null, [clients, pickerClientId]);
+
+  // Sync from App-controlled clientId to avoid ref timing race (Open -> view switch).
+  useEffect(() => {
+    if (clientId) setPickerClientId(clientId);
+  }, [clientId]);
 
   // estimate picker tabs (Estimate Picker only)
   const [estimatePickerTab, setEstimatePickerTab] = useState<EstimatePickerTab>("client_info");
@@ -119,18 +136,70 @@ const EstimatePickerFeature = forwardRef<EstimatePickerFeatureHandle, Props>(fun
     openEstimateDefaults(pickerClientId, estimateId);
   }
 
-  if (!pickerClient) {
-    return null;
-  }
+    if (!pickerClient) {
+    return (
+      <Card style={{ minHeight: 360 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+          <div>
+            <H2>Estimate Selection</H2>
+            <Small>Select a client to view estimates, orders, notes and files.</Small>
+          </div>
 
-  return (
+          <Button variant="secondary" onClick={onBack}>
+            Back
+          </Button>
+        </div>
+
+        <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
+          {clients.length === 0 && <Small>No clients yet.</Small>}
+
+          {clients.map((c) => (
+            <div
+              key={c.id}
+              style={{
+                borderRadius: 16,
+                border: "1px solid #e4e4e7",
+                padding: 12,
+                background: "#fff",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 10,
+              }}
+            >
+              <div style={{ display: "grid", gap: 4 }}>
+                <div style={{ fontWeight: 900, fontSize: 13 }}>
+                  {c.type === "Business" ? (c.businessName || c.clientName) : c.clientName}
+                </div>
+                <Small>
+                  {c.clientRef} â€¢ {c.estimates.length} estimates
+                </Small>
+              </div>
+
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <Button variant="secondary" onClick={() => openEditClientPanel(c)}>
+                  Edit
+                </Button>
+                <Button variant="secondary" onClick={() => createEstimateForClient(c)}>
+                  New Estimate
+                </Button>
+                <Button variant="primary" onClick={() => setPickerClientId(c.id)}>
+                  Open
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+    );
+  }return (
     <Card style={{ minHeight: 520 }}>
       <div style={{ display: "grid", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
           <div>
-            <H2>Choose an estimate</H2>
+            <H2>Estimate Selection</H2>
             <Small>
-              {pickerClient.clientName} • {pickerClient.clientRef}
+              {pickerClient.clientName} â€¢ {pickerClient.clientRef}
             </Small>
           </div>
 
@@ -184,3 +253,7 @@ const EstimatePickerFeature = forwardRef<EstimatePickerFeatureHandle, Props>(fun
 });
 
 export default EstimatePickerFeature;
+
+
+
+
