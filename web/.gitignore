@@ -1,3 +1,7 @@
+# -------------------------
+# EXISTING (KEEP)
+# -------------------------
+
 # Logs
 logs
 *.log
@@ -12,7 +16,7 @@ dist
 dist-ssr
 *.local
 
-# Editor directories and files
+# Editor
 .vscode/*
 !.vscode/extensions.json
 .idea
@@ -22,3 +26,31 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# -------------------------
+# PROJECT-SPECIFIC (ADD)
+# -------------------------
+
+# Root level
+_backups/
+Docs/
+SQLite/
+
+# Web app specific
+web/_Archive/
+web/_backups/
+web/_download_update_reference_files/
+web/_handover/
+web/_logs/
+web/_manifests/
+web/_project/
+web/_docs/
+web/_ps1_patches/
+
+# VERY IMPORTANT (these were missing properly)
+web/node_modules/
+web/dist/
+web/dist-ssr/
+
+# Optional but recommended
+web/.env*
