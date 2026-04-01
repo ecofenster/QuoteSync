@@ -38,5 +38,6 @@ web/dist/
 web/dist-ssr/
 web/ps1_patches/
 web/quotesync.db
+~$*
 
 web/.env*
