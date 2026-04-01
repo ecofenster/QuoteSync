@@ -1,5 +1,5 @@
-﻿/**
- * QuoteSync — Centralised Types
+/**
+ * QuoteSync â€” Centralised Types
  * Generated: 2026-02-20 14:28:25
  */
 
@@ -20,7 +20,16 @@ export const asFileId = (v: string) => v as FileId;
 export const asFollowUpId = (v: string) => v as FollowUpId;
 
 export type MenuKey =
+  | "dashboard"
   | "client_database"
+  | "follow_ups"
+  | "estimates"
+  | "orders"
+  | "lost"
+  | "installation"
+  | "estimate_map"
+  | "completed_projects"
+  | "recycle_bin"
   | "project_preferences"
   | "address_database"
   | "reports"
@@ -36,9 +45,20 @@ export type ProductType =
   | "Aluminium"
   | "Steel";
 export type EstimateOutcome = "Open" | "Lost" | "Order";
-export type EstimatePickerTab = "client_info" | "estimates" | "orders" | "client_notes" | "files";
+export type EstimatePickerTab = "client_info" | "estimates" | "orders" | "lost" | "client_notes" | "files";
 
 export type View = "customers" | "estimate_picker" | "estimate_defaults" | "estimate_workspace";
+
+export type Address = {
+  line1: string;
+  line2: string;
+  line3: string;
+  town: string;
+  city: string;
+  county: string;
+  postcode: string;
+};
+
 export type Client = {
   id: ClientId;
   type: ClientType;
@@ -49,8 +69,16 @@ export type Client = {
   home: string;
 
   projectName: string;
+  customerAddress: string;
   projectAddress: string;
   invoiceAddress: string;
+  customerAddressStructured?: Address;
+  projectAddressStructured?: Address;
+  invoiceAddressStructured?: Address;
+  postcode?: string;
+  what3words?: string;
+  latitude?: number;
+  longitude?: number;
 
   businessName?: string;
   contactPerson?: string;
@@ -94,19 +122,82 @@ export type EstimateDefaults = {
   sunProtectionRequired: boolean;
   sunProtectionType: "Shutters" | "Roller blinds" | "Venetian blinds (external)" | "Venetian blinds (internal)";
 };
+export type OrderStage =
+  | "signoff_sent"
+  | "signoff_received"
+  | "factory_order"
+  | "in_production"
+  | "pre_dispatch_invoice"
+  | "production_complete"
+  | "factory_dispatch"
+  | "delivery"
+  | "installation";
+
+export type OrderTimeline = {
+  stage: OrderStage;
+  date?: string;
+  completed: boolean;
+};
+
+export type Installer = {
+  id: string;
+  companyName: string;
+  contactPerson: string;
+  phone: string;
+  postcode: string;
+  address: string;
+};
+
+export type OrderMeta = {
+  timeline: OrderTimeline[];
+  clientSignoffSentDate?: string;
+  clientSignoffReceivedDate?: string;
+  depositPaidDate?: string;
+  factoryOrderSignedOffDate?: string;
+  factoryInvoicePaidDate?: string;
+  productionWeeks?: number;
+  productionStartDate?: string;
+  productionEndDate?: string;
+  balanceInvoiceDueDate?: string;
+  productionCompletedDate?: string;
+  factoryDispatchDate?: string;
+  deliveryDate?: string;
+  installationDate?: string;
+  installerId?: string;
+};
+export type EstimateLocation = {
+  projectAddress: string;
+  projectAddressStructured: Address;
+  postcode: string;
+  what3words: string;
+  latitude: number | null;
+  longitude: number | null;
+};
+
 export type Estimate = {
   id: EstimateId;
   estimateRef: string;
   baseEstimateRef: string;
   revisionNo: number;
   status: EstimateStatus;
+  estimatedOrderMonth: string;
+  estimatedOrderYear: number;
   defaults: EstimateDefaults;
   positions: Position[];
+  orderMeta?: OrderMeta;
+  location?: EstimateLocation;
+  projectAddress?: string;
+  projectAddressStructured?: Address;
+  postcode?: string;
+  what3words?: string;
+  latitude?: number | null;
+  longitude?: number | null;
 };
 export type Position = {
   id: PositionId;
   positionRef: string;
   qty: number;
+  itemPrice?: number;
   roomName: string;
 
   widthMm: number;
@@ -149,3 +240,4 @@ export type FollowUp = {
   createdAt: string;
   createdBy: string;
 };
+

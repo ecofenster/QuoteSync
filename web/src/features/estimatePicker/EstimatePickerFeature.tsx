@@ -1,4 +1,4 @@
-﻿import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
+import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import type { Client, ClientId, EstimateId, EstimateOutcome, EstimatePickerTab, ClientNote, ClientFile } from "../../models/types";
 import EstimatePickerTabs from "./EstimatePickerTabs";
 
@@ -8,19 +8,38 @@ export type EstimatePickerFeatureHandle = {
 };
 
 type Props = {
-  
-  clientId?: Models.ClientId | null;
-clients: Client[];
+  clientId?: ClientId | null;
+  clients: Client[];
 
   // When App switches to this view, it passes the client id here so we can open reliably after mount.
   initialClientId?: ClientId | null;
   onConsumedInitialClientId?: () => void;
+  initialEstimateId?: EstimateId | null;
+  onConsumedInitialEstimateId?: () => void;
 
   onBack: () => void;
   openEditClientPanel: (c: Client) => void;
 
   createEstimateForClient: (c: Client) => void;
+  copyEstimateForClient: (client: Client, sourceEstimateId: EstimateId) => void;
+  setEstimateInstaller: (clientId: ClientId, estimateId: EstimateId, installerId: string) => void;
+  updateEstimateOrderMeta: (clientId: ClientId, estimateId: EstimateId, patch: Record<string, any>) => void;
+  updateEstimatePosition: (
+    clientId: ClientId,
+    estimateId: EstimateId,
+    positionId: string,
+    patch: {
+      positionRef?: string;
+      roomName?: string;
+      qty?: number;
+      widthMm?: number;
+      heightMm?: number;
+      insertion?: string;
+      positionType?: "Window" | "Door";
+    }
+  ) => void;
   openEstimateDefaults: (clientId: ClientId, estimateId: EstimateId) => void;
+  persistEstimateOutcome: (clientId: ClientId, estimateId: EstimateId, outcome: EstimateOutcome) => void;
 };
 
 /* =========================
@@ -94,7 +113,18 @@ function Button({
 ========================= */
 
 const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Props>(function EstimatePickerFeature(props, ref) {
-  const { clientId, clients, onBack, openEditClientPanel, createEstimateForClient, openEstimateDefaults } = props;
+    const {
+    clientId,
+    clients,
+    onBack,
+    openEditClientPanel,
+    createEstimateForClient,
+    copyEstimateForClient,
+    setEstimateInstaller,
+    updateEstimateOrderMeta,
+    updateEstimatePosition,
+    openEstimateDefaults,
+  } = props;
 
   // estimate picker (moved from App.tsx)
   const [pickerClientId, setPickerClientId] = useState<ClientId | null>(null);
@@ -111,9 +141,18 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
     if (clientId) setPickerClientId(clientId);
   }, [clientId]);
 
+  const [initialExpandedEstimateId, setInitialExpandedEstimateId] = useState<EstimateId | null>(null);
+
+  useEffect(() => {
+    if (!props.initialEstimateId || !pickerClientId) return;
+    setEstimatePickerTab("estimates");
+    setInitialExpandedEstimateId(props.initialEstimateId);
+    props.onConsumedInitialEstimateId?.();
+  }, [pickerClientId, props.initialEstimateId]);
+
   // estimate picker tabs (Estimate Picker only)
   const [estimatePickerTab, setEstimatePickerTab] = useState<EstimatePickerTab>("client_info");
-  const [estimateOutcomeById, setEstimateOutcomeById] = useState<Record<EstimateId, EstimateOutcome>>({});
+
   const [clientNotes, setClientNotes] = useState<ClientNote[]>([]);
   const [clientNoteDraftHtml, setClientNoteDraftHtml] = useState<string>("");
   const [clientFiles, setClientFiles] = useState<ClientFile[]>([]);
@@ -121,6 +160,7 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
   const [clientFileUrl, setClientFileUrl] = useState<string>("");
   const [clientFileNames, setClientFileNames] = useState<string[]>([]);
   const activeUserName = "User";
+
 
   useImperativeHandle(
     ref,
@@ -172,7 +212,7 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
                   {c.type === "Business" ? (c.businessName || c.clientName) : c.clientName}
                 </div>
                 <Small>
-                  {c.clientRef} â€¢ {c.estimates.length} estimates
+                  {c.clientRef} • {c.estimates.length} estimates
                 </Small>
               </div>
 
@@ -199,7 +239,7 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
           <div>
             <H2>Estimate Selection</H2>
             <Small>
-              {pickerClient.clientName} â€¢ {pickerClient.clientRef}
+              {pickerClient.clientName} • {pickerClient.clientRef}
             </Small>
           </div>
 
@@ -225,14 +265,19 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
           </div>
         </div>
 
-        <EstimatePickerTabs
+         <EstimatePickerTabs
           estimatePickerTab={estimatePickerTab}
+          initialExpandedEstimateId={initialExpandedEstimateId}
+          onConsumedInitialExpandedEstimateId={() => setInitialExpandedEstimateId(null)}
           setEstimatePickerTab={setEstimatePickerTab}
           pickerClient={pickerClient}
           openEditClientPanel={openEditClientPanel}
           openEstimateFromPicker={openEstimateFromPicker}
-          estimateOutcomeById={estimateOutcomeById}
-          setEstimateOutcomeById={setEstimateOutcomeById}
+          copyEstimateForClient={copyEstimateForClient}
+          setEstimateInstaller={setEstimateInstaller}
+          updateEstimateOrderMeta={updateEstimateOrderMeta}
+          updateEstimatePosition={updateEstimatePosition}
+          persistEstimateOutcome={props.persistEstimateOutcome}
           clientNoteDraftHtml={clientNoteDraftHtml}
           setClientNoteDraftHtml={setClientNoteDraftHtml}
           clientNotes={clientNotes}
