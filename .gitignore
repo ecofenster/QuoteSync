@@ -1,0 +1,56 @@
+# -------------------------
+# EXISTING (KEEP)
+# -------------------------
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# -------------------------
+# PROJECT-SPECIFIC (ADD)
+# -------------------------
+
+# Root level
+_backups/
+Docs/
+SQLite/
+
+# Web app specific
+web/_Archive/
+web/_backups/
+web/_download_update_reference_files/
+web/_handover/
+web/_logs/
+web/_manifests/
+web/_project/
+web/_docs/
+web/_ps1_patches/
+
+# VERY IMPORTANT (these were missing properly)
+web/node_modules/
+web/dist/
+web/dist-ssr/
+
+# Optional but recommended
+web/.env*
