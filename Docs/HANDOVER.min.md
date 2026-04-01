@@ -1,4 +1,0 @@
-QuoteSync Save Point: 20260220_130902_full_project.zip
-Tabs + Follow Ups stable.
-SHA256: A51D46315A066DAD9516563A36EE30906C722FCB14937E44389338A8F537200E
-No console errors.
