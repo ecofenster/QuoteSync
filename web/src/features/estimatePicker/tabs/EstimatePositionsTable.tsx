@@ -28,42 +28,6 @@ type Props = {
   isSaving: boolean;
 };
 
-const selectStyle: React.CSSProperties = {
-  height: 40,
-  borderRadius: 14,
-  border: "1px solid #e4e4e7",
-  background: "#fff",
-  color: "#111827",
-  padding: "0 12px",
-  fontSize: 14,
-  fontWeight: 700,
-};
-
-const actionButtonStyle: React.CSSProperties = {
-  minWidth: 34,
-  height: 34,
-  borderRadius: 10,
-  border: "1px solid #e4e4e7",
-  background: "#fff",
-  color: "#111827",
-  fontSize: 14,
-  fontWeight: 800,
-  cursor: "pointer",
-};
-
-const configureButtonStyle: React.CSSProperties = {
-  height: 34,
-  borderRadius: 10,
-  border: "1px solid #e4e4e7",
-  background: "#fff",
-  color: "#111827",
-  fontSize: 12,
-  fontWeight: 800,
-  cursor: "pointer",
-  padding: "0 10px",
-  whiteSpace: "nowrap",
-};
-
 export default function EstimatePositionsTable(props: Props) {
   const {
     e,
@@ -108,40 +72,19 @@ export default function EstimatePositionsTable(props: Props) {
   }
 
   return (
-    <div
-      style={{
-        border: "1px solid #e4e4e7",
-        borderRadius: 14,
-        background: "#fff",
-        overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
-        flex: 1,
-        minHeight: 0,
-      }}
-    >
-      <div
-        style={{
-          padding: 12,
-          borderBottom: "1px solid #e4e4e7",
-          background: "#fafafa",
-          display: "flex",
-          alignItems: "end",
-          gap: 10,
-          flexWrap: "wrap",
-        }}
-      >
-        <div style={{ display: "grid", gap: 4 }}>
-          <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a" }}>Quick add</div>
-          <select value={quickAddPositionType} onChange={(e) => setQuickAddPositionType(e.target.value as "Window" | "Door")} style={selectStyle} disabled={isSaving}>
+    <div className="ep-positions-shell">
+      <div className="ep-positions-toolbar">
+        <div className="ep-positions-field">
+          <div className="ep-positions-field-label">Quick add</div>
+          <select className="ep-positions-select" value={quickAddPositionType} onChange={(e) => setQuickAddPositionType(e.target.value as "Window" | "Door")} disabled={isSaving}>
             <option value="Window">Window</option>
             <option value="Door">Door</option>
           </select>
         </div>
 
-        <div style={{ display: "grid", gap: 4 }}>
-          <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a" }}>Type</div>
-          <select value={quickAddInsertion} onChange={(e) => setQuickAddInsertion(e.target.value)} style={selectStyle} disabled={isSaving}>
+        <div className="ep-positions-field">
+          <div className="ep-positions-field-label">Type</div>
+          <select className="ep-positions-select" value={quickAddInsertion} onChange={(e) => setQuickAddInsertion(e.target.value)} disabled={isSaving}>
             {availableInsertions.map((option) => (
               <option key={option} value={option}>
                 {option}
@@ -156,15 +99,8 @@ export default function EstimatePositionsTable(props: Props) {
             void onQuickAddPosition();
           }}
           disabled={isSaving}
+          className="ep-positions-add-button"
           style={{
-            height: 40,
-            borderRadius: 18,
-            border: "none",
-            background: "#18181b",
-            color: "#fff",
-            padding: "0 16px",
-            fontSize: 14,
-            fontWeight: 800,
             cursor: isSaving ? "not-allowed" : "pointer",
             opacity: isSaving ? 0.55 : 1,
           }}
@@ -172,24 +108,24 @@ export default function EstimatePositionsTable(props: Props) {
           Add Position
         </button>
 
-        <div style={{ fontSize: 12, color: "#71717a", fontWeight: 700 }}>
+        <div className="ep-positions-saving">
           {isSaving ? "Saving changes..." : "Changes save on blur"}
         </div>
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1320, background: "#fff" }}>
+      <div className="ep-positions-scroll">
+        <table className="ep-positions-table">
           <thead>
-            <tr style={{ background: "#fafafa" }}>
-              <th style={{ textAlign: "left", padding: 10, fontSize: 12, borderBottom: "1px solid #e4e4e7", position: "sticky", top: 0, zIndex: 2, background: "#fafafa", width: 42 }}></th>
-              <th style={{ textAlign: "left", padding: 10, fontSize: 12, borderBottom: "1px solid #e4e4e7", position: "sticky", top: 0, zIndex: 2, background: "#fafafa", width: 150 }}>Reference</th>
-              <th style={{ textAlign: "left", padding: 10, fontSize: 12, borderBottom: "1px solid #e4e4e7", position: "sticky", top: 0, zIndex: 2, background: "#fafafa", width: 170 }}>Room</th>
-              <th style={{ textAlign: "left", padding: 10, fontSize: 12, borderBottom: "1px solid #e4e4e7", position: "sticky", top: 0, zIndex: 2, background: "#fafafa" }}>Picture</th>
-              <th style={{ textAlign: "left", padding: 10, fontSize: 12, borderBottom: "1px solid #e4e4e7", position: "sticky", top: 0, zIndex: 2, background: "#fafafa", minWidth: 260 }}>Brief description</th>
-              <th style={{ textAlign: "right", padding: 10, fontSize: 12, borderBottom: "1px solid #e4e4e7", position: "sticky", top: 0, zIndex: 2, background: "#fafafa", width: 90 }}>Qty</th>
-              <th style={{ textAlign: "right", padding: 10, fontSize: 12, borderBottom: "1px solid #e4e4e7", position: "sticky", top: 0, zIndex: 2, background: "#fafafa", width: 140 }}>Item price</th>
-              <th style={{ textAlign: "right", padding: 10, fontSize: 12, borderBottom: "1px solid #e4e4e7", position: "sticky", top: 0, zIndex: 2, background: "#fafafa", width: 130 }}>Quantity price</th>
-              <th style={{ textAlign: "center", padding: 10, fontSize: 12, borderBottom: "1px solid #e4e4e7", position: "sticky", top: 0, zIndex: 2, background: "#fafafa", width: 220 }}>Actions</th>
+            <tr className="ep-positions-head-row">
+              <th className="ep-positions-head-cell" style={{ width: 42 }}></th>
+              <th className="ep-positions-head-cell" style={{ width: 150 }}>Reference</th>
+              <th className="ep-positions-head-cell" style={{ width: 170 }}>Room</th>
+              <th className="ep-positions-head-cell">Picture</th>
+              <th className="ep-positions-head-cell" style={{ minWidth: 260 }}>Brief description</th>
+              <th className="ep-positions-head-cell ep-positions-head-cell--right" style={{ width: 90 }}>Qty</th>
+              <th className="ep-positions-head-cell ep-positions-head-cell--right" style={{ width: 140 }}>Item price</th>
+              <th className="ep-positions-head-cell ep-positions-head-cell--right" style={{ width: 130 }}>Quantity price</th>
+              <th className="ep-positions-head-cell ep-positions-head-cell--center" style={{ width: 220 }}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -201,13 +137,11 @@ export default function EstimatePositionsTable(props: Props) {
 
               return (
                 <React.Fragment key={p.id}>
-                  <tr onClick={() => togglePosition(p.id)} style={{ cursor: "pointer" }} aria-expanded={isExpanded}>
+                  <tr onClick={() => togglePosition(p.id)} className="ep-positions-row" aria-expanded={isExpanded}>
                     <td
+                      className="ep-positions-cell ep-positions-cell--center"
                       style={{
-                        padding: 10,
                         borderBottom: isExpanded ? "none" : "1px solid #f4f4f5",
-                        verticalAlign: "middle",
-                        textAlign: "center",
                         width: 42,
                         minWidth: 42,
                         cursor: "pointer",
@@ -217,7 +151,8 @@ export default function EstimatePositionsTable(props: Props) {
                     </td>
 
                     <td
-                      style={{ padding: 10, borderBottom: isExpanded ? "none" : "1px solid #f4f4f5", verticalAlign: "middle" }}
+                      className="ep-positions-cell"
+                      style={{ borderBottom: isExpanded ? "none" : "1px solid #f4f4f5" }}
                       onClick={(ev) => ev.stopPropagation()}
                     >
                       <Input
@@ -228,7 +163,8 @@ export default function EstimatePositionsTable(props: Props) {
                     </td>
 
                     <td
-                      style={{ padding: 10, borderBottom: isExpanded ? "none" : "1px solid #f4f4f5", verticalAlign: "middle" }}
+                      className="ep-positions-cell"
+                      style={{ borderBottom: isExpanded ? "none" : "1px solid #f4f4f5" }}
                       onClick={(ev) => ev.stopPropagation()}
                     >
                       <Input
@@ -238,14 +174,14 @@ export default function EstimatePositionsTable(props: Props) {
                       />
                     </td>
 
-                    <td style={{ padding: 10, borderBottom: isExpanded ? "none" : "1px solid #f4f4f5", verticalAlign: "middle" }}>
+                    <td className="ep-positions-cell" style={{ borderBottom: isExpanded ? "none" : "1px solid #f4f4f5" }}>
                       <PositionPreview position={p} />
                     </td>
 
-                    <td style={{ padding: 10, borderBottom: isExpanded ? "none" : "1px solid #f4f4f5", verticalAlign: "middle" }}>
-                      <div style={{ display: "grid", gap: 6 }}>
-                        <div style={{ fontWeight: 700 }}>{positionDescription(p)}</div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }} onClick={(ev) => ev.stopPropagation()}>
+                    <td className="ep-positions-cell" style={{ borderBottom: isExpanded ? "none" : "1px solid #f4f4f5" }}>
+                      <div className="ep-positions-description">
+                        <div className="ep-positions-description-title">{positionDescription(p)}</div>
+                        <div className="ep-positions-dimensions" onClick={(ev) => ev.stopPropagation()}>
                           <Input
                             value={String(p.widthMm ?? "")}
                             onChange={(ev) => onUpdatePositionDraft(p.id, { widthMm: Number(ev.target.value || 0) })}
@@ -253,7 +189,7 @@ export default function EstimatePositionsTable(props: Props) {
                             inputMode="numeric"
                             style={{ width: 90 }}
                           />
-                          <span style={{ fontSize: 12, color: "#71717a" }}>×</span>
+                          <span className="ep-positions-divider">×</span>
                           <Input
                             value={String(p.heightMm ?? "")}
                             onChange={(ev) => onUpdatePositionDraft(p.id, { heightMm: Number(ev.target.value || 0) })}
@@ -266,7 +202,8 @@ export default function EstimatePositionsTable(props: Props) {
                     </td>
 
                     <td
-                      style={{ padding: 10, borderBottom: isExpanded ? "none" : "1px solid #f4f4f5", verticalAlign: "middle", textAlign: "right" }}
+                      className="ep-positions-cell ep-positions-cell--right"
+                      style={{ borderBottom: isExpanded ? "none" : "1px solid #f4f4f5" }}
                       onClick={(ev) => ev.stopPropagation()}
                     >
                       <Input
@@ -279,7 +216,8 @@ export default function EstimatePositionsTable(props: Props) {
                     </td>
 
                     <td
-                      style={{ padding: 10, borderBottom: isExpanded ? "none" : "1px solid #f4f4f5", verticalAlign: "middle", textAlign: "right", width: 140 }}
+                      className="ep-positions-cell ep-positions-cell--right"
+                      style={{ borderBottom: isExpanded ? "none" : "1px solid #f4f4f5", width: 140 }}
                       onClick={(ev) => ev.stopPropagation()}
                     >
                       <Input
@@ -291,15 +229,16 @@ export default function EstimatePositionsTable(props: Props) {
                       />
                     </td>
 
-                    <td style={{ padding: 10, borderBottom: isExpanded ? "none" : "1px solid #f4f4f5", verticalAlign: "middle", textAlign: "right", fontWeight: 800 }}>
+                    <td className="ep-positions-cell ep-positions-cell--right" style={{ borderBottom: isExpanded ? "none" : "1px solid #f4f4f5", fontWeight: 800 }}>
                       {formatMoney(quantityPrice)}
                     </td>
 
                     <td
-                      style={{ padding: 10, borderBottom: isExpanded ? "none" : "1px solid #f4f4f5", verticalAlign: "middle", textAlign: "center" }}
+                      className="ep-positions-cell ep-positions-cell--center"
+                      style={{ borderBottom: isExpanded ? "none" : "1px solid #f4f4f5" }}
                       onClick={(ev) => ev.stopPropagation()}
                     >
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6, flexWrap: "wrap" }}>
+                      <div className="ep-positions-actions">
                         <button
                           type="button"
                           onClick={() => {
@@ -307,8 +246,8 @@ export default function EstimatePositionsTable(props: Props) {
                           }}
                           disabled={isSaving}
                           title="Open configurator"
+                          className="ep-positions-action-button ep-positions-action-button--configure"
                           style={{
-                            ...configureButtonStyle,
                             cursor: isSaving ? "not-allowed" : "pointer",
                             opacity: isSaving ? 0.55 : 1,
                           }}
@@ -322,8 +261,8 @@ export default function EstimatePositionsTable(props: Props) {
                           }}
                           disabled={isSaving || idx === 0}
                           title="Move position up"
+                          className="ep-positions-action-button"
                           style={{
-                            ...actionButtonStyle,
                             cursor: isSaving || idx === 0 ? "not-allowed" : "pointer",
                             opacity: isSaving || idx === 0 ? 0.55 : 1,
                           }}
@@ -337,8 +276,8 @@ export default function EstimatePositionsTable(props: Props) {
                           }}
                           disabled={isSaving || idx === e.positions.length - 1}
                           title="Move position down"
+                          className="ep-positions-action-button"
                           style={{
-                            ...actionButtonStyle,
                             cursor: isSaving || idx === e.positions.length - 1 ? "not-allowed" : "pointer",
                             opacity: isSaving || idx === e.positions.length - 1 ? 0.55 : 1,
                           }}
@@ -352,8 +291,8 @@ export default function EstimatePositionsTable(props: Props) {
                           }}
                           disabled={isSaving}
                           title="Duplicate position"
+                          className="ep-positions-action-button"
                           style={{
-                            ...actionButtonStyle,
                             cursor: isSaving ? "not-allowed" : "pointer",
                             opacity: isSaving ? 0.55 : 1,
                           }}
@@ -367,8 +306,8 @@ export default function EstimatePositionsTable(props: Props) {
                           }}
                           disabled={isSaving}
                           title="Delete position"
+                          className="ep-positions-action-button"
                           style={{
-                            ...actionButtonStyle,
                             cursor: isSaving ? "not-allowed" : "pointer",
                             opacity: isSaving ? 0.55 : 1,
                           }}
@@ -381,7 +320,7 @@ export default function EstimatePositionsTable(props: Props) {
 
                   {isExpanded && (
                     <tr>
-                      <td colSpan={9} style={{ padding: 0, borderBottom: "1px solid #f4f4f5" }}>
+                      <td colSpan={9} className="ep-positions-expanded-cell" style={{ borderBottom: "1px solid #f4f4f5" }}>
                         <PositionExpandedPanel p={p} />
                       </td>
                     </tr>

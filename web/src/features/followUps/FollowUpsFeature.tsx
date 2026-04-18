@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Client, ClientId } from "../../models/types";
+import "./FollowUpsFeature.css";
 
 type FollowUp = {
   id: string;
@@ -477,59 +478,52 @@ export default function FollowUpsFeature({
   }
 
   return (
-    <div style={{ display: "grid", gap: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-        <div style={{ display: "grid", gap: 2 }}>
-          <div style={{ fontSize: 16, fontWeight: 900, color: "#111827" }}>Follow Ups</div>
-          <div style={{ fontSize: 12, color: "#71717a" }}>By date • click a follow-up to view details and linked note history.</div>
+    <div className="follow-ups">
+      <div className="follow-ups__header">
+        <div className="follow-ups__heading">
+          <div className="follow-ups__title">Follow Ups</div>
+          <div className="follow-ups__subtitle">By date • click a follow-up to view details and linked note history.</div>
         </div>
 
         {noteSavedToast ? (
-          <div style={{ fontSize: 12, fontWeight: 900, color: "#16a34a" }}>{noteSavedToast}</div>
+          <div className="follow-ups__toast">{noteSavedToast}</div>
         ) : (
-          <div style={{ fontSize: 12, color: "#71717a" }}>{selectedDateISO}</div>
+          <div className="follow-ups__meta">{selectedDateISO}</div>
         )}
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gridTemplateRows: "360px 320px",
-          gap: 12,
-        }}
-      >
-        <div style={{ border: "1px solid #e4e4e7", borderRadius: 16, overflow: "hidden", background: "#fff" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: 12, borderBottom: "1px solid #f1f5f9" }}>
+      <div className="follow-ups__grid">
+        <div className="follow-ups__panel">
+          <div className="follow-ups__panel-header follow-ups__panel-header--split">
             <button
+              className="follow-ups__nav-button"
               type="button"
               onClick={gotoPrevMonth}
-              style={{ borderRadius: 12, border: "1px solid #e4e4e7", background: "#fff", padding: "8px 10px", cursor: "pointer", fontWeight: 900 }}
             >
               ←
             </button>
-            <div style={{ fontWeight: 900 }}>
+            <div className="follow-ups__month-label">
               {now.toLocaleString(undefined, { month: "long", year: "numeric" })}
             </div>
             <button
+              className="follow-ups__nav-button"
               type="button"
               onClick={gotoNextMonth}
-              style={{ borderRadius: 12, border: "1px solid #e4e4e7", background: "#fff", padding: "8px 10px", cursor: "pointer", fontWeight: 900 }}
             >
               →
             </button>
           </div>
 
-          <div style={{ padding: 12 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, marginBottom: 8 }}>
+          <div className="follow-ups__panel-body">
+            <div className="follow-ups__weekday-row">
               {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
-                <div key={d} style={{ fontSize: 11, fontWeight: 900, color: "#6b7280", textAlign: "center" }}>
+                <div key={d} className="follow-ups__weekday">
                   {d}
                 </div>
               ))}
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6 }}>
+            <div className="follow-ups__calendar-grid">
               {monthDays.map((d) => {
                 const iso = toISODate(d);
                 const inMonth = d.getMonth() === now.getMonth();
@@ -584,10 +578,10 @@ export default function FollowUpsFeature({
           </div>
         </div>
 
-        <div style={{ border: "1px solid #e4e4e7", borderRadius: 16, overflow: "hidden", background: "#fff" }}>
-          <div style={{ padding: 12, borderBottom: "1px solid #f1f5f9", fontWeight: 900 }}>Follow-ups on {selectedDateISO}</div>
-          <div style={{ padding: 12, display: "grid", gap: 10, maxHeight: 360, overflow: "auto" }}>
-            {selectedList.length === 0 && <div style={{ fontSize: 12, color: "#71717a" }}>No follow-ups for this date.</div>}
+        <div className="follow-ups__panel">
+          <div className="follow-ups__panel-header">Follow-ups on {selectedDateISO}</div>
+          <div className="follow-ups__panel-body follow-ups__panel-body--list follow-ups__panel-body--scroll-360">
+            {selectedList.length === 0 && <div className="follow-ups__empty">No follow-ups for this date.</div>}
             {selectedList.map((fu) => {
               const active = fu.id === selectedFollowUpId;
               const latestNote = latestNoteByFollowUpId.get(fu.id) || null;
@@ -612,32 +606,31 @@ export default function FollowUpsFeature({
                     gap: 6,
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                    <div style={{ fontWeight: 900, fontSize: 13 }}>{fu.title || "Follow-up"}</div>
-                    <div style={{ fontSize: 11, fontWeight: 900, opacity: 0.9 }}>
+                  <div className="follow-ups__item-head">
+                    <div className="follow-ups__item-title">{fu.title || "Follow-up"}</div>
+                    <div className="follow-ups__item-status">
                       {fu.status === "done" ? "Done" : overdue ? "Overdue" : "Pending"}
                     </div>
                   </div>
-                  <div style={{ fontSize: 12, opacity: 0.9 }}>
+                  <div className="follow-ups__item-copy">
                     {(fu.clientRef ? `${fu.clientRef} • ` : "")}{fu.clientName}
                     {fu.estimateRef ? ` • ${fu.estimateRef}` : ""}
                   </div>
-                  {fu.notes ? <div style={{ fontSize: 12, opacity: 0.9 }}>{fu.notes}</div> : null}
-                  <div style={{ fontSize: 11, opacity: 0.8 }}>
+                  {fu.notes ? <div className="follow-ups__item-notes">{fu.notes}</div> : null}
+                  <div className="follow-ups__item-activity">
                     Latest activity: {latestActivityAt ? new Date(latestActivityAt).toLocaleString() : "—"}
                   </div>
                   <div
+                    className="follow-ups__item-note-card"
                     style={{
-                      borderRadius: 10,
                       border: active ? "1px solid rgba(255,255,255,0.25)" : "1px solid #e4e4e7",
                       background: active ? "rgba(255,255,255,0.08)" : "#fafafa",
-                      padding: 8,
                     }}
                   >
-                    <div style={{ fontSize: 10, fontWeight: 900, textTransform: "uppercase", opacity: 0.8, marginBottom: 4 }}>
+                    <div className="follow-ups__item-note-label">
                       Latest follow-up note
                     </div>
-                    <div style={{ fontSize: 12, opacity: 0.95 }}>
+                    <div className="follow-ups__item-note-preview">
                       {latestNote ? toPreviewText(latestNote.noteText) : "No linked note yet."}
                     </div>
                   </div>
@@ -647,76 +640,52 @@ export default function FollowUpsFeature({
           </div>
         </div>
 
-        <div style={{ border: "1px solid #e4e4e7", borderRadius: 16, overflow: "hidden", background: "#fff" }}>
-          <div style={{ padding: 12, borderBottom: "1px solid #f1f5f9", fontWeight: 900 }}>Selected follow-up</div>
-          <div style={{ padding: 12, display: "grid", gap: 10, maxHeight: 320, overflow: "auto" }}>
-            {!selectedFollowUp && <div style={{ fontSize: 12, color: "#71717a" }}>Select a follow-up.</div>}
+        <div className="follow-ups__panel">
+          <div className="follow-ups__panel-header">Selected follow-up</div>
+          <div className="follow-ups__panel-body follow-ups__panel-body--list follow-ups__panel-body--scroll-320">
+            {!selectedFollowUp && <div className="follow-ups__empty">Select a follow-up.</div>}
             {selectedFollowUp && (
               <>
-                <div style={{ fontWeight: 900, fontSize: 14 }}>{selectedFollowUp.title}</div>
-                <div style={{ fontSize: 12, color: "#71717a" }}>
+                <div className="follow-ups__detail-title">{selectedFollowUp.title}</div>
+                <div className="follow-ups__detail-meta">
                   Client: {(selectedFollowUp.clientRef ? `${selectedFollowUp.clientRef} • ` : "")}{selectedFollowUp.clientName}
                 </div>
-                <div style={{ fontSize: 12, color: "#71717a" }}>
+                <div className="follow-ups__detail-meta">
                   Due: {selectedFollowUp.dueDateISO} • Created: {new Date(selectedFollowUp.createdAt).toLocaleString()}
                 </div>
-                <div style={{ fontSize: 12, color: "#71717a" }}>
+                <div className="follow-ups__detail-meta">
                   Status: {selectedFollowUp.status === "done" ? "Done" : isFollowUpOverdue(selectedFollowUp, todayISO) ? "Overdue" : "Pending"} • Latest activity: {followUpLatestActivityAt(selectedFollowUp, latestSelectedFollowUpNote) ? new Date(followUpLatestActivityAt(selectedFollowUp, latestSelectedFollowUpNote)).toLocaleString() : "—"}
                 </div>
                 {selectedFollowUp.estimateRef ? (
-                  <div style={{ fontSize: 12, color: "#71717a" }}>Estimate: {selectedFollowUp.estimateRef}</div>
+                  <div className="follow-ups__detail-meta">Estimate: {selectedFollowUp.estimateRef}</div>
                 ) : null}
 
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <div className="follow-ups__actions">
                   <button
+                    className="follow-ups__secondary-button"
                     type="button"
                     onClick={() => onOpenClient(selectedFollowUp.clientId)}
-                    style={{
-                      borderRadius: 16,
-                      border: "1px solid #e4e4e7",
-                      background: "#fff",
-                      padding: "10px 14px",
-                      cursor: "pointer",
-                      fontWeight: 900,
-                    }}
                   >
                     Open client
                   </button>
                   <button
+                    className="follow-ups__primary-button"
                     type="button"
                     onClick={() => markDone(selectedFollowUp.id)}
-                    style={{
-                      borderRadius: 16,
-                      border: "none",
-                      background: "#18181b",
-                      color: "#fff",
-                      padding: "10px 14px",
-                      cursor: "pointer",
-                      fontWeight: 900,
-                    }}
                   >
                     Mark done
                   </button>
                 </div>
 
-                <div
-                  style={{
-                    borderRadius: 14,
-                    border: "1px solid #e4e4e7",
-                    background: "#fafafa",
-                    padding: 12,
-                    display: "grid",
-                    gap: 8,
-                  }}
-                >
-                  <div style={{ fontSize: 11, fontWeight: 900, textTransform: "uppercase", color: "#52525b" }}>
+                <div className="follow-ups__latest-note">
+                  <div className="follow-ups__latest-note-label">
                     Latest linked note
                   </div>
-                  <div style={{ fontSize: 13, color: "#111827", whiteSpace: "pre-wrap" }}>
+                  <div className="follow-ups__latest-note-text">
                     {latestSelectedFollowUpNote ? latestSelectedFollowUpNote.noteText : "No linked follow-up note yet."}
                   </div>
                   {latestSelectedFollowUpNote ? (
-                    <div style={{ fontSize: 11, color: "#71717a" }}>
+                    <div className="follow-ups__note-meta">
                       {latestSelectedFollowUpNote.createdBy} • {new Date(latestSelectedFollowUpNote.updatedAt || latestSelectedFollowUpNote.createdAt).toLocaleString()}
                     </div>
                   ) : null}
@@ -726,49 +695,33 @@ export default function FollowUpsFeature({
           </div>
         </div>
 
-        <div style={{ border: "1px solid #e4e4e7", borderRadius: 16, overflow: "hidden", background: "#fff" }}>
-          <div style={{ padding: 12, borderBottom: "1px solid #f1f5f9", fontWeight: 900 }}>
+        <div className="follow-ups__panel">
+          <div className="follow-ups__panel-header">
             Add follow-up note
           </div>
-          <div style={{ padding: 12, display: "grid", gap: 10 }}>
-            <div style={{ fontSize: 12, color: "#71717a" }}>
+          <div className="follow-ups__panel-body follow-ups__composer">
+            <div className="follow-ups__composer-copy">
               {selectedFollowUp?.estimateId
                 ? "This note will be linked to the follow-up and estimate history."
                 : "This note will be linked to the follow-up and client history."}
             </div>
 
             <textarea
+              className="follow-ups__textarea"
               value={noteText}
               onChange={(e) => setNoteText(e.target.value)}
               placeholder={selectedFollowUp ? "Type a follow-up note..." : "Select a follow-up first."}
               disabled={!selectedFollowUp}
               dir="ltr"
-              style={{
-                width: "100%",
-                minHeight: 160,
-                resize: "vertical",
-                borderRadius: 14,
-                border: "1px solid #e4e4e7",
-                padding: 12,
-                fontSize: 14,
-                outline: "none",
-                direction: "ltr",
-                unicodeBidi: "plaintext",
-              }}
             />
 
             <button
+              className="follow-ups__save-button"
               type="button"
               onClick={addFollowUpNoteFromPanel}
               disabled={!selectedFollowUp || !noteText.trim()}
               style={{
-                borderRadius: 16,
-                border: "none",
-                background: "#18181b",
-                color: "#fff",
-                padding: "10px 14px",
                 cursor: (!selectedFollowUp || !noteText.trim()) ? "not-allowed" : "pointer",
-                fontWeight: 900,
                 opacity: (!selectedFollowUp || !noteText.trim()) ? 0.55 : 1,
                 justifySelf: "end",
               }}

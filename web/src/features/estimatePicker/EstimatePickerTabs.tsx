@@ -18,6 +18,7 @@ import ClientInfoTab from './tabs/ClientInfoTab';
 import NotesTab from './tabs/NotesTab';
 import FilesTab from './tabs/FilesTab';
 import EstimateSectionTab from './tabs/EstimateSectionTab';
+import './tabs/shared.css';
 
 type Props = {
   estimatePickerTab: EstimatePickerTab;
@@ -731,7 +732,7 @@ export default function EstimatePickerTabs(props: Props) {
 
   return (
     <>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <div className="ep-tab-list">
         <Button variant={estimatePickerTab === "client_info" ? "primary" : "secondary"} onClick={() => setEstimatePickerTab("client_info")}>
           Client Info
         </Button>
@@ -752,20 +753,20 @@ export default function EstimatePickerTabs(props: Props) {
         </Button>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(180px, 1fr))", gap: 10 }}>
-        <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-          <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Client Estimates</div>
-          <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{totalClientEstimateCount}</div>
+      <div className="ep-stats-grid">
+        <div className="ep-stat-card">
+          <div className="ep-stat-label">Client Estimates</div>
+          <div className="ep-stat-value">{totalClientEstimateCount}</div>
           <Small>Total estimates created for this client.</Small>
         </div>
-        <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-          <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Orders Conversion</div>
-          <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{orderConversionPct}%</div>
+        <div className="ep-stat-card">
+          <div className="ep-stat-label">Orders Conversion</div>
+          <div className="ep-stat-value">{orderConversionPct}%</div>
           <Small>{clientOrderCount} of {totalClientEstimateCount} marked as Order.</Small>
         </div>
-        <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-          <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Lost Conversion</div>
-          <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{lostConversionPct}%</div>
+        <div className="ep-stat-card">
+          <div className="ep-stat-label">Lost Conversion</div>
+          <div className="ep-stat-value">{lostConversionPct}%</div>
           <Small>{clientLostCount} of {totalClientEstimateCount} marked as Lost.</Small>
         </div>
       </div>
@@ -839,62 +840,48 @@ export default function EstimatePickerTabs(props: Props) {
             zIndex: 9999,
           }}
         >
-          <div style={{ width: "min(820px, 100%)", background: "#fff", borderRadius: 16, border: "1px solid #e4e4e7" }}>
-            <div style={{ padding: 14, borderBottom: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", gap: 10 }}>
+          <div className="ep-send-modal-card">
+            <div className="ep-send-modal-header">
               <div>
-                <div style={{ fontSize: 16, fontWeight: 900, color: "#111827" }}>Send estimate</div>
-                <div style={{ fontSize: 12, color: "#6b7280" }}>
+                <div className="ep-send-modal-title">Send estimate</div>
+                <div className="ep-send-modal-meta">
                   {pickerClient.clientName} • {(pickerClient as any).clientRef ?? ""} •{" "}
                   {pickerClient.estimates.find((x) => x.id === sendModalEstimateId)?.estimateRef ?? ""}
                 </div>
               </div>
 
-              <div style={{ display: "flex", gap: 8 }}>
+              <div className="ep-send-modal-close">
                 <Button variant="outline" onClick={() => setSendModalOpen(false)}>
                   Close
                 </Button>
               </div>
             </div>
 
-            <div style={{ padding: 14, display: "grid", gap: 14 }}>
-              <div style={{ border: "1px solid #e4e4e7", borderRadius: 14, padding: 12 }}>
-                <div style={{ fontWeight: 900, marginBottom: 8 }}>Send email</div>
+            <div className="ep-send-modal-body">
+              <div className="ep-send-section">
+                <div className="ep-send-section-title">Send email</div>
 
-                <div style={{ display: "grid", gap: 8 }}>
-                  <div style={{ display: "grid", gap: 6 }}>
+                <div className="ep-send-stack">
+                  <div className="ep-send-field">
                     <Small>Subject</Small>
                     <input
+                      className="ep-send-input"
                       value={sendEmailDraft.subject}
                       readOnly
-                      style={{
-                        height: 36,
-                        borderRadius: 10,
-                        border: "1px solid #e4e4e7",
-                        padding: "0 10px",
-                        background: "#fff",
-                        fontSize: 14,
-                      }}
                     />
                   </div>
 
-                  <div style={{ display: "grid", gap: 6 }}>
+                  <div className="ep-send-field">
                     <Small>Body</Small>
                     <textarea
+                      className="ep-send-textarea"
                       value={sendEmailDraft.body}
                       readOnly
                       rows={8}
-                      style={{
-                        borderRadius: 10,
-                        border: "1px solid #e4e4e7",
-                        padding: 10,
-                        background: "#fff",
-                        fontSize: 14,
-                        resize: "vertical",
-                      }}
                     />
                   </div>
 
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <div className="ep-send-inline-actions">
                     <Button
                       variant="outline"
                       onClick={async () => {
@@ -924,38 +911,30 @@ export default function EstimatePickerTabs(props: Props) {
                 </div>
               </div>
 
-              <div style={{ border: "1px solid #e4e4e7", borderRadius: 14, padding: 12 }}>
-                <div style={{ fontWeight: 900, marginBottom: 8 }}>Add follow up</div>
+              <div className="ep-send-section">
+                <div className="ep-send-section-title">Add follow up</div>
 
-                <div style={{ display: "grid", gap: 10 }}>
-                  <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <div className="ep-send-stack" style={{ gap: 10 }}>
+                  <label className="ep-send-checkbox">
                     <input type="checkbox" checked={sendModalAddFollowUp} onChange={(e) => setSendModalAddFollowUp(e.currentTarget.checked)} />
-                    <span style={{ fontSize: 13, color: "#111827", fontWeight: 800 }}>
+                    <span className="ep-send-checkbox-text">
                       Create follow-up (default {sendModalFollowUpDays} days / 72 hours)
                     </span>
                   </label>
 
-                  <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                  <div className="ep-send-inline-row">
                     <Small>Follow up in (days)</Small>
                     <input
+                      className="ep-send-input ep-send-input--days"
                       type="number"
                       min={0}
                       value={sendModalFollowUpDays}
                       onChange={(e) => setSendModalFollowUpDays(Math.max(0, Number(e.currentTarget.value || 0)))}
-                      style={{
-                        width: 90,
-                        height: 36,
-                        borderRadius: 10,
-                        border: "1px solid #e4e4e7",
-                        padding: "0 10px",
-                        background: "#fff",
-                        fontSize: 14,
-                      }}
                     />
 
-                    <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    <label className="ep-send-checkbox">
                       <input type="checkbox" checked={sendModalPhoneCall} onChange={(e) => setSendModalPhoneCall(e.currentTarget.checked)} />
-                      <span style={{ fontSize: 13, color: "#111827", fontWeight: 800 }}>Telephone call</span>
+                      <span className="ep-send-checkbox-text">Telephone call</span>
                     </label>
                   </div>
 
@@ -965,7 +944,7 @@ export default function EstimatePickerTabs(props: Props) {
                 </div>
               </div>
 
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <div className="ep-send-footer">
                 <Button variant="outline" onClick={() => setSendModalOpen(false)}>
                   Cancel
                 </Button>
