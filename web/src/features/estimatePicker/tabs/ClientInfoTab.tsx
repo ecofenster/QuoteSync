@@ -14,31 +14,22 @@ export default function ClientInfoTab({
   openEstimateFromPicker: (estimateId: EstimateId) => void;
 }) {
   return (
-    <div style={{ display: "grid", gap: 10 }}>
+    <div className="ep-section-shell">
       <ClientDetailsReadonly c={pickerClient} onEdit={() => openEditClientPanel(pickerClient)} />
 
-      <div style={{ marginTop: 2, display: "grid", gap: 10 }}>
+      <div className="ep-client-info-list">
         {pickerClient.estimates.map((e) => (
           <div
             key={e.id}
-            style={{
-              borderRadius: 14,
-              border: "1px solid #e4e4e7",
-              padding: 10,
-              background: "#fff",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 10,
-            }}
+            className="ep-client-info-estimate"
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <div className="ep-client-info-meta">
               <Pill>{e.estimateRef}</Pill>
               <Small>{e.status}</Small>
               <Small>{e.positions.length} positions</Small>
             </div>
 
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div className="ep-tab-list">
               <Button variant="secondary" onClick={() => confirmDeleteEstimate(e.id)}>
                 Delete
               </Button>

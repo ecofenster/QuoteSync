@@ -18,20 +18,14 @@ export function Button({
   disabled?: boolean;
   style?: React.CSSProperties;
 }) {
-  const isPrimary = variant === "primary";
+  const className = `ep-button ${variant === "primary" ? "ep-button--primary" : variant === "outline" ? "ep-button--outline" : "ep-button--secondary"}`;
   return (
     <button
       type="button"
       disabled={!!disabled}
       onClick={onClick}
+      className={className}
       style={{
-        borderRadius: 18,
-        border: isPrimary ? "none" : "1px solid #e4e4e7",
-        background: isPrimary ? "#18181b" : "#fff",
-        color: isPrimary ? "#fff" : "#3f3f46",
-        padding: "10px 14px",
-        fontSize: 14,
-        fontWeight: 800,
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.55 : 1,
         ...style,
@@ -44,46 +38,19 @@ export function Button({
 
 export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
   const { style, disabled, ...rest } = props;
-  const base: React.CSSProperties = {
-    width: "100%",
-    boxSizing: "border-box",
-    padding: "10px 12px",
-    borderRadius: 14,
-    border: "1px solid #e4e4e7",
-    background: disabled ? "#f4f4f5" : "#ffffff",
-    color: "#111827",
-    fontSize: 14,
-    outline: "none",
-  };
-  return <input {...rest} disabled={disabled} style={{ ...base, ...(style as any) }} />;
+  return <input {...rest} className="ep-shared-input" disabled={disabled} style={{ background: disabled ? "#f4f4f5" : "#ffffff", ...(style as any) }} />;
 }
 
 export function Pill({ children }: { children: React.ReactNode }) {
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        borderRadius: 999,
-        padding: "4px 10px",
-        fontSize: 12,
-        fontWeight: 800,
-        background: "#f4f4f5",
-        color: "#18181b",
-        border: "1px solid #e4e4e7",
-      }}
-    >
-      {children}
-    </span>
-  );
+  return <span className="ep-pill-base">{children}</span>;
 }
 
 export function Small({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
-  return <div style={{ fontSize: 12, color: "#71717a", ...(style || {}) }}>{children}</div>;
+  return <div className="ep-small" style={style}>{children}</div>;
 }
 
 export function H3({ children }: { children: React.ReactNode }) {
-  return <h3 style={{ fontSize: 14, margin: 0, fontWeight: 800, color: "#18181b" }}>{children}</h3>;
+  return <h3 className="ep-h3">{children}</h3>;
 }
 
 export function noteCategoryLabel(category: "general" | "follow_up" | "service" | "installer" | "client_request") {
@@ -140,21 +107,21 @@ export function OrderTimelineBar({ timeline }: { timeline: any[] }) {
   const percent = timeline.length ? Math.round((completedCount / timeline.length) * 100) : 0;
 
   return (
-    <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <div style={{ fontSize: 12, fontWeight: 800, color: "#3f3f46" }}>Order timeline</div>
-        <div style={{ fontSize: 12, fontWeight: 800, color: "#3f3f46" }}>{completedCount}/{timeline.length} complete ({percent}%)</div>
+    <div className="ep-timeline">
+      <div className="ep-timeline-header">
+        <div className="ep-timeline-label">Order timeline</div>
+        <div className="ep-timeline-label">{completedCount}/{timeline.length} complete ({percent}%)</div>
       </div>
-      <div style={{ height: 10, borderRadius: 999, background: "#e4e4e7", overflow: "hidden" }}>
+      <div className="ep-timeline-progress">
         <div style={{ width: `${percent}%`, height: "100%", background: "#22c55e" }} />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+      <div className="ep-timeline-grid">
         {timeline.map((t, i) => (
-          <div key={i} style={{ borderRadius: 10, border: "1px solid #e4e4e7", padding: 8, background: t.completed ? "#f0fdf4" : "#fff" }}>
-            <div style={{ fontSize: 11, fontWeight: 800, color: t.completed ? "#166534" : "#52525b", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+          <div key={i} className="ep-timeline-item" style={{ background: t.completed ? "#f0fdf4" : "#fff" }}>
+            <div className="ep-timeline-item-label" style={{ color: t.completed ? "#166534" : "#52525b" }}>
               {t.completed ? "Complete" : "Pending"}
             </div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#18181b", marginTop: 4 }}>{stageLabel(t.stage)}</div>
+            <div className="ep-timeline-item-stage">{stageLabel(t.stage)}</div>
           </div>
         ))}
       </div>
@@ -173,17 +140,17 @@ export function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => 
   const [i1, i2, i3, it, ic, ico, ip] = addressTuple(invoiceStructured);
 
   return (
-    <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", padding: 12, background: "#fff" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+    <div className="ep-pane-card ep-client-details-card">
+      <div className="ep-pane-header" style={{ gap: 12 }}>
         <H3>Client contact information</H3>
         <Button variant="secondary" onClick={onEdit}>Edit</Button>
       </div>
 
-      <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div className="ep-client-details-body">
+        <div className="ep-client-details-inline">
+          <label className="ep-client-details-checkbox">
             <input type="checkbox" checked={c.type === "Business"} disabled />
-            <span style={{ fontSize: 12, fontWeight: 800, color: "#3f3f46" }}>Business customer</span>
+            <span className="ep-client-details-checkbox-label">Business customer</span>
           </label>
           <Small>Type: {c.type}</Small>
         </div>
@@ -206,7 +173,7 @@ export function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => 
           </div>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div className="ep-row">
           <div>
             <div style={labelStyle}>Email</div>
             <Input value={c.email || ""} onChange={() => {}} disabled />
@@ -222,8 +189,8 @@ export function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => 
           <Input value={c.home || ""} onChange={() => {}} disabled />
         </div>
 
-        <div style={{ marginTop: 10, borderTop: "1px solid #e4e4e7", paddingTop: 10 }}>
-          <button type="button" onClick={() => setCustomerAddressOpen((prev) => !prev)} style={{ border: "none", background: "transparent", padding: 0, margin: 0, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, font: "inherit", color: "#18181b" }}>
+        <div className="ep-client-details-section">
+          <button type="button" onClick={() => setCustomerAddressOpen((prev) => !prev)} className="ep-accordion-button">
             <>
             <ExpandToggle expanded={customerAddressOpen} />
             <H3>Customer address</H3>
@@ -231,17 +198,17 @@ export function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => 
           </button>
 
           {customerAddressOpen && (
-            <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div className="ep-client-details-section-body">
+              <div className="ep-row">
                 <div><div style={labelStyle}>Address line 1</div><Input value={ca1} onChange={() => {}} disabled /></div>
                 <div><div style={labelStyle}>Address line 2</div><Input value={ca2} onChange={() => {}} disabled /></div>
               </div>
               <div><div style={labelStyle}>Address line 3</div><Input value={ca3} onChange={() => {}} disabled /></div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="ep-row">
                 <div><div style={labelStyle}>Town</div><Input value={ct} onChange={() => {}} disabled /></div>
                 <div><div style={labelStyle}>City</div><Input value={cc} onChange={() => {}} disabled /></div>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="ep-row">
                 <div><div style={labelStyle}>County/District</div><Input value={cco} onChange={() => {}} disabled /></div>
                 <div><div style={labelStyle}>Postcode</div><Input value={cp} onChange={() => {}} disabled /></div>
               </div>
@@ -249,8 +216,8 @@ export function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => 
           )}
         </div>
 
-        <div style={{ marginTop: 10, borderTop: "1px solid #e4e4e7", paddingTop: 10 }}>
-          <button type="button" onClick={() => setInvoiceAddressOpen((prev) => !prev)} style={{ border: "none", background: "transparent", padding: 0, margin: 0, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, font: "inherit", color: "#18181b" }}>
+        <div className="ep-client-details-section">
+          <button type="button" onClick={() => setInvoiceAddressOpen((prev) => !prev)} className="ep-accordion-button">
             <>
             <ExpandToggle expanded={invoiceAddressOpen} />
             <H3>Invoice address</H3>
@@ -258,17 +225,17 @@ export function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => 
           </button>
 
           {invoiceAddressOpen && (
-            <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div className="ep-client-details-section-body">
+              <div className="ep-row">
                 <div><div style={labelStyle}>Address line 1</div><Input value={i1} onChange={() => {}} disabled /></div>
                 <div><div style={labelStyle}>Address line 2</div><Input value={i2} onChange={() => {}} disabled /></div>
               </div>
               <div><div style={labelStyle}>Address line 3</div><Input value={i3} onChange={() => {}} disabled /></div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="ep-row">
                 <div><div style={labelStyle}>Town</div><Input value={it} onChange={() => {}} disabled /></div>
                 <div><div style={labelStyle}>City</div><Input value={ic} onChange={() => {}} disabled /></div>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="ep-row">
                 <div><div style={labelStyle}>County/District</div><Input value={ico} onChange={() => {}} disabled /></div>
                 <div><div style={labelStyle}>Postcode</div><Input value={ip} onChange={() => {}} disabled /></div>
               </div>

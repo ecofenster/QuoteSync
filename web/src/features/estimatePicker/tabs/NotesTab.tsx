@@ -49,37 +49,37 @@ export default function NotesTab(props: {
   const activeFilteredNotes = isEstimateNotesScope ? filteredEstimateNotes : filteredAccountNotes;
 
   return (
-    <div style={{ display: "grid", gap: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+    <div className="ep-shell">
+      <div className="ep-pane-header">
         <H3>Client Notes</H3>
         <Small>Use one notes area and switch scope between account-only and estimate-linked notes.</Small>
       </div>
 
-      <div style={{ display: "grid", gap: 12, borderRadius: 14, border: "1px solid #e4e4e7", padding: 12, background: "#fff" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+      <div className="ep-pane-card">
+        <div className="ep-pane-header">
           <H3>{isEstimateNotesScope ? "Estimate Notes" : "Account Notes"}</H3>
           <Small>{activeNoteUpdatedAt ? `Latest entry: ${new Date(activeNoteUpdatedAt).toLocaleString()}` : "No notes yet."}</Small>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(180px, 1fr))", gap: 10 }}>
-          <div style={{ display: "grid", gap: 6 }}>
+        <div className="ep-note-controls-grid">
+          <div className="ep-note-control">
             <Small>Notes: Choose client account specific note, or estimate specific note</Small>
-            <select value={props.notesScope} onChange={(e) => props.setNotesScope(e.currentTarget.value as "account" | "estimate")} style={{ height: 38, borderRadius: 12, border: "1px solid #e4e4e7", padding: "0 12px", background: "#fff" }}>
+            <select className="ep-select" value={props.notesScope} onChange={(e) => props.setNotesScope(e.currentTarget.value as "account" | "estimate")}>
               <option value="account">Account only</option>
               <option value="estimate">Selected estimate</option>
             </select>
           </div>
 
-          <div style={{ display: "grid", gap: 6 }}>
+          <div className="ep-note-control">
             <Small>Category: Choose the correct option for the note type</Small>
             <select
+              className="ep-select"
               value={activeNoteCategory}
               onChange={(e) => {
                 const value = e.currentTarget.value as NoteCategory;
                 if (isEstimateNotesScope) props.setEstimateNoteCategory(value);
                 else props.setAccountNoteCategory(value);
               }}
-              style={{ height: 38, borderRadius: 12, border: "1px solid #e4e4e7", padding: "0 12px", background: "#fff" }}
             >
               <option value="general">General</option>
               <option value="follow_up">Follow Up</option>
@@ -89,16 +89,16 @@ export default function NotesTab(props: {
             </select>
           </div>
 
-          <div style={{ display: "grid", gap: 6 }}>
+          <div className="ep-note-control">
             <Small>Filter notes: Remember to choose account or estimate &amp; estimate number</Small>
             <select
+              className="ep-select"
               value={activeNoteFilter}
               onChange={(e) => {
                 const value = e.currentTarget.value as NoteFilter;
                 if (isEstimateNotesScope) props.setEstimateNoteFilter(value);
                 else props.setAccountNoteFilter(value);
               }}
-              style={{ height: 38, borderRadius: 12, border: "1px solid #e4e4e7", padding: "0 12px", background: "#fff" }}
             >
               <option value="all">All</option>
               <option value="general">General</option>
@@ -111,9 +111,9 @@ export default function NotesTab(props: {
         </div>
 
         {isEstimateNotesScope && (
-          <div style={{ display: "grid", gap: 6 }}>
+          <div className="ep-note-control">
             <Small>Select estimate to add note</Small>
-            <select value={props.selectedEstimateNoteId} onChange={(e) => props.setSelectedEstimateNoteId(e.currentTarget.value as EstimateId)} style={{ height: 38, borderRadius: 12, border: "1px solid #e4e4e7", padding: "0 12px", background: "#fff" }}>
+            <select className="ep-select" value={props.selectedEstimateNoteId} onChange={(e) => props.setSelectedEstimateNoteId(e.currentTarget.value as EstimateId)}>
               {(props.pickerClient.estimates ?? []).map((estimate) => (
                 <option key={estimate.id} value={estimate.id}>{estimate.estimateRef || estimate.id}</option>
               ))}
@@ -122,12 +122,13 @@ export default function NotesTab(props: {
         )}
 
         {isEstimateNotesScope && props.pickerClient.estimates.length === 0 ? (
-          <div style={{ borderRadius: 14, border: "1px dashed #e4e4e7", padding: 14 }}>
+          <div className="ep-empty-state">
             <Small>No estimates yet, so no estimate notes can be added.</Small>
           </div>
         ) : (
           <>
             <textarea
+              className="ep-textarea"
               value={activeNoteDraft}
               onChange={(e) => {
                 if (isEstimateNotesScope) props.setEstimateNoteDraft(e.currentTarget.value);
@@ -135,10 +136,10 @@ export default function NotesTab(props: {
               }}
               placeholder={isEstimateNotesScope ? "Write a new estimate note..." : "Write a new account note..."}
               dir="ltr"
-              style={{ minHeight: 160, borderRadius: 14, border: "1px solid #e4e4e7", padding: 12, background: "#fff", outline: "none", direction: "ltr", unicodeBidi: "plaintext", width: "100%", boxSizing: "border-box", resize: "vertical", font: "inherit" }}
+              style={{ direction: "ltr", unicodeBidi: "plaintext" }}
             />
 
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <div className="ep-note-save-row">
               <Button
                 variant="primary"
                 disabled={props.notesSaving || !activeNoteDraft.trim() || (isEstimateNotesScope && !props.selectedEstimateNoteId)}
@@ -148,21 +149,21 @@ export default function NotesTab(props: {
               </Button>
             </div>
 
-            <div style={{ display: "grid", gap: 10, minHeight: 520, maxHeight: 520, overflow: "auto" }}>
+            <div className="ep-scroll-list ep-note-list">
               {activeFilteredNotes.length === 0 ? (
-                <div style={{ borderRadius: 14, border: "1px dashed #e4e4e7", padding: 14 }}>
+                <div className="ep-empty-state">
                   <Small>{isEstimateNotesScope ? "No estimate notes match this filter." : "No account notes match this filter."}</Small>
                 </div>
               ) : (
                 activeFilteredNotes.map((note) => (
-                  <div key={note.id} style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa", display: "grid", gap: 8 }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                      <span style={{ display: "inline-flex", alignItems: "center", borderRadius: 999, padding: "4px 10px", fontSize: 12, fontWeight: 800, ...noteCategoryPillStyle(note.category) }}>
+                  <div key={note.id} className="ep-note-card">
+                    <div className="ep-note-card-header">
+                      <span className="ep-note-pill" style={{ ...noteCategoryPillStyle(note.category) }}>
                         {noteCategoryLabel(note.category)}
                       </span>
                       <Small>{new Date(note.updatedAt || note.createdAt).toLocaleString()}</Small>
                     </div>
-                    <div style={{ fontSize: 14, color: "#18181b", whiteSpace: "pre-wrap" }}>{note.noteText}</div>
+                    <div className="ep-note-body">{note.noteText}</div>
                     <Small>By {note.createdBy}</Small>
                   </div>
                 ))

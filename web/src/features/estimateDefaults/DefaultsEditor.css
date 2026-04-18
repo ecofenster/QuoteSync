@@ -1,0 +1,139 @@
+.defaults-editor-root {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface);
+}
+
+.defaults-editor-heading {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--color-text-primary);
+}
+
+.defaults-editor-small {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.defaults-editor-input,
+.defaults-editor-select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  font-size: 14px;
+  background: var(--color-surface);
+  box-sizing: border-box;
+  outline: none;
+}
+
+.defaults-editor-label {
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+}
+
+.defaults-editor-accordion {
+  width: 100%;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text-primary);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.defaults-editor-section {
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface);
+}
+
+.defaults-editor-section-body {
+  margin-top: 10px;
+}
+
+.defaults-editor-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.defaults-editor-card {
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface);
+}
+
+.defaults-editor-card-body {
+  display: grid;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.defaults-editor-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.defaults-editor-three-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+}
+
+.defaults-editor-four-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 12px;
+}
+
+.defaults-editor-window-handle-grid {
+  display: grid;
+  grid-template-columns: 1fr 160px;
+  gap: 12px;
+  align-items: center;
+}
+
+.defaults-editor-handle-preview {
+  height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface-subtle, #fafafa);
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.defaults-editor-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.defaults-editor-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.defaults-editor-toggle-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}

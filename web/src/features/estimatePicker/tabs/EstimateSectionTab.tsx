@@ -240,33 +240,33 @@ export default function EstimateSectionTab(props: Props) {
   }
 
   return (
-    <div style={{ display: "grid", gap: 10 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+    <div className="ep-section-shell">
+      <div className="ep-section-header">
         <H3>{titleText}</H3>
         <Small>Combined totals for all estimates in this section.</Small>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(160px, 1fr))", gap: 10 }}>
-        <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-          <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total m²</div>
-          <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMeasure(sectionTotals.totalSquareMetres)}</div>
+      <div className="ep-section-stats-grid">
+        <div className="ep-stat-card">
+          <div className="ep-stat-label">Total m²</div>
+          <div className="ep-stat-value">{formatMeasure(sectionTotals.totalSquareMetres)}</div>
         </div>
-        <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-          <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Linear metreage</div>
-          <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMeasure(sectionTotals.totalLinearMetres)}</div>
+        <div className="ep-stat-card">
+          <div className="ep-stat-label">Linear metreage</div>
+          <div className="ep-stat-value">{formatMeasure(sectionTotals.totalLinearMetres)}</div>
         </div>
-        <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-          <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total quantity</div>
-          <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{sectionTotals.totalQty}</div>
+        <div className="ep-stat-card">
+          <div className="ep-stat-label">Total quantity</div>
+          <div className="ep-stat-value">{sectionTotals.totalQty}</div>
         </div>
-        <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-          <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total cost</div>
-          <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMoney(sectionTotals.totalCost)}</div>
+        <div className="ep-stat-card">
+          <div className="ep-stat-label">Total cost</div>
+          <div className="ep-stat-value">{formatMoney(sectionTotals.totalCost)}</div>
           <Small style={{ marginTop: 4 }}>{estimates.length} estimate(s) in this section</Small>
         </div>
       </div>
 
-      <div style={{ display: "grid", gap: 10 }}>
+      <div className="ep-section-estimates">
         {estimates.map((e) => {
           const currentOutcome = (((e as any).outcome ?? outcome) as EstimateOutcome);
           const totals = estimateTotals(e);
@@ -279,20 +279,16 @@ export default function EstimateSectionTab(props: Props) {
           return (
             <div
               key={e.id}
+              className="ep-estimate-card"
               style={{
-                borderRadius: 16,
                 border: isExpanded ? "2px solid #18181b" : "1px solid #e4e4e7",
-                padding: 10,
-                background: "#fff",
-                display: "grid",
-                gap: 12,
               }}
             >
               <div
                 onClick={() => setExpandedEstimateId((prev) => (prev === e.id ? null : e.id))}
-                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, cursor: "pointer" }}
+                className="ep-estimate-summary"
               >
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <div className="ep-estimate-summary-meta">
                   <ExpandToggle expanded={isExpanded} />
                   <Pill>{e.estimateRef}</Pill>
                   <Small>{e.status}</Small>
@@ -301,23 +297,23 @@ export default function EstimateSectionTab(props: Props) {
                   <Small>{formatMeasure(totals.totalLinearMetres)} lm</Small>
                   <Small>{formatMoney(estimateCost)}</Small>
                 </div>
-                <div style={{ fontSize: 12, fontWeight: 900, color: "#3f3f46", whiteSpace: "nowrap" }}>
+                <div className="ep-estimate-summary-toggle">
                   {isExpanded ? "Hide review" : "Review positions"}
                 </div>
               </div>
 
               {isExpanded && (
                 <>
-                  <div style={{ display: "flex", alignItems: "flex-end", gap: 14, flexWrap: "wrap" }}>
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-                      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7280", marginBottom: 4 }}>Email</div>
+                  <div className="ep-estimate-actions-grid">
+                    <div className="ep-estimate-action-group">
+                      <div className="ep-estimate-action-label">Email</div>
                       <Button variant="outline" disabled={!canUseOutputActions} onClick={() => { setSendModalEstimateId(e.id); setSendModalOpen(true); }}>
                         Send
                       </Button>
                     </div>
 
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-                      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7280", marginBottom: 4 }}>Follow up</div>
+                    <div className="ep-estimate-action-group">
+                      <div className="ep-estimate-action-label">Follow up</div>
                       <Button
                         variant="outline"
                         disabled={!canUseOutputActions}
@@ -337,8 +333,8 @@ export default function EstimateSectionTab(props: Props) {
                       </Button>
                     </div>
 
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", position: "relative" }}>
-                      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7280", marginBottom: 4 }}>Estimate status</div>
+                    <div className="ep-estimate-action-group ep-estimate-action-group--status">
+                      <div className="ep-estimate-action-label">Estimate status</div>
                       <div
                         role="button"
                         onClick={(ev) => {
@@ -407,29 +403,29 @@ export default function EstimateSectionTab(props: Props) {
                       )}
                     </div>
 
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-                      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7280", marginBottom: 4 }}>Copy estimate</div>
+                    <div className="ep-estimate-action-group">
+                      <div className="ep-estimate-action-label">Copy estimate</div>
                       <Button variant="outline" onClick={() => copyEstimateForClient(pickerClient, e.id)}>
                         Copy
                       </Button>
                     </div>
 
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-                      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7280", marginBottom: 4 }}>Delete estimate</div>
+                    <div className="ep-estimate-action-group">
+                      <div className="ep-estimate-action-label">Delete estimate</div>
                       <Button variant="outline" onClick={() => confirmDeleteEstimate(e.id)}>
                         Delete
                       </Button>
                     </div>
 
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-                      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7280", marginBottom: 4 }}>Open estimate</div>
+                    <div className="ep-estimate-action-group">
+                      <div className="ep-estimate-action-label">Open estimate</div>
                       <Button variant="primary" onClick={() => openEstimateFromPicker(e.id)}>
                         Open
                       </Button>
                     </div>
 
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-                      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7280", marginBottom: 4 }}>Print Word Doc</div>
+                    <div className="ep-estimate-action-group">
+                      <div className="ep-estimate-action-label">Print Word Doc</div>
                       <Button
                         variant="outline"
                         disabled={!canUseOutputActions}
@@ -448,8 +444,8 @@ export default function EstimateSectionTab(props: Props) {
                       </Button>
                     </div>
 
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-                      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7280", marginBottom: 4 }}>Print PDF</div>
+                    <div className="ep-estimate-action-group">
+                      <div className="ep-estimate-action-label">Print PDF</div>
                       <Button
                         variant="outline"
                         disabled={!canUseOutputActions}
@@ -469,8 +465,8 @@ export default function EstimateSectionTab(props: Props) {
                       </Button>
                     </div>
 
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-                      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7280", marginBottom: 4 }}>Import Supplier Estimate</div>
+                    <div className="ep-estimate-action-group">
+                      <div className="ep-estimate-action-label">Import Supplier Estimate</div>
                       <Button variant="outline" disabled={!canUsePricingActions} onClick={() => importSupplierEstimate(e.id)}>
                         Import Supplier Estimate
                       </Button>
@@ -478,7 +474,7 @@ export default function EstimateSectionTab(props: Props) {
                   </div>
 
                   {(supplierEstimateFilesByEstimateId[e.id] ?? []).length > 0 && (
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <div className="ep-estimate-files">
                       {(supplierEstimateFilesByEstimateId[e.id] ?? []).map((name, idx) => (
                         <Pill key={`${e.id}_${idx}`}>{name}</Pill>
                       ))}
@@ -500,38 +496,38 @@ export default function EstimateSectionTab(props: Props) {
                     />
                   )}
 
-                  <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa", display: "grid", gap: 6 }}>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: "#18181b" }}>
+                  <div className="ep-estimate-address-card">
+                    <div className="ep-estimate-address-line">
                       Project Address:{" "}
-                      <span style={{ fontWeight: 700 }}>
+                      <span className="ep-estimate-address-value">
                         {(e.projectAddress || "")
                           .split(/\r?\n/)
                           .map((s: string) => (s || "").trim())
                           .filter(Boolean)
-                          .join(", ") || "Address unavailable"}
+                        .join(", ") || "Address unavailable"}
                       </span>
                     </div>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: "#18181b" }}>
-                      what3words: <span style={{ fontWeight: 700 }}>{e.what3words || "Not set"}</span>
+                    <div className="ep-estimate-address-line">
+                      what3words: <span className="ep-estimate-address-value">{e.what3words || "Not set"}</span>
                     </div>
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(140px, 1fr))", gap: 10 }}>
-                    <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-                      <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total m²</div>
-                      <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMeasure(totals.totalSquareMetres)}</div>
+                  <div className="ep-estimate-stats-grid">
+                    <div className="ep-stat-card">
+                      <div className="ep-stat-label">Total m²</div>
+                      <div className="ep-stat-value">{formatMeasure(totals.totalSquareMetres)}</div>
                     </div>
-                    <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-                      <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Linear metreage</div>
-                      <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMeasure(totals.totalLinearMetres)}</div>
+                    <div className="ep-stat-card">
+                      <div className="ep-stat-label">Linear metreage</div>
+                      <div className="ep-stat-value">{formatMeasure(totals.totalLinearMetres)}</div>
                     </div>
-                    <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-                      <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total quantity</div>
-                      <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{totals.totalQty}</div>
+                    <div className="ep-stat-card">
+                      <div className="ep-stat-label">Total quantity</div>
+                      <div className="ep-stat-value">{totals.totalQty}</div>
                     </div>
-                    <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-                      <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total cost</div>
-                      <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMoney(estimateCost)}</div>
+                    <div className="ep-stat-card">
+                      <div className="ep-stat-label">Total cost</div>
+                      <div className="ep-stat-value">{formatMoney(estimateCost)}</div>
                     </div>
                   </div>
 
@@ -551,7 +547,7 @@ export default function EstimateSectionTab(props: Props) {
         })}
 
         {estimates.length === 0 && (
-          <div style={{ borderRadius: 14, border: "1px dashed #e4e4e7", padding: 14 }}>
+          <div className="ep-empty-state">
             <Small>{emptyText}</Small>
           </div>
         )}

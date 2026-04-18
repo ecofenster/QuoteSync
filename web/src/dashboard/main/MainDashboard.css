@@ -1,0 +1,128 @@
+.main-dashboard {
+  display: grid;
+  gap: 16px;
+}
+
+.main-dashboard-card {
+  padding: 16px;
+  border-radius: 18px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.06);
+}
+
+.main-dashboard-card-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.main-dashboard-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--color-text-primary);
+}
+
+.main-dashboard-heading {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--color-text-primary);
+}
+
+.main-dashboard-small {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.main-dashboard-button {
+  padding: 10px 14px;
+  border-radius: 18px;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.main-dashboard-button--primary {
+  border: none;
+  background: #18181b;
+  color: #fff;
+}
+
+.main-dashboard-button--secondary {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+}
+
+.main-dashboard-row-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface);
+}
+
+.main-dashboard-row-card-main {
+  display: grid;
+  gap: 4px;
+}
+
+.main-dashboard-row-card-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--color-text-primary);
+}
+
+.main-dashboard-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.main-dashboard-summary-card {
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface-subtle, #fafafa);
+}
+
+.main-dashboard-summary-label {
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.main-dashboard-summary-value {
+  font-size: 28px;
+  font-weight: 900;
+  color: var(--color-text-primary);
+}
+
+.main-dashboard-three-col {
+  display: grid;
+  grid-template-columns: 1.2fr 1.2fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.main-dashboard-four-col {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.main-dashboard-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.main-dashboard-list {
+  display: grid;
+  gap: 10px;
+}

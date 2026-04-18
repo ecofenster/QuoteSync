@@ -1,0 +1,229 @@
+.follow-ups {
+  display: grid;
+  gap: 12px;
+}
+
+.follow-ups__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.follow-ups__heading {
+  display: grid;
+  gap: 2px;
+}
+
+.follow-ups__title {
+  font-size: 16px;
+  font-weight: 900;
+  color: var(--color-text-primary);
+}
+
+.follow-ups__subtitle,
+.follow-ups__meta,
+.follow-ups__empty,
+.follow-ups__detail-meta,
+.follow-ups__composer-copy,
+.follow-ups__note-meta {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.follow-ups__toast {
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--color-success);
+}
+
+.follow-ups__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 360px 320px;
+  gap: 12px;
+}
+
+.follow-ups__panel {
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-surface);
+}
+
+.follow-ups__panel-header {
+  padding: 12px;
+  border-bottom: 1px solid var(--color-divider);
+  font-weight: 900;
+  color: var(--color-text-primary);
+}
+
+.follow-ups__panel-header--split {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.follow-ups__panel-body {
+  padding: 12px;
+}
+
+.follow-ups__panel-body--list {
+  display: grid;
+  gap: 10px;
+}
+
+.follow-ups__panel-body--scroll-360 {
+  max-height: 360px;
+  overflow: auto;
+}
+
+.follow-ups__panel-body--scroll-320 {
+  max-height: 320px;
+  overflow: auto;
+}
+
+.follow-ups__nav-button,
+.follow-ups__secondary-button,
+.follow-ups__primary-button,
+.follow-ups__save-button {
+  padding: 10px 14px;
+  border-radius: 16px;
+  font-weight: 900;
+}
+
+.follow-ups__nav-button {
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.follow-ups__month-label {
+  font-weight: 900;
+  color: var(--color-text-primary);
+}
+
+.follow-ups__weekday-row,
+.follow-ups__calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+.follow-ups__weekday-row {
+  margin-bottom: 8px;
+}
+
+.follow-ups__weekday {
+  font-size: 11px;
+  font-weight: 900;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.follow-ups__item-head,
+.follow-ups__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.follow-ups__item-title,
+.follow-ups__detail-title {
+  font-weight: 900;
+  color: inherit;
+}
+
+.follow-ups__item-title {
+  font-size: 13px;
+}
+
+.follow-ups__detail-title {
+  font-size: 14px;
+}
+
+.follow-ups__item-status {
+  font-size: 11px;
+  font-weight: 900;
+  opacity: 0.9;
+}
+
+.follow-ups__item-copy,
+.follow-ups__item-notes,
+.follow-ups__item-note-preview {
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.follow-ups__item-activity {
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.follow-ups__item-note-card,
+.follow-ups__latest-note {
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  padding: 12px;
+  background: var(--color-surface-subtle, #fafafa);
+}
+
+.follow-ups__item-note-card {
+  padding: 8px;
+}
+
+.follow-ups__item-note-label,
+.follow-ups__latest-note-label {
+  margin-bottom: 4px;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.follow-ups__latest-note-label {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.follow-ups__latest-note-text {
+  font-size: 13px;
+  color: var(--color-text-primary);
+  white-space: pre-wrap;
+}
+
+.follow-ups__actions {
+  flex-wrap: wrap;
+}
+
+.follow-ups__secondary-button {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.follow-ups__primary-button,
+.follow-ups__save-button {
+  border: none;
+  background: var(--color-surface-inverse, #18181b);
+  color: var(--color-text-on-dark, #fff);
+}
+
+.follow-ups__composer {
+  display: grid;
+  gap: 10px;
+}
+
+.follow-ups__textarea {
+  width: 100%;
+  min-height: 160px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  resize: vertical;
+  font-size: 14px;
+  outline: none;
+  direction: ltr;
+  unicode-bidi: plaintext;
+}

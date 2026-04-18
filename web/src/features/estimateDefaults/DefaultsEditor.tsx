@@ -6,12 +6,13 @@ import * as Models from "../../models/types";
 import type { EstimateDefaults } from "../../models/types";
 import { PRODUCT_TYPES, SUPPLIERS, WOOD_TYPES, FINISHES_BY_TYPE, allProductsForSupplier, firstProductForSupplier, isTimberProductType } from "../catalog/defaultCatalog";
 import { HINGE_TYPES, UG_DOUBLE, UG_TRIPLE, HANDLE_TYPES, SUN_PROTECTION, CILL_DEPTHS, FRAME_EXTS } from "./defaultEstimateDefaults";
+import "./DefaultsEditor.css";
 
 function H3({ children }: { children: React.ReactNode }) {
-  return <h3 style={{ fontSize: 14, margin: 0, fontWeight: 800, color: "#18181b" }}>{children}</h3>;
+  return <h3 className="defaults-editor-heading">{children}</h3>;
 }
 function Small({ children }: { children: React.ReactNode }) {
-  return <div style={{ fontSize: 12, color: "#71717a" }}>{children}</div>;
+  return <div className="defaults-editor-small">{children}</div>;
 }
 function Input({
   value,
@@ -39,14 +40,7 @@ function Input({
       disabled={disabled}
       readOnly={readOnly}
       onChange={(e) => onChange(e.target.value)}
-      style={{
-        width: "100%",
-        borderRadius: 12,
-        border: "1px solid #e4e4e7",
-        padding: "10px 12px",
-        fontSize: 14,
-        outline: "none",
-      }}
+      className="defaults-editor-input"
     />
   );
 }
@@ -63,29 +57,16 @@ function CollapsibleSection({
   children: React.ReactNode;
 }) {
   return (
-    <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12, background: "#fff" }}>
+    <div className="defaults-editor-section">
       <button
         type="button"
         onClick={onToggle}
-        style={{
-          border: "none",
-          background: "transparent",
-          padding: 0,
-          margin: 0,
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          font: "inherit",
-          color: "#18181b",
-          width: "100%",
-          textAlign: "left",
-        }}
+        className="defaults-editor-accordion"
       >
         <H3>{open ? "▼" : "▶"} {title}</H3>
       </button>
 
-      {open ? <div style={{ marginTop: 10 }}>{children}</div> : null}
+      {open ? <div className="defaults-editor-section-body">{children}</div> : null}
     </div>
   );
 }
@@ -130,34 +111,21 @@ export default function DefaultsEditor({
   const ugOptions = value.glassType === "Double" ? UG_DOUBLE : UG_TRIPLE;
 
   return (
-    <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12, background: "#fff", display: "grid", gap: 12, alignContent: "start" }}>
+    <div className="defaults-editor-root">
       <button
         type="button"
         onClick={() => setDefaultsOpen((prev) => !prev)}
-        style={{
-          border: "none",
-          background: "transparent",
-          padding: 0,
-          margin: 0,
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          font: "inherit",
-          color: "#18181b",
-          width: "100%",
-          textAlign: "left",
-        }}
+        className="defaults-editor-accordion"
       >
         <H3>{defaultsOpen ? "▼" : "▶"} {title}</H3>
       </button>
 
       {defaultsOpen ? (
-        <div style={{ display: "grid", gap: 14 }}>
-          <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12, background: "#fff" }}>
+        <div className="defaults-editor-grid">
+          <div className="defaults-editor-card">
             <H3>Supplier & Product</H3>
 
-            <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
+            <div className="defaults-editor-card-body">
               <div>
                 <div style={labelStyle}>Supplier</div>
                 <select
@@ -167,7 +135,7 @@ export default function DefaultsEditor({
                     const nextProd = supplier ? firstProductForSupplier(supplier) : "";
                     onChange({ ...value, supplier, product: nextProd });
                   }}
-                  style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                  className="defaults-editor-select"
                 >
                   <option value="">Select supplier…</option>
                   {SUPPLIERS.map((s) => (
@@ -183,7 +151,7 @@ export default function DefaultsEditor({
                 <select
                   value={value.productType}
                   onChange={(e) => onChange({ ...value, productType: e.target.value as Models.ProductType })}
-                  style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                  className="defaults-editor-select"
                 >
                   {PRODUCT_TYPES.map((t) => (
                     <option key={t} value={t}>
@@ -199,12 +167,8 @@ export default function DefaultsEditor({
                   value={value.product}
                   onChange={(e) => onChange({ ...value, product: e.target.value })}
                   disabled={!value.supplier}
+                  className="defaults-editor-select"
                   style={{
-                    width: "100%",
-                    borderRadius: 12,
-                    border: "1px solid #e4e4e7",
-                    padding: "10px 12px",
-                    fontSize: 14,
                     background: !value.supplier ? "#fafafa" : "#fff",
                     color: !value.supplier ? "#a1a1aa" : "#18181b",
                   }}
@@ -232,7 +196,7 @@ export default function DefaultsEditor({
               ))}
             </datalist>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div className="defaults-editor-two-col">
               <div>
                 <div style={labelStyle}>External finish</div>
                 <Input value={value.externalFinish} onChange={(v) => onChange({ ...value, externalFinish: v })} list={"ext-finish-" + title} placeholder="Select or type…" />
@@ -245,13 +209,13 @@ export default function DefaultsEditor({
           </CollapsibleSection>
 
           <CollapsibleSection title="Hardware" open={hardwareOpen} onToggle={() => setHardwareOpen((prev) => !prev)}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div className="defaults-editor-two-col">
               <div>
                 <div style={labelStyle}>Hinges</div>
                 <select
                   value={value.hingeType}
                   onChange={(e) => onChange({ ...value, hingeType: e.target.value as any })}
-                  style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                  className="defaults-editor-select"
                 >
                   {HINGE_TYPES.map((t) => (
                     <option key={t} value={t}>
@@ -267,7 +231,7 @@ export default function DefaultsEditor({
                   <select
                     value={value.woodType}
                     onChange={(e) => onChange({ ...value, woodType: e.target.value })}
-                    style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                    className="defaults-editor-select"
                   >
                     {WOOD_TYPES.map((w) => (
                       <option key={w} value={w}>
@@ -283,7 +247,7 @@ export default function DefaultsEditor({
           </CollapsibleSection>
 
           <CollapsibleSection title="Glazing" open={glazingOpen} onToggle={() => setGlazingOpen((prev) => !prev)}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+            <div className="defaults-editor-three-col">
               <div>
                 <div style={labelStyle}>Glass</div>
                 <select
@@ -293,7 +257,7 @@ export default function DefaultsEditor({
                     const nextUg = glassType === "Double" ? "1.1" : "0.4";
                     onChange({ ...value, glassType, ugValue: nextUg, gValue: "0.53" });
                   }}
-                  style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                  className="defaults-editor-select"
                 >
                   <option value="Double">Double</option>
                   <option value="Triple">Triple</option>
@@ -305,7 +269,7 @@ export default function DefaultsEditor({
                 <select
                   value={value.ugValue}
                   onChange={(e) => onChange({ ...value, ugValue: e.target.value, gValue: "0.53" })}
-                  style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                  className="defaults-editor-select"
                 >
                   {ugOptions.map((u) => (
                     <option key={u} value={u}>
@@ -324,13 +288,13 @@ export default function DefaultsEditor({
           </CollapsibleSection>
 
           <CollapsibleSection title="Window Handle" open={windowHandleOpen} onToggle={() => setWindowHandleOpen((prev) => !prev)}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 160px", gap: 12, alignItems: "center" }}>
+            <div className="defaults-editor-window-handle-grid">
               <div>
                 <div style={labelStyle}>Handle type</div>
                 <select
                   value={value.windowHandleType}
                   onChange={(e) => onChange({ ...value, windowHandleType: e.target.value as any })}
-                  style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                  className="defaults-editor-select"
                 >
                   {HANDLE_TYPES.map((t) => (
                     <option key={t} value={t}>
@@ -340,31 +304,18 @@ export default function DefaultsEditor({
                 </select>
               </div>
 
-              <div
-                style={{
-                  height: 96,
-                  borderRadius: 12,
-                  border: "1px solid #e4e4e7",
-                  background: "#fafafa",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "#71717a",
-                  fontWeight: 800,
-                  fontSize: 12,
-                }}
-              >
+              <div className="defaults-editor-handle-preview">
                 Handle image
               </div>
             </div>
 
-            <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div className="defaults-editor-card-body" style={{ marginTop: 10, gap: 6 }}>
+              <div className="defaults-editor-toggle-row">
                 <Toggle
                   value={lockableHandle}
                   onChange={(checked) => onChange({ ...(value as any), lockableHandle: checked } as any)}
                 />
-                <span style={{ fontSize: 14, fontWeight: 700, color: "#18181b" }}>Lockable handle</span>
+                <span className="defaults-editor-toggle-label">Lockable handle</span>
               </div>
               <Small>This is now separate from window cill requirements.</Small>
             </div>
@@ -372,61 +323,61 @@ export default function DefaultsEditor({
 
           {showDoorOptions && (
             <CollapsibleSection title="Door options" open={doorOptionsOpen} onToggle={() => setDoorOptionsOpen((prev) => !prev)}>
-              <div style={{ display: "grid", gap: 10 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div className="defaults-editor-stack">
+                <div className="defaults-editor-toggle-row">
                   <Toggle
                     value={value.doorMultipointLocking}
                     onChange={(checked) => onChange({ ...value, doorMultipointLocking: checked })}
                   />
-                  <span style={{ fontSize: 14, fontWeight: 700, color: "#18181b" }}>Multipoint locking</span>
+                  <span className="defaults-editor-toggle-label">Multipoint locking</span>
                 </div>
 
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div className="defaults-editor-toggle-row">
                   <Toggle
                     value={value.electricalOperation}
                     onChange={(checked) => onChange({ ...value, electricalOperation: checked })}
                   />
-                  <span style={{ fontSize: 14, fontWeight: 700, color: "#18181b" }}>Electrical operation</span>
+                  <span className="defaults-editor-toggle-label">Electrical operation</span>
                 </div>
 
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div className="defaults-editor-toggle-row">
                   <Toggle
                     value={value.dayLatch}
                     onChange={(checked) => onChange({ ...value, dayLatch: checked })}
                   />
-                  <span style={{ fontSize: 14, fontWeight: 700, color: "#18181b" }}>Day latch</span>
+                  <span className="defaults-editor-toggle-label">Day latch</span>
                 </div>
               </div>
             </CollapsibleSection>
           )}
 
           <CollapsibleSection title="Accessories" open={accessoriesOpen} onToggle={() => setAccessoriesOpen((prev) => !prev)}>
-            <div style={{ display: "grid", gap: 12 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div className="defaults-editor-grid" style={{ gap: 12 }}>
+              <div className="defaults-editor-two-col">
+                <div className="defaults-editor-toggle-row">
                   <Toggle
                     value={value.internalCillRequired}
                     onChange={(checked) => onChange({ ...value, internalCillRequired: checked })}
                   />
-                  <span style={{ fontSize: 14, fontWeight: 700, color: "#18181b" }}>Window cill internally required</span>
+                  <span className="defaults-editor-toggle-label">Window cill internally required</span>
                 </div>
 
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div className="defaults-editor-toggle-row">
                   <Toggle
                     value={value.externalSillRequired}
                     onChange={(checked) => onChange({ ...value, externalSillRequired: checked })}
                   />
-                  <span style={{ fontSize: 14, fontWeight: 700, color: "#18181b" }}>Window sill externally required</span>
+                  <span className="defaults-editor-toggle-label">Window sill externally required</span>
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="defaults-editor-two-col">
                 <div>
                   <div style={labelStyle}>Window cill depth</div>
                   <select
                     value={String(value.cillDepthMm)}
                     onChange={(e) => onChange({ ...value, cillDepthMm: Number(e.target.value) })}
-                    style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                    className="defaults-editor-select"
                   >
                     {CILL_DEPTHS.map((d) => (
                       <option key={d} value={d}>
@@ -441,7 +392,7 @@ export default function DefaultsEditor({
                   <select
                     value={value.cillEndCapType}
                     onChange={(e) => onChange({ ...value, cillEndCapType: e.target.value as any })}
-                    style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                    className="defaults-editor-select"
                   >
                     <option value="Cladding/Render End Cap">Cladding/Render End Cap</option>
                     <option value="Brick Type End Cap">Brick Type End Cap</option>
@@ -454,7 +405,7 @@ export default function DefaultsEditor({
           <CollapsibleSection title="Frame extensions" open={frameExtensionsOpen} onToggle={() => setFrameExtensionsOpen((prev) => !prev)}>
             <Small>Set each side independently.</Small>
 
-            <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12 }}>
+            <div className="defaults-editor-four-col" style={{ marginTop: 10 }}>
               {[
                 ["Left", "frameExtLeftMm"],
                 ["Right", "frameExtRightMm"],
@@ -466,7 +417,7 @@ export default function DefaultsEditor({
                   <select
                     value={String((value as any)[key])}
                     onChange={(e) => onChange({ ...value, [key]: Number(e.target.value) } as any)}
-                    style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                    className="defaults-editor-select"
                   >
                     {FRAME_EXTS.map((mm) => (
                       <option key={mm} value={mm}>
@@ -480,13 +431,13 @@ export default function DefaultsEditor({
           </CollapsibleSection>
 
           <CollapsibleSection title="Sun protection required" open={sunProtectionOpen} onToggle={() => setSunProtectionOpen((prev) => !prev)}>
-            <div style={{ display: "grid", gap: 10 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div className="defaults-editor-stack">
+              <div className="defaults-editor-toggle-row">
                 <Toggle
                   value={value.sunProtectionRequired}
                   onChange={(checked) => onChange({ ...value, sunProtectionRequired: checked })}
                 />
-                <span style={{ fontSize: 14, fontWeight: 700, color: "#18181b" }}>Sun protection required</span>
+                <span className="defaults-editor-toggle-label">Sun protection required</span>
               </div>
 
               {value.sunProtectionRequired ? (
@@ -495,7 +446,7 @@ export default function DefaultsEditor({
                   <select
                     value={value.sunProtectionType}
                     onChange={(e) => onChange({ ...value, sunProtectionType: e.target.value as any })}
-                    style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
+                    className="defaults-editor-select"
                   >
                     {SUN_PROTECTION.map((t) => (
                       <option key={t} value={t}>

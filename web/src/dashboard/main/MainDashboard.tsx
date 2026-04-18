@@ -1,5 +1,6 @@
 import React, { useMemo } from "react";
 import type { Client, ClientId, EstimateId, EstimateOutcome } from "../../models/types";
+import "./MainDashboard.css";
 
 type DashboardFollowUp = {
   id: string;
@@ -25,12 +26,8 @@ type Props = {
 function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
     <div
+      className="main-dashboard-card ui-card"
       style={{
-        borderRadius: 18,
-        border: "1px solid #e4e4e7",
-        background: "#fff",
-        padding: 16,
-        boxShadow: "0 1px 2px rgba(0,0,0,.06)",
         ...style,
       }}
     >
@@ -40,15 +37,15 @@ function Card({ children, style }: { children: React.ReactNode; style?: React.CS
 }
 
 function H2({ children }: { children: React.ReactNode }) {
-  return <h2 style={{ fontSize: 16, margin: 0, fontWeight: 800, color: "#18181b" }}>{children}</h2>;
+  return <h2 className="main-dashboard-title">{children}</h2>;
 }
 
 function H3({ children }: { children: React.ReactNode }) {
-  return <h3 style={{ fontSize: 14, margin: 0, fontWeight: 800, color: "#18181b" }}>{children}</h3>;
+  return <h3 className="main-dashboard-heading">{children}</h3>;
 }
 
 function Small({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
-  return <div style={{ fontSize: 12, color: "#71717a", ...(style || {}) }}>{children}</div>;
+  return <div className="main-dashboard-small" style={style}>{children}</div>;
 }
 
 function Button({
@@ -60,21 +57,13 @@ function Button({
   onClick?: () => void;
   variant?: "primary" | "secondary";
 }) {
-  const isPrimary = variant === "primary";
+  const className = `main-dashboard-button ${variant === "primary" ? "main-dashboard-button--primary" : "main-dashboard-button--secondary"}`;
   return (
     <button
       type="button"
       onClick={onClick}
-      style={{
-        borderRadius: 18,
-        border: isPrimary ? "none" : "1px solid #e4e4e7",
-        background: isPrimary ? "#18181b" : "#fff",
-        color: isPrimary ? "#fff" : "#3f3f46",
-        padding: "10px 14px",
-        fontSize: 14,
-        fontWeight: 800,
-        cursor: "pointer",
-      }}
+      className={className}
+      style={{ cursor: "pointer" }}
     >
       {children}
     </button>
@@ -151,20 +140,13 @@ function RowCard({
   return (
     <div
       onClick={onClick}
+      className="main-dashboard-row-card"
       style={{
-        borderRadius: 14,
-        border: "1px solid #e4e4e7",
-        padding: 12,
-        background: "#fff",
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        gap: 12,
         cursor: onClick ? "pointer" : "default",
       }}
     >
-      <div style={{ display: "grid", gap: 4 }}>
-        <div style={{ fontSize: 14, fontWeight: 800, color: "#18181b" }}>{title}</div>
+      <div className="main-dashboard-row-card-main">
+        <div className="main-dashboard-row-card-title">{title}</div>
         {meta ? <Small>{meta}</Small> : null}
       </div>
       {right ? <div>{right}</div> : null}
@@ -266,36 +248,36 @@ export default function MainDashboard({ clients, activeUserName = "User", onOpen
   }, [clients]);
 
   return (
-    <div style={{ display: "grid", gap: 16 }}>
+    <div className="main-dashboard">
       <Card>
-        <div style={{ display: "grid", gap: 12 }}>
+        <div className="main-dashboard-card-grid">
           <div>
             <H2>Welcome {activeUserName}</H2>
             <Small>Operational dashboard for today and this week.</Small>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(220px, 1fr))", gap: 12 }}>
-            <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", background: "#fafafa", padding: 14 }}>
-              <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Today</div>
-              <div style={{ fontSize: 28, fontWeight: 900, color: "#18181b" }}>{dashboardData.todayTaskCount}</div>
+          <div className="main-dashboard-summary-grid">
+            <div className="main-dashboard-summary-card">
+              <div className="main-dashboard-summary-label">Today</div>
+              <div className="main-dashboard-summary-value">{dashboardData.todayTaskCount}</div>
               <Small>You have follow ups, deliveries and installations scheduled today.</Small>
             </div>
-            <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", background: "#fafafa", padding: 14 }}>
-              <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>This Week</div>
-              <div style={{ fontSize: 28, fontWeight: 900, color: "#18181b" }}>{dashboardData.thisWeekTaskCount}</div>
+            <div className="main-dashboard-summary-card">
+              <div className="main-dashboard-summary-label">This Week</div>
+              <div className="main-dashboard-summary-value">{dashboardData.thisWeekTaskCount}</div>
               <Small>You have follow ups, deliveries and installations scheduled this week.</Small>
             </div>
           </div>
         </div>
       </Card>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1.2fr 1fr", gap: 16, alignItems: "start" }}>
+      <div className="main-dashboard-three-col">
         <Card style={{ display: "grid", gap: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div className="main-dashboard-section-header">
             <H3>Follow Ups</H3>
             <Button variant="secondary" onClick={() => onOpenMenu?.("follow_ups")}>Open</Button>
           </div>
-          <div style={{ display: "grid", gap: 10 }}>
+          <div className="main-dashboard-list">
             <RowCard
               title={`Due today: ${dashboardData.dueToday.length}`}
               meta="Items due today from the follow up system."
@@ -315,11 +297,11 @@ export default function MainDashboard({ clients, activeUserName = "User", onOpen
         </Card>
 
         <Card style={{ display: "grid", gap: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div className="main-dashboard-section-header">
             <H3>Orders Requiring Attention</H3>
             <Button variant="secondary" onClick={() => onOpenMenu?.("orders")}>Open</Button>
           </div>
-          <div style={{ display: "grid", gap: 10 }}>
+          <div className="main-dashboard-list">
             <RowCard
               title={`${dashboardData.ordersNeedingAttention.length} order(s) need attention`}
               meta="Orders missing key milestones, delivery dates or installation dates."
@@ -337,7 +319,7 @@ export default function MainDashboard({ clients, activeUserName = "User", onOpen
 
         <Card style={{ display: "grid", gap: 12 }}>
           <H3>Client Portal Queue</H3>
-          <div style={{ display: "grid", gap: 10 }}>
+          <div className="main-dashboard-list">
             <RowCard title="Client estimate requests" meta="Frontend queue not connected yet." right={<strong>0</strong>} />
             <RowCard title="Service issues received" meta="Frontend queue not connected yet." right={<strong>0</strong>} />
             <RowCard title="Open service issues" meta="Frontend queue not connected yet." right={<strong>0</strong>} />
@@ -345,10 +327,10 @@ export default function MainDashboard({ clients, activeUserName = "User", onOpen
         </Card>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(220px, 1fr))", gap: 16, alignItems: "start" }}>
+      <div className="main-dashboard-four-col">
         <Card style={{ display: "grid", gap: 12 }}>
           <H3>Production End Dates</H3>
-          <div style={{ display: "grid", gap: 10 }}>
+          <div className="main-dashboard-list">
             {dashboardData.productionEndDates.slice(0, 5).map((item) => (
               <RowCard
                 key={`${item.client.id}_${item.estimateId}_prod`}
@@ -363,7 +345,7 @@ export default function MainDashboard({ clients, activeUserName = "User", onOpen
 
         <Card style={{ display: "grid", gap: 12 }}>
           <H3>Deliveries Scheduled</H3>
-          <div style={{ display: "grid", gap: 10 }}>
+          <div className="main-dashboard-list">
             {dashboardData.deliveriesScheduled.slice(0, 5).map((item) => (
               <RowCard
                 key={`${item.client.id}_${item.estimateId}_del`}
@@ -377,11 +359,11 @@ export default function MainDashboard({ clients, activeUserName = "User", onOpen
         </Card>
 
         <Card style={{ display: "grid", gap: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div className="main-dashboard-section-header">
             <H3>Installations Scheduled</H3>
             <Button variant="secondary" onClick={() => onOpenMenu?.("installation")}>Open</Button>
           </div>
-          <div style={{ display: "grid", gap: 10 }}>
+          <div className="main-dashboard-list">
             {dashboardData.installationsScheduled.slice(0, 5).map((item) => (
               <RowCard
                 key={`${item.client.id}_${item.estimateId}_inst`}
@@ -396,7 +378,7 @@ export default function MainDashboard({ clients, activeUserName = "User", onOpen
 
         <Card style={{ display: "grid", gap: 12 }}>
           <H3>Invoices Needing Raised</H3>
-          <div style={{ display: "grid", gap: 10 }}>
+          <div className="main-dashboard-list">
             {dashboardData.invoicesNeedingRaised.slice(0, 5).map((item) => (
               <RowCard
                 key={`${item.client.id}_${item.estimateId}_inv`}
