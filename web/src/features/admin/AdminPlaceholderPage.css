@@ -1,0 +1,200 @@
+.admin-shell {
+  display: grid;
+  gap: 16px;
+  align-items: start;
+}
+
+.admin-sidebar-card {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-sidebar-title {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.admin-page-title {
+  font-size: 24px;
+  font-weight: 900;
+  color: var(--color-brand-primary);
+}
+
+.admin-section-title {
+  font-size: 20px;
+  font-weight: 900;
+  color: var(--color-text-primary);
+}
+
+.admin-group-title {
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--color-text-primary);
+}
+
+.admin-setting-key {
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--color-text-primary);
+  word-break: break-word;
+}
+
+.admin-setting-updated {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.admin-setting-label {
+  font-size: 13px;
+  color: var(--color-text-primary);
+  font-weight: 700;
+}
+
+.admin-body-copy {
+  font-size: 14px;
+  color: var(--color-text-primary);
+}
+
+.admin-body-copy--small {
+  font-size: 12px;
+  color: var(--color-text-primary);
+}
+
+.admin-readonly-value {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-text-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace;
+}
+
+.admin-placeholder-box {
+  border-radius: 12px;
+  border: 1px dashed var(--color-border);
+  background: color-mix(in srgb, var(--color-surface) 92%, var(--color-brand-light, #b5da9c) 8%);
+  padding: 14px;
+  font-size: 14px;
+  color: var(--color-text-primary);
+}
+
+.admin-setting-row {
+  border-radius: 12px;
+  border: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-surface) 94%, var(--color-brand-light, #b5da9c) 6%);
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.admin-flex-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.admin-dimensions-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(160px, 220px));
+  gap: 12px;
+}
+
+.admin-input {
+  /* ui-input provides shared field styling */
+}
+
+.admin-primary-button {
+  /* ui-button + ui-button--primary provide shared button styling */
+}
+
+.admin-primary-button--small {
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.admin-warning-box {
+  border-radius: 10px;
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: #92400e;
+  display: grid;
+  gap: 8px;
+}
+
+.admin-warning-inline {
+  font-size: 12px;
+  color: #a16207;
+}
+
+.admin-error-box,
+.admin-status-card--error {
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.admin-error-box {
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.admin-status-card {
+  padding: 14px;
+  font-size: 14px;
+  color: var(--color-text-primary);
+}
+
+.admin-project-pref-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.admin-project-pref-value {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--color-text-primary);
+}
+
+.admin-nav-button {
+  text-align: left;
+  border-radius: 12px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  padding: 12px;
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+}
+
+.admin-nav-button--active {
+  border-color: var(--color-brand-primary);
+  background: var(--color-brand-primary);
+  color: var(--color-brand-on-primary);
+}
+
+.admin-nav-button-label {
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.admin-nav-button-desc {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.admin-nav-button-desc--active {
+  color: rgba(255, 255, 255, 0.85);
+}
+

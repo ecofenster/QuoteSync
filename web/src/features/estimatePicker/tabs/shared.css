@@ -1,0 +1,83 @@
+ /* Phase 5 scaffold — Estimate Picker shared (no TSX wiring yet) */
+
+.ep-shell {
+  display: grid;
+  gap: 16px;
+}
+
+.ep-card {
+  /* use shared primitive */
+}
+
+.ep-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ep-title {
+  font-size: 20px;
+  font-weight: 900;
+  color: var(--color-text-primary);
+}
+
+.ep-subtitle {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.ep-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ep-tab {
+  /* base uses ui-button */
+}
+
+.ep-tab--active {
+  /* modifier only */
+}
+
+.ep-form {
+  display: grid;
+  gap: 12px;
+}
+
+.ep-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.ep-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.ep-input {
+  /* base uses ui-input */
+}
+
+.ep-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ep-accordion-button {
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: inherit;
+  color: #18181b;
+}

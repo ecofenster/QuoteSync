@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import "./GlassWeightCalculatorTool.css";
 
 type GlazingType = "single" | "double" | "triple" | "quad";
 type ShapeType = "rectangle" | "circle" | "triangle" | "trapezoid" | "angled" | "gable" | "hip";
@@ -488,40 +489,8 @@ export default function GlassWeightCalculatorTool() {
     win.print();
   }
 
-  const cardStyle: React.CSSProperties = {
-    background: "#ffffff",
-    border: "1px solid #ddd",
-    borderRadius: 8,
-    padding: "12px 18px 16px",
-    display: "flex",
-    flexDirection: "column",
-    gap: 8,
-  };
-
-  const labelStyle: React.CSSProperties = {
-    display: "block",
-    marginTop: 8,
-    fontWeight: 600,
-  };
-
-  const inputStyle: React.CSSProperties = {
-    width: "100%",
-    maxWidth: 260,
-    padding: "8px 10px",
-    border: "1px solid #d4d4d8",
-    borderRadius: 6,
-  };
-
-  const buttonStyle: React.CSSProperties = {
-    padding: "9px 14px",
-    borderRadius: 8,
-    border: "1px solid #d4d4d8",
-    background: "#fff",
-    cursor: "pointer",
-  };
-
   return (
-    <div style={{ maxWidth: 1400, display: "grid", gap: 24 }}>
+    <div className="glass-tool" style={{ maxWidth: 1400, display: "grid", gap: 24 }}>
       <div
         style={{
           display: "grid",
@@ -530,14 +499,14 @@ export default function GlassWeightCalculatorTool() {
           alignItems: "flex-start",
         }}
       >
-        <div style={cardStyle}>
+        <div className="glass-card ui-card">
           <h2 style={{ margin: "0 0 12px" }}>Glass position</h2>
 
-          <label style={labelStyle}>Glazing type</label>
+          <label className="glass-label">Glazing type</label>
           <select
             value={glazingType}
             onChange={(e) => setGlazingType(e.target.value as GlazingType)}
-            style={inputStyle}
+            className="glass-input ui-input"
           >
             <option value="single">Single glazed</option>
             <option value="double">Double glazed (IGU)</option>
@@ -549,15 +518,9 @@ export default function GlassWeightCalculatorTool() {
             {panes.map((pane, index) => (
               <div
                 key={index}
-                style={{
-                  border: "1px solid #e0e0e0",
-                  padding: "8px 10px",
-                  borderRadius: 6,
-                  marginBottom: 8,
-                  background: "#fff",
-                }}
+                className="glass-pane-card"
               >
-                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Pane {index + 1}</div>
+                <div className="glass-pane-title">Pane {index + 1}</div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   <select
                     value={pane.type}
@@ -568,7 +531,7 @@ export default function GlassWeightCalculatorTool() {
                         size: nextType === "laminated" ? laminatedOptions[0] : String(standardThicknessOptions[0]),
                       });
                     }}
-                    style={{ ...inputStyle, maxWidth: 180 }}
+                    className="glass-input glass-input--pane ui-input"
                   >
                     <option value="float">Standard (float)</option>
                     <option value="toughened">Toughened</option>
@@ -578,7 +541,7 @@ export default function GlassWeightCalculatorTool() {
                   <select
                     value={pane.size}
                     onChange={(e) => updatePane(index, { size: e.target.value })}
-                    style={{ ...inputStyle, maxWidth: 180 }}
+                    className="glass-input glass-input--pane ui-input"
                   >
                     {pane.type === "laminated"
                       ? laminatedOptions.map((code) => (
@@ -606,7 +569,7 @@ export default function GlassWeightCalculatorTool() {
             alignItems: "stretch",
           }}
         >
-          <div style={cardStyle}>
+          <div className="glass-card ui-card">
             <h2 style={{ margin: "0 0 12px" }}>Position summary</h2>
             <div>Glass area: {calculated.area ? calculated.area.toFixed(3) + " m²" : "–"}</div>
             <div>Weight per m² (unit): {calculated.weightPerM2.toFixed(1)} kg/m²</div>
@@ -624,7 +587,7 @@ export default function GlassWeightCalculatorTool() {
             </div>
           </div>
 
-          <div style={cardStyle}>
+          <div className="glass-card ui-card">
             <h2 style={{ margin: "0 0 12px" }}>Insulated glazing unit</h2>
             <IGUDiagram glazing={glazingType} />
             <div style={{ marginTop: 8 }}>
@@ -632,7 +595,7 @@ export default function GlassWeightCalculatorTool() {
             </div>
           </div>
 
-          <div style={cardStyle}>
+          <div className="glass-card ui-card">
             <h2 style={{ margin: "0 0 12px" }}>Shape</h2>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginTop: 6 }}>
               {[
@@ -669,92 +632,92 @@ export default function GlassWeightCalculatorTool() {
             </div>
           </div>
 
-          <div style={cardStyle}>
+          <div className="glass-card ui-card">
             <h2 style={{ margin: "0 0 12px" }}>Dimensions & actions</h2>
 
             {currentShape === "rectangle" && (
               <>
-                <label style={labelStyle}>Width (mm)</label>
-                <input style={inputStyle} type="number" min="0" value={rectWidth} onChange={(e) => setRectWidth(e.target.value)} />
-                <label style={labelStyle}>Height (mm)</label>
-                <input style={inputStyle} type="number" min="0" value={rectHeight} onChange={(e) => setRectHeight(e.target.value)} />
+                <label className="glass-label">Width (mm)</label>
+                <input className="glass-input ui-input" type="number" min="0" value={rectWidth} onChange={(e) => setRectWidth(e.target.value)} />
+                <label className="glass-label">Height (mm)</label>
+                <input className="glass-input ui-input" type="number" min="0" value={rectHeight} onChange={(e) => setRectHeight(e.target.value)} />
               </>
             )}
 
             {currentShape === "circle" && (
               <>
-                <label style={labelStyle}>Diameter (mm)</label>
-                <input style={inputStyle} type="number" min="0" value={circleDia} onChange={(e) => setCircleDia(e.target.value)} />
+                <label className="glass-label">Diameter (mm)</label>
+                <input className="glass-input ui-input" type="number" min="0" value={circleDia} onChange={(e) => setCircleDia(e.target.value)} />
               </>
             )}
 
             {currentShape === "triangle" && (
               <>
-                <label style={labelStyle}>Base (mm)</label>
-                <input style={inputStyle} type="number" min="0" value={triBase} onChange={(e) => setTriBase(e.target.value)} />
-                <label style={labelStyle}>Height (mm)</label>
-                <input style={inputStyle} type="number" min="0" value={triHeight} onChange={(e) => setTriHeight(e.target.value)} />
+                <label className="glass-label">Base (mm)</label>
+                <input className="glass-input ui-input" type="number" min="0" value={triBase} onChange={(e) => setTriBase(e.target.value)} />
+                <label className="glass-label">Height (mm)</label>
+                <input className="glass-input ui-input" type="number" min="0" value={triHeight} onChange={(e) => setTriHeight(e.target.value)} />
               </>
             )}
 
             {currentShape === "trapezoid" && (
               <>
-                <label style={labelStyle}>Top width (mm)</label>
-                <input style={inputStyle} type="number" min="0" value={trapTop} onChange={(e) => setTrapTop(e.target.value)} />
-                <label style={labelStyle}>Bottom width (mm)</label>
-                <input style={inputStyle} type="number" min="0" value={trapBottom} onChange={(e) => setTrapBottom(e.target.value)} />
-                <label style={labelStyle}>Height (mm)</label>
-                <input style={inputStyle} type="number" min="0" value={trapHeight} onChange={(e) => setTrapHeight(e.target.value)} />
+                <label className="glass-label">Top width (mm)</label>
+                <input className="glass-input ui-input" type="number" min="0" value={trapTop} onChange={(e) => setTrapTop(e.target.value)} />
+                <label className="glass-label">Bottom width (mm)</label>
+                <input className="glass-input ui-input" type="number" min="0" value={trapBottom} onChange={(e) => setTrapBottom(e.target.value)} />
+                <label className="glass-label">Height (mm)</label>
+                <input className="glass-input ui-input" type="number" min="0" value={trapHeight} onChange={(e) => setTrapHeight(e.target.value)} />
               </>
             )}
 
             {currentShape === "angled" && (
               <>
-                <label style={labelStyle}>Top width (mm)</label>
-                <input style={inputStyle} type="number" min="0" value={angTop} onChange={(e) => setAngTop(e.target.value)} />
-                <label style={labelStyle}>Bottom width (mm)</label>
-                <input style={inputStyle} type="number" min="0" value={angBottom} onChange={(e) => setAngBottom(e.target.value)} />
-                <label style={labelStyle}>Height (mm)</label>
-                <input style={inputStyle} type="number" min="0" value={angHeight} onChange={(e) => setAngHeight(e.target.value)} />
-                <label style={labelStyle}>Angle (°)</label>
-                <input style={inputStyle} type="number" value={angAngle} onChange={(e) => setAngAngle(e.target.value)} />
+                <label className="glass-label">Top width (mm)</label>
+                <input className="glass-input ui-input" type="number" min="0" value={angTop} onChange={(e) => setAngTop(e.target.value)} />
+                <label className="glass-label">Bottom width (mm)</label>
+                <input className="glass-input ui-input" type="number" min="0" value={angBottom} onChange={(e) => setAngBottom(e.target.value)} />
+                <label className="glass-label">Height (mm)</label>
+                <input className="glass-input ui-input" type="number" min="0" value={angHeight} onChange={(e) => setAngHeight(e.target.value)} />
+                <label className="glass-label">Angle (°)</label>
+                <input className="glass-input ui-input" type="number" value={angAngle} onChange={(e) => setAngAngle(e.target.value)} />
               </>
             )}
 
             {currentShape === "gable" && (
               <>
-                <label style={labelStyle}>Width (mm)</label>
-                <input style={inputStyle} type="number" min="0" value={gableWidth} onChange={(e) => setGableWidth(e.target.value)} />
-                <label style={labelStyle}>Overall height (mm)</label>
-                <input style={inputStyle} type="number" min="0" value={gableHeight} onChange={(e) => setGableHeight(e.target.value)} />
-                <label style={labelStyle}>Eaves height (mm)</label>
-                <input style={inputStyle} type="number" min="0" value={gableEaves} onChange={(e) => setGableEaves(e.target.value)} />
+                <label className="glass-label">Width (mm)</label>
+                <input className="glass-input ui-input" type="number" min="0" value={gableWidth} onChange={(e) => setGableWidth(e.target.value)} />
+                <label className="glass-label">Overall height (mm)</label>
+                <input className="glass-input ui-input" type="number" min="0" value={gableHeight} onChange={(e) => setGableHeight(e.target.value)} />
+                <label className="glass-label">Eaves height (mm)</label>
+                <input className="glass-input ui-input" type="number" min="0" value={gableEaves} onChange={(e) => setGableEaves(e.target.value)} />
               </>
             )}
 
             {currentShape === "hip" && (
               <>
-                <label style={labelStyle}>Bottom width (mm)</label>
-                <input style={inputStyle} type="number" min="0" value={hipBottom} onChange={(e) => setHipBottom(e.target.value)} />
-                <label style={labelStyle}>Top width (mm)</label>
-                <input style={inputStyle} type="number" min="0" value={hipTop} onChange={(e) => setHipTop(e.target.value)} />
-                <label style={labelStyle}>Height (mm)</label>
-                <input style={inputStyle} type="number" min="0" value={hipHeight} onChange={(e) => setHipHeight(e.target.value)} />
+                <label className="glass-label">Bottom width (mm)</label>
+                <input className="glass-input ui-input" type="number" min="0" value={hipBottom} onChange={(e) => setHipBottom(e.target.value)} />
+                <label className="glass-label">Top width (mm)</label>
+                <input className="glass-input ui-input" type="number" min="0" value={hipTop} onChange={(e) => setHipTop(e.target.value)} />
+                <label className="glass-label">Height (mm)</label>
+                <input className="glass-input ui-input" type="number" min="0" value={hipHeight} onChange={(e) => setHipHeight(e.target.value)} />
               </>
             )}
 
             <div style={{ marginTop: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button style={buttonStyle} onClick={() => void 0}>Calculate weight</button>
-              <button style={buttonStyle} onClick={addToPositionsTable}>Add to positions table</button>
+              <button className="glass-button ui-button" onClick={() => void 0}>Calculate weight</button>
+              <button className="glass-button ui-button" onClick={addToPositionsTable}>Add to positions table</button>
             </div>
           </div>
         </div>
       </div>
 
-      <div style={cardStyle}>
+      <div className="glass-card ui-card">
         <h2 style={{ margin: "0 0 12px" }}>Positions table</h2>
         <div style={{ overflowX: "auto" }}>
-          <table id="positionsTable" style={{ borderCollapse: "collapse", width: "100%" }}>
+          <table id="positionsTable" className="glass-table">
             <thead>
               <tr>
                 {[
@@ -769,12 +732,7 @@ export default function GlassWeightCalculatorTool() {
                 ].map((heading) => (
                   <th
                     key={heading}
-                    style={{
-                      border: "1px solid #d4d4d8",
-                      padding: "6px 8px",
-                      textAlign: "left",
-                      background: "#f4f4f5",
-                    }}
+                    className="glass-table__head"
                   >
                     {heading}
                   </th>
@@ -784,14 +742,14 @@ export default function GlassWeightCalculatorTool() {
             <tbody>
               {positions.map((pos) => (
                 <tr key={pos.index}>
-                  <td style={{ border: "1px solid #d4d4d8", padding: "6px 8px" }}>{pos.index}</td>
-                  <td style={{ border: "1px solid #d4d4d8", padding: "6px 8px" }}>{pos.shape}</td>
-                  <td style={{ border: "1px solid #d4d4d8", padding: "6px 8px" }}>{pos.dimText}</td>
-                  <td style={{ border: "1px solid #d4d4d8", padding: "6px 8px" }}>{pos.glazing}</td>
-                  <td style={{ border: "1px solid #d4d4d8", padding: "6px 8px" }}>{pos.build}</td>
-                  <td style={{ border: "1px solid #d4d4d8", padding: "6px 8px" }}>{pos.area.toFixed(3)}</td>
-                  <td style={{ border: "1px solid #d4d4d8", padding: "6px 8px" }}>{pos.totalWeight.toFixed(1)}</td>
-                  <td style={{ border: "1px solid #d4d4d8", padding: "6px 8px" }}>{pos.avgPaneWeight.toFixed(1)}</td>
+                  <td className="glass-table__cell">{pos.index}</td>
+                  <td className="glass-table__cell">{pos.shape}</td>
+                  <td className="glass-table__cell">{pos.dimText}</td>
+                  <td className="glass-table__cell">{pos.glazing}</td>
+                  <td className="glass-table__cell">{pos.build}</td>
+                  <td className="glass-table__cell">{pos.area.toFixed(3)}</td>
+                  <td className="glass-table__cell">{pos.totalWeight.toFixed(1)}</td>
+                  <td className="glass-table__cell">{pos.avgPaneWeight.toFixed(1)}</td>
                 </tr>
               ))}
             </tbody>
@@ -799,10 +757,12 @@ export default function GlassWeightCalculatorTool() {
         </div>
 
         <div style={{ marginTop: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button style={buttonStyle} onClick={exportCSV}>Export to CSV</button>
-          <button style={buttonStyle} onClick={exportPDF}>Export to PDF</button>
+          <button className="glass-button ui-button" onClick={exportCSV}>Export to CSV</button>
+          <button className="glass-button ui-button" onClick={exportPDF}>Export to PDF</button>
         </div>
       </div>
     </div>
   );
 }
+
+

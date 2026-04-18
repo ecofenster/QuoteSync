@@ -1,34 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { BSEN_STANDARDS } from "./bsen.data";
 import type { BSENStandard } from "./bsen.types";
-
-const cardStyle: React.CSSProperties = {
-  borderRadius: 16,
-  border: "1px solid #e4e4e7",
-  background: "#fff",
-  padding: 16,
-  display: "grid",
-  gap: 12,
-};
-
-const inputStyle: React.CSSProperties = {
-  height: 40,
-  borderRadius: 12,
-  border: "1px solid #e4e4e7",
-  padding: "0 12px",
-  background: "#fff",
-  fontSize: 14,
-};
-
-const chipStyle: React.CSSProperties = {
-  borderRadius: 999,
-  border: "1px solid #e4e4e7",
-  background: "#fafafa",
-  padding: "6px 10px",
-  fontSize: 12,
-  fontWeight: 700,
-  cursor: "pointer",
-};
+import "./BSENStandardsTool.css";
 
 function normalise(value: string) {
   return String(value || "").replace(/\s+/g, "").toLowerCase();
@@ -182,8 +155,8 @@ export default function BSENStandardsTool() {
   const selectedCategories = selected ? inferCategories(selected) : [];
 
   return (
-    <div style={{ display: "grid", gap: 16, alignItems: "start" }}>
-      <div style={cardStyle}>
+    <div className="bsen-tool" style={{ display: "grid", gap: 16, alignItems: "start" }}>
+      <div className="bsen-card ui-card">
         <div style={{ display: "grid", gap: 6 }}>
           <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>EN / BS Numbers</div>
           <div style={{ fontSize: 13, color: "#52525b", maxWidth: 900 }}>
@@ -192,7 +165,7 @@ export default function BSENStandardsTool() {
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "160px minmax(0, 1fr) auto", gap: 10 }}>
-          <select value={family} onChange={(e) => setFamily(e.currentTarget.value)} style={inputStyle}>
+          <select value={family} onChange={(e) => setFamily(e.currentTarget.value)} className="bsen-input ui-input">
             <option value="BS">BS</option>
             <option value="EN">EN</option>
             <option value="BS EN">BS EN</option>
@@ -209,18 +182,13 @@ export default function BSENStandardsTool() {
               }
             }}
             placeholder="Enter standard number, e.g. 14351-1"
-            style={inputStyle}
+            className="bsen-input ui-input"
           />
 
           <button
             type="button"
             onClick={handleSearch}
-            style={{
-              ...inputStyle,
-              minWidth: 110,
-              cursor: "pointer",
-              fontWeight: 800,
-            }}
+            className="bsen-button ui-button"
           >
             Search
           </button>
@@ -229,14 +197,7 @@ export default function BSENStandardsTool() {
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(280px, 360px) minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
         <div
-          style={{
-            ...cardStyle,
-            height: "calc(100vh - 320px)",
-            minHeight: 420,
-            maxHeight: 760,
-            overflow: "hidden",
-            alignSelf: "start",
-          }}
+          className="bsen-card bsen-card--library ui-card"
         >
           <div style={{ display: "grid", gap: 8 }}>
             <div style={{ fontSize: 14, fontWeight: 900, color: "#18181b" }}>Standards library</div>
@@ -244,7 +205,7 @@ export default function BSENStandardsTool() {
               value={query}
               onChange={(e) => setQuery(e.currentTarget.value)}
               placeholder="Filter by code, title, tag, category or topic"
-              style={inputStyle}
+              className="bsen-input ui-input"
             />
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {categoryOrder.map((item) => {
@@ -254,12 +215,7 @@ export default function BSENStandardsTool() {
                     key={item}
                     type="button"
                     onClick={() => setCategory(item)}
-                    style={{
-                      ...chipStyle,
-                      border: active ? "1px solid #18181b" : chipStyle.border,
-                      background: active ? "#18181b" : "#fafafa",
-                      color: active ? "#fff" : "#18181b",
-                    }}
+                    className={active ? "bsen-chip bsen-chip--active ui-chip" : "bsen-chip ui-chip"}
                   >
                     {item}
                   </button>
@@ -283,30 +239,12 @@ export default function BSENStandardsTool() {
                     setFamily(item.family);
                     setNumber(item.number);
                   }}
-                  style={{
-                    textAlign: "left",
-                    borderRadius: 14,
-                    border: active ? "1px solid #18181b" : "1px solid #e4e4e7",
-                    background: active ? "#f4f4f5" : "#fff",
-                    padding: 12,
-                    display: "grid",
-                    gap: 8,
-                    cursor: "pointer",
-                  }}
+                  className={active ? "bsen-list-item bsen-list-item--active" : "bsen-list-item"}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
                     <div style={{ fontSize: 13, fontWeight: 900, color: "#18181b" }}>{item.code}</div>
                     <span
-                      style={{
-                        borderRadius: 999,
-                        border: "1px solid #e4e4e7",
-                        background: "#fafafa",
-                        padding: "4px 8px",
-                        fontSize: 11,
-                        fontWeight: 800,
-                        color: "#3f3f46",
-                        whiteSpace: "nowrap",
-                      }}
+                      className="bsen-badge"
                     >
                       {categories[0] || "General"}
                     </span>
@@ -319,12 +257,7 @@ export default function BSENStandardsTool() {
         </div>
 
         <div
-          style={{
-            ...cardStyle,
-            alignSelf: "start",
-            maxHeight: "calc(100vh - 320px)",
-            overflowY: "auto",
-          }}
+          className="bsen-card bsen-card--detail ui-card"
         >
           {selected ? (
             <>
@@ -337,15 +270,7 @@ export default function BSENStandardsTool() {
                   {selectedCategories.map((item) => (
                     <span
                       key={item}
-                      style={{
-                        borderRadius: 999,
-                        border: "1px solid #e4e4e7",
-                        background: "#fafafa",
-                        padding: "4px 8px",
-                        fontSize: 11,
-                        fontWeight: 800,
-                        color: "#3f3f46",
-                      }}
+                      className="bsen-badge"
                     >
                       {item}
                     </span>
@@ -374,15 +299,7 @@ export default function BSENStandardsTool() {
                     {(selected.tags || []).map((tag) => (
                       <span
                         key={tag}
-                        style={{
-                          borderRadius: 999,
-                          border: "1px solid #e4e4e7",
-                          background: "#fafafa",
-                          padding: "6px 10px",
-                          fontSize: 12,
-                          fontWeight: 700,
-                          color: "#18181b",
-                        }}
+                        className="bsen-tag"
                       >
                         {tag}
                       </span>
@@ -401,3 +318,4 @@ export default function BSENStandardsTool() {
     </div>
   );
 }
+

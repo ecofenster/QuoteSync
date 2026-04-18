@@ -3,6 +3,7 @@ import { resolveStructuredAddress, addressTuple } from "../../../domain/address"
 import { createDefaultTimeline } from "../../../system/orderTimeline";
 import type { Client } from "../../../models/types";
 import ExpandToggle from "../../../components/common/ExpandToggle";
+import "./shared.css";
 
 export function Button({
   children,
@@ -278,3 +279,5 @@ export function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => 
     </div>
   );
 }
+
+

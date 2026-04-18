@@ -3,6 +3,7 @@ import type { Client, ClientId, EstimateId, EstimateOutcome, EstimatePickerTab, 
 import { apiFetch } from "../../services/api/apiClient";
 import EstimatePickerTabs from "./EstimatePickerTabs";
 import { EstimateWorkflowProvider } from "../estimateWorkflow/EstimateWorkflowProvider";
+import "./EstimatePickerFeature.css";
 
 type ApiNote = {
   id?: string;
@@ -98,27 +99,18 @@ type Props = {
 
 function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
-    <div
-      style={{
-        borderRadius: 18,
-        border: "1px solid #e4e4e7",
-        background: "#fff",
-        padding: 16,
-        boxShadow: "0 1px 2px rgba(0,0,0,.06)",
-        ...style,
-      }}
-    >
+    <div className="epf-card ui-card ui-card--pad-md" style={{ boxShadow: "0 1px 2px rgba(0,0,0,.06)", ...style }}>
       {children}
     </div>
   );
 }
 
 function H2({ children }: { children: React.ReactNode }) {
-  return <h2 style={{ fontSize: 16, margin: 0, fontWeight: 800, color: "#18181b" }}>{children}</h2>;
+  return <h2 className="epf-h2">{children}</h2>;
 }
 
 function Small({ children }: { children: React.ReactNode }) {
-  return <div style={{ fontSize: 12, color: "#71717a" }}>{children}</div>;
+  return <div className="epf-small">{children}</div>;
 }
 
 function Button({
@@ -134,20 +126,18 @@ function Button({
   disabled?: boolean;
   style?: React.CSSProperties;
 }) {
-  const isPrimary = variant === "primary";
+  const className =
+    variant === "primary"
+      ? "epf-button ui-button ui-button--primary"
+      : "epf-button ui-button";
+
   return (
     <button
       type="button"
       disabled={!!disabled}
       onClick={onClick}
+      className={className}
       style={{
-        borderRadius: 18,
-        border: isPrimary ? "none" : "1px solid #e4e4e7",
-        background: isPrimary ? "#18181b" : "#fff",
-        color: isPrimary ? "#fff" : "#3f3f46",
-        padding: "10px 14px",
-        fontSize: 14,
-        fontWeight: 800,
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.55 : 1,
         ...style,

@@ -4,6 +4,7 @@ import { getGroupedSettings } from "../../services/settings/settingsService";
 import { apiFetch } from "../../services/api/apiClient";
 import type { GroupedSystemSettings, SystemSettingRecord } from "../../types/systemSettings";
 import { H3, Small } from "../estimatePicker/tabs/shared";
+import "./AdminPlaceholderPage.css";
 
 type AdminSectionKey =
   | "settings"
@@ -21,12 +22,6 @@ type EditableBooleanValue = {
 type EditableDimensionsValue = {
   width: number;
   height: number;
-};
-
-const shellCardStyle: React.CSSProperties = {
-  borderRadius: 16,
-  border: "1px solid #e4e4e7",
-  background: "#ffffff",
 };
 
 const sectionList: Array<{ key: AdminSectionKey; label: string; description: string }> = [
@@ -96,17 +91,7 @@ function toNumberInputValue(value: unknown) {
 
 function ReadOnlyValue({ value }: { value: unknown }) {
   return (
-    <pre
-      style={{
-        margin: 0,
-        whiteSpace: "pre-wrap",
-        wordBreak: "break-word",
-        fontSize: 12,
-        lineHeight: 1.5,
-        color: "#3f3f46",
-        fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace",
-      }}
-    >
+    <pre className="admin-readonly-value">
       {value == null ? "null" : JSON.stringify(value, null, 2)}
     </pre>
   );
@@ -120,23 +105,14 @@ function AdminSectionPlaceholder({
   description: string;
 }) {
   return (
-    <div style={{ ...shellCardStyle, padding: 20, display: "grid", gap: 10 }}>
-      <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{title}</div>
-      <div style={{ fontSize: 14, color: "#52525b", maxWidth: 820 }}>{description}</div>
-      <div
-        style={{
-          borderRadius: 12,
-          border: "1px dashed #d4d4d8",
-          background: "#fafafa",
-          padding: 14,
-          fontSize: 14,
-          color: "#52525b",
-        }}
-      >
+    <div className="admin-card ui-card" style={{ padding: 20, display: "grid", gap: 10 }}>
+      <div className="admin-section-title">{title}</div>
+      <div className="admin-body-copy" style={{ maxWidth: 820 }}>{description}</div>
+      <div className="admin-placeholder-box">
         This section is planned, but not being implemented in this phase.
       </div>
-</div>
-);
+    </div>
+  );
 }
 
 function SettingRow({
@@ -193,19 +169,10 @@ function SettingRow({
   }
 
   return (
-    <div
-      style={{
-        borderRadius: 12,
-        border: "1px solid #e4e4e7",
-        background: "#fafafa",
-        padding: 14,
-        display: "grid",
-        gap: 12,
-      }}
-    >
+    <div className="admin-setting-row">
       <div style={{ display: "grid", gap: 4 }}>
-        <div style={{ fontSize: 14, fontWeight: 900, color: "#18181b" }}>{setting.key}</div>
-        <div style={{ fontSize: 11, color: "#71717a" }}>
+        <div className="admin-setting-key">{setting.key}</div>
+        <div className="admin-setting-updated">
           Updated: {setting.updated_at || "Unknown"}
         </div>
       </div>
@@ -214,15 +181,12 @@ function SettingRow({
 
       {editable && normalizedBoolean ? (
         <div
+          className="admin-flex-row"
           style={{
-            display: "flex",
-            alignItems: "center",
             justifyContent: "space-between",
-            gap: 12,
-            flexWrap: "wrap",
           }}
         >
-          <div style={{ fontSize: 13, color: "#3f3f46", fontWeight: 700 }}>Enabled</div>
+          <div className="admin-setting-label">Enabled</div>
           <Toggle
             value={!!normalizedBoolean.enabled}
             onChange={(value) => {
@@ -235,20 +199,9 @@ function SettingRow({
       ) : null}
 
       {editable && !normalizedBoolean && setting.key !== "configurator.defaultDimensions" ? (
-        <div
-          style={{
-            borderRadius: 10,
-            border: "1px solid #fde68a",
-            background: "#fffbeb",
-            padding: "10px 12px",
-            fontSize: 12,
-            color: "#92400e",
-            display: "grid",
-            gap: 8,
-          }}
-        >
+        <div className="admin-warning-box">
           <div>This setting has an invalid boolean value shape in storage.</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <div className="admin-flex-row">
             <button
               type="button"
               onClick={() => {
@@ -257,21 +210,15 @@ function SettingRow({
                 void save(nextValue);
               }}
               disabled={isSaving}
+              className="admin-primary-button admin-primary-button--small ui-button ui-button--primary"
               style={{
-                borderRadius: 10,
-                border: "1px solid #18181b",
-                background: "#18181b",
-                color: "#fff",
-                padding: "8px 12px",
-                fontSize: 12,
-                fontWeight: 800,
                 cursor: isSaving ? "default" : "pointer",
                 opacity: isSaving ? 0.7 : 1,
               }}
             >
               {isSaving ? "Repairing..." : "Repair toggle value"}
             </button>
-            <div style={{ fontSize: 12, color: "#a16207" }}>
+            <div className="admin-warning-inline">
               Current raw value: {localValue == null ? "null" : JSON.stringify(localValue)}
             </div>
           </div>
@@ -280,41 +227,29 @@ function SettingRow({
 
       {editable && setting.key === "configurator.defaultDimensions" && (
         <div style={{ display: "grid", gap: 12 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(160px, 220px))", gap: 12 }}>
+          <div className="admin-dimensions-grid">
             <label style={{ display: "grid", gap: 6 }}>
-              <span style={{ fontSize: 13, color: "#3f3f46", fontWeight: 700 }}>Default width (mm)</span>
+              <span className="admin-setting-label">Default width (mm)</span>
               <input
                 type="number"
                 value={widthInput}
                 onChange={(e) => setWidthInput(e.currentTarget.value)}
-                style={{
-                  height: 40,
-                  borderRadius: 10,
-                  border: "1px solid #d4d4d8",
-                  padding: "0 12px",
-                  background: "#fff",
-                }}
+                className="admin-input ui-input"
               />
             </label>
 
             <label style={{ display: "grid", gap: 6 }}>
-              <span style={{ fontSize: 13, color: "#3f3f46", fontWeight: 700 }}>Default height (mm)</span>
+              <span className="admin-setting-label">Default height (mm)</span>
               <input
                 type="number"
                 value={heightInput}
                 onChange={(e) => setHeightInput(e.currentTarget.value)}
-                style={{
-                  height: 40,
-                  borderRadius: 10,
-                  border: "1px solid #d4d4d8",
-                  padding: "0 12px",
-                  background: "#fff",
-                }}
+                className="admin-input ui-input"
               />
             </label>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <div className="admin-flex-row">
             <button
               type="button"
               onClick={() => {
@@ -325,14 +260,8 @@ function SettingRow({
                 void save(nextValue);
               }}
               disabled={isSaving}
+              className="admin-primary-button ui-button ui-button--primary"
               style={{
-                borderRadius: 10,
-                border: "1px solid #18181b",
-                background: "#18181b",
-                color: "#fff",
-                padding: "10px 14px",
-                fontSize: 13,
-                fontWeight: 800,
                 cursor: isSaving ? "default" : "pointer",
                 opacity: isSaving ? 0.7 : 1,
               }}
@@ -341,7 +270,7 @@ function SettingRow({
             </button>
 
             {isDimensionsValue(localValue) ? (
-              <div style={{ fontSize: 12, color: "#52525b" }}>
+              <div className="admin-body-copy admin-body-copy--small">
                 Current: {localValue.width} × {localValue.height} mm
               </div>
             ) : null}
@@ -350,22 +279,12 @@ function SettingRow({
       )}
 
       {saveError ? (
-        <div
-          style={{
-            borderRadius: 10,
-            border: "1px solid #fecaca",
-            background: "#fef2f2",
-            padding: "10px 12px",
-            fontSize: 12,
-            fontWeight: 700,
-            color: "#991b1b",
-          }}
-        >
+        <div className="admin-error-box">
           {saveError}
         </div>
       ) : null}
-</div>
-);
+    </div>
+  );
 }
 
 export default function AdminPlaceholderPage() {
@@ -434,35 +353,25 @@ export default function AdminPlaceholderPage() {
   const sectionContent =
     activeSection === "settings" ? (
       <div style={{ display: "grid", gap: 16 }}>
-        <div style={{ ...shellCardStyle, padding: 20, display: "grid", gap: 6 }}>
-          <div style={{ fontSize: 24, fontWeight: 900, color: "#18181b" }}>Admin</div>
-          <div style={{ fontSize: 14, color: "#52525b", maxWidth: 900 }}>
+        <div className="admin-card ui-card" style={{ padding: 20, display: "grid", gap: 6 }}>
+          <div className="admin-page-title">Admin</div>
+          <div className="admin-body-copy" style={{ maxWidth: 900 }}>
             Proper admin control area. Settings are one part of Admin, and boolean controls use the site toggle component rather than tick boxes.
           </div>
         </div>
 
         {isLoading ? (
-          <div style={{ ...shellCardStyle, padding: 14, fontSize: 14, color: "#3f3f46" }}>Loading settings...</div>
+          <div className="admin-card admin-status-card ui-card">Loading settings...</div>
         ) : null}
 
         {errorMessage ? (
-          <div
-            style={{
-              ...shellCardStyle,
-              padding: 14,
-              border: "1px solid #fecaca",
-              background: "#fef2f2",
-              fontSize: 14,
-              fontWeight: 700,
-              color: "#991b1b",
-            }}
-          >
+          <div className="admin-card admin-status-card admin-status-card--error ui-card">
             {errorMessage}
           </div>
         ) : null}
 
         {!isLoading && !errorMessage && orderedGroups.length === 0 ? (
-          <div style={{ ...shellCardStyle, padding: 14, fontSize: 14, color: "#3f3f46" }}>No settings found.</div>
+          <div className="admin-card admin-status-card ui-card">No settings found.</div>
         ) : null}
 
         {!isLoading && !errorMessage && orderedGroups.length > 0 ? (
@@ -470,18 +379,18 @@ export default function AdminPlaceholderPage() {
             {orderedGroups.map(([groupName, settings]) => (
               <div
                 key={groupName}
+                className="admin-card ui-card"
                 style={{
-                  ...shellCardStyle,
                   padding: 18,
                   display: "grid",
                   gap: 14,
                 }}
               >
                 <div>
-                  <div style={{ fontSize: 18, fontWeight: 900, color: "#18181b" }}>
+                  <div className="admin-group-title">
                     {formatGroupTitle(groupName)}
                   </div>
-                  <div style={{ fontSize: 12, color: "#71717a" }}>
+                  <div className="admin-setting-updated">
                     {settings.length} setting{settings.length === 1 ? "" : "s"}
                   </div>
                 </div>
@@ -498,69 +407,37 @@ export default function AdminPlaceholderPage() {
       </div>
     ) : activeSection === "project_preferences" ? (
       <div style={{ display: "grid", gap: 16 }}>
-        <div style={{ ...shellCardStyle, padding: 20, display: "grid", gap: 6 }}>
-          <div style={{ fontSize: 24, fontWeight: 900, color: "#18181b" }}>Project Preferences</div>
-          <div style={{ fontSize: 14, color: "#52525b", maxWidth: 900 }}>
+        <div className="admin-card ui-card" style={{ padding: 20, display: "grid", gap: 6 }}>
+          <div className="admin-page-title">Project Preferences</div>
+          <div className="admin-body-copy" style={{ maxWidth: 900 }}>
             Configure default loading behaviour for QuoteSync.
           </div>
         </div>
 
-        <div style={{ ...shellCardStyle, padding: 18, display: "grid", gap: 14, maxWidth: 900 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              justifyContent: "space-between",
-              gap: 12,
-              flexWrap: "wrap",
-            }}
-          >
+        <div className="admin-card ui-card" style={{ padding: 18, display: "grid", gap: 14, maxWidth: 900 }}>
+          <div className="admin-project-pref-row">
             <div>
-              <div style={{ fontSize: 18, fontWeight: 900, color: "#18181b" }}>Load Defaults</div>
-              <div style={{ fontSize: 14, color: "#52525b", maxWidth: 720 }}>
+              <div className="admin-group-title">Load Defaults</div>
+              <div className="admin-body-copy" style={{ maxWidth: 720 }}>
                 When enabled, new estimates start with the default supplier, product and technical settings. When disabled, new estimates start blank.
               </div>
             </div>
-            <div style={{ fontSize: 14, fontWeight: 800, color: "#18181b" }}>No</div>
+            <div className="admin-project-pref-value">No</div>
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              justifyContent: "space-between",
-              gap: 12,
-              flexWrap: "wrap",
-            }}
-          >
-            <div style={{ fontSize: 18, fontWeight: 900, color: "#18181b" }}>Load Demo Clients</div>
-            <div style={{ fontSize: 14, fontWeight: 800, color: "#18181b" }}>No</div>
+          <div className="admin-project-pref-row">
+            <div className="admin-group-title">Load Demo Clients</div>
+            <div className="admin-project-pref-value">No</div>
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              justifyContent: "space-between",
-              gap: 12,
-              flexWrap: "wrap",
-            }}
-          >
-            <div style={{ fontSize: 18, fontWeight: 900, color: "#18181b" }}>Load Demo Estimates</div>
-            <div style={{ fontSize: 14, fontWeight: 800, color: "#18181b" }}>No</div>
+          <div className="admin-project-pref-row">
+            <div className="admin-group-title">Load Demo Estimates</div>
+            <div className="admin-project-pref-value">No</div>
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              justifyContent: "space-between",
-              gap: 12,
-              flexWrap: "wrap",
-            }}
-          >
-            <div style={{ fontSize: 18, fontWeight: 900, color: "#18181b" }}>Load Demo Forecast</div>
-            <div style={{ fontSize: 14, fontWeight: 800, color: "#18181b" }}>No</div>
+          <div className="admin-project-pref-row">
+            <div className="admin-group-title">Load Demo Forecast</div>
+            <div className="admin-project-pref-value">No</div>
           </div>
         </div>
       </div>
@@ -593,15 +470,13 @@ export default function AdminPlaceholderPage() {
 
   return (
     <div
+      className="admin-shell"
       style={{
-        display: "grid",
         gridTemplateColumns: "280px minmax(0, 1fr)",
-        gap: 16,
-        alignItems: "start",
       }}
     >
-      <div style={{ ...shellCardStyle, padding: 14, display: "grid", gap: 10, position: "sticky", top: 16 }}>
-        <div style={{ fontSize: 12, color: "#71717a", fontWeight: 800, textTransform: "uppercase" }}>
+      <div className="admin-card admin-sidebar-card ui-card" style={{ padding: 14, position: "sticky", top: 16 }}>
+        <div className="admin-sidebar-title">
           Admin
         </div>
 
@@ -612,20 +487,10 @@ export default function AdminPlaceholderPage() {
               key={section.key}
               type="button"
               onClick={() => setActiveSection(section.key)}
-              style={{
-                textAlign: "left",
-                borderRadius: 12,
-                border: active ? "1px solid #18181b" : "1px solid #e4e4e7",
-                background: active ? "#18181b" : "#fff",
-                color: active ? "#fff" : "#18181b",
-                padding: 12,
-                cursor: "pointer",
-                display: "grid",
-                gap: 4,
-              }}
+              className={active ? "admin-nav-button admin-nav-button--active" : "admin-nav-button"}
             >
-              <span style={{ fontSize: 14, fontWeight: 900 }}>{section.label}</span>
-              <span style={{ fontSize: 12, color: active ? "rgba(255,255,255,0.8)" : "#71717a" }}>
+              <span className="admin-nav-button-label">{section.label}</span>
+              <span className={active ? "admin-nav-button-desc admin-nav-button-desc--active" : "admin-nav-button-desc"}>
                 {section.description}
               </span>
             </button>
@@ -634,6 +499,9 @@ export default function AdminPlaceholderPage() {
       </div>
 
       <div>{sectionContent}</div>
-</div>
-);
+    </div>
+  );
 }
+
+
+
