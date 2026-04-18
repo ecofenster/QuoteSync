@@ -1,7 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import type { Client, ClientId } from "../../models/types";
-import { appendClientNote } from "../../services/clientNotesStore";
-import * as Models from "../../models/types";
 
 type FollowUp = {
   id: string;
@@ -10,7 +8,7 @@ type FollowUp = {
   clientRef?: string;
   estimateId?: string;
   estimateRef?: string;
-  dueDateISO: string; // YYYY-MM-DD
+  dueDateISO: string;
   title: string;
   notes?: string;
   status?: "pending" | "done";
@@ -20,7 +18,60 @@ type FollowUp = {
   needsCall?: boolean;
 };
 
-const STORAGE_KEY = "qs_followups_v1";
+type ApiFollowUp = {
+  id?: string;
+  client_id?: string;
+  estimate_id?: string | null;
+  title?: string;
+  notes?: string;
+  due_at?: string | null;
+  status?: string;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+type ApiNote = {
+  id?: string;
+  client_id?: string;
+  estimate_id?: string | null;
+  followup_id?: string | null;
+  category?: string;
+  note_text?: string;
+  created_by?: string;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+type NoteEntry = {
+  id: string;
+  clientId: ClientId;
+  estimateId?: string;
+  followupId?: string;
+  category: string;
+  noteText: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string | null;
+};
+
+const API_BASE_URL = "http://localhost:3001";
+
+function apiUrl(path: string) {
+  return `${API_BASE_URL}${path}`;
+}
+
+async function apiFetch(path: string, options?: RequestInit) {
+  const res = await fetch(apiUrl(path), options);
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(body || `API request failed: ${res.status}`);
+  }
+  const contentType = res.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    return res.json();
+  }
+  return null;
+}
 
 function uid() {
   return Math.random().toString(16).slice(2) + Date.now().toString(16);
@@ -37,6 +88,7 @@ function toISODate(d: Date) {
 function startOfMonth(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), 1);
 }
+
 function endOfMonth(d: Date) {
   return new Date(d.getFullYear(), d.getMonth() + 1, 0);
 }
@@ -47,33 +99,119 @@ function addDays(d: Date, days: number) {
   return x;
 }
 
-function loadFollowUpsSafe(): FollowUp[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed as FollowUp[];
-  } catch {
-    return [];
-  }
+function toPreviewText(value: string, maxLength = 140) {
+  const normalized = String(value || "").replace(/\s+/g, " ").trim();
+  if (!normalized) return "";
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 1)}…` : normalized;
 }
 
-function saveFollowUpsSafe(list: FollowUp[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(list ?? []));
-  } catch {
-    // ignore
+function normalizeFollowupId(value: unknown) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized || normalized.toLowerCase() === "null" || normalized.toLowerCase() === "undefined") {
+    return undefined;
   }
+  return normalized;
 }
 
-function escapeHtml(s: string) {
-  return (s ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+function mapApiFollowUp(row: ApiFollowUp, clients: Client[]): FollowUp {
+  const clientId = String(row.client_id || "") as ClientId;
+  const client = clients.find((item) => item.id === clientId) || null;
+  const estimate = client?.estimates.find((item) => item.id === String(row.estimate_id || "")) || null;
+  const dueDateISO = String(row.due_at || "").trim() || toISODate(new Date());
+  const normalizedStatus = String(row.status || "").trim().toLowerCase() === "done" ? "done" : "pending";
+
+  return {
+    id: String(row.id || ""),
+    clientId,
+    clientName: client ? (client.type === "Business" ? (client.businessName || client.clientName) : client.clientName) : "",
+    clientRef: client?.clientRef || "",
+    estimateId: row.estimate_id ? String(row.estimate_id) : undefined,
+    estimateRef: estimate?.estimateRef || undefined,
+    dueDateISO,
+    title: String(row.title || "Follow-up"),
+    notes: String(row.notes || ""),
+    status: normalizedStatus,
+    type: /email/i.test(String(row.notes || "")) ? "email" : "call",
+    createdAt: String(row.created_at || row.updated_at || new Date().toISOString()),
+    sendEmail: /follow-up email/i.test(String(row.notes || "")),
+    needsCall: /telephone call/i.test(String(row.notes || "")),
+  };
+}
+
+function mapApiNote(row: ApiNote): NoteEntry {
+  return {
+    id: String(row.id || ""),
+    clientId: String(row.client_id || "") as ClientId,
+    estimateId: row.estimate_id ? String(row.estimate_id) : undefined,
+    followupId: normalizeFollowupId(row.followup_id),
+    category: String(row.category || "general"),
+    noteText: String(row.note_text || ""),
+    createdBy: String(row.created_by || "User"),
+    createdAt: String(row.created_at || row.updated_at || new Date().toISOString()),
+    updatedAt: row.updated_at ? String(row.updated_at) : null,
+  };
+}
+
+function buildCompletionNoteText(followUp: FollowUp) {
+  const lines = [
+    "Follow-up completed",
+    `Date: ${new Date().toLocaleString()}`,
+    `Title: ${followUp.title || "Follow-up"}`,
+    `Type: ${followUp.type === "email" ? "Email" : "Call"}`,
+  ];
+
+  if (followUp.estimateRef) {
+    lines.push(`Estimate: ${followUp.estimateRef}`);
+  }
+
+  if ((followUp.notes || "").trim()) {
+    lines.push("");
+    lines.push("Follow-up details:");
+    lines.push(String(followUp.notes || "").trim());
+  }
+
+  return lines.join("\n");
+}
+
+function buildUserFollowUpNoteText(followUp: FollowUp, userText: string) {
+  const lines = [
+    "Follow-up note",
+    `Date: ${new Date().toLocaleString()}`,
+    `Title: ${followUp.title || "Follow-up"}`,
+  ];
+
+  if (followUp.estimateRef) {
+    lines.push(`Estimate: ${followUp.estimateRef}`);
+  }
+
+  lines.push("");
+  lines.push("User note:");
+  lines.push(userText.trim());
+
+  return lines.join("\n");
+}
+
+function followUpLatestActivityAt(followUp: FollowUp, latestNote?: NoteEntry | null) {
+  return String(latestNote?.updatedAt || latestNote?.createdAt || followUp.createdAt || "");
+}
+
+function isFollowUpOverdue(followUp: FollowUp, todayISO: string) {
+  return followUp.status !== "done" && String(followUp.dueDateISO || "") < todayISO;
+}
+
+function compareFollowUpsByActivity(left: FollowUp, right: FollowUp, latestNoteByFollowUpId: Map<string, NoteEntry>, todayISO: string) {
+  const leftOverdue = isFollowUpOverdue(left, todayISO);
+  const rightOverdue = isFollowUpOverdue(right, todayISO);
+
+  if (leftOverdue !== rightOverdue) return leftOverdue ? -1 : 1;
+  if (left.status !== right.status) return left.status === "pending" ? -1 : 1;
+
+  const leftActivity = followUpLatestActivityAt(left, latestNoteByFollowUpId.get(left.id) || null);
+  const rightActivity = followUpLatestActivityAt(right, latestNoteByFollowUpId.get(right.id) || null);
+  const activityCompare = rightActivity.localeCompare(leftActivity);
+  if (activityCompare !== 0) return activityCompare;
+
+  return String(right.createdAt || "").localeCompare(String(left.createdAt || ""));
 }
 
 export default function FollowUpsFeature({
@@ -83,20 +221,128 @@ export default function FollowUpsFeature({
   clients: Client[];
   onOpenClient: (clientId: ClientId) => void;
 }) {
+  const activeUserName = "User";
   const [now, setNow] = useState(() => new Date());
   const [selectedDateISO, setSelectedDateISO] = useState(() => toISODate(new Date()));
   const [selectedFollowUpId, setSelectedFollowUpId] = useState<string | null>(null);
-
   const [noteText, setNoteText] = useState("");
   const [noteSavedToast, setNoteSavedToast] = useState<string | null>(null);
+  const [followUps, setFollowUps] = useState<FollowUp[]>([]);
+  const [noteEntries, setNoteEntries] = useState<NoteEntry[]>([]);
+  const [reloadToken, setReloadToken] = useState(0);
 
-  // Keep clock fresh for "today" highlight (not critical)
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 30000);
     return () => clearInterval(t);
   }, []);
 
-  const followUps = useMemo(() => loadFollowUpsSafe(), [noteSavedToast]); // re-load after save note toast
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadData() {
+      try {
+        const clientIds = Array.from(new Set(clients.map((client) => String(client.id)).filter(Boolean)));
+        if (!clientIds.length) {
+          if (!cancelled) {
+            setFollowUps([]);
+            setNoteEntries([]);
+          }
+          return;
+        }
+
+        const followUpResponses = await Promise.all(
+          clientIds.map((clientId) =>
+            apiFetch(`/api/followups?client_id=${encodeURIComponent(clientId)}`).catch(() => [])
+          )
+        );
+
+        if (cancelled) return;
+
+        const followUpRows = followUpResponses.flatMap((value) => (Array.isArray(value) ? value : [])) as ApiFollowUp[];
+
+        const dedupedFollowUps = new Map<string, FollowUp>();
+        followUpRows.forEach((row) => {
+          const mapped = mapApiFollowUp(row, clients);
+          if (!mapped.id) return;
+          dedupedFollowUps.set(mapped.id, mapped);
+        });
+
+        const nextFollowUps = Array.from(dedupedFollowUps.values()).sort((a, b) => {
+          const dateCompare = String(a.dueDateISO).localeCompare(String(b.dueDateISO));
+          if (dateCompare !== 0) return dateCompare;
+          return String(a.createdAt).localeCompare(String(b.createdAt));
+        });
+
+        const noteResponses = await Promise.all(
+          nextFollowUps.map((followUp) =>
+            apiFetch(
+              `/api/notes?client_id=${encodeURIComponent(String(followUp.clientId))}&followup_id=${encodeURIComponent(String(followUp.id))}&limit=100`
+            ).catch(() => [])
+          )
+        );
+
+        if (cancelled) return;
+
+        const noteRows = noteResponses.flatMap((value) => (Array.isArray(value) ? value : [])) as ApiNote[];
+
+        const dedupedNotes = new Map<string, NoteEntry>();
+        noteRows.forEach((row) => {
+          const mapped = mapApiNote(row);
+          if (!mapped.id) return;
+          if (!mapped.followupId) return;
+          dedupedNotes.set(mapped.id, mapped);
+        });
+
+        const nextNotes = Array.from(dedupedNotes.values()).sort((a, b) => {
+          const left = String(a.updatedAt || a.createdAt || "");
+          const right = String(b.updatedAt || b.createdAt || "");
+          return right.localeCompare(left);
+        });
+
+        setFollowUps(nextFollowUps);
+        setNoteEntries(nextNotes);
+      } catch (error) {
+        if (cancelled) return;
+        console.error("Failed to load follow-up data", error);
+        setFollowUps([]);
+        setNoteEntries([]);
+      }
+    }
+
+    loadData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clients, reloadToken]);
+
+  const notesByFollowUpId = useMemo(() => {
+    const map = new Map<string, NoteEntry[]>();
+    noteEntries.forEach((entry) => {
+      if (!entry.followupId) return;
+      const list = map.get(entry.followupId) ?? [];
+      list.push(entry);
+      map.set(entry.followupId, list);
+    });
+    map.forEach((entries, key) => {
+      entries.sort((a, b) => {
+        const left = String(a.updatedAt || a.createdAt || "");
+        const right = String(b.updatedAt || b.createdAt || "");
+        return right.localeCompare(left);
+      });
+      map.set(key, entries);
+    });
+    return map;
+  }, [noteEntries]);
+
+  const latestNoteByFollowUpId = useMemo(() => {
+    const map = new Map<string, NoteEntry>();
+    notesByFollowUpId.forEach((entries, key) => {
+      if (entries.length) map.set(key, entries[0]);
+    });
+    return map;
+  }, [notesByFollowUpId]);
+
   const followUpsByDate = useMemo(() => {
     const m = new Map<string, FollowUp[]>();
     for (const fu of followUps) {
@@ -116,9 +362,8 @@ export default function FollowUpsFeature({
   const monthEnd = endOfMonth(now);
 
   const monthDays = useMemo(() => {
-    // Build a simple 7-column grid, starting Monday
     const start = new Date(monthStart);
-    const day = start.getDay(); // 0 Sun..6 Sat
+    const day = start.getDay();
     const mondayIndex = (day + 6) % 7;
     const gridStart = addDays(start, -mondayIndex);
 
@@ -132,18 +377,23 @@ export default function FollowUpsFeature({
     return out;
   }, [monthStart.getTime(), monthEnd.getTime()]);
 
-  const selectedList = followUpsByDate.get(selectedDateISO) ?? [];
+  const todayISO = toISODate(new Date());
+  const selectedList = useMemo(() => {
+    const items = [...(followUpsByDate.get(selectedDateISO) ?? [])];
+    items.sort((left, right) => compareFollowUpsByActivity(left, right, latestNoteByFollowUpId, todayISO));
+    return items;
+  }, [followUpsByDate, selectedDateISO, latestNoteByFollowUpId, todayISO]);
   const selectedFollowUp = selectedList.find((x) => x.id === selectedFollowUpId) ?? null;
+  const selectedFollowUpNotes = selectedFollowUp ? (notesByFollowUpId.get(selectedFollowUp.id) ?? []) : [];
+  const latestSelectedFollowUpNote = selectedFollowUpNotes[0] ?? null;
 
   useEffect(() => {
-    // If date changes, select first item
     setSelectedFollowUpId((prev) => {
       if (!selectedList.length) return null;
       if (prev && selectedList.some((x) => x.id === prev)) return prev;
       return selectedList[0].id;
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDateISO]);
+  }, [selectedDateISO, selectedList]);
 
   useEffect(() => {
     setNoteText("");
@@ -153,34 +403,77 @@ export default function FollowUpsFeature({
   function gotoPrevMonth() {
     setNow((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1));
   }
+
   function gotoNextMonth() {
     setNow((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1));
   }
 
-  function markDone(id: string) {
-    const list = loadFollowUpsSafe();
-    const next = list.map((x) => (x.id !== id ? x : { ...x, status: "done" as const }));
-    saveFollowUpsSafe(next);
-    setNoteSavedToast("Updated follow-up.");
-    setTimeout(() => setNoteSavedToast(null), 1500);
+  async function createFollowUpNote(followUp: FollowUp, noteBody: string) {
+    await apiFetch("/api/notes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: uid(),
+        client_id: followUp.clientId,
+        estimate_id: followUp.estimateId || null,
+        followup_id: followUp.id,
+        category: "follow_up",
+        note_text: noteBody,
+        created_by: activeUserName,
+      }),
+    });
+
   }
 
-  function addClientNoteFromFollowUp() {
+  async function markDone(id: string) {
+    const existing = followUps.find((item) => item.id === id);
+    if (!existing) return;
+
+    try {
+      await apiFetch(`/api/followups/${encodeURIComponent(id)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          client_id: existing.clientId,
+          estimate_id: existing.estimateId || null,
+          title: existing.title,
+          notes: existing.notes || "",
+          due_at: existing.dueDateISO,
+          status: "done",
+        }),
+      });
+
+      if (existing.status !== "done") {
+        await createFollowUpNote(existing, buildCompletionNoteText(existing));
+      }
+
+      setFollowUps((prev) => prev.map((item) => (item.id !== id ? item : { ...item, status: "done" })));
+      setNoteSavedToast("Marked follow-up as done.");
+      setTimeout(() => setNoteSavedToast(null), 1500);
+      setReloadToken((value) => value + 1);
+    } catch (error) {
+      console.error("Failed to update follow-up", error);
+      setNoteSavedToast("Failed to update follow-up.");
+      setTimeout(() => setNoteSavedToast(null), 1500);
+    }
+  }
+
+  async function addFollowUpNoteFromPanel() {
     if (!selectedFollowUp) return;
     const txt = (noteText ?? "").trim();
     if (!txt) return;
 
-    const html = `<div dir="ltr">${escapeHtml(txt).replace(/\r?\n/g, "<br/>")}</div>`;
-    appendClientNote(selectedFollowUp.clientId, {
-      id: Models.asNoteId(uid()),
-      html,
-      createdAt: new Date().toISOString(),
-      createdBy: "User",
-    });
-
-    setNoteText("");
-    setNoteSavedToast("Saved client note.");
-    setTimeout(() => setNoteSavedToast(null), 1500);
+    try {
+      await createFollowUpNote(selectedFollowUp, buildUserFollowUpNoteText(selectedFollowUp, txt));
+      setNoteText("");
+      setNoteSavedToast(selectedFollowUp.estimateId ? "Saved estimate-linked follow-up note." : "Saved client follow-up note.");
+      setTimeout(() => setNoteSavedToast(null), 1500);
+      setReloadToken((value) => value + 1);
+    } catch (error) {
+      console.error("Failed to save follow-up note", error);
+      setNoteSavedToast("Failed to save follow-up note.");
+      setTimeout(() => setNoteSavedToast(null), 1500);
+    }
   }
 
   return (
@@ -188,7 +481,7 @@ export default function FollowUpsFeature({
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
         <div style={{ display: "grid", gap: 2 }}>
           <div style={{ fontSize: 16, fontWeight: 900, color: "#111827" }}>Follow Ups</div>
-          <div style={{ fontSize: 12, color: "#71717a" }}>By date • click a follow-up to view details.</div>
+          <div style={{ fontSize: 12, color: "#71717a" }}>By date • click a follow-up to view details and linked note history.</div>
         </div>
 
         {noteSavedToast ? (
@@ -202,11 +495,10 @@ export default function FollowUpsFeature({
         style={{
           display: "grid",
           gridTemplateColumns: "1fr 1fr",
-          gridTemplateRows: "360px 260px",
+          gridTemplateRows: "360px 320px",
           gap: 12,
         }}
       >
-        {/* Top-left: Calendar */}
         <div style={{ border: "1px solid #e4e4e7", borderRadius: 16, overflow: "hidden", background: "#fff" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: 12, borderBottom: "1px solid #f1f5f9" }}>
             <button
@@ -292,47 +584,72 @@ export default function FollowUpsFeature({
           </div>
         </div>
 
-        {/* Top-right: List */}
         <div style={{ border: "1px solid #e4e4e7", borderRadius: 16, overflow: "hidden", background: "#fff" }}>
           <div style={{ padding: 12, borderBottom: "1px solid #f1f5f9", fontWeight: 900 }}>Follow-ups on {selectedDateISO}</div>
           <div style={{ padding: 12, display: "grid", gap: 10, maxHeight: 360, overflow: "auto" }}>
             {selectedList.length === 0 && <div style={{ fontSize: 12, color: "#71717a" }}>No follow-ups for this date.</div>}
             {selectedList.map((fu) => {
               const active = fu.id === selectedFollowUpId;
+              const latestNote = latestNoteByFollowUpId.get(fu.id) || null;
+              const overdue = isFollowUpOverdue(fu, todayISO);
+              const latestActivityAt = followUpLatestActivityAt(fu, latestNote);
               return (
                 <div
                   key={fu.id}
                   onClick={() => setSelectedFollowUpId(fu.id)}
                   style={{
                     borderRadius: 14,
-                    border: active ? "2px solid #18181b" : "1px solid #e4e4e7",
-                    background: active ? "#18181b" : "#fff",
+                    border: active
+                      ? "2px solid #18181b"
+                      : overdue
+                      ? "1px solid #fca5a5"
+                      : "1px solid #e4e4e7",
+                    background: active ? "#18181b" : overdue ? "#fff7f7" : "#fff",
                     color: active ? "#fff" : "#111827",
                     padding: 10,
                     cursor: "pointer",
+                    display: "grid",
+                    gap: 6,
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                     <div style={{ fontWeight: 900, fontSize: 13 }}>{fu.title || "Follow-up"}</div>
                     <div style={{ fontSize: 11, fontWeight: 900, opacity: 0.9 }}>
-                      {fu.status === "done" ? "Done" : "Pending"}
+                      {fu.status === "done" ? "Done" : overdue ? "Overdue" : "Pending"}
                     </div>
                   </div>
-                  <div style={{ marginTop: 6, fontSize: 12, opacity: 0.9 }}>
+                  <div style={{ fontSize: 12, opacity: 0.9 }}>
                     {(fu.clientRef ? `${fu.clientRef} • ` : "")}{fu.clientName}
                     {fu.estimateRef ? ` • ${fu.estimateRef}` : ""}
                   </div>
-                  {fu.notes ? <div style={{ marginTop: 6, fontSize: 12, opacity: 0.9 }}>{fu.notes}</div> : null}
+                  {fu.notes ? <div style={{ fontSize: 12, opacity: 0.9 }}>{fu.notes}</div> : null}
+                  <div style={{ fontSize: 11, opacity: 0.8 }}>
+                    Latest activity: {latestActivityAt ? new Date(latestActivityAt).toLocaleString() : "—"}
+                  </div>
+                  <div
+                    style={{
+                      borderRadius: 10,
+                      border: active ? "1px solid rgba(255,255,255,0.25)" : "1px solid #e4e4e7",
+                      background: active ? "rgba(255,255,255,0.08)" : "#fafafa",
+                      padding: 8,
+                    }}
+                  >
+                    <div style={{ fontSize: 10, fontWeight: 900, textTransform: "uppercase", opacity: 0.8, marginBottom: 4 }}>
+                      Latest follow-up note
+                    </div>
+                    <div style={{ fontSize: 12, opacity: 0.95 }}>
+                      {latestNote ? toPreviewText(latestNote.noteText) : "No linked note yet."}
+                    </div>
+                  </div>
                 </div>
               );
             })}
           </div>
         </div>
 
-        {/* Bottom-left: Details */}
         <div style={{ border: "1px solid #e4e4e7", borderRadius: 16, overflow: "hidden", background: "#fff" }}>
           <div style={{ padding: 12, borderBottom: "1px solid #f1f5f9", fontWeight: 900 }}>Selected follow-up</div>
-          <div style={{ padding: 12, display: "grid", gap: 10 }}>
+          <div style={{ padding: 12, display: "grid", gap: 10, maxHeight: 320, overflow: "auto" }}>
             {!selectedFollowUp && <div style={{ fontSize: 12, color: "#71717a" }}>Select a follow-up.</div>}
             {selectedFollowUp && (
               <>
@@ -343,6 +660,12 @@ export default function FollowUpsFeature({
                 <div style={{ fontSize: 12, color: "#71717a" }}>
                   Due: {selectedFollowUp.dueDateISO} • Created: {new Date(selectedFollowUp.createdAt).toLocaleString()}
                 </div>
+                <div style={{ fontSize: 12, color: "#71717a" }}>
+                  Status: {selectedFollowUp.status === "done" ? "Done" : isFollowUpOverdue(selectedFollowUp, todayISO) ? "Overdue" : "Pending"} • Latest activity: {followUpLatestActivityAt(selectedFollowUp, latestSelectedFollowUpNote) ? new Date(followUpLatestActivityAt(selectedFollowUp, latestSelectedFollowUpNote)).toLocaleString() : "—"}
+                </div>
+                {selectedFollowUp.estimateRef ? (
+                  <div style={{ fontSize: 12, color: "#71717a" }}>Estimate: {selectedFollowUp.estimateRef}</div>
+                ) : null}
 
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                   <button
@@ -375,28 +698,54 @@ export default function FollowUpsFeature({
                     Mark done
                   </button>
                 </div>
+
+                <div
+                  style={{
+                    borderRadius: 14,
+                    border: "1px solid #e4e4e7",
+                    background: "#fafafa",
+                    padding: 12,
+                    display: "grid",
+                    gap: 8,
+                  }}
+                >
+                  <div style={{ fontSize: 11, fontWeight: 900, textTransform: "uppercase", color: "#52525b" }}>
+                    Latest linked note
+                  </div>
+                  <div style={{ fontSize: 13, color: "#111827", whiteSpace: "pre-wrap" }}>
+                    {latestSelectedFollowUpNote ? latestSelectedFollowUpNote.noteText : "No linked follow-up note yet."}
+                  </div>
+                  {latestSelectedFollowUpNote ? (
+                    <div style={{ fontSize: 11, color: "#71717a" }}>
+                      {latestSelectedFollowUpNote.createdBy} • {new Date(latestSelectedFollowUpNote.updatedAt || latestSelectedFollowUpNote.createdAt).toLocaleString()}
+                    </div>
+                  ) : null}
+                </div>
               </>
             )}
           </div>
         </div>
 
-        {/* Bottom-right: Add Note (client notes) */}
         <div style={{ border: "1px solid #e4e4e7", borderRadius: 16, overflow: "hidden", background: "#fff" }}>
-          <div style={{ padding: 12, borderBottom: "1px solid #f1f5f9", fontWeight: 900 }}>Add client note</div>
+          <div style={{ padding: 12, borderBottom: "1px solid #f1f5f9", fontWeight: 900 }}>
+            Add follow-up note
+          </div>
           <div style={{ padding: 12, display: "grid", gap: 10 }}>
             <div style={{ fontSize: 12, color: "#71717a" }}>
-              This note is saved against the client (not project/estimate specific).
+              {selectedFollowUp?.estimateId
+                ? "This note will be linked to the follow-up and estimate history."
+                : "This note will be linked to the follow-up and client history."}
             </div>
 
             <textarea
               value={noteText}
               onChange={(e) => setNoteText(e.target.value)}
-              placeholder={selectedFollowUp ? "Type a client note..." : "Select a follow-up first."}
+              placeholder={selectedFollowUp ? "Type a follow-up note..." : "Select a follow-up first."}
               disabled={!selectedFollowUp}
               dir="ltr"
               style={{
                 width: "100%",
-                minHeight: 120,
+                minHeight: 160,
                 resize: "vertical",
                 borderRadius: 14,
                 border: "1px solid #e4e4e7",
@@ -410,7 +759,7 @@ export default function FollowUpsFeature({
 
             <button
               type="button"
-              onClick={addClientNoteFromFollowUp}
+              onClick={addFollowUpNoteFromPanel}
               disabled={!selectedFollowUp || !noteText.trim()}
               style={{
                 borderRadius: 16,
@@ -424,7 +773,7 @@ export default function FollowUpsFeature({
                 justifySelf: "end",
               }}
             >
-              Save note to client
+              {selectedFollowUp?.estimateId ? "Save note to follow-up + estimate" : "Save note to follow-up + client"}
             </button>
           </div>
         </div>
@@ -432,4 +781,3 @@ export default function FollowUpsFeature({
     </div>
   );
 }
-

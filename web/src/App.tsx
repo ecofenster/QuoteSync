@@ -1,34 +1,75 @@
 console.log("FULL import.meta.env", import.meta.env);
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { apiFetch, ApiRequestError } from "./services/api/apiClient";
 
-  
 //
 // ===== ESTIMATE API HELPERS =====
 //
-async function loadEstimates(clientId: string) {
-  const res = await fetch(`http://localhost:3001/api/estimates?client_id=${clientId}`);
-  if (!res.ok) throw new Error("Failed to load estimates");
-  return res.json();
+async function loadClientsAPI(options?: { includeDeleted?: boolean; onlyDeleted?: boolean }) {
+  const params = new URLSearchParams();
+  if (options?.includeDeleted) params.set("include_deleted", "1");
+  if (options?.onlyDeleted) params.set("only_deleted", "1");
+  const query = params.toString();
+  return apiFetch(`/api/clients${query ? `?${query}` : ""}`);
+}
+
+async function loadEstimates(clientId: string, options?: { includeDeleted?: boolean; onlyDeleted?: boolean }) {
+  const params = new URLSearchParams({ client_id: clientId });
+  if (options?.includeDeleted) params.set("include_deleted", "1");
+  if (options?.onlyDeleted) params.set("only_deleted", "1");
+  return apiFetch(`/api/estimates?${params.toString()}`);
 }
 
 async function createEstimateAPI(payload: any) {
-  const res = await fetch(`http://localhost:3001/api/estimates`, {
+  return apiFetch(`/api/estimates`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error("Failed to create estimate");
-  return res.json();
 }
 
 async function updateEstimateAPI(id: string, payload: any) {
-  const res = await fetch(`http://localhost:3001/api/estimates/${id}`, {
+  return apiFetch(`/api/estimates/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error("Failed to update estimate");
-  return res.json();
+}
+
+async function deleteClientAPI(id: string) {
+  return apiFetch(`/api/clients/${id}`, {
+    method: "DELETE",
+  });
+}
+
+async function restoreClientAPI(id: string) {
+  return apiFetch(`/api/clients/${id}/restore`, {
+    method: "POST",
+  });
+}
+
+async function purgeClientAPI(id: string) {
+  return apiFetch(`/api/clients/${id}/purge`, {
+    method: "DELETE",
+  });
+}
+
+async function deleteEstimateAPI(id: string) {
+  return apiFetch(`/api/estimates/${id}`, {
+    method: "DELETE",
+  });
+}
+
+async function restoreEstimateAPI(id: string) {
+  return apiFetch(`/api/estimates/${id}/restore`, {
+    method: "POST",
+  });
+}
+
+async function purgeEstimateAPI(id: string) {
+  return apiFetch(`/api/estimates/${id}/purge`, {
+    method: "DELETE",
+  });
 }
 import GridEditor from "./components/GridEditor";
 import EstimatePickerFeature, { type EstimatePickerFeatureHandle } from "./features/estimatePicker/EstimatePickerFeature";
@@ -36,6 +77,7 @@ import DefaultsEditor from "./features/estimateDefaults/DefaultsEditor";
 import { DEFAULT_CUSTOMER_ADDRESS, makeDefaultClients } from "./features/clients/defaultClients";
 import * as Models from "./models/types";
 import type { Address, Client, Estimate, Position, EstimateDefaults, ClientType } from "./models/types";
+import { emptyAddress, parseAddressString, buildAddressString, resolveStructuredAddress, addressTuple } from "./domain/address";
 import {
   PRODUCT_TYPES,
   SUPPLIERS,
@@ -61,9 +103,14 @@ import FollowUpsFeature from "./features/followUps/FollowUpsFeature";
 import MainDashboard from "./dashboard/main/MainDashboard";
 import Toggle from "./components/Toggle";
 import GoogleMapPanel, { type GoogleMapMarkerItem } from "./components/GoogleMapPanel";
+import AppShell from "./layout/AppShell";
+import AdminPlaceholderPage from "./features/admin/AdminPlaceholderPage";
+import ClientPortalPlaceholderPage from "./features/clientPortal/ClientPortalPlaceholderPage";
 import { buildClientLocationLabel, convertCoordinatesToWhat3Words, resolveClientLocation, resolveEstimateLocation, type ResolvedClientLocation } from "./services/locationService";
 import { loadSettings, saveSettings } from "./system/settings";
-
+import type { DeletedClientRecord, DeletedEstimateRecord } from "./features/recycle/recycleTypes";
+import BSENStandardsTool from "./features/tools/bsen/BSENStandardsTool";
+import GlassWeightCalculatorTool from "./features/tools/glass/GlassWeightCalculatorTool";
 
 /* =========================
    Helpers
@@ -109,12 +156,6 @@ const DEFAULT_ESTIMATE_REF_PREFIX = "EF-EST";
  * Future: expose as an Admin setting.
  */
 function getEstimateRefPrefix() {
-  try {
-    const v = localStorage.getItem("quotesync.estimateRefPrefix");
-    if (v && /^[A-Z0-9-]+$/.test(v)) return v;
-  } catch {
-    // ignore storage errors (private mode / blocked)
-  }
   return DEFAULT_ESTIMATE_REF_PREFIX;
 }
 
@@ -180,63 +221,6 @@ function extractPostcodeFromAddress(projectAddress: string) {
   return match ? match[0].toUpperCase().replace(/\s+/, " ") : "";
 }
 
-function emptyAddress(): Address {
-  return {
-    line1: "",
-    line2: "",
-    line3: "",
-    town: "",
-    city: "",
-    county: "",
-    postcode: "",
-  };
-}
-
-function parseAddressString(value: string): Address {
-  const parts = (value || "").split(/\r?\n/).map((s) => (s || "").trim());
-  while (parts.length < 7) parts.push("");
-  return {
-    line1: parts[0] || "",
-    line2: parts[1] || "",
-    line3: parts[2] || "",
-    town: parts[3] || "",
-    city: parts[4] || "",
-    county: parts[5] || "",
-    postcode: parts[6] || "",
-  };
-}
-
-function buildAddressString(address: Address | undefined) {
-  const safe = address ?? emptyAddress();
-  return [
-    safe.line1,
-    safe.line2,
-    safe.line3,
-    safe.town,
-    safe.city,
-    safe.county,
-    safe.postcode,
-  ]
-    .map((s) => (s || "").trim())
-    .join("\n");
-}
-
-function resolveStructuredAddress(address: Address | undefined, fallbackString: string) {
-  return address ? { ...emptyAddress(), ...address } : parseAddressString(fallbackString || "");
-}
-
-function addressTuple(address: Address): [string, string, string, string, string, string, string] {
-  return [
-    address.line1 || "",
-    address.line2 || "",
-    address.line3 || "",
-    address.town || "",
-    address.city || "",
-    address.county || "",
-    address.postcode || "",
-  ];
-}
-
 function maxClientRefNumber(rows: Array<{ client_ref?: string | null }>) {
   return rows.reduce((max, row) => {
     const value = String(row?.client_ref || "");
@@ -244,6 +228,50 @@ function maxClientRefNumber(rows: Array<{ client_ref?: string | null }>) {
     const n = digits ? Number(digits.join("")) : 0;
     return Number.isFinite(n) && n > max ? n : max;
   }, 0);
+}
+
+function estimateRefNumber(value: string) {
+  const match = String(value || "").trim().match(/-(\d+)$/);
+  const n = match ? Number(match[1]) : 0;
+  return Number.isFinite(n) ? n : 0;
+}
+
+function maxEstimateRefNumberFromClients(clients: Client[]) {
+  return clients.reduce((max, client) => {
+    return (client.estimates ?? []).reduce((clientMax, estimate) => {
+      const n = estimateRefNumber(estimate?.estimateRef || "");
+      return n > clientMax ? n : clientMax;
+    }, max);
+  }, 0);
+}
+
+function maxEstimateRefNumberForState(
+  clients: Client[],
+  deletedEstimatesByClientId: Record<string, DeletedEstimateRecord[]>,
+  deletedClientsById: Record<string, DeletedClientRecord>
+) {
+  let max = maxEstimateRefNumberFromClients(clients);
+
+  Object.values(deletedEstimatesByClientId).forEach((records) => {
+    (records ?? []).forEach((record) => {
+      const n = estimateRefNumber(record?.estimate?.estimateRef || "");
+      if (n > max) max = n;
+    });
+  });
+
+  Object.values(deletedClientsById).forEach((record) => {
+    (record?.client?.estimates ?? []).forEach((estimate) => {
+      const n = estimateRefNumber(estimate?.estimateRef || "");
+      if (n > max) max = n;
+    });
+
+    (record?.deletedEstimates ?? []).forEach((deletedRecord) => {
+      const n = estimateRefNumber(deletedRecord?.estimate?.estimateRef || "");
+      if (n > max) max = n;
+    });
+  });
+
+  return max;
 }
 
 function mapDbClientToClient(row: any): Client {
@@ -424,7 +452,66 @@ const DEMO_FOLLOW_UP_COUNT = 10;
 const DEMO_ORDER_COUNT = 15;
 const DEMO_LOST_COUNT = 10;
 const DEMO_INSTALLATION_COUNT = 17;
-const QS_FOLLOWUPS_KEY = "qs_followups_v1";
+
+function normalizeLoadedEstimate(raw: any): Estimate {
+  const estimate = mergeEstimateLocationState(raw as Estimate);
+  return {
+    ...estimate,
+    defaults:
+      estimate.defaults && typeof estimate.defaults === "object"
+        ? (estimate.defaults as EstimateDefaults)
+        : makeBlankEstimateDefaults(),
+    positions: Array.isArray(estimate.positions) ? estimate.positions : [],
+    orderMeta: estimate.orderMeta && typeof estimate.orderMeta === "object" ? estimate.orderMeta : undefined,
+    outcome: String((raw as any)?.outcome || estimate.outcome || "Open") as Models.EstimateOutcome,
+  };
+}
+
+function normalizeLoadedClient(raw: any): Client {
+  const customerStructured = resolveStructuredAddress(
+    raw?.customerAddressStructured,
+    String(raw?.customerAddress || "")
+  );
+  const projectStructured = resolveStructuredAddress(
+    raw?.projectAddressStructured,
+    String(raw?.projectAddress || "")
+  );
+  const invoiceStructured = resolveStructuredAddress(
+    raw?.invoiceAddressStructured,
+    String(raw?.invoiceAddress || "")
+  );
+
+  const customerAddress = buildAddressString(customerStructured);
+  const projectAddress = buildAddressString(projectStructured);
+  const invoiceAddress = buildAddressString(invoiceStructured);
+
+  return {
+    ...(raw as Client),
+    id: Models.asClientId(String(raw?.id || uid())),
+    type: raw?.type === "Business" ? "Business" : "Individual",
+    clientRef: String(raw?.clientRef || ""),
+    clientName: String(raw?.clientName || "Client"),
+    email: String(raw?.email || ""),
+    mobile: String(raw?.mobile || ""),
+    home: String(raw?.home || ""),
+    projectName: String(raw?.projectName || ""),
+    customerAddress,
+    projectAddress,
+    invoiceAddress,
+    customerAddressStructured: customerStructured,
+    projectAddressStructured: projectStructured,
+    invoiceAddressStructured: invoiceStructured,
+    postcode: String(raw?.postcode || extractPostcodeFromAddress(projectAddress) || ""),
+    what3words: String(raw?.what3words || ""),
+    businessName: raw?.type === "Business" ? String(raw?.businessName || "") : undefined,
+    contactPerson: raw?.type === "Business" ? String(raw?.contactPerson || "") : undefined,
+    estimates: Array.isArray(raw?.estimates) ? raw.estimates.map((estimate: any) => normalizeLoadedEstimate(estimate)) : [],
+  };
+}
+
+function loadPersistedClients(): Client[] | null {
+  return null;
+}
 
 function demoScenarioForIndex(index: number) {
   if (index < DEMO_FOLLOW_UP_COUNT) return "follow_up";
@@ -441,84 +528,27 @@ function randomIsoDateFromToday(minDays: number, maxDays: number) {
   return d.toISOString().slice(0, 10);
 }
 
+
 function seedDemoEstimateOutcomesAndFollowUps(clients: Client[], enabled: boolean) {
   if (!enabled) return;
 
-  const followUps: any[] = [];
   let globalEstimateIndex = 0;
 
   clients.forEach((client) => {
-    const outcomes: Record<string, string> = {};
-
     (client.estimates ?? []).forEach((estimate) => {
       const scenario = demoScenarioForIndex(globalEstimateIndex);
 
       if (scenario === "lost") {
-        outcomes[estimate.id] = "Lost";
         (estimate as any).outcome = "Lost";
       } else if (scenario === "order" || scenario === "installation") {
-        outcomes[estimate.id] = "Order";
         (estimate as any).outcome = "Order";
       } else {
-        outcomes[estimate.id] = "Open";
         (estimate as any).outcome = "Open";
-      }
-
-      if (scenario === "follow_up") {
-        followUps.push({
-          id: `demo-followup-${client.id}-${estimate.id}`,
-          clientId: client.id,
-          clientName: client.type === "Business" ? (client.businessName || client.clientName) : client.clientName,
-          clientRef: client.clientRef,
-          estimateId: estimate.id,
-          estimateRef: estimate.estimateRef,
-          dueDateISO: randomIsoDateFromToday(1, 60),
-          title: `Follow up: ${(client.type === "Business" ? (client.businessName || client.clientName) : client.clientName)} ${estimate.estimateRef}`,
-          notes: "Telephone call Follow-up email",
-          status: "pending",
-          type: "call",
-          createdAt: new Date().toISOString(),
-          sendEmail: true,
-          needsCall: true,
-        });
       }
 
       globalEstimateIndex += 1;
     });
   });
-
-  try {
-    localStorage.setItem(QS_FOLLOWUPS_KEY, JSON.stringify(followUps));
-  } catch {}
-}
-
-type DeletedEstimateRecord = {
-  estimate: Estimate;
-  deletedAt: string;
-};
-
-function loadDeletedEstimatesBin(): Record<string, DeletedEstimateRecord[]> {
-  try {
-    const raw = localStorage.getItem("quotesync.deletedEstimatesBin.v1");
-    const parsed = raw ? JSON.parse(raw) : {};
-    if (!parsed || typeof parsed !== "object") return {};
-
-    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
-    const cleaned: Record<string, DeletedEstimateRecord[]> = {};
-
-    for (const [clientId, list] of Object.entries(parsed as Record<string, any>)) {
-      if (!Array.isArray(list)) continue;
-      const kept = list.filter((item) => {
-        const t = Date.parse(item?.deletedAt ?? "");
-        return item && item.estimate && Number.isFinite(t) && t >= cutoff;
-      });
-      if (kept.length) cleaned[clientId] = kept;
-    }
-
-    return cleaned;
-  } catch {
-    return {};
-  }
 }
 
 /* =========================
@@ -674,6 +704,114 @@ function SidebarItem({ label, active, onClick }: { label: string; active?: boole
 
 const labelStyle: React.CSSProperties = { fontSize: 13, color: "#3f3f46", fontWeight: 700, marginBottom: 6 };
 
+type TopShellPage = "app" | "tools" | "admin" | "client_portal" | "settings" | "help";
+
+function TopShellPlaceholder({
+  title,
+  summary,
+}: {
+  title: string;
+  summary: string;
+}) {
+  return (
+    <Card style={{ minHeight: 520 }}>
+      <div style={{ display: "grid", gap: 12, maxWidth: 920 }}>
+        <div>
+          <H2>{title}</H2>
+          <Small>{summary}</Small>
+        </div>
+        <div
+          style={{
+            borderRadius: 16,
+            border: "1px solid #e4e4e7",
+            background: "#fff",
+            padding: 16,
+            display: "grid",
+            gap: 10,
+          }}
+        >
+          <div style={{ fontSize: 14, fontWeight: 900, color: "#18181b" }}>Placeholder</div>
+          <Small>This section is now wired into the live shell and ready for the next implementation phase.</Small>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function ToolsHubPage() {
+  const [activeTool, setActiveTool] = React.useState("phpp");
+
+  const tabs = [
+    { key: "phpp", label: "PHPP Calculator" },
+    { key: "enbs", label: "EN BS Numbers" },
+    { key: "wind", label: "UK Wind Zone" },
+    { key: "glass", label: "Glass weight calculator" },
+    { key: "parto", label: "Part O Modelling" },
+    { key: "partm", label: "Part M" },
+    { key: "partk", label: "Part K" },
+    { key: "static", label: "Static calculation" },
+    { key: "loading", label: "Window/Glass Loading Calculator" },
+  ];
+
+  function renderToolContent() {
+    if (activeTool === "enbs") {
+      return <BSENStandardsTool />;
+    }
+
+    if (activeTool === "glass") {
+      return <GlassWeightCalculatorTool />;
+    }
+
+    const active = tabs.find((tab) => tab.key === activeTool);
+
+    return (
+      <div
+        style={{
+          borderRadius: 16,
+          border: "1px solid #e4e4e7",
+          background: "#fff",
+          padding: 16,
+          minHeight: 300,
+          display: "grid",
+          gap: 8,
+          alignContent: "start",
+        }}
+      >
+        <div style={{ fontWeight: 700, marginBottom: 4 }}>{active?.label}</div>
+        <div style={{ fontSize: 13, color: "#555" }}>
+          Tool placeholder — integration coming next.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <Card style={{ minHeight: 520 }}>
+      <div style={{ display: "grid", gap: 16 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTool(tab.key)}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 8,
+                border: activeTool === tab.key ? "2px solid #000" : "1px solid #ccc",
+                background: activeTool === tab.key ? "#f4f4f5" : "#fff",
+                cursor: "pointer",
+                fontWeight: 600,
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {renderToolContent()}
+      </div>
+    </Card>
+  );
+}
 
 /* =========================
    Main App
@@ -965,6 +1103,7 @@ export default function App() {
   const estimatePickerRef = useRef<EstimatePickerFeatureHandle>(null);
 
   const [systemSettings, setSystemSettings] = useState(() => loadSettings());
+  const [topShellPage, setTopShellPage] = useState<TopShellPage>("app");
 
 
   useEffect(() => {
@@ -984,15 +1123,79 @@ const [clients, setClients] = useState<Client[]>([]);
 
   const [clientCounter, setClientCounter] = useState(() => (systemSettings.loadDemoClients ? 33 : 1));
 
-  const [deletedEstimatesByClientId, setDeletedEstimatesByClientId] =
-  useState<Record<string, DeletedEstimateRecord[]>>(() => loadDeletedEstimatesBin());
+  async function refreshClientsFromApi() {
+    const activeClientRows = await loadClientsAPI();
+    const deletedClientRows = await loadClientsAPI({ onlyDeleted: true });
 
+    const activeRows = Array.isArray(activeClientRows) ? activeClientRows : [];
+    const deletedRows = Array.isArray(deletedClientRows) ? deletedClientRows : [];
+
+    const baseClients = activeRows.map((row) => mapDbClientToClient(row));
+
+    const hydratedClients = await Promise.all(
+      baseClients.map(async (client) => {
+        const [activeEstimatesRaw, deletedEstimatesRaw] = await Promise.all([
+          loadEstimates(client.id).catch(() => []),
+          loadEstimates(client.id, { onlyDeleted: true }).catch(() => []),
+        ]);
+
+        const activeEstimates = Array.isArray(activeEstimatesRaw)
+          ? activeEstimatesRaw.map((row) => mapDbEstimateToEstimate(row))
+          : [];
+        const deletedEstimates = Array.isArray(deletedEstimatesRaw)
+          ? deletedEstimatesRaw.map((row) => mapDbEstimateToEstimate(row))
+          : [];
+
+        return {
+          client: { ...client, estimates: activeEstimates },
+          deletedEstimateRecords: deletedEstimates.map((estimate) => ({
+            estimate,
+            deletedAt: String((estimate as any).deleted_at || new Date().toISOString()),
+          })),
+        };
+      })
+    );
+
+    const nextClients = hydratedClients.map((entry) => entry.client);
+    const nextDeletedEstimatesByClientId = hydratedClients.reduce((acc, entry) => {
+      if (entry.deletedEstimateRecords.length) {
+        acc[entry.client.id] = entry.deletedEstimateRecords;
+      }
+      return acc;
+    }, {} as Record<string, DeletedEstimateRecord[]>);
+
+    const nextDeletedClientsById = deletedRows.reduce((acc, row) => {
+      const deletedClient = mapDbClientToClient(row);
+      acc[deletedClient.id] = {
+        client: { ...deletedClient, estimates: [] },
+        deletedAt: String(row?.deleted_at || new Date().toISOString()),
+        deletedEstimates: [],
+      };
+      return acc;
+    }, {} as Record<string, DeletedClientRecord>);
+
+    setClients(nextClients);
+    setDeletedEstimatesByClientId(nextDeletedEstimatesByClientId);
+    setDeletedClientsById(nextDeletedClientsById);
+
+    const maxRef = maxClientRefNumber(activeRows);
+    setClientCounter(Math.max(1, maxRef + 1));
+  }
+
+
+  const [deletedEstimatesByClientId, setDeletedEstimatesByClientId] =
+    useState<Record<string, DeletedEstimateRecord[]>>({});
+
+  const [deletedClientsById, setDeletedClientsById] =
+    useState<Record<string, DeletedClientRecord>>({});
 
   useEffect(() => {
-  try {
-    localStorage.setItem("quotesync.deletedEstimatesBin.v1", JSON.stringify(deletedEstimatesByClientId));
-  } catch {}
-}, [deletedEstimatesByClientId]);
+    const nextEstimateCounter = Math.max(
+      1,
+      maxEstimateRefNumberForState(clients, deletedEstimatesByClientId, deletedClientsById) + 1
+    );
+    setEstimateCounter((prev) => Math.max(prev, nextEstimateCounter));
+  }, [clients, deletedEstimatesByClientId, deletedClientsById]);
 
   useEffect(() => {
     async function syncClientsForSettings() {
@@ -1013,25 +1216,12 @@ const [clients, setClients] = useState<Client[]>([]);
         setClientCounter(systemSettings.loadDemoClients ? 33 : 1);
       } else {
         try {
-          const res = await fetch("http://localhost:3001/api/clients");
-          const data = await res.json();
-          const rows = Array.isArray(data) ? data : [];
-          const baseClients = rows.map((row) => mapDbClientToClient(row));
-          const hydratedClients = await Promise.all(
-            baseClients.map(async (client) => {
-              try {
-                const estimates = await loadClientEstimatesFromApi(client.id);
-                return { ...client, estimates };
-              } catch {
-                return client;
-              }
-            })
-          );
-          setClients(hydratedClients);
-          const maxRef = maxClientRefNumber(rows);
-          setClientCounter(Math.max(1, maxRef + 1));
-        } catch {
+          await refreshClientsFromApi();
+        } catch (error) {
+          console.error("Failed to load clients from API", error);
           setClients([]);
+          setDeletedEstimatesByClientId({});
+          setDeletedClientsById({});
           setClientCounter(1);
         }
       }
@@ -1062,11 +1252,7 @@ const [clients, setClients] = useState<Client[]>([]);
 
 
   function splitAddress7(addr: string): [string, string, string, string, string, string, string] {
-    const parts = (addr || "")
-      .split(/\r?\n/)
-      .map((s) => (s || "").trim());
-    while (parts.length < 7) parts.push("");
-    return [parts[0] || "", parts[1] || "", parts[2] || "", parts[3] || "", parts[4] || "", parts[5] || "", parts[6] || ""];
+    return addressTuple(parseAddressString(addr || ""));
   }
 
  function openEditClientPanel(c: Client) {
@@ -1176,11 +1362,23 @@ const [clients, setClients] = useState<Client[]>([]);
       clientRef: clients.find((c) => c.id === editingClientId)?.clientRef || nextClientRef(clientCounter),
     } as Client;
 
-    fetch(`http://localhost:3001/api/clients/${editingClientId}`, {
+    apiFetch(`/api/clients/${editingClientId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(buildDbClientPayload(updatedClient)),
-    }).catch(() => {});
+    }).catch((error) => {
+      if (error instanceof ApiRequestError) {
+        console.error("Failed to update client", {
+          status: error.status,
+          path: error.path,
+          body: error.body,
+          message: error.message,
+        });
+        return;
+      }
+
+      console.error("Failed to update client", error);
+    });
 
     setClients((prev) => prev.map((c) => (c.id !== editingClientId ? c : updatedClient)));
 
@@ -1315,12 +1513,18 @@ const [clients, setClients] = useState<Client[]>([]);
 
   const [globalSelectedEstimateIdsByMenu, setGlobalSelectedEstimateIdsByMenu] = useState<Record<string, Record<string, boolean>>>({});
 
+  const [recycleBinFilter, setRecycleBinFilter] = useState<"all" | "clients" | "estimates">("all");
+  const [recycleBinView, setRecycleBinView] = useState<"grid" | "list">("grid");
+  const [selectedRecycleClientIds, setSelectedRecycleClientIds] = useState<Record<string, boolean>>({});
+  const [selectedRecycleEstimateKeys, setSelectedRecycleEstimateKeys] = useState<Record<string, boolean>>({});
 
   const [installationExpandedEstimateId, setInstallationExpandedEstimateId] = useState<Models.EstimateId | null>(null);
 
-  const [installationTabByEstimateId, setInstallationTabByEstimateId] = useState<Record<string, "key_dates" | "order_copy" | "project_calculator">>({});
+  const [installationTabByEstimateId, setInstallationTabByEstimateId] = useState<Record<string, "key_dates" | "order_copy">>({});
 
   const [selectedMapEstimateId, setSelectedMapEstimateId] = useState<Models.EstimateId | null>(null);
+
+  const pendingResolvedCoordinatePersistsRef = useRef<Record<string, boolean>>({});
 
   const [resolvedLocationsByClientId, setResolvedLocationsByClientId] = useState<Record<string, ResolvedClientLocation | null | undefined>>({});
 
@@ -1440,6 +1644,8 @@ async function handleWhat3WordsMapPick(lat: number, lng: number) {
       projectAddressStructured: nextStructured,
       projectAddress: nextProjectAddress,
       postcode: nextStructured.postcode || extractPostcodeFromAddress(nextProjectAddress),
+      latitude: null,
+      longitude: null,
     };
     updateSelectedEstimateLocation(nextEstimate);
   }
@@ -1472,6 +1678,16 @@ async function handleWhat3WordsMapPick(lat: number, lng: number) {
 
       if (updatedEstimate) {
         updateEstimateAPI(estimateId, buildDbEstimatePayload(clientId, updatedEstimate)).catch((error) => {
+          if (error instanceof ApiRequestError && error.isConflict) {
+            console.error("Failed to update estimate outcome: duplicate estimate reference", {
+              status: error.status,
+              path: error.path,
+              body: error.body,
+              message: error.message,
+            });
+            return;
+          }
+
           console.error("Failed to update estimate outcome", error);
         });
       }
@@ -1525,6 +1741,7 @@ async function handleWhat3WordsMapPick(lat: number, lng: number) {
 
 
   function selectMenu(k: Models.MenuKey) {
+    setTopShellPage("app");
     setMenu(k);
     setView("customers");
     setSelectedClientId(null);
@@ -1535,6 +1752,35 @@ async function handleWhat3WordsMapPick(lat: number, lng: number) {
     setShowPositionWizard(false);
   }
 
+  function handleTopShellMenuClick(key: string) {
+    if (key === "menu_5") {
+      setTopShellPage("tools");
+      return;
+    }
+    
+if (key === "menu_5") {
+      setTopShellPage("tools");
+      return;
+    }
+    if (key === "client_portal") {
+      setTopShellPage("client_portal");
+      return;
+    }
+    if (key === "admin") {
+      setTopShellPage("admin");
+      return;
+    }
+    if (key === "settings") {
+      setTopShellPage("settings");
+      return;
+    }
+    if (key === "help") {
+      setTopShellPage("help");
+      return;
+    }
+    setTopShellPage("app");
+  }
+
   function openEstimateDefaults(clientId: string, estimateId: string) {
     setSelectedClientId(clientId);
     setSelectedEstimateId(estimateId);
@@ -1543,15 +1789,13 @@ async function handleWhat3WordsMapPick(lat: number, lng: number) {
   }
 
   
-function createEstimateForClient(client: Client) {
-    const year = new Date().getFullYear();
-    const base = nextEstimateBaseRef(year, estimateCounter);
+async function createEstimateForClient(client: Client) {
     const estimateDefaults = systemSettings.loadDefaults ? makeDefaultEstimateDefaults() : makeBlankEstimateDefaults();
 
     const est: Estimate = mergeEstimateLocationState({
       id: Models.asEstimateId(uid()),
-      estimateRef: estimateRefWithRevision(base, 0),
-      baseEstimateRef: base,
+      estimateRef: "",
+      baseEstimateRef: "",
       revisionNo: 0,
       status: "Draft",
       estimatedOrderMonth: ORDER_MONTHS[new Date().getMonth()],
@@ -1566,30 +1810,45 @@ function createEstimateForClient(client: Client) {
       longitude: null,
     });
 
-    setEstimateCounter((n) => n + 1);
+    try {
+      const createdRow = await createEstimateAPI({
+        ...buildDbEstimatePayload(client.id, est),
+        estimate_ref: "",
+        base_estimate_ref: "",
+        revision_no: 0,
+      });
 
-    setClients((prev) => prev.map((c) => (c.id === client.id ? { ...c, estimates: [est, ...c.estimates] } : c)));
+      const createdEstimate = mapDbEstimateToEstimate(createdRow);
 
-    createEstimateAPI(buildDbEstimatePayload(client.id, est)).catch((error) => {
+      setClients((prev) =>
+        prev.map((c) => (c.id === client.id ? { ...c, estimates: [createdEstimate, ...c.estimates] } : c))
+      );
+
+      openEstimateDefaults(client.id, createdEstimate.id);
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.isConflict) {
+        console.error("Failed to create estimate: duplicate estimate reference", {
+          status: error.status,
+          path: error.path,
+          body: error.body,
+          message: error.message,
+        });
+        return;
+      }
+
       console.error("Failed to create estimate", error);
-    });
-
-    // go to Supplier & Product Defaults screen immediately
-    openEstimateDefaults(client.id, est.id);
+    }
   }
 
-  function copyEstimateForClient(client: Client, sourceEstimateId: Models.EstimateId) {
+  async function copyEstimateForClient(client: Client, sourceEstimateId: Models.EstimateId) {
     const sourceEstimate = client.estimates.find((e) => e.id === sourceEstimateId);
     if (!sourceEstimate) return;
-
-    const year = new Date().getFullYear();
-    const base = nextEstimateBaseRef(year, estimateCounter);
 
     const copiedEstimate: Estimate = mergeEstimateLocationState({
       ...sourceEstimate,
       id: Models.asEstimateId(uid()),
-      estimateRef: estimateRefWithRevision(base, 0),
-      baseEstimateRef: base,
+      estimateRef: "",
+      baseEstimateRef: "",
       revisionNo: 0,
       status: "Draft",
       defaults: { ...sourceEstimate.defaults },
@@ -1603,67 +1862,120 @@ function createEstimateForClient(client: Client) {
       })),
     });
 
-    setEstimateCounter((n) => n + 1);
+    try {
+      const createdRow = await createEstimateAPI({
+        ...buildDbEstimatePayload(client.id, copiedEstimate),
+        estimate_ref: "",
+        base_estimate_ref: "",
+        revision_no: 0,
+      });
 
-    setClients((prev) =>
-      prev.map((c) => (c.id === client.id ? { ...c, estimates: [copiedEstimate, ...c.estimates] } : c))
-    );
+      const createdEstimate = mapDbEstimateToEstimate(createdRow);
+
+      setClients((prev) =>
+        prev.map((c) => (c.id === client.id ? { ...c, estimates: [createdEstimate, ...c.estimates] } : c))
+      );
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.isConflict) {
+        console.error("Failed to copy estimate: duplicate estimate reference", {
+          status: error.status,
+          path: error.path,
+          body: error.body,
+          message: error.message,
+        });
+        return;
+      }
+
+      console.error("Failed to copy estimate", error);
+    }
   }
-function deleteEstimatesForClient(clientId: Models.ClientId, estimateIds: Models.EstimateId[]) {
+async function deleteEstimatesForClient(clientId: Models.ClientId, estimateIds: Models.EstimateId[]) {
   if (!estimateIds.length) return;
 
-  const deletedAt = new Date().toISOString();
-  const estimatesToDelete =
-    clients.find((c) => c.id === clientId)?.estimates.filter((e) => estimateIds.includes(e.id)) ?? [];
+  try {
+    await Promise.all(estimateIds.map((estimateId) => deleteEstimateAPI(estimateId)));
 
-  if (!estimatesToDelete.length) return;
+    if (selectedClientId === clientId && selectedEstimateId && estimateIds.includes(selectedEstimateId)) {
+      setSelectedEstimateId(null);
+    }
 
-  setDeletedEstimatesByClientId((prev) => ({
-    ...prev,
-    [clientId]: [
-      ...(prev[clientId] ?? []),
-      ...estimatesToDelete.map((estimate) => ({ estimate, deletedAt })),
-    ],
-  }));
-
-  setClients((prev) =>
-    prev.map((c) =>
-      c.id !== clientId ? c : { ...c, estimates: c.estimates.filter((e) => !estimateIds.includes(e.id)) }
-    )
-  );
-
-  if (selectedClientId === clientId && selectedEstimateId && estimateIds.includes(selectedEstimateId)) {
-    setSelectedEstimateId(null);
+    await refreshClientsFromApi();
+  } catch (error) {
+    console.error("Failed to delete estimates", error);
   }
 }
 
-function restoreDeletedEstimatesForClient(clientId: Models.ClientId, estimateIds: Models.EstimateId[]) {
+async function restoreDeletedEstimatesForClient(clientId: Models.ClientId, estimateIds: Models.EstimateId[]) {
   if (!estimateIds.length) return;
 
+  try {
+    await Promise.all(estimateIds.map((estimateId) => restoreEstimateAPI(estimateId)));
+    await refreshClientsFromApi();
+  } catch (error) {
+    console.error("Failed to restore estimates", error);
+  }
+}
+
+async function purgeDeletedEstimatesForClient(clientId: Models.ClientId, estimateIds?: Models.EstimateId[]) {
   const records = deletedEstimatesByClientId[clientId] ?? [];
-  const toRestore = records.filter((r) => estimateIds.includes(r.estimate.id)).map((r) => r.estimate);
+  const idsToPurge = estimateIds?.length ? estimateIds : records.map((record) => record.estimate.id);
+  if (!idsToPurge.length) return;
 
-  if (!toRestore.length) return;
-
-  setClients((prev) =>
-    prev.map((c) => (c.id !== clientId ? c : { ...c, estimates: [...toRestore, ...c.estimates] }))
-  );
-
-  setDeletedEstimatesByClientId((prev) => ({
-    ...prev,
-    [clientId]: (prev[clientId] ?? []).filter((r) => !estimateIds.includes(r.estimate.id)),
-  }));
+  try {
+    await Promise.all(idsToPurge.map((estimateId) => purgeEstimateAPI(estimateId)));
+    await refreshClientsFromApi();
+  } catch (error) {
+    console.error("Failed to purge estimates", error);
+  }
 }
 
-function purgeDeletedEstimatesForClient(clientId: Models.ClientId, estimateIds?: Models.EstimateId[]) {
-  setDeletedEstimatesByClientId((prev) => {
-    const current = prev[clientId] ?? [];
-    const next = estimateIds?.length ? current.filter((r) => !estimateIds.includes(r.estimate.id)) : [];
-    return { ...prev, [clientId]: next };
-  });
+async function deleteClientToRecycle(clientId: Models.ClientId) {
+  try {
+    await deleteClientAPI(clientId);
+
+    if (selectedClientId === clientId) {
+      setSelectedClientId(null);
+      setSelectedEstimateId(null);
+    }
+
+    if (estimatePickerClientId === clientId) {
+      setEstimatePickerClientId(null);
+    }
+
+    if (editingClientId === clientId) {
+      setEditingClientId(null);
+      setShowAddClient(false);
+    }
+
+    if (view === "estimate_defaults") {
+      setView("customers");
+    }
+
+    await refreshClientsFromApi();
+  } catch (error) {
+    console.error("Failed to delete client", error);
+  }
 }
 
-  function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.EstimateId, installerId: string) {
+async function restoreDeletedClient(clientId: Models.ClientId) {
+  try {
+    await restoreClientAPI(clientId);
+    await refreshClientsFromApi();
+  } catch (error) {
+    console.error("Failed to restore client", error);
+  }
+}
+
+async function purgeDeletedClient(clientId: Models.ClientId) {
+  try {
+    await purgeClientAPI(clientId);
+    await refreshClientsFromApi();
+  } catch (error) {
+    console.error("Failed to purge client", error);
+  }
+}
+
+function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.EstimateId, installerId: string) {
     setClients((prev) =>
       prev.map((c) => {
         if (c.id !== clientId) return c;
@@ -1996,13 +2308,7 @@ function startAddPosition() {
 
     const invoiceAddress = buildAddressString(invoiceAddressStructured) || customerAddress;
 
-    const projectAddress = (() => {
-      try {
-        return localStorage.getItem("qs_project_address") || "";
-      } catch {
-        return "";
-      }
-    })();
+    const projectAddress = "";
     const projectAddressStructured = resolveStructuredAddress(undefined, projectAddress);
 
     const businessName = draftBusinessName.trim();
@@ -2031,7 +2337,7 @@ function startAddPosition() {
       estimates: [],
     };
 
-    fetch("http://localhost:3001/api/clients", {
+    apiFetch("/api/clients", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(buildDbClientPayload(newClient)),
@@ -2041,7 +2347,19 @@ function startAddPosition() {
         setClientCounter((n) => n + 1);
         setClientDbSearch("");
       })
-      .catch(() => {});
+      .catch((error) => {
+        if (error instanceof ApiRequestError) {
+          console.error("Failed to create client", {
+            status: error.status,
+            path: error.path,
+            body: error.body,
+            message: error.message,
+          });
+          return;
+        }
+
+        console.error("Failed to create client", error);
+      });
 
     setShowAddClient(false);
     setDraftClientType("Individual");
@@ -2253,6 +2571,47 @@ function startAddPosition() {
     return rows;
   }, [globalEstimateRows, globalSearch, globalSort, globalSortField, globalMonthFilter]);
 
+  function persistResolvedEstimateCoordinates(
+    clientId: Models.ClientId,
+    estimate: Estimate,
+    resolved: ResolvedClientLocation
+  ) {
+    if (resolved.source === "estimate" || resolved.source === "cache") return;
+
+    const currentLat = estimate.latitude == null || !Number.isFinite(Number(estimate.latitude)) ? null : Number(estimate.latitude);
+    const currentLng = estimate.longitude == null || !Number.isFinite(Number(estimate.longitude)) ? null : Number(estimate.longitude);
+
+    if (currentLat === resolved.lat && currentLng === resolved.lng) return;
+    if (pendingResolvedCoordinatePersistsRef.current[estimate.id]) return;
+
+    pendingResolvedCoordinatePersistsRef.current[estimate.id] = true;
+
+    const updatedEstimate: Estimate = mergeEstimateLocationState({
+      ...estimate,
+      latitude: resolved.lat,
+      longitude: resolved.lng,
+    });
+
+    setClients((prev) =>
+      prev.map((client) =>
+        client.id !== clientId
+          ? client
+          : {
+              ...client,
+              estimates: client.estimates.map((item) => (item.id !== estimate.id ? item : updatedEstimate)),
+            }
+      )
+    );
+
+    updateEstimateAPI(estimate.id, buildDbEstimatePayload(clientId, updatedEstimate))
+      .catch((error) => {
+        console.error("Failed to persist resolved estimate coordinates", error);
+      })
+      .finally(() => {
+        delete pendingResolvedCoordinatePersistsRef.current[estimate.id];
+      });
+  }
+
   useEffect(() => {
     if (!googleMapsApiKey || !mapsApiReady) return;
 
@@ -2269,6 +2628,9 @@ function startAddPosition() {
 
           try {
             const resolved = await resolveEstimateLocation(estimate, client, { googleMapsApiKey, what3wordsApiKey });
+            if (resolved) {
+              persistResolvedEstimateCoordinates(client.id, estimate, resolved);
+            }
             return [estimate.id, resolved] as const;
           } catch (error) {
             console.error("Location resolution failed", estimate.id, error);
@@ -2373,101 +2735,405 @@ function startAddPosition() {
     }));
   }
 
-  const recycleBinRows = useMemo(() => {
-    return clients.flatMap((client) =>
-      (deletedEstimatesByClientId[client.id] ?? []).map((record) => ({
-        client,
+  const recycleClientRows = useMemo(() => {
+    return Object.entries(deletedClientsById).map(([clientId, record]) => ({
+      clientId: clientId as Models.ClientId,
+      client: record.client,
+      deletedAt: record.deletedAt,
+      deletedEstimateCount: record.deletedEstimates?.length ?? 0,
+    }));
+  }, [deletedClientsById]);
+
+  const recycleEstimateRows = useMemo(() => {
+    return Object.entries(deletedEstimatesByClientId).flatMap(([clientId, records]) => {
+      const activeClient = clients.find((c) => c.id === clientId) ?? null;
+
+      return records.map((record) => ({
+        clientId: clientId as Models.ClientId,
+        client: activeClient,
         estimate: record.estimate,
         deletedAt: record.deletedAt,
-      }))
-    );
+        selectionKey: `${clientId}::${record.estimate.id}`,
+      }));
+    });
   }, [clients, deletedEstimatesByClientId]);
 
   function renderRecycleBinMenu() {
+    const showClients = recycleBinFilter === "all" || recycleBinFilter === "clients";
+    const showEstimates = recycleBinFilter === "all" || recycleBinFilter === "estimates";
+    const selectedClientIds = Object.entries(selectedRecycleClientIds).filter(([, checked]) => !!checked).map(([clientId]) => clientId as Models.ClientId);
+    const selectedEstimateRows = recycleEstimateRows.filter((row) => !!selectedRecycleEstimateKeys[row.selectionKey]);
+    const hasSelection = selectedClientIds.length > 0 || selectedEstimateRows.length > 0;
+
+    function clearRecycleSelection() {
+      setSelectedRecycleClientIds({});
+      setSelectedRecycleEstimateKeys({});
+    }
+
+    function restoreSelectedRecycleItems() {
+      selectedClientIds.forEach((clientId) => restoreDeletedClient(clientId));
+      selectedEstimateRows.forEach((row) => restoreDeletedEstimatesForClient(row.clientId, [row.estimate.id]));
+      clearRecycleSelection();
+    }
+
+    function purgeSelectedRecycleItems() {
+      selectedClientIds.forEach((clientId) => purgeDeletedClient(clientId));
+      selectedEstimateRows.forEach((row) => purgeDeletedEstimatesForClient(row.clientId, [row.estimate.id]));
+      clearRecycleSelection();
+    }
+
+    function toggleRecycleClientSelection(clientId: Models.ClientId, checked: boolean) {
+      setSelectedRecycleClientIds((prev) => ({ ...prev, [clientId]: checked }));
+    }
+
+    function toggleRecycleEstimateSelection(selectionKey: string, checked: boolean) {
+      setSelectedRecycleEstimateKeys((prev) => ({ ...prev, [selectionKey]: checked }));
+    }
+
+    const totalVisibleCount =
+      (showClients ? recycleClientRows.length : 0) +
+      (showEstimates ? recycleEstimateRows.length : 0);
+
+    const filterButtons: Array<{ key: "all" | "clients" | "estimates"; label: string }> = [
+      { key: "all", label: "All" },
+      { key: "clients", label: "Clients" },
+      { key: "estimates", label: "Estimates" },
+    ];
+
+    const viewButtons: Array<{ key: "grid" | "list"; label: string }> = [
+      { key: "grid", label: "Grid View" },
+      { key: "list", label: "List View" },
+    ];
+
+    function renderClientCards() {
+      return recycleClientRows.map(({ clientId, client, deletedAt, deletedEstimateCount }) => (
+        <div
+          key={`client_${clientId}`}
+          style={{
+            borderRadius: 16,
+            border: "1px solid #e4e4e7",
+            background: "#fff",
+            padding: 14,
+            display: "grid",
+            gap: 10,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+            <div style={{ display: "grid", gap: 4 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a" }}>Client</div>
+              <div style={{ fontSize: 16, fontWeight: 900, color: "#18181b" }}>{clientDisplayName(client)}</div>
+              <Small>{client.clientRef} • {client.type}</Small>
+            </div>
+            <input
+              type="checkbox"
+              checked={!!selectedRecycleClientIds[clientId]}
+              onChange={(ev) => toggleRecycleClientSelection(clientId, ev.currentTarget.checked)}
+            />
+          </div>
+
+          <div style={{ display: "grid", gap: 4 }}>
+            <Small>Project: {client.projectName || "Not set"}</Small>
+            <Small>Active estimates on client record: {client.estimates.length}</Small>
+            <Small>Previously deleted estimates linked to this client: {deletedEstimateCount}</Small>
+            <Small>Deleted: {new Date(deletedAt).toLocaleString()}</Small>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <Button variant="secondary" onClick={() => restoreDeletedClient(clientId)}>Restore Client</Button>
+            <Button variant="secondary" onClick={() => purgeDeletedClient(clientId)}>Delete Permanently</Button>
+          </div>
+        </div>
+      ));
+    }
+
+    function renderEstimateCards() {
+      return recycleEstimateRows.map(({ clientId, client, estimate, deletedAt, selectionKey }) => (
+        <div
+          key={`estimate_${selectionKey}`}
+          style={{
+            borderRadius: 16,
+            border: "1px solid #e4e4e7",
+            background: "#fff",
+            padding: 14,
+            display: "grid",
+            gap: 10,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+            <div style={{ display: "grid", gap: 4 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a" }}>Estimate</div>
+              <div style={{ fontSize: 16, fontWeight: 900, color: "#18181b" }}>{estimate.estimateRef}</div>
+              <Small>{client ? `${clientDisplayName(client)} • ${client.clientRef}` : "Client removed from active list"}</Small>
+            </div>
+            <input
+              type="checkbox"
+              checked={!!selectedRecycleEstimateKeys[selectionKey]}
+              onChange={(ev) => toggleRecycleEstimateSelection(selectionKey, ev.currentTarget.checked)}
+            />
+          </div>
+
+          <div style={{ display: "grid", gap: 4 }}>
+            <Small>Status: {(estimate as any).outcome ?? "Open"}</Small>
+            <Small>Forecast: {monthYearLabel(estimate.estimatedOrderMonth || "", estimate.estimatedOrderYear || 0)}</Small>
+            <Small>Deleted: {new Date(deletedAt).toLocaleString()}</Small>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <Button variant="secondary" onClick={() => restoreDeletedEstimatesForClient(clientId, [estimate.id])}>Restore Estimate</Button>
+            <Button variant="secondary" onClick={() => purgeDeletedEstimatesForClient(clientId, [estimate.id])}>Delete Permanently</Button>
+          </div>
+        </div>
+      ));
+    }
+
+    function renderListTables() {
+      return (
+        <div style={{ display: "grid", gap: 12 }}>
+          {showClients && (
+            <div style={{ border: "1px solid #e4e4e7", borderRadius: 14, background: "#fff", overflow: "hidden" }}>
+              <div style={{ padding: 12, borderBottom: "1px solid #e4e4e7" }}>
+                <H3>Deleted Clients</H3>
+              </div>
+              <div style={{ overflow: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 980 }}>
+                  <thead>
+                    <tr style={{ background: "#fafafa" }}>
+                      {["", "Client Name", "Client Number", "Project Name", "Deleted", "Restore", "Delete Permanently"].map((label, index) => (
+                        <th
+                          key={label}
+                          style={{
+                            textAlign: index >= 5 ? "right" : "left",
+                            padding: 10,
+                            fontSize: 12,
+                            borderBottom: "1px solid #e4e4e7",
+                            position: "sticky",
+                            top: 0,
+                            zIndex: 2,
+                            background: "#fafafa",
+                          }}
+                        >
+                          {label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recycleClientRows.map(({ clientId, client, deletedAt }) => (
+                      <tr key={`client_row_${clientId}`}>
+                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>
+                          <input
+                            type="checkbox"
+                            checked={!!selectedRecycleClientIds[clientId]}
+                            onChange={(ev) => toggleRecycleClientSelection(clientId, ev.currentTarget.checked)}
+                          />
+                        </td>
+                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top", fontWeight: 700 }}>{clientDisplayName(client)}</td>
+                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>{client.clientRef}</td>
+                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>{client.projectName || ""}</td>
+                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>{new Date(deletedAt).toLocaleString()}</td>
+                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top", textAlign: "right" }}>
+                          <Button variant="secondary" onClick={() => restoreDeletedClient(clientId)}>Restore</Button>
+                        </td>
+                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top", textAlign: "right" }}>
+                          <Button variant="secondary" onClick={() => purgeDeletedClient(clientId)}>Delete Permanently</Button>
+                        </td>
+                      </tr>
+                    ))}
+                    {recycleClientRows.length === 0 && (
+                      <tr>
+                        <td colSpan={7} style={{ padding: 16 }}>
+                          <Small>No deleted clients.</Small>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {showEstimates && (
+            <div style={{ border: "1px solid #e4e4e7", borderRadius: 14, background: "#fff", overflow: "hidden" }}>
+              <div style={{ padding: 12, borderBottom: "1px solid #e4e4e7" }}>
+                <H3>Deleted Estimates</H3>
+              </div>
+              <div style={{ overflow: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1100 }}>
+                  <thead>
+                    <tr style={{ background: "#fafafa" }}>
+                      {["", "Client Name", "Client Number", "Estimate Ref", "Project Name", "Deleted", "Restore", "Delete Permanently"].map((label, index) => (
+                        <th
+                          key={label}
+                          style={{
+                            textAlign: index >= 6 ? "right" : "left",
+                            padding: 10,
+                            fontSize: 12,
+                            borderBottom: "1px solid #e4e4e7",
+                            position: "sticky",
+                            top: 0,
+                            zIndex: 2,
+                            background: "#fafafa",
+                          }}
+                        >
+                          {label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recycleEstimateRows.map(({ clientId, client, estimate, deletedAt, selectionKey }) => (
+                      <tr key={`estimate_row_${selectionKey}`}>
+                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>
+                          <input
+                            type="checkbox"
+                            checked={!!selectedRecycleEstimateKeys[selectionKey]}
+                            onChange={(ev) => toggleRecycleEstimateSelection(selectionKey, ev.currentTarget.checked)}
+                          />
+                        </td>
+                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top", fontWeight: 700 }}>{client ? clientDisplayName(client) : "Unknown client"}</td>
+                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>{client?.clientRef || ""}</td>
+                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>{estimate.estimateRef}</td>
+                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>{client?.projectName || ""}</td>
+                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>{new Date(deletedAt).toLocaleString()}</td>
+                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top", textAlign: "right" }}>
+                          <Button variant="secondary" onClick={() => restoreDeletedEstimatesForClient(clientId, [estimate.id])}>Restore</Button>
+                        </td>
+                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top", textAlign: "right" }}>
+                          <Button variant="secondary" onClick={() => purgeDeletedEstimatesForClient(clientId, [estimate.id])}>Delete Permanently</Button>
+                        </td>
+                      </tr>
+                    ))}
+                    {recycleEstimateRows.length === 0 && (
+                      <tr>
+                        <td colSpan={8} style={{ padding: 16 }}>
+                          <Small>No deleted estimates.</Small>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
     return (
       <Card style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
-        <div style={{ display: "grid", gap: 12, minHeight: 0 }}>
+        <div style={{ display: "grid", gap: 12, minHeight: 0, gridTemplateRows: "auto auto auto 1fr" }}>
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div>
               <H2>Recycle Bin</H2>
-              <Small>Deleted estimates are held here for up to 30 days unless purged sooner.</Small>
+              <Small>Deleted clients and estimates are held here for up to 30 days unless purged sooner.</Small>
             </div>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                clients.forEach((client) => purgeDeletedEstimatesForClient(client.id));
-              }}
-              disabled={recycleBinRows.length === 0}
-            >
-              Purge All
-            </Button>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <Button variant="secondary" onClick={restoreSelectedRecycleItems} disabled={!hasSelection}>Restore Selected</Button>
+              <Button variant="secondary" onClick={purgeSelectedRecycleItems} disabled={!hasSelection}>Delete Selected</Button>
+              <Button variant="secondary" onClick={clearRecycleSelection} disabled={!hasSelection}>Clear Selection</Button>
+            </div>
           </div>
 
-          <div style={{ border: "1px solid #e4e4e7", borderRadius: 14, background: "#fff", overflow: "hidden", minHeight: 0 }}>
-            <div style={{ height: "100%", minHeight: 0, overflow: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1100 }}>
-                <thead>
-                  <tr style={{ background: "#fafafa" }}>
-                    {[
-						["Client Name", "left"],
-						["Client Number", "left"],
-						["Estimate Ref", "left"],
-						["Project Name", "left"],
-						["Deleted", "left"],
-						["Restore", "right"],
-						["Delete Permanently", "right"],
-						].map(([label, align]) => (
-                      <th
-                        key={label}
-                        style={{
-                          textAlign: align as "left" | "right",
-                          padding: 10,
-                          fontSize: 12,
-                          borderBottom: "1px solid #e4e4e7",
-                          position: "sticky",
-                          top: 0,
-                          zIndex: 2,
-                          background: "#fafafa",
-                        }}
-                      >
-                        {label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {recycleBinRows.map(({ client, estimate, deletedAt }) => (
-                    <tr key={`${client.id}_${estimate.id}`}>
-                      <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top", fontWeight: 700 }}>{clientDisplayName(client)}</td>
-                      <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>{client.clientRef}</td>
-                      <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>{estimate.estimateRef}</td>
-                      <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>{client.projectName || ""}</td>
-                      <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>{new Date(deletedAt).toLocaleString()}</td>
-                      <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top", textAlign: "right" }}>
-                        <Button variant="secondary" onClick={() => restoreDeletedEstimatesForClient(client.id, [estimate.id])}>Restore</Button>
-                      </td>
-                      <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top", textAlign: "right" }}>
-                        <Button variant="secondary" onClick={() => purgeDeletedEstimatesForClient(client.id, [estimate.id])}>Delete Permanently</Button>
-                      </td>
-                    </tr>
-                  ))}
-                  {recycleBinRows.length === 0 && (
-                    <tr>
-                      <td colSpan={7} style={{ padding: 16 }}>
-                        <Small>No deleted estimates.</Small>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <Small>Filter</Small>
+            {filterButtons.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setRecycleBinFilter(item.key)}
+                style={{
+                  borderRadius: 999,
+                  border: recycleBinFilter === item.key ? "none" : "1px solid #e4e4e7",
+                  background: recycleBinFilter === item.key ? "#18181b" : "#fff",
+                  color: recycleBinFilter === item.key ? "#fff" : "#18181b",
+                  padding: "8px 12px",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(160px, 1fr))", gap: 10, flex: "1 1 480px" }}>
+              <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
+                <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Deleted clients</div>
+                <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{recycleClientRows.length}</div>
+              </div>
+              <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
+                <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Deleted estimates</div>
+                <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{recycleEstimateRows.length}</div>
+              </div>
+              <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
+                <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Visible items</div>
+                <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{totalVisibleCount}</div>
+              </div>
             </div>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <Small>View</Small>
+              {viewButtons.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => setRecycleBinView(item.key)}
+                  style={{
+                    borderRadius: 999,
+                    border: recycleBinView === item.key ? "none" : "1px solid #e4e4e7",
+                    background: recycleBinView === item.key ? "#18181b" : "#fff",
+                    color: recycleBinView === item.key ? "#fff" : "#18181b",
+                    padding: "8px 12px",
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                  }}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ minHeight: 0, overflow: "auto" }}>
+            {recycleBinView === "grid" ? (
+              <div style={{ display: "grid", gap: 12, alignContent: "start" }}>
+                {showClients && (
+                  <div style={{ display: "grid", gap: 10 }}>
+                    <H3>Deleted Clients</H3>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
+                      {renderClientCards()}
+                    </div>
+                  </div>
+                )}
+
+                {showEstimates && (
+                  <div style={{ display: "grid", gap: 10 }}>
+                    <H3>Deleted Estimates</H3>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
+                      {renderEstimateCards()}
+                    </div>
+                  </div>
+                )}
+
+                {totalVisibleCount === 0 && (
+                  <div style={{ borderRadius: 14, border: "1px dashed #e4e4e7", background: "#fff", padding: 16 }}>
+                    <Small>No deleted items.</Small>
+                  </div>
+                )}
+              </div>
+            ) : (
+              renderListTables()
+            )}
           </div>
         </div>
       </Card>
     );
   }
 
-  function openEstimateFromGlobalMenu(clientId: Models.ClientId, estimateId: Models.EstimateId) {
+function openEstimateFromGlobalMenu(clientId: Models.ClientId, estimateId: Models.EstimateId) {
     setMenu("client_database");
     openEstimateDefaults(clientId, estimateId);
   }
@@ -2655,7 +3321,6 @@ function renderInstallationBoard() {
                           {[
                             ["key_dates", "Key Dates"],
                             ["order_copy", "Confirmed Order"],
-                            ["project_calculator", "Project Calculator"],
                           ].map(([tabKey, label]) => {
                             const active = activeTab === tabKey;
                             return (
@@ -2746,46 +3411,6 @@ function renderInstallationBoard() {
                                   })}
                                 </tbody>
                               </table>
-                            </div>
-                          </div>
-                        )}
-
-                        {activeTab === "project_calculator" && (
-                          <div
-                       style={{ borderRadius: 14, border: "1px solid #e4e4e7", background: "#fafafa", padding: 12, display: "grid", gap: 10 }}>
-                            <div
-                       style={{ fontSize: 14, fontWeight: 900, color: "#18181b" }}>Project Calculator</div>
-                            <Small>No saved project calculator payload exists in the current live data model yet, so this tab is reserved for the calculator integration phase.</Small>
-                            <div
-                       style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(120px, 1fr))", gap: 10 }}>
-                              <div
-                       style={{ borderRadius: 12, border: "1px solid #e4e4e7", background: "#fff", padding: 10 }}>
-                                <div
-                       style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Forecast</div>
-                                <div
-                       style={{ fontSize: 14, fontWeight: 800, color: "#18181b" }}>{monthYearLabel(estimate.estimatedOrderMonth, estimate.estimatedOrderYear)}</div>
-                              </div>
-                              <div
-                       style={{ borderRadius: 12, border: "1px solid #e4e4e7", background: "#fff", padding: 10 }}>
-                                <div
-                       style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total mÃƒâ€šÃ‚Â²</div>
-                                <div
-                       style={{ fontSize: 14, fontWeight: 800, color: "#18181b" }}>{formatMeasure(totals.totalSquareMetres)}</div>
-                              </div>
-                              <div
-                       style={{ borderRadius: 12, border: "1px solid #e4e4e7", background: "#fff", padding: 10 }}>
-                                <div
-                       style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total quantity</div>
-                                <div
-                       style={{ fontSize: 14, fontWeight: 800, color: "#18181b" }}>{totals.totalQty}</div>
-                              </div>
-                              <div
-                       style={{ borderRadius: 12, border: "1px solid #e4e4e7", background: "#fff", padding: 10 }}>
-                                <div
-                       style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Order value</div>
-                                <div
-                       style={{ fontSize: 14, fontWeight: 800, color: "#18181b" }}>{formatMoney(totals.estimateTotal)}</div>
-                              </div>
                             </div>
                           </div>
                         )}
@@ -3194,23 +3819,28 @@ estimate.id}>
   }
 
   return (
-    <div style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif", background: "#f4f4f5", minHeight: "100vh", height: "100vh", overflow: "hidden" }}>
-      <div style={{ width: "100%", margin: "0", padding: 16, height: "100%" }}>
+<AppShell title="QuoteSync" onMenuClick={handleTopShellMenuClick}>
+  { topShellPage === "admin" ? (
+    <AdminPlaceholderPage />
+  ) : topShellPage === "client_portal" ? (
+    <ClientPortalPlaceholderPage />
+  ) : topShellPage === "settings" ? (
+        <TopShellPlaceholder
+          title="Settings"
+          summary="Future-ready settings area placeholder. This will later host branding, styling, logo uploads, and broader system configuration."
+        />
+      ) : topShellPage === "help" ? (
+        <TopShellPlaceholder
+          title="Help"
+          summary="Future-ready help area placeholder. This will later host support content, onboarding, and documentation."
+        />
+      ) : (
+        <div style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif", background: "#f4f4f5", minHeight: "calc(100vh - 84px)", height: "calc(100vh - 84px)", overflow: "hidden" }}>
+          <div style={{ width: "100%", margin: "0", padding: 0, height: "100%" }}>
         <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 16, height: "calc(100vh - 32px)", alignItems: "start" }}>
           {/* Sidebar */}
           <Card style={{ padding: 12, position: "sticky", top: 16, alignSelf: "start", height: "calc(100vh - 32px)", overflowY: "auto" }}>
             <div style={{ padding: "6px 6px 12px 6px" }}>
-              <img
-                src="/quotesync-logo.png"
-                alt="QuoteSync"
-                style={{
-                  width: "100%",
-                  maxWidth: 260,
-                  height: 78,
-                  objectFit: "contain",
-                  display: "block",
-                }}
-              />
             </div>
 
             <div style={{ marginTop: 14 }}>
@@ -3239,29 +3869,14 @@ estimate.id}>
                 <SidebarItem label="Completed Projects" active={menu === "completed_projects"} onClick={() => selectMenu("completed_projects")} />
                 <SidebarItem label="Recycle Bin" active={menu === "recycle_bin"} onClick={() => selectMenu("recycle_bin")} />
               </div>
-            </div>
-
-            <div style={{ marginTop: 14 }}>
-              <H3>Preferences</H3>
-              <div style={{ marginTop: 8 }}>
-                <SidebarItem label="Project Preferences" active={menu === "project_preferences"} onClick={() => selectMenu("project_preferences")} />
-                <SidebarItem label="Address Database" active={menu === "address_database"} onClick={() => selectMenu("address_database")} />
-              </div>
-            </div>
-
-            <div style={{ marginTop: 14 }}>
-              <H3>Tools</H3>
-              <div style={{ marginTop: 8 }}>
-                <SidebarItem label="Reports" active={menu === "reports"} onClick={() => selectMenu("reports")} />
-                <SidebarItem label="CAD Drawing" active={menu === "cad_drawing"} onClick={() => selectMenu("cad_drawing")} />
-                <SidebarItem label="Remote Support" active={menu === "remote_support"} onClick={() => selectMenu("remote_support")} />
-              </div>
+            
             </div>
           </Card>
 
           {/* Main */}
           <div style={{ display: "grid", gap: 16, minHeight: 0, height: "calc(100vh - 32px)", overflowY: "auto", paddingRight: 4, alignContent: "start" }}>
-            {menu === "dashboard" && view === "customers" && (
+            {topShellPage === "tools" && <ToolsHubPage />}
+			{topShellPage !== "tools" && menu === "dashboard" && view === "customers" && (
               <MainDashboard
                 clients={clients}
                 activeUserName="User"
@@ -3765,6 +4380,7 @@ estimate.id}>
 				openEditClientPanel={openEditClientPanel}
 				createEstimateForClient={createEstimateForClient}
 				copyEstimateForClient={copyEstimateForClient}
+				deleteClientToRecycle={deleteClientToRecycle}
 				deletedEstimatesForClient={estimatePickerClientId ? (deletedEstimatesByClientId[estimatePickerClientId] ?? []) : []}
 				deleteEstimatesForClient={deleteEstimatesForClient}
 				restoreDeletedEstimatesForClient={restoreDeletedEstimatesForClient}
@@ -3934,6 +4550,8 @@ estimate.id}>
                                       projectAddressStructured: { ...structured, postcode: v },
                                       projectAddress: buildAddressString({ ...structured, postcode: v }),
                                       postcode: v,
+                                      latitude: null,
+                                      longitude: null,
                                     };
                                     updateSelectedEstimateLocation(nextEstimate);
                                   }}
@@ -3944,7 +4562,7 @@ estimate.id}>
                                 <div style={labelStyle}>what3words</div>
                                 <Input
                                   value={selectedEstimate.what3words || ""}
-                                  onChange={(v) => updateSelectedEstimateLocation({ ...selectedEstimate, what3words: v })}
+                                  onChange={(v) => updateSelectedEstimateLocation({ ...selectedEstimate, what3words: v, latitude: null, longitude: null })}
                                   placeholder="index.home.raft"
                                 />
                               </div>
@@ -4544,8 +5162,10 @@ estimate.id}>
             )}
           </div>
         </div>
-      </div>
-    </div>
+          </div>
+        </div>
+      )}
+    </AppShell>
   );
 }
 

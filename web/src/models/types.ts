@@ -180,6 +180,8 @@ export type Estimate = {
   baseEstimateRef: string;
   revisionNo: number;
   status: EstimateStatus;
+
+  outcome?: EstimateOutcome;
   estimatedOrderMonth: string;
   estimatedOrderYear: number;
   defaults: EstimateDefaults;

@@ -35,9 +35,25 @@ function normalizeCoordinate(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function parseFlag(value) {
+  if (value === undefined || value === null) return false;
+  const normalized = String(value).trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes';
+}
+
 router.get('/', async (req, res) => {
   try {
     const db = await dbPromise;
+    const includeDeleted = parseFlag(req.query.include_deleted);
+    const onlyDeleted = parseFlag(req.query.only_deleted);
+
+    let whereSql = 'WHERE deleted_at IS NULL';
+    if (onlyDeleted) {
+      whereSql = 'WHERE deleted_at IS NOT NULL';
+    } else if (includeDeleted) {
+      whereSql = '';
+    }
+
     const clients = await db.all(`
       SELECT
         id,
@@ -62,9 +78,14 @@ router.get('/', async (req, res) => {
         invoice_address_json,
         what3words,
         latitude,
-        longitude
+        longitude,
+        deleted_at
       FROM clients
-      ORDER BY rowid DESC
+      ${whereSql}
+      ORDER BY
+        CASE WHEN deleted_at IS NULL THEN 0 ELSE 1 END,
+        COALESCE(deleted_at, created_at) DESC,
+        rowid DESC
     `);
 
     res.json(
@@ -76,6 +97,7 @@ router.get('/', async (req, res) => {
         what3words: String(row.what3words || ''),
         latitude: normalizeCoordinate(row.latitude),
         longitude: normalizeCoordinate(row.longitude),
+        deleted_at: row.deleted_at ? String(row.deleted_at) : null,
       }))
     );
   } catch (error) {
@@ -138,8 +160,9 @@ router.post('/', async (req, res) => {
           invoice_address_json,
           what3words,
           latitude,
-          longitude
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          longitude,
+          deleted_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
       `,
       [
         id ?? '',
@@ -262,4 +285,103 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+router.delete('/:id', async (req, res) => {
+  try {
+    const db = await dbPromise;
+    const deletedAt = new Date().toISOString();
+
+    await db.run(
+      `
+        UPDATE estimates
+        SET deleted_at = COALESCE(deleted_at, ?)
+        WHERE client_id = ?
+      `,
+      [deletedAt, req.params.id]
+    );
+
+    const result = await db.run(
+      `
+        UPDATE clients
+        SET deleted_at = COALESCE(deleted_at, ?)
+        WHERE id = ?
+      `,
+      [deletedAt, req.params.id]
+    );
+
+    if (!result.changes) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+
+    res.json({ success: true, deleted_at: deletedAt });
+  } catch (error) {
+    console.error('DELETE /api/clients/:id failed', error);
+    res.status(500).json({ error: 'Failed to delete client' });
+  }
+});
+
+router.post('/:id/restore', async (req, res) => {
+  try {
+    const db = await dbPromise;
+
+    const result = await db.run(
+      `
+        UPDATE clients
+        SET deleted_at = NULL
+        WHERE id = ?
+      `,
+      [req.params.id]
+    );
+
+    if (!result.changes) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+
+    await db.run(
+      `
+        UPDATE estimates
+        SET deleted_at = NULL
+        WHERE client_id = ?
+      `,
+      [req.params.id]
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('POST /api/clients/:id/restore failed', error);
+    res.status(500).json({ error: 'Failed to restore client' });
+  }
+});
+
+router.delete('/:id/purge', async (req, res) => {
+  try {
+    const db = await dbPromise;
+
+    await db.run(
+      `
+        DELETE FROM estimates
+        WHERE client_id = ?
+      `,
+      [req.params.id]
+    );
+
+    const result = await db.run(
+      `
+        DELETE FROM clients
+        WHERE id = ?
+      `,
+      [req.params.id]
+    );
+
+    if (!result.changes) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('DELETE /api/clients/:id/purge failed', error);
+    res.status(500).json({ error: 'Failed to purge client' });
+  }
+});
+
 export default router;
+

@@ -374,8 +374,8 @@ export default function ProjectCalculatorWizard({ storageKey = "quotesync.projec
       setLiveRateError("");
       const tries = [
         async () => {
-          const j = await safeFetchJSON(`https://api.frankfurter.app/latest?from=${displayCurrency}&to=GBP`, "frankfurter");
-          return { live: j?.rates?.GBP as number, source: "frankfurter.app", updated: j?.date || "" };
+          const j = await safeFetchJSON(`http://localhost:3001/api/fx-rate?from=${displayCurrency}`, "frankfurter");
+          return { live: j?.rate as number, source: j?.source || "frankfurter", updated: j?.date || "" };
         },
         async () => {
           const j = await safeFetchJSON(`https://api.exchangerate.host/convert?from=${displayCurrency}&to=GBP&amount=1`, "exchangerate.host");

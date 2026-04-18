@@ -30,6 +30,18 @@ function firstAddressLine(text: string) {
   return (text || "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean)[0] || "";
 }
 
+function isValidUkCoordinatePair(lat: number, lng: number) {
+  return Number.isFinite(lat) && Number.isFinite(lng) && lat >= 49 && lat <= 61 && lng >= -8 && lng <= 2;
+}
+
+function areCoordinatesMeaningfullyDifferent(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+  tolerance = 0.1
+) {
+  return Math.abs(a.lat - b.lat) + Math.abs(a.lng - b.lng) > tolerance;
+}
+
 function loadCachedLocation(scope: "client" | "estimate", id: string): ResolvedClientLocation | null {
   try {
     const raw = localStorage.getItem(cacheKey(scope, id));
@@ -152,7 +164,7 @@ export async function resolveClientLocation(
   const lat = Number(client.latitude);
   const lng = Number(client.longitude);
 
-  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+  if (isValidUkCoordinatePair(lat, lng)) {
     return {
       lat,
       lng,
@@ -217,13 +229,7 @@ export async function resolveEstimateLocation(
 
   const lat = Number(estimate.latitude);
   const lng = Number(estimate.longitude);
-  const hasFiniteDirectCoordinates = Number.isFinite(lat) && Number.isFinite(lng);
-  const hasValidUkDirectCoordinates =
-    hasFiniteDirectCoordinates &&
-    lat >= 49 &&
-    lat <= 61 &&
-    lng >= -8 &&
-    lng <= 2;
+  const hasValidUkDirectCoordinates = isValidUkCoordinatePair(lat, lng);
 
   const words = normalizeWhat3Words(estimate.what3words);
   const postcode = estimate.postcode || extractPostcode(estimate.projectAddress || "");
@@ -233,46 +239,6 @@ export async function resolveEstimateLocation(
 
   if (!hasEstimateLocationInput) {
     return null;
-  }
-
-  if (hasValidUkDirectCoordinates) {
-    return {
-      lat,
-      lng,
-      source: "estimate",
-      label: buildEstimateLocationLabel(estimate),
-    };
-  }
-
-  const cached = loadCachedLocation("estimate", estimate.id);
-  if (
-    cached &&
-    Number.isFinite(cached.lat) &&
-    Number.isFinite(cached.lng) &&
-    cached.lat >= 49 &&
-    cached.lat <= 61 &&
-    cached.lng >= -8 &&
-    cached.lng <= 2
-  ) {
-    return {
-      lat: cached.lat,
-      lng: cached.lng,
-      source: "cache",
-      label: buildEstimateLocationLabel(estimate),
-    };
-  }
-
-  if (words && opts.what3wordsApiKey) {
-    const coords = await convertWhat3Words(words, opts.what3wordsApiKey);
-    if (coords) {
-      const resolved: ResolvedClientLocation = {
-        ...coords,
-        source: "what3words",
-        label: `what3words: ${words}`,
-      };
-      saveCachedLocation("estimate", estimate.id, resolved);
-      return resolved;
-    }
   }
 
   if (postcode && opts.googleMapsApiKey) {
@@ -288,9 +254,48 @@ export async function resolveEstimateLocation(
     }
   }
 
+  if (words && opts.what3wordsApiKey) {
+    const coords = await convertWhat3Words(words, opts.what3wordsApiKey);
+    if (coords) {
+      if (
+        hasValidUkDirectCoordinates &&
+        areCoordinatesMeaningfullyDifferent(coords, { lat, lng })
+      ) {
+        const resolved: ResolvedClientLocation = {
+          ...coords,
+          source: "what3words",
+          label: `what3words: ${words}`,
+        };
+        saveCachedLocation("estimate", estimate.id, resolved);
+        return resolved;
+      }
+
+      const resolved: ResolvedClientLocation = {
+        ...coords,
+        source: "what3words",
+        label: `what3words: ${words}`,
+      };
+      saveCachedLocation("estimate", estimate.id, resolved);
+      return resolved;
+    }
+  }
+
   if (addressLine && opts.googleMapsApiKey) {
     const coords = await geocodeWithGoogle(estimate.projectAddress || "", opts.googleMapsApiKey);
     if (coords) {
+      if (
+        hasValidUkDirectCoordinates &&
+        areCoordinatesMeaningfullyDifferent(coords, { lat, lng })
+      ) {
+        const resolved: ResolvedClientLocation = {
+          ...coords,
+          source: "address",
+          label: addressLine,
+        };
+        saveCachedLocation("estimate", estimate.id, resolved);
+        return resolved;
+      }
+
       const resolved: ResolvedClientLocation = {
         ...coords,
         source: "address",
@@ -299,6 +304,30 @@ export async function resolveEstimateLocation(
       saveCachedLocation("estimate", estimate.id, resolved);
       return resolved;
     }
+  }
+
+  if (hasValidUkDirectCoordinates) {
+    const resolved: ResolvedClientLocation = {
+      lat,
+      lng,
+      source: "estimate",
+      label: buildEstimateLocationLabel(estimate),
+    };
+    saveCachedLocation("estimate", estimate.id, resolved);
+    return resolved;
+  }
+
+  const cached = loadCachedLocation("estimate", estimate.id);
+  if (
+    cached &&
+    isValidUkCoordinatePair(cached.lat, cached.lng)
+  ) {
+    return {
+      lat: cached.lat,
+      lng: cached.lng,
+      source: "cache",
+      label: buildEstimateLocationLabel(estimate),
+    };
   }
 
   return null;

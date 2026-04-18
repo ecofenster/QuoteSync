@@ -1,6 +1,56 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
-import type { Client, ClientId, EstimateId, EstimateOutcome, EstimatePickerTab, ClientNote, ClientFile } from "../../models/types";
+import type { Client, ClientId, EstimateId, EstimateOutcome, EstimatePickerTab, ClientFile } from "../../models/types";
+import { apiFetch } from "../../services/api/apiClient";
 import EstimatePickerTabs from "./EstimatePickerTabs";
+import { EstimateWorkflowProvider } from "../estimateWorkflow/EstimateWorkflowProvider";
+
+type ApiNote = {
+  id?: string;
+  client_id?: string;
+  estimate_id?: string | null;
+  followup_id?: string | null;
+  category?: string;
+  note_text?: string;
+  created_by?: string;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+type NoteCategory = "all" | "general" | "follow_up" | "service" | "installer" | "client_request";
+
+type NoteEntry = {
+  id: string;
+  clientId: ClientId;
+  estimateId?: string;
+  followupId?: string;
+  category: Exclude<NoteCategory, "all">;
+  noteText: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string | null;
+};
+
+function normalizeNoteCategory(value: unknown): Exclude<NoteCategory, "all"> {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "follow_up" || normalized === "service" || normalized === "installer" || normalized === "client_request") {
+    return normalized;
+  }
+  return "general";
+}
+
+function mapApiNote(row: ApiNote): NoteEntry {
+  return {
+    id: String(row.id || ""),
+    clientId: String(row.client_id || "") as ClientId,
+    estimateId: row.estimate_id ? String(row.estimate_id) : undefined,
+    followupId: row.followup_id ? String(row.followup_id) : undefined,
+    category: normalizeNoteCategory(row.category),
+    noteText: String(row.note_text || ""),
+    createdBy: String(row.created_by || "User"),
+    createdAt: String(row.created_at || row.updated_at || new Date().toISOString()),
+    updatedAt: row.updated_at ? String(row.updated_at) : null,
+  };
+}
 
 export type EstimatePickerFeatureHandle = {
   open: (clientId: ClientId) => void;
@@ -11,7 +61,6 @@ type Props = {
   clientId?: ClientId | null;
   clients: Client[];
 
-  // When App switches to this view, it passes the client id here so we can open reliably after mount.
   initialClientId?: ClientId | null;
   onConsumedInitialClientId?: () => void;
   initialEstimateId?: EstimateId | null;
@@ -22,6 +71,11 @@ type Props = {
 
   createEstimateForClient: (c: Client) => void;
   copyEstimateForClient: (client: Client, sourceEstimateId: EstimateId) => void;
+  deleteClientToRecycle: (clientId: ClientId) => void;
+  deletedEstimatesForClient: { estimate: Client["estimates"][number]; deletedAt: string }[];
+  deleteEstimatesForClient: (clientId: ClientId, estimateIds: EstimateId[]) => void;
+  restoreDeletedEstimatesForClient: (clientId: ClientId, estimateIds: EstimateId[]) => void;
+  purgeDeletedEstimatesForClient: (clientId: ClientId, estimateIds?: EstimateId[]) => void;
   setEstimateInstaller: (clientId: ClientId, estimateId: EstimateId, installerId: string) => void;
   updateEstimateOrderMeta: (clientId: ClientId, estimateId: EstimateId, patch: Record<string, any>) => void;
   updateEstimatePosition: (
@@ -41,10 +95,6 @@ type Props = {
   openEstimateDefaults: (clientId: ClientId, estimateId: EstimateId) => void;
   persistEstimateOutcome: (clientId: ClientId, estimateId: EstimateId, outcome: EstimateOutcome) => void;
 };
-
-/* =========================
-   UI primitives (duplicated to avoid UI drift)
-========================= */
 
 function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
@@ -108,35 +158,34 @@ function Button({
   );
 }
 
-/* =========================
-   Feature container
-========================= */
-
 const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Props>(function EstimatePickerFeature(props, ref) {
-    const {
+  const {
     clientId,
     clients,
     onBack,
     openEditClientPanel,
     createEstimateForClient,
     copyEstimateForClient,
+    deleteClientToRecycle,
+    deletedEstimatesForClient,
+    deleteEstimatesForClient,
+    restoreDeletedEstimatesForClient,
+    purgeDeletedEstimatesForClient,
     setEstimateInstaller,
     updateEstimateOrderMeta,
     updateEstimatePosition,
     openEstimateDefaults,
   } = props;
 
-  // estimate picker (moved from App.tsx)
   const [pickerClientId, setPickerClientId] = useState<ClientId | null>(null);
 
-  // Sync selected client from parent (fixes blank screen when switching views)
   useEffect(() => {
     if (typeof clientId === "undefined") return;
     setPickerClientId(clientId ?? null);
   }, [clientId]);
+
   const pickerClient = useMemo(() => clients.find((c) => c.id === pickerClientId) ?? null, [clients, pickerClientId]);
 
-  // Sync from App-controlled clientId to avoid ref timing race (Open -> view switch).
   useEffect(() => {
     if (clientId) setPickerClientId(clientId);
   }, [clientId]);
@@ -150,17 +199,28 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
     props.onConsumedInitialEstimateId?.();
   }, [pickerClientId, props.initialEstimateId]);
 
-  // estimate picker tabs (Estimate Picker only)
   const [estimatePickerTab, setEstimatePickerTab] = useState<EstimatePickerTab>("client_info");
 
-  const [clientNotes, setClientNotes] = useState<ClientNote[]>([]);
-  const [clientNoteDraftHtml, setClientNoteDraftHtml] = useState<string>("");
+  const [accountNoteDraft, setAccountNoteDraft] = useState("");
+  const [accountNoteCategory, setAccountNoteCategory] = useState<Exclude<NoteCategory, "all">>("general");
+  const [accountNoteFilter, setAccountNoteFilter] = useState<NoteCategory>("all");
+  const [accountNotes, setAccountNotes] = useState<NoteEntry[]>([]);
+  const [accountNoteUpdatedAt, setAccountNoteUpdatedAt] = useState<string | null>(null);
+
+  const [selectedEstimateNoteId, setSelectedEstimateNoteId] = useState<EstimateId | "">("");
+  const [estimateNoteDraft, setEstimateNoteDraft] = useState("");
+  const [estimateNoteCategory, setEstimateNoteCategory] = useState<Exclude<NoteCategory, "all">>("general");
+  const [estimateNoteFilter, setEstimateNoteFilter] = useState<NoteCategory>("all");
+  const [estimateNotes, setEstimateNotes] = useState<NoteEntry[]>([]);
+  const [estimateNoteUpdatedAt, setEstimateNoteUpdatedAt] = useState<string | null>(null);
+
+  const [notesSaving, setNotesSaving] = useState(false);
+
   const [clientFiles, setClientFiles] = useState<ClientFile[]>([]);
   const [clientFileLabel, setClientFileLabel] = useState<string>("");
   const [clientFileUrl, setClientFileUrl] = useState<string>("");
   const [clientFileNames, setClientFileNames] = useState<string[]>([]);
   const activeUserName = "User";
-
 
   useImperativeHandle(
     ref,
@@ -171,12 +231,187 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
     []
   );
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAccountNotes(clientId: string) {
+      try {
+        const data = (await apiFetch(`/api/notes?client_id=${encodeURIComponent(clientId)}&limit=200`)) as ApiNote[] | null;
+        if (cancelled) return;
+        const rows = Array.isArray(data)
+          ? data
+              .map(mapApiNote)
+              .filter((entry) => entry.id && !entry.estimateId && !entry.followupId)
+              .sort((a, b) => String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt)))
+          : [];
+        setAccountNotes(rows);
+        setAccountNoteUpdatedAt(rows[0]?.updatedAt || rows[0]?.createdAt || null);
+      } catch (error) {
+        if (cancelled) return;
+        console.error("Failed to load account notes", error);
+        setAccountNotes([]);
+        setAccountNoteUpdatedAt(null);
+      }
+    }
+
+    if (!pickerClient?.id) {
+      setAccountNotes([]);
+      setAccountNoteDraft("");
+      setAccountNoteUpdatedAt(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    loadAccountNotes(String(pickerClient.id));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pickerClient?.id]);
+
+  useEffect(() => {
+    if (!pickerClient) {
+      setSelectedEstimateNoteId("");
+      return;
+    }
+
+    const estimateIds = (pickerClient.estimates ?? []).map((estimate) => estimate.id);
+    if (!estimateIds.length) {
+      setSelectedEstimateNoteId("");
+      return;
+    }
+
+    setSelectedEstimateNoteId((current) => {
+      if (current && estimateIds.includes(current as EstimateId)) return current;
+      if (initialExpandedEstimateId && estimateIds.includes(initialExpandedEstimateId)) return initialExpandedEstimateId;
+      return estimateIds[0];
+    });
+  }, [pickerClient, initialExpandedEstimateId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadEstimateNotes(estimateId: string) {
+      try {
+        if (!pickerClient?.id) return;
+        const data = (await apiFetch(
+          `/api/notes?client_id=${encodeURIComponent(String(pickerClient.id))}&estimate_id=${encodeURIComponent(estimateId)}&limit=200`
+        )) as ApiNote[] | null;
+        if (cancelled) return;
+        const rows = Array.isArray(data)
+          ? data
+              .map(mapApiNote)
+              .filter((entry) => entry.id && String(entry.estimateId || "") === estimateId)
+              .sort((a, b) => String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt)))
+          : [];
+        setEstimateNotes(rows);
+        setEstimateNoteUpdatedAt(rows[0]?.updatedAt || rows[0]?.createdAt || null);
+      } catch (error) {
+        if (cancelled) return;
+        console.error("Failed to load estimate notes", error);
+        setEstimateNotes([]);
+        setEstimateNoteUpdatedAt(null);
+      }
+    }
+
+    if (!selectedEstimateNoteId || !pickerClient?.id) {
+      setEstimateNotes([]);
+      setEstimateNoteDraft("");
+      setEstimateNoteUpdatedAt(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    loadEstimateNotes(String(selectedEstimateNoteId));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pickerClient?.id, selectedEstimateNoteId]);
+
+  async function saveAccountNotes() {
+    if (!pickerClient?.id || !accountNoteDraft.trim()) return;
+    setNotesSaving(true);
+    try {
+      await apiFetch(`/api/notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: `note_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+          client_id: String(pickerClient.id),
+          estimate_id: null,
+          followup_id: null,
+          category: accountNoteCategory,
+          note_text: accountNoteDraft.trim(),
+          created_by: activeUserName,
+        }),
+      });
+
+      const data = (await apiFetch(`/api/notes?client_id=${encodeURIComponent(String(pickerClient.id))}&limit=200`)) as ApiNote[] | null;
+      const rows = Array.isArray(data)
+        ? data
+            .map(mapApiNote)
+            .filter((entry) => entry.id && !entry.estimateId && !entry.followupId)
+            .sort((a, b) => String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt)))
+        : [];
+      setAccountNotes(rows);
+      setAccountNoteDraft("");
+      setAccountNoteUpdatedAt(rows[0]?.updatedAt || rows[0]?.createdAt || new Date().toISOString());
+    } finally {
+      setNotesSaving(false);
+    }
+  }
+
+  async function saveEstimateNotes() {
+    if (!selectedEstimateNoteId || !pickerClient?.id || !estimateNoteDraft.trim()) return;
+    setNotesSaving(true);
+    try {
+      await apiFetch(`/api/notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: `note_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+          client_id: String(pickerClient.id),
+          estimate_id: String(selectedEstimateNoteId),
+          followup_id: null,
+          category: estimateNoteCategory,
+          note_text: estimateNoteDraft.trim(),
+          created_by: activeUserName,
+        }),
+      });
+
+      const data = (await apiFetch(
+        `/api/notes?client_id=${encodeURIComponent(String(pickerClient.id))}&estimate_id=${encodeURIComponent(String(selectedEstimateNoteId))}&limit=200`
+      )) as ApiNote[] | null;
+      const rows = Array.isArray(data)
+        ? data
+            .map(mapApiNote)
+            .filter((entry) => entry.id && String(entry.estimateId || "") === String(selectedEstimateNoteId))
+            .sort((a, b) => String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt)))
+        : [];
+      setEstimateNotes(rows);
+      setEstimateNoteDraft("");
+      setEstimateNoteUpdatedAt(rows[0]?.updatedAt || rows[0]?.createdAt || new Date().toISOString());
+    } finally {
+      setNotesSaving(false);
+    }
+  }
+
+  function confirmDeleteClient(client: Client) {
+    const headline = client.type === "Business" ? (client.businessName || client.clientName) : client.clientName;
+    const ok = window.confirm(`Send client ${headline} (${client.clientRef}) and all linked estimates to recycle bin?`);
+    if (!ok) return;
+    deleteClientToRecycle(client.id);
+  }
+
   function openEstimateFromPicker(estimateId: EstimateId) {
     if (!pickerClientId) return;
     openEstimateDefaults(pickerClientId, estimateId);
   }
 
-    if (!pickerClient) {
+  if (!pickerClient) {
     return (
       <Card style={{ minHeight: 360 }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
@@ -223,6 +458,9 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
                 <Button variant="secondary" onClick={() => createEstimateForClient(c)}>
                   New Estimate
                 </Button>
+                <Button variant="secondary" onClick={() => confirmDeleteClient(c)}>
+                  Delete Client
+                </Button>
                 <Button variant="primary" onClick={() => setPickerClientId(c.id)}>
                   Open
                 </Button>
@@ -232,7 +470,11 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
         </div>
       </Card>
     );
-  }return (
+  }
+
+  const workflowEstimateId = selectedEstimateNoteId || initialExpandedEstimateId || pickerClient.estimates[0]?.id || null;
+
+  return (
     <Card style={{ minHeight: 520 }}>
       <div style={{ display: "grid", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
@@ -243,7 +485,7 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
             </Small>
           </div>
 
-          <div style={{ display: "flex", gap: 10 }}>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <Button
               variant="secondary"
               onClick={() => {
@@ -252,6 +494,9 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
               }}
             >
               Back
+            </Button>
+            <Button variant="secondary" onClick={() => confirmDeleteClient(pickerClient)}>
+              Delete Client
             </Button>
             <Button
               variant="primary"
@@ -265,33 +510,60 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
           </div>
         </div>
 
-         <EstimatePickerTabs
-          estimatePickerTab={estimatePickerTab}
-          initialExpandedEstimateId={initialExpandedEstimateId}
-          onConsumedInitialExpandedEstimateId={() => setInitialExpandedEstimateId(null)}
-          setEstimatePickerTab={setEstimatePickerTab}
-          pickerClient={pickerClient}
-          openEditClientPanel={openEditClientPanel}
-          openEstimateFromPicker={openEstimateFromPicker}
-          copyEstimateForClient={copyEstimateForClient}
-          setEstimateInstaller={setEstimateInstaller}
-          updateEstimateOrderMeta={updateEstimateOrderMeta}
-          updateEstimatePosition={updateEstimatePosition}
-          persistEstimateOutcome={props.persistEstimateOutcome}
-          clientNoteDraftHtml={clientNoteDraftHtml}
-          setClientNoteDraftHtml={setClientNoteDraftHtml}
-          clientNotes={clientNotes}
-          setClientNotes={setClientNotes}
-          activeUserName={activeUserName}
-          clientFileLabel={clientFileLabel}
-          setClientFileLabel={setClientFileLabel}
-          clientFileUrl={clientFileUrl}
-          setClientFileUrl={setClientFileUrl}
-          clientFileNames={clientFileNames}
-          setClientFileNames={setClientFileNames}
-          clientFiles={clientFiles}
-          setClientFiles={setClientFiles}
-        />
+        <EstimateWorkflowProvider
+          currentTab={estimatePickerTab}
+          currentClientId={pickerClient.id}
+          currentEstimateId={workflowEstimateId}
+        >
+          <EstimatePickerTabs
+            estimatePickerTab={estimatePickerTab}
+            initialExpandedEstimateId={initialExpandedEstimateId}
+            onConsumedInitialExpandedEstimateId={() => setInitialExpandedEstimateId(null)}
+            setEstimatePickerTab={setEstimatePickerTab}
+            pickerClient={pickerClient}
+            openEditClientPanel={openEditClientPanel}
+            openEstimateFromPicker={openEstimateFromPicker}
+            copyEstimateForClient={copyEstimateForClient}
+            deletedEstimatesForClient={deletedEstimatesForClient}
+            deleteEstimatesForClient={deleteEstimatesForClient}
+            restoreDeletedEstimatesForClient={restoreDeletedEstimatesForClient}
+            purgeDeletedEstimatesForClient={purgeDeletedEstimatesForClient}
+            setEstimateInstaller={setEstimateInstaller}
+            updateEstimateOrderMeta={updateEstimateOrderMeta}
+            updateEstimatePosition={updateEstimatePosition}
+            persistEstimateOutcome={props.persistEstimateOutcome}
+            accountNoteDraft={accountNoteDraft}
+            setAccountNoteDraft={setAccountNoteDraft}
+            accountNotes={accountNotes}
+            accountNoteCategory={accountNoteCategory}
+            setAccountNoteCategory={setAccountNoteCategory}
+            accountNoteFilter={accountNoteFilter}
+            setAccountNoteFilter={setAccountNoteFilter}
+            accountNoteUpdatedAt={accountNoteUpdatedAt}
+            saveAccountNotes={saveAccountNotes}
+            selectedEstimateNoteId={selectedEstimateNoteId}
+            setSelectedEstimateNoteId={setSelectedEstimateNoteId}
+            estimateNoteDraft={estimateNoteDraft}
+            setEstimateNoteDraft={setEstimateNoteDraft}
+            estimateNotes={estimateNotes}
+            estimateNoteCategory={estimateNoteCategory}
+            setEstimateNoteCategory={setEstimateNoteCategory}
+            estimateNoteFilter={estimateNoteFilter}
+            setEstimateNoteFilter={setEstimateNoteFilter}
+            estimateNoteUpdatedAt={estimateNoteUpdatedAt}
+            saveEstimateNotes={saveEstimateNotes}
+            notesSaving={notesSaving}
+            activeUserName={activeUserName}
+            clientFileLabel={clientFileLabel}
+            setClientFileLabel={setClientFileLabel}
+            clientFileUrl={clientFileUrl}
+            setClientFileUrl={setClientFileUrl}
+            clientFileNames={clientFileNames}
+            setClientFileNames={setClientFileNames}
+            clientFiles={clientFiles}
+            setClientFiles={setClientFiles}
+          />
+        </EstimateWorkflowProvider>
       </div>
     </Card>
   );
@@ -300,5 +572,13 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
 export default EstimatePickerFeature;
 
 
-
-
+// --- Added by patch: refreshNotesAfterFollowUp ---
+const refreshNotesAfterFollowUp = async (estimateId: string) => {
+  try {
+    if (typeof fetchNotesForEstimate === 'function') {
+      await fetchNotesForEstimate(estimateId);
+    }
+  } catch (err) {
+    console.warn('Failed to refresh notes after follow-up', err);
+  }
+};

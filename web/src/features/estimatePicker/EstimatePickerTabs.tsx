@@ -4,12 +4,20 @@
 // and ClientDetailsReadonly to avoid risky refactors at this stage.
 
 import React, { useState } from "react";
+import { resolveStructuredAddress, addressTuple } from "../../domain/address";
 import { rankInstallersByDistance } from "../../services/distance";
 import { getInstallers } from "../../data/installers";
 import { loadSettings } from "../../system/settings";
 import { createDefaultTimeline } from "../../system/orderTimeline";
-import type { Address, Client, EstimateId, EstimateOutcome, EstimatePickerTab, ClientNote, ClientFile } from "../../models/types";
-import ProjectCalculatorWizard from "../../project calculator/ProjectCalculatorWizard";
+import type { Address, Client, EstimateId, EstimateOutcome, EstimatePickerTab, ClientFile } from "../../models/types";
+import { estimateTotals, estimateCostTotal } from '../../domain/estimates/estimateCalculations';
+import { addFollowUpForEstimate as addFollowUpForEstimateService } from '../../services/followups/followupService';
+import { buildSendEmailText as buildSendEmailTextService, openMailClient as openMailClientService } from '../../services/email/emailService';
+import { printEstimatePdf as printEstimatePdfService, downloadEstimateWordDoc as downloadEstimateWordDocService } from '../../services/documents/estimateDocumentService';
+import ClientInfoTab from './tabs/ClientInfoTab';
+import NotesTab from './tabs/NotesTab';
+import FilesTab from './tabs/FilesTab';
+import EstimateSectionTab from './tabs/EstimateSectionTab';
 
 type Props = {
   estimatePickerTab: EstimatePickerTab;
@@ -19,15 +27,51 @@ type Props = {
   openEditClientPanel: (c: Client) => void;
   openEstimateFromPicker: (estimateId: EstimateId) => void;
   copyEstimateForClient: (client: Client, sourceEstimateId: EstimateId) => void;
+  deletedEstimatesForClient: { estimate: Client["estimates"][number]; deletedAt: string }[];
+  deleteEstimatesForClient: (clientId: string, estimateIds: EstimateId[]) => void;
+  restoreDeletedEstimatesForClient: (clientId: string, estimateIds: EstimateId[]) => void;
+  purgeDeletedEstimatesForClient: (clientId: string, estimateIds?: EstimateId[]) => void;
   setEstimateInstaller: (clientId: string, estimateId: string, installerId: string) => void;
   updateEstimateOrderMeta: (clientId: string, estimateId: string, patch: Record<string, any>) => void;
   persistEstimateOutcome: (clientId: string, estimateId: EstimateId, outcome: EstimateOutcome) => void;
 
-  clientNoteDraftHtml: string;
-  setClientNoteDraftHtml: (html: string) => void;
-  clientNotes: ClientNote[];
-  setClientNotes: React.Dispatch<React.SetStateAction<ClientNote[]>>;
+  accountNoteDraft: string;
+  setAccountNoteDraft: (value: string) => void;
+  accountNotes: Array<{
+    id: string;
+    category: "general" | "follow_up" | "service" | "installer" | "client_request";
+    noteText: string;
+    createdBy: string;
+    createdAt: string;
+    updatedAt: string | null;
+  }>;
+  accountNoteCategory: "general" | "follow_up" | "service" | "installer" | "client_request";
+  setAccountNoteCategory: React.Dispatch<React.SetStateAction<"general" | "follow_up" | "service" | "installer" | "client_request">>;
+  accountNoteFilter: "all" | "general" | "follow_up" | "service" | "installer" | "client_request";
+  setAccountNoteFilter: React.Dispatch<React.SetStateAction<"all" | "general" | "follow_up" | "service" | "installer" | "client_request">>;
+  accountNoteUpdatedAt: string | null;
+  saveAccountNotes: () => void | Promise<void>;
 
+  selectedEstimateNoteId: EstimateId | "";
+  setSelectedEstimateNoteId: React.Dispatch<React.SetStateAction<EstimateId | "">>;
+  estimateNoteDraft: string;
+  setEstimateNoteDraft: (value: string) => void;
+  estimateNotes: Array<{
+    id: string;
+    category: "general" | "follow_up" | "service" | "installer" | "client_request";
+    noteText: string;
+    createdBy: string;
+    createdAt: string;
+    updatedAt: string | null;
+  }>;
+  estimateNoteCategory: "general" | "follow_up" | "service" | "installer" | "client_request";
+  setEstimateNoteCategory: React.Dispatch<React.SetStateAction<"general" | "follow_up" | "service" | "installer" | "client_request">>;
+  estimateNoteFilter: "all" | "general" | "follow_up" | "service" | "installer" | "client_request";
+  setEstimateNoteFilter: React.Dispatch<React.SetStateAction<"all" | "general" | "follow_up" | "service" | "installer" | "client_request">>;
+  estimateNoteUpdatedAt: string | null;
+  saveEstimateNotes: () => void | Promise<void>;
+
+  notesSaving: boolean;
   activeUserName: string;
 
   clientFileLabel: string;
@@ -121,69 +165,26 @@ function H3({ children }: { children: React.ReactNode }) {
   return <h3 style={{ fontSize: 14, margin: 0, fontWeight: 800, color: "#18181b" }}>{children}</h3>;
 }
 
+function noteCategoryLabel(category: "general" | "follow_up" | "service" | "installer" | "client_request") {
+  if (category === "follow_up") return "Follow Up";
+  if (category === "client_request") return "Client Request";
+  return category.charAt(0).toUpperCase() + category.slice(1);
+}
+
+function noteCategoryPillStyle(category: "general" | "follow_up" | "service" | "installer" | "client_request"): React.CSSProperties {
+  if (category === "follow_up") return { background: "#eef2ff", color: "#3730a3", border: "1px solid #c7d2fe" };
+  if (category === "service") return { background: "#ecfeff", color: "#155e75", border: "1px solid #a5f3fc" };
+  if (category === "installer") return { background: "#f0fdf4", color: "#166534", border: "1px solid #bbf7d0" };
+  if (category === "client_request") return { background: "#fff7ed", color: "#9a3412", border: "1px solid #fed7aa" };
+  return { background: "#f4f4f5", color: "#18181b", border: "1px solid #e4e4e7" };
+}
+
 const labelStyle: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 800,
   color: "#3f3f46",
   marginBottom: 6,
 };
-
-function emptyAddress(): Address {
-  return {
-    line1: "",
-    line2: "",
-    line3: "",
-    town: "",
-    city: "",
-    county: "",
-    postcode: "",
-  };
-}
-
-function parseAddressString(value: string): Address {
-  const parts = (value || "").split(/\r?\n/).map((s) => (s || "").trim());
-  while (parts.length < 7) parts.push("");
-  return {
-    line1: parts[0] || "",
-    line2: parts[1] || "",
-    line3: parts[2] || "",
-    town: parts[3] || "",
-    city: parts[4] || "",
-    county: parts[5] || "",
-    postcode: parts[6] || "",
-  };
-}
-
-function buildAddressString(address: Address | undefined) {
-  const safe = address ?? emptyAddress();
-  return [
-    safe.line1,
-    safe.line2,
-    safe.line3,
-    safe.town,
-    safe.city,
-    safe.county,
-    safe.postcode,
-  ]
-    .map((s) => (s || "").trim())
-    .join("\n");
-}
-
-function resolveStructuredAddress(address: Address | undefined, fallbackString: string) {
-  return address ? { ...emptyAddress(), ...address } : parseAddressString(fallbackString || "");
-}
-
-function addressTuple(address: Address): [string, string, string, string, string, string, string] {
-  return [
-    address.line1 || "",
-    address.line2 || "",
-    address.line3 || "",
-    address.town || "",
-    address.city || "",
-    address.county || "",
-    address.postcode || "",
-  ];
-}
 
 function qsOutcomeStyle(outcome: string): React.CSSProperties {
   const o = (outcome || "").toLowerCase();
@@ -443,10 +444,6 @@ export default function EstimatePickerTabs(props: Props) {
     return () => document.removeEventListener("click", onDocClick);
   }, []);
 
-  React.useEffect(() => {
-    setSelectedInstallerByEstimateId(loadSelectedInstallerMapSafe());
-  }, []);
-
   const {
     estimatePickerTab,
     setEstimatePickerTab,
@@ -454,13 +451,34 @@ export default function EstimatePickerTabs(props: Props) {
     openEditClientPanel,
     openEstimateFromPicker,
     copyEstimateForClient,
+    deletedEstimatesForClient,
+    deleteEstimatesForClient,
+    restoreDeletedEstimatesForClient,
+    purgeDeletedEstimatesForClient,
     setEstimateInstaller,
     updateEstimateOrderMeta,
-	persistEstimateOutcome,
-    clientNoteDraftHtml,
-    setClientNoteDraftHtml,
-    clientNotes,
-    setClientNotes,
+    persistEstimateOutcome,
+    accountNoteDraft,
+    setAccountNoteDraft,
+    accountNotes,
+    accountNoteCategory,
+    setAccountNoteCategory,
+    accountNoteFilter,
+    setAccountNoteFilter,
+    accountNoteUpdatedAt,
+    saveAccountNotes,
+    selectedEstimateNoteId,
+    setSelectedEstimateNoteId,
+    estimateNoteDraft,
+    setEstimateNoteDraft,
+    estimateNotes,
+    estimateNoteCategory,
+    setEstimateNoteCategory,
+    estimateNoteFilter,
+    setEstimateNoteFilter,
+    estimateNoteUpdatedAt,
+    saveEstimateNotes,
+    notesSaving,
     activeUserName,
     clientFileLabel,
     setClientFileLabel,
@@ -479,131 +497,24 @@ export default function EstimatePickerTabs(props: Props) {
   const [sendModalPhoneCall, setSendModalPhoneCall] = useState(true);
   const [expandedEstimateId, setExpandedEstimateId] = useState<EstimateId | null>(null);
   const [itemPriceByPositionId, setItemPriceByPositionId] = useState<Record<string, string>>({});
-  const [projectCalculatorEstimateId, setProjectCalculatorEstimateId] = useState<string | null>(null);
   const [supplierEstimateFilesByEstimateId, setSupplierEstimateFilesByEstimateId] = useState<Record<string, string[]>>({});
+  const [notesScope, setNotesScope] = useState<"account" | "estimate">("account");
 
   const QS_FOLLOWUPS_KEY = "qs_followups_v1";
-  const QS_ORDER_INSTALLER_KEY = "qs_order_installer_selection_v1";
-
-  function loadSelectedInstallerMapSafe(): Record<string, string> {
-    try {
-      const raw = localStorage.getItem(QS_ORDER_INSTALLER_KEY);
-      if (!raw) return {};
-      const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === "object" ? parsed as Record<string, string> : {};
-    } catch {
-      return {};
-    }
-  }
-
-  function saveSelectedInstallerMapSafe(map: Record<string, string>) {
-    try {
-      localStorage.setItem(QS_ORDER_INSTALLER_KEY, JSON.stringify(map));
-    } catch {
-      // ignore
-    }
-  }
-
 
   if (!pickerClient) return null;
 
-  function isoDatePlusDays(days: number) {
-    const d = new Date();
-    d.setDate(d.getDate() + days);
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd}`;
-  }
-
-  function loadFollowUpsSafe(): any[] {
-    try {
-      const raw = localStorage.getItem(QS_FOLLOWUPS_KEY);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
+  async function apiFetchJson(path: string, options?: RequestInit) {
+    const res = await fetch(`http://localhost:3001${path}`, options);
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(body || `API request failed: ${res.status}`);
     }
-  }
-
-  function saveFollowUpsSafe(list: any[]) {
-    try {
-      localStorage.setItem(QS_FOLLOWUPS_KEY, JSON.stringify(list));
-    } catch {
-      // ignore
+    const contentType = res.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      return res.json();
     }
-  }
-
-  function uid() {
-    return Math.random().toString(16).slice(2) + Date.now().toString(16);
-  }
-
-  function addFollowUpForEstimate(estimateId: string, opts?: { days?: number; sendEmail?: boolean; needsCall?: boolean }) {
-    const e = pickerClient.estimates.find((x) => x.id === estimateId);
-    if (!e) return;
-
-    const dueDateISO = isoDatePlusDays(opts?.days ?? 3);
-
-    const followUp = {
-      id: uid(),
-      clientId: pickerClient.id,
-      clientName: pickerClient.clientName,
-      clientRef: (pickerClient as any).clientRef,
-      estimateId: e.id,
-      estimateRef: (e as any).estimateRef,
-      dueDateISO,
-      title: `Follow up: ${pickerClient.clientName} • ${(e as any).estimateRef ?? ""}`.trim(),
-      notes: [
-        (opts?.needsCall ?? true) ? "Telephone call" : null,
-        (opts?.sendEmail ?? true) ? "Follow-up email" : null,
-      ].filter(Boolean).join(" • "),
-      status: "pending",
-      type: "call",
-      createdAt: new Date().toISOString(),
-      sendEmail: opts?.sendEmail ?? true,
-      needsCall: opts?.needsCall ?? true,
-    };
-
-    const list = loadFollowUpsSafe();
-    list.unshift(followUp);
-    saveFollowUpsSafe(list);
-
-    alert(`Follow-up added for ${dueDateISO}. Open Customers -> Follow Ups to export .ics if needed.`);
-  }
-
-  function buildSendEmailText(estimateId: string) {
-    const e = pickerClient.estimates.find((x) => x.id === estimateId);
-    const estimateRef = (e as any)?.estimateRef ?? "";
-    const clientRef = (pickerClient as any)?.clientRef ?? "";
-    const clientName = pickerClient.clientName ?? "Client";
-    const itemsCount = e?.positions?.length ?? 0;
-
-    const subject = `Your quotation ${clientRef || clientName}${estimateRef ? "" + estimateRef : ""}`.trim();
-
-    const bodyLines = [
-      `Dear ${clientName},`,
-      ``,
-      `Please find our quotation attached / linked below.`,
-      ``,
-      `Estimate: ${estimateRef || "(ref)"}  (${itemsCount} item${itemsCount === 1 ? "" : "s"})`,
-      ``,
-      `Summary (to be expanded):`,
-      `Materials/finishes: (later)`,
-      `Quantity: ${itemsCount}`,
-      `Area (m²) and linear metres: (later)`,
-      ``,
-      `Kind regards,`,
-      `Ecofenster Ltd`,
-    ];
-
-    return { subject, body: bodyLines.join("\n") };
-  }
-
-  function openMailClient(subject: string, body: string) {
-    const to = (pickerClient as any)?.email ?? "";
-    const mailto = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    window.location.href = mailto;
+    return null;
   }
 
   function formatMeasure(n: number) {
@@ -614,29 +525,7 @@ export default function EstimatePickerTabs(props: Props) {
   return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(Number.isFinite(n) ? n : 0);
 }
 
-  function estimateTotals(e: Client["estimates"][number]) {
-    const positions = e.positions ?? [];
-    const totalSquareMetres = positions.reduce(
-      (sum, p) => sum + ((Number(p.widthMm || 0) * Number(p.heightMm || 0)) / 1000000) * Math.max(1, Number(p.qty || 1)),
-      0
-    );
-    const totalLinearMetres = positions.reduce(
-      (sum, p) => sum + (((2 * Number(p.widthMm || 0)) + (2 * Number(p.heightMm || 0))) / 1000) * Math.max(1, Number(p.qty || 1)),
-      0
-    );
-    const totalQty = positions.reduce((sum, p) => sum + Math.max(1, Number(p.qty || 1)), 0);
-    return { totalSquareMetres, totalLinearMetres, totalQty };
-  }
-
-  function estimateCostTotal(e: Client["estimates"][number]) {
-    return (e.positions ?? []).reduce((sum, p) => {
-      const raw = itemPriceByPositionId[p.id] ?? String(p.itemPrice ?? "");
-      const value = Number(raw || 0);
-      return sum + (Number.isFinite(value) ? value : 0) * Math.max(1, Number(p.qty || 1));
-    }, 0);
-  }
-
-  function getFilteredEstimates(outcome: EstimateOutcome) {
+      function getFilteredEstimates(outcome: EstimateOutcome) {
     return pickerClient.estimates.filter((e) => (((e as any).outcome ?? "Open") as EstimateOutcome) === outcome);
   }
 
@@ -651,7 +540,7 @@ export default function EstimatePickerTabs(props: Props) {
         acc.totalSquareMetres += totals.totalSquareMetres;
         acc.totalLinearMetres += totals.totalLinearMetres;
         acc.totalQty += totals.totalQty;
-        acc.totalCost += estimateCostTotal(e);
+        acc.totalCost += estimateCostTotal(e, itemPriceByPositionId);
         return acc;
       },
       { totalSquareMetres: 0, totalLinearMetres: 0, totalQty: 0, totalCost: 0 }
@@ -694,7 +583,6 @@ export default function EstimatePickerTabs(props: Props) {
   function selectInstallerForEstimate(estimateId: string, installerId: string) {
     setSelectedInstallerByEstimateId((prev) => {
       const next = { ...prev, [estimateId]: installerId };
-      saveSelectedInstallerMapSafe(next);
       return next;
     });
     setEstimateInstaller(pickerClient.id, estimateId, installerId);
@@ -740,117 +628,11 @@ export default function EstimatePickerTabs(props: Props) {
     );
   }
 
-
   function estimateCostLine(e: Client["estimates"][number], p: Client["estimates"][number]["positions"][number]) {
     const raw = itemPriceByPositionId[p.id] ?? String(p.itemPrice ?? "");
     const itemPrice = Number(raw || 0);
     const quantityPrice = (Number.isFinite(itemPrice) ? itemPrice : 0) * Math.max(1, Number(p.qty || 1));
     return { itemPrice, quantityPrice };
-  }
-
-  function estimateDocumentTitle(e: Client["estimates"][number]) {
-    return `Estimate ${e.estimateRef} - ${pickerClient.clientName}`;
-  }
-
-  function buildEstimateHtml(e: Client["estimates"][number]) {
-    const totals = estimateTotals(e);
-    const estimateCost = estimateCostTotal(e);
-    const rows = (e.positions ?? []).map((p) => {
-      const pricing = estimateCostLine(e, p);
-      return `
-        <tr>
-          <td style="padding:8px;border:1px solid #d4d4d8;">${p.positionRef}</td>
-          <td style="padding:8px;border:1px solid #d4d4d8;">${p.roomName || ""}</td>
-          <td style="padding:8px;border:1px solid #d4d4d8;">${positionDescription(p)}</td>
-          <td style="padding:8px;border:1px solid #d4d4d8;text-align:right;">${p.qty}</td>
-          <td style="padding:8px;border:1px solid #d4d4d8;text-align:right;">${formatMoney(pricing.itemPrice)}</td>
-          <td style="padding:8px;border:1px solid #d4d4d8;text-align:right;">${formatMoney(pricing.quantityPrice)}</td>
-        </tr>
-      `;
-    }).join("");
-
-    return `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>${estimateDocumentTitle(e)}</title>
-  <style>
-    body { font-family: Arial, sans-serif; color:#18181b; padding:32px; }
-    h1, h2, h3 { margin:0 0 8px 0; }
-    .muted { color:#52525b; font-size:12px; }
-    .grid { display:grid; grid-template-columns: repeat(4, 1fr); gap:12px; margin:16px 0 24px; }
-    .card { border:1px solid #d4d4d8; border-radius:12px; padding:12px; background:#fafafa; }
-    table { width:100%; border-collapse:collapse; margin-top:16px; }
-    th { text-align:left; background:#f4f4f5; }
-    th, td { font-size:12px; }
-    .note { margin-top:20px; padding:12px; border:1px dashed #d4d4d8; border-radius:12px; background:#fff; }
-    @media print { body { padding: 12mm; } .no-print { display:none; } }
-  </style>
-</head>
-<body>
-  <h1>${estimateDocumentTitle(e)}</h1>
-  <div class="muted">Client: ${pickerClient.clientName} • Ref: ${(pickerClient as any).clientRef ?? ""} • Estimate: ${e.estimateRef}</div>
-  <div class="muted">This draft uses the uploaded estimate template as the basis for future positioning/layout work.</div>
-
-  <div class="grid">
-    <div class="card"><div class="muted">Total m²</div><div><strong>${formatMeasure(totals.totalSquareMetres)}</strong></div></div>
-    <div class="card"><div class="muted">Linear metreage</div><div><strong>${formatMeasure(totals.totalLinearMetres)}</strong></div></div>
-    <div class="card"><div class="muted">Total quantity</div><div><strong>${totals.totalQty}</strong></div></div>
-    <div class="card"><div class="muted">Estimate total</div><div><strong>${formatMoney(estimateCost)}</strong></div></div>
-  </div>
-
-  <h2>Positions</h2>
-  <table>
-    <thead>
-      <tr>
-        <th style="padding:8px;border:1px solid #d4d4d8;">Reference</th>
-        <th style="padding:8px;border:1px solid #d4d4d8;">Room</th>
-        <th style="padding:8px;border:1px solid #d4d4d8;">Description</th>
-        <th style="padding:8px;border:1px solid #d4d4d8;text-align:right;">Qty</th>
-        <th style="padding:8px;border:1px solid #d4d4d8;text-align:right;">Item price</th>
-        <th style="padding:8px;border:1px solid #d4d4d8;text-align:right;">Quantity price</th>
-      </tr>
-    </thead>
-    <tbody>${rows}</tbody>
-  </table>
-
-  <div class="note">
-    <strong>Template note:</strong> final Word/PDF content positioning will be aligned to the uploaded estimate template in the next stage.
-  </div>
-</body>
-</html>`;
-  }
-
-  function openPrintWindow(html: string) {
-    const win = window.open("", "_blank", "noopener,noreferrer,width=1100,height=900");
-    if (!win) {
-      alert("Popup blocked. Please allow popups and try again.");
-      return null;
-    }
-    win.document.open();
-    win.document.write(html);
-    win.document.close();
-    return win;
-  }
-
-  function printEstimatePdf(e: Client["estimates"][number]) {
-    const win = openPrintWindow(buildEstimateHtml(e));
-    if (!win) return;
-    win.focus();
-    setTimeout(() => win.print(), 250);
-  }
-
-  function downloadEstimateWordDoc(e: Client["estimates"][number]) {
-    const html = buildEstimateHtml(e);
-    const blob = new Blob([html], { type: "application/msword" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${estimateDocumentTitle(e).replace(/[^a-z0-9-_]+/gi, "_")}.doc`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
   }
 
   function importSupplierEstimate(estimateId: string) {
@@ -869,6 +651,17 @@ export default function EstimatePickerTabs(props: Props) {
     input.click();
   }
 
+  function confirmDeleteEstimate(estimateId: EstimateId) {
+    const estimate = pickerClient.estimates.find((x) => x.id === estimateId);
+    if (!estimate) return;
+    const ok = window.confirm(`Send estimate ${estimate.estimateRef} to recycle bin?`);
+    if (!ok) return;
+    if (expandedEstimateId === estimateId) {
+      setExpandedEstimateId(null);
+    }
+    deleteEstimatesForClient(pickerClient.id, [estimateId]);
+  }
+
   function renderEstimateSection(outcome: EstimateOutcome, titleText: string, emptyText: string) {
     const estimates = getFilteredEstimates(outcome);
     if (outcome === "Order") {
@@ -877,421 +670,47 @@ export default function EstimatePickerTabs(props: Props) {
     const sectionTotals = sectionCombinedTotals(outcome);
 
     return (
-      <div style={{ display: "grid", gap: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-          <H3>{titleText}</H3>
-          <Small>Combined totals for all estimates in this section.</Small>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(160px, 1fr))", gap: 10 }}>
-          <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-            <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total m²</div>
-            <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMeasure(sectionTotals.totalSquareMetres)}</div>
-          </div>
-          <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-            <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Linear metreage</div>
-            <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMeasure(sectionTotals.totalLinearMetres)}</div>
-          </div>
-          <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-            <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total quantity</div>
-            <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{sectionTotals.totalQty}</div>
-          </div>
-          <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-            <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total cost</div>
-            <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMoney(sectionTotals.totalCost)}</div>
-            <Small style={{ marginTop: 4 }}>{estimates.length} estimate(s) in this section</Small>
-          </div>
-        </div>
-
-        <div style={{ display: "grid", gap: 10 }}>
-          {estimates.map((e) => {
-            const currentOutcome = (((e as any).outcome ?? outcome) as EstimateOutcome);
-            const totals = estimateTotals(e);
-            const estimateCost = estimateCostTotal(e);
-            const isExpanded = expandedEstimateId === e.id;
-
-            return (
-              <div key={e.id} style={{ borderRadius: 16, border: isExpanded ? "2px solid #18181b" : "1px solid #e4e4e7", padding: 10, background: "#fff", display: "grid", gap: 12 }}>
-                <div
-                  onClick={() => setExpandedEstimateId((prev) => (prev === e.id ? null : e.id))}
-                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, cursor: "pointer" }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <Pill>{e.estimateRef}</Pill>
-                    <Small>{e.status}</Small>
-                    <Small>{e.positions.length} positions</Small>
-                    <Small>{formatMeasure(totals.totalSquareMetres)} m²</Small>
-                    <Small>{formatMeasure(totals.totalLinearMetres)} lm</Small>
-                    <Small>{formatMoney(estimateCost)}</Small>
-                  </div>
-                  <div style={{ fontSize: 12, fontWeight: 900, color: "#3f3f46", whiteSpace: "nowrap" }}>
-                    {isExpanded ? "Hide review" : "Review positions"}
-                  </div>
-                </div>
-
-                {isExpanded && (
-                  <>
-                    <div style={{ display: "flex", alignItems: "flex-end", gap: 14, flexWrap: "wrap" }}>
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-                        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7280", marginBottom: 4 }}>Email</div>
-                        <Button variant="outline" onClick={() => { setSendModalEstimateId(e.id); setSendModalOpen(true); }}>Send</Button>
-                      </div>
-
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-                        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7280", marginBottom: 4 }}>Follow up</div>
-                        <Button variant="outline" onClick={() => addFollowUpForEstimate(e.id, { days: 3, sendEmail: true, needsCall: true })}>Add Follow Up</Button>
-                      </div>
-
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", position: "relative" }}>
-                        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7280", marginBottom: 4 }}>Estimate status</div>
-                        <div
-                          role="button"
-                          onClick={(ev) => {
-                            ev.stopPropagation();
-                            setStatusMenuForEstimateId((prev) => (prev === e.id ? null : e.id));
-                          }}
-                          style={{
-                            ...(qsOutcomeStyle(currentOutcome)),
-                            height: 38,
-                            padding: "0 28px 0 14px",
-                            borderRadius: 999,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            gap: 8,
-                            userSelect: "none",
-                            cursor: "pointer",
-                          }}
-                        >
-                          <span style={{ fontWeight: 900 }}>{currentOutcome}</span>
-                          <span style={{ fontWeight: 900, lineHeight: 1, transform: "translateY(-1px)" }}>▾</span>
-                        </div>
-
-                        {statusMenuForEstimateId === e.id && (
-                          <div
-                            style={{
-                              position: "absolute",
-                              top: "100%",
-                              left: 0,
-                              marginTop: 6,
-                              minWidth: 140,
-                              background: "#fff",
-                              border: "1px solid rgba(0,0,0,0.12)",
-                              borderRadius: 10,
-                              boxShadow: "0 10px 24px rgba(0,0,0,0.12)",
-                              overflow: "hidden",
-                              zIndex: 20,
-                            }}
-                            onClick={(ev) => ev.stopPropagation()}
-                          >
-                            {(["Open", "Order", "Lost"] as EstimateOutcome[]).map((opt) => (
-                              <button
-                                key={opt}
-                                type="button"
-                                onClick={() => {
-                                  persistEstimateOutcome(pickerClient.id, e.id, opt);
-                                  setStatusMenuForEstimateId(null);
-                                }}
-                                style={{
-                                  display: "block",
-                                  width: "100%",
-                                  textAlign: "left",
-                                  background: "#fff",
-                                  color: "#111827",
-                                  fontWeight: 800,
-                                  border: "none",
-                                  padding: "8px 10px",
-                                  cursor: "pointer",
-                                  borderBottom: opt === "Lost" ? "none" : "1px solid rgba(0,0,0,0.08)",
-                                }}
-                              >
-                                {opt}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-                        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7280", marginBottom: 4 }}>Copy estimate</div>
-                        <Button variant="outline" onClick={() => copyEstimateForClient(pickerClient, e.id)}>Copy</Button>
-                      </div>
-
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-                        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7280", marginBottom: 4 }}>Open estimate</div>
-                        <Button variant="primary" onClick={() => openEstimateFromPicker(e.id)}>Open</Button>
-                      </div>
-
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-                        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7280", marginBottom: 4 }}>Print Word Doc</div>
-                        <Button variant="outline" onClick={() => downloadEstimateWordDoc(e)}>Print Word Doc</Button>
-                      </div>
-
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-                        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7280", marginBottom: 4 }}>Print PDF</div>
-                        <Button variant="outline" onClick={() => printEstimatePdf(e)}>Print PDF</Button>
-                      </div>
-
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-                        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7280", marginBottom: 4 }}>Project Calculator</div>
-                        <Button variant="outline" onClick={() => setProjectCalculatorEstimateId(e.id)}>Project Calculator</Button>
-                      </div>
-
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-                        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7280", marginBottom: 4 }}>Import Supplier Estimate</div>
-                        <Button variant="outline" onClick={() => importSupplierEstimate(e.id)}>Import Supplier Estimate</Button>
-                      </div>
-                    </div>
-
-                    {(supplierEstimateFilesByEstimateId[e.id] ?? []).length > 0 && (
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        {(supplierEstimateFilesByEstimateId[e.id] ?? []).map((name, idx) => (
-                          <Pill key={`${e.id}_${idx}`}>{name}</Pill>
-                        ))}
-                      </div>
-                    )}
-
-                    {outcome === "Order" && e.orderMeta?.timeline && (
-                      <>
-                        <OrderTimelineBar timeline={timelineWithCompletion(e)} />
-
-                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                          <Button variant="secondary" onClick={() => openInstallations(e, pickerClient)}>Installations</Button>
-                          <Button variant="secondary">Materials</Button>
-                          <Button variant="secondary">Hire Equipment</Button>
-                        </div>
-
-                        {selectedOrderForInstallations === e.id && (
-                          <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa", display: "grid", gap: 10 }}>
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                              <div>
-                                <div style={{ fontSize: 14, fontWeight: 900, color: "#18181b" }}>Installations</div>
-                                <div style={{ fontSize: 12, color: "#71717a" }}>Installers ranked by route where provider/API is available.</div>
-                              </div>
-                              <Small>{rankedInstallers.length} installer result(s)</Small>
-                            </div>
-
-                            {(e.orderMeta?.installerId || selectedInstallerByEstimateId[e.id]) ? (
-                              <div style={{ borderRadius: 12, border: "1px solid #bbf7d0", background: "#f0fdf4", padding: 12 }}>
-                                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "#166534", marginBottom: 4 }}>
-                                  Selected installer
-                                </div>
-                                <div style={{ fontSize: 16, fontWeight: 900, color: "#14532d" }}>
-                                  {installerLabel(e.orderMeta?.installerId || selectedInstallerByEstimateId[e.id])}
-                                </div>
-                              </div>
-                            ) : (
-                              <div style={{ borderRadius: 12, border: "1px dashed #d4d4d8", background: "#fff", padding: 12 }}>
-                                <Small>No installer selected yet.</Small>
-                              </div>
-                            )}
-
-                            {rankedInstallers.length === 0 ? (
-                              <div style={{ borderRadius: 12, border: "1px dashed #d4d4d8", padding: 12, background: "#fff" }}>
-                                <Small>No installer results yet.</Small>
-                              </div>
-                            ) : (
-                              <div style={{ display: "grid", gap: 8 }}>
-                                {rankedInstallers.map((r, i) => {
-                                  const isSelected = (e.orderMeta?.installerId || selectedInstallerByEstimateId[e.id]) === r.installerId;
-                                  return (
-                                    <button
-                                      key={i}
-                                      type="button"
-                                      onClick={() => selectInstallerForEstimate(e.id, r.installerId)}
-                                      style={{
-                                        borderRadius: 12,
-                                        border: isSelected ? "2px solid #22c55e" : "1px solid #e4e4e7",
-                                        padding: 12,
-                                        background: isSelected ? "#f0fdf4" : "#fff",
-                                        display: "grid",
-                                        gap: 4,
-                                        textAlign: "left",
-                                        cursor: "pointer",
-                                      }}
-                                    >
-                                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                                        <div style={{ fontWeight: 800, color: "#18181b" }}>{installerLabel(r.installerId)}</div>
-                                        <Small>{isSelected ? "Selected" : r.provider}</Small>
-                                      </div>
-                                      <div style={{ fontSize: 12, color: "#52525b" }}>
-                                        {r.distanceKm != null ? `${r.distanceKm.toFixed(1)} km` : "Distance unavailable"} • {r.durationMinutes != null ? `${r.durationMinutes} mins` : "Time unavailable"}
-                                      </div>
-                                      {r.reason ? <Small>{r.reason}</Small> : null}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12, background: "#fff", display: "grid", gap: 12 }}>
-                          <div>
-                            <div style={{ fontSize: 14, fontWeight: 900, color: "#18181b" }}>Order scheduling</div>
-                            <div style={{ fontSize: 12, color: "#71717a" }}>Set milestone dates and production weeks. Production end and balance due auto-calculate from production start + weeks.</div>
-                          </div>
-
-                          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(180px, 1fr))", gap: 12 }}>
-                            <div>
-                              <div style={labelStyle}>Client sign-off sent</div>
-                              <Input type="date" value={e.orderMeta?.clientSignoffSentDate ?? ""} onChange={(ev) => setOrderMetaField(e.id, "clientSignoffSentDate", ev.target.value)} />
-                            </div>
-                            <div>
-                              <div style={labelStyle}>Client sign-off received</div>
-                              <Input type="date" value={e.orderMeta?.clientSignoffReceivedDate ?? ""} onChange={(ev) => setOrderMetaField(e.id, "clientSignoffReceivedDate", ev.target.value)} />
-                            </div>
-                            <div>
-                              <div style={labelStyle}>Deposit paid</div>
-                              <Input type="date" value={e.orderMeta?.depositPaidDate ?? ""} onChange={(ev) => setOrderMetaField(e.id, "depositPaidDate", ev.target.value)} />
-                            </div>
-                            <div>
-                              <div style={labelStyle}>Factory order signed off</div>
-                              <Input type="date" value={e.orderMeta?.factoryOrderSignedOffDate ?? ""} onChange={(ev) => setOrderMetaField(e.id, "factoryOrderSignedOffDate", ev.target.value)} />
-                            </div>
-                            <div>
-                              <div style={labelStyle}>Factory invoice paid</div>
-                              <Input type="date" value={e.orderMeta?.factoryInvoicePaidDate ?? ""} onChange={(ev) => setOrderMetaField(e.id, "factoryInvoicePaidDate", ev.target.value)} />
-                            </div>
-                            <div>
-                              <div style={labelStyle}>Production weeks</div>
-                              <Input type="number" value={String(e.orderMeta?.productionWeeks ?? "")} onChange={(ev) => setOrderMetaField(e.id, "productionWeeks", ev.target.value === "" ? undefined : Number(ev.target.value))} />
-                            </div>
-                            <div>
-                              <div style={labelStyle}>Production start</div>
-                              <Input type="date" value={e.orderMeta?.productionStartDate ?? ""} onChange={(ev) => setOrderMetaField(e.id, "productionStartDate", ev.target.value)} />
-                            </div>
-                            <div>
-                              <div style={labelStyle}>Production end</div>
-                              <Input type="date" value={e.orderMeta?.productionEndDate ?? ""} onChange={() => {}} disabled />
-                            </div>
-                            <div>
-                              <div style={labelStyle}>Balance invoice due</div>
-                              <Input type="date" value={e.orderMeta?.balanceInvoiceDueDate ?? ""} onChange={() => {}} disabled />
-                            </div>
-                            <div>
-                              <div style={labelStyle}>Production completed</div>
-                              <Input type="date" value={e.orderMeta?.productionCompletedDate ?? ""} onChange={(ev) => setOrderMetaField(e.id, "productionCompletedDate", ev.target.value)} />
-                            </div>
-                            <div>
-                              <div style={labelStyle}>Factory dispatch</div>
-                              <Input type="date" value={e.orderMeta?.factoryDispatchDate ?? ""} onChange={(ev) => setOrderMetaField(e.id, "factoryDispatchDate", ev.target.value)} />
-                            </div>
-                            <div>
-                              <div style={labelStyle}>Delivery date</div>
-                              <Input type="date" value={e.orderMeta?.deliveryDate ?? ""} onChange={(ev) => setOrderMetaField(e.id, "deliveryDate", ev.target.value)} />
-                            </div>
-                            <div>
-                              <div style={labelStyle}>Installation date</div>
-                              <Input type="date" value={e.orderMeta?.installationDate ?? ""} onChange={(ev) => setOrderMetaField(e.id, "installationDate", ev.target.value)} />
-                            </div>
-                          </div>
-                        </div>
-                      </>
-                    )}
-
-                    <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa", display: "grid", gap: 6 }}>
-                      <div style={{ fontSize: 13, fontWeight: 800, color: "#18181b" }}>
-                        Project Address: <span style={{ fontWeight: 700 }}>{(e.projectAddress || "").split(/\r?\n/).map((s) => (s || "").trim()).filter(Boolean).join(", ") || "Address unavailable"}</span>
-                      </div>
-                      <div style={{ fontSize: 13, fontWeight: 800, color: "#18181b" }}>
-                        what3words: <span style={{ fontWeight: 700 }}>{e.what3words || "Not set"}</span>
-                      </div>
-                    </div>
-
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(140px, 1fr))", gap: 10 }}>
-                      <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-                        <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total m²</div>
-                        <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMeasure(totals.totalSquareMetres)}</div>
-                      </div>
-                      <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-                        <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Linear metreage</div>
-                        <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMeasure(totals.totalLinearMetres)}</div>
-                      </div>
-                      <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-                        <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total quantity</div>
-                        <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{totals.totalQty}</div>
-                      </div>
-                      <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-                        <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total cost</div>
-                        <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMoney(estimateCost)}</div>
-                      </div>
-                    </div>
-
-                    <div style={{ 
-  border: "1px solid #e4e4e7", 
-  borderRadius: 14, 
-  background: "#fff", 
-  overflow: "hidden",
-  display: "flex",
-  flexDirection: "column",
-  flex: 1,
-  minHeight: 0
-}}>
-                      <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
-                        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 980, background: "#fff" }}>
-                        <thead>
-                          <tr style={{ background: "#fafafa" }}>
-                            <th style={{ textAlign: "left", padding: 10, fontSize: 12, borderBottom: "1px solid #e4e4e7", position: "sticky", top: 0, zIndex: 2, background: "#fafafa" }}>Reference</th>
-                            <th style={{ textAlign: "left", padding: 10, fontSize: 12, borderBottom: "1px solid #e4e4e7", position: "sticky", top: 0, zIndex: 2, background: "#fafafa" }}>Room</th>
-                            <th style={{ textAlign: "left", padding: 10, fontSize: 12, borderBottom: "1px solid #e4e4e7", position: "sticky", top: 0, zIndex: 2, background: "#fafafa" }}>Picture</th>
-                            <th style={{ textAlign: "left", padding: 10, fontSize: 12, borderBottom: "1px solid #e4e4e7", position: "sticky", top: 0, zIndex: 2, background: "#fafafa" }}>Brief description</th>
-                            <th style={{ textAlign: "right", padding: 10, fontSize: 12, borderBottom: "1px solid #e4e4e7", position: "sticky", top: 0, zIndex: 2, background: "#fafafa" }}>Qty</th>
-                            <th style={{ textAlign: "right", padding: 10, fontSize: 12, borderBottom: "1px solid #e4e4e7", position: "sticky", top: 0, zIndex: 2, background: "#fafafa" }}>Item price</th>
-                            <th style={{ textAlign: "right", padding: 10, fontSize: 12, borderBottom: "1px solid #e4e4e7", position: "sticky", top: 0, zIndex: 2, background: "#fafafa" }}>Quantity price</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {e.positions.map((p) => {
-                            const itemPriceRaw = itemPriceByPositionId[p.id] ?? String(p.itemPrice ?? "");
-                            const itemPrice = Number(itemPriceRaw || 0);
-                            const quantityPrice = (Number.isFinite(itemPrice) ? itemPrice : 0) * Math.max(1, Number(p.qty || 1));
-
-                            return (
-                              <tr key={p.id}>
-                                <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top", fontWeight: 800 }}>{p.positionRef}</td>
-                                <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>{p.roomName || "—"}</td>
-                                <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}><PositionPreview position={p} /></td>
-                                <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>
-                                  <div style={{ display: "grid", gap: 4 }}>
-                                    <div style={{ fontWeight: 700 }}>{positionDescription(p)}</div>
-                                    <div style={{ fontSize: 12, color: "#71717a" }}>{p.fieldsX}w × {p.fieldsY}h</div>
-                                  </div>
-                                </td>
-                                <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top", textAlign: "right", fontWeight: 800 }}>{p.qty}</td>
-                                <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top", textAlign: "right", width: 140 }}>
-                                  <Input
-                                    value={itemPriceRaw}
-                                    onChange={(ev) => setItemPriceByPositionId((prev) => ({ ...prev, [p.id]: ev.target.value }))}
-                                    placeholder=""
-                                    inputMode="decimal"
-                                    style={{ textAlign: "right" }}
-                                  />
-                                </td>
-                                <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top", textAlign: "right", fontWeight: 800 }}>{formatMoney(quantityPrice)}</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-				  </>
-                )}
-              </div>
-            );
-          })}
-
-          {estimates.length === 0 && (
-            <div style={{ borderRadius: 14, border: "1px dashed #e4e4e7", padding: 14 }}>
-              <Small>{emptyText}</Small>
-            </div>
-          )}
-        </div>
-      </div>
+      <EstimateSectionTab
+        titleText={titleText}
+        emptyText={emptyText}
+        estimates={estimates}
+        outcome={outcome}
+        sectionTotals={sectionTotals}
+        expandedEstimateId={expandedEstimateId}
+        setExpandedEstimateId={setExpandedEstimateId}
+        statusMenuForEstimateId={statusMenuForEstimateId}
+        setStatusMenuForEstimateId={setStatusMenuForEstimateId}
+        selectedOrderForInstallations={selectedOrderForInstallations}
+        rankedInstallers={rankedInstallers}
+        selectedInstallerByEstimateId={selectedInstallerByEstimateId}
+        supplierEstimateFilesByEstimateId={supplierEstimateFilesByEstimateId}
+        itemPriceByPositionId={itemPriceByPositionId}
+        setItemPriceByPositionId={setItemPriceByPositionId}
+        formatMeasure={formatMeasure}
+        formatMoney={formatMoney}
+        pickerClient={pickerClient}
+        activeUserName={activeUserName}
+        apiFetchJson={apiFetchJson}
+        copyEstimateForClient={copyEstimateForClient}
+        confirmDeleteEstimate={confirmDeleteEstimate}
+        openEstimateFromPicker={openEstimateFromPicker}
+        persistEstimateOutcome={persistEstimateOutcome}
+        downloadEstimateWordDocService={downloadEstimateWordDocService}
+        printEstimatePdfService={printEstimatePdfService}
+        addFollowUpForEstimateService={addFollowUpForEstimateService}
+        positionDescription={positionDescription}
+        PositionPreview={PositionPreview}
+        timelineWithCompletion={timelineWithCompletion}
+        openInstallations={openInstallations}
+        installerLabel={installerLabel}
+        selectInstallerForEstimate={selectInstallerForEstimate}
+        setOrderMetaField={setOrderMetaField}
+        setSendModalEstimateId={setSendModalEstimateId}
+        setSendModalOpen={setSendModalOpen}
+        importSupplierEstimate={importSupplierEstimate}
+      />
     );
   }
-
 
   const totalClientEstimateCount = pickerClient.estimates.length;
   const clientOrderCount = pickerClient.estimates.filter((e) => (((e as any).outcome ?? "Open") as EstimateOutcome) === "Order").length;
@@ -1299,7 +718,16 @@ export default function EstimatePickerTabs(props: Props) {
   const orderConversionPct = totalClientEstimateCount ? Math.round((clientOrderCount / totalClientEstimateCount) * 100) : 0;
   const lostConversionPct = totalClientEstimateCount ? Math.round((clientLostCount / totalClientEstimateCount) * 100) : 0;
 
-  const sendEmailDraft = sendModalEstimateId ? buildSendEmailText(sendModalEstimateId) : { subject: "", body: "" };
+  const sendEmailDraft = sendModalEstimateId ? buildSendEmailTextService({ pickerClient, estimateId: sendModalEstimateId }) : { subject: "", body: "" };
+
+  const filteredAccountNotes = (accountNotes ?? []).filter((note) => accountNoteFilter === "all" || note.category === accountNoteFilter);
+  const filteredEstimateNotes = (estimateNotes ?? []).filter((note) => estimateNoteFilter === "all" || note.category === estimateNoteFilter);
+  const isEstimateNotesScope = notesScope === "estimate";
+  const activeNoteCategory = isEstimateNotesScope ? estimateNoteCategory : accountNoteCategory;
+  const activeNoteFilter = isEstimateNotesScope ? estimateNoteFilter : accountNoteFilter;
+  const activeNoteDraft = isEstimateNotesScope ? estimateNoteDraft : accountNoteDraft;
+  const activeNoteUpdatedAt = isEstimateNotesScope ? estimateNoteUpdatedAt : accountNoteUpdatedAt;
+  const activeFilteredNotes = isEstimateNotesScope ? filteredEstimateNotes : filteredAccountNotes;
 
   return (
     <>
@@ -1343,37 +771,12 @@ export default function EstimatePickerTabs(props: Props) {
       </div>
 
       {estimatePickerTab === "client_info" && (
-        <div style={{ display: "grid", gap: 10 }}>
-          <ClientDetailsReadonly c={pickerClient} onEdit={() => openEditClientPanel(pickerClient)} />
-
-          <div style={{ marginTop: 2, display: "grid", gap: 10 }}>
-            {pickerClient.estimates.map((e) => (
-              <div
-                key={e.id}
-                style={{
-                  borderRadius: 14,
-                  border: "1px solid #e4e4e7",
-                  padding: 10,
-                  background: "#fff",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: 10,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <Pill>{e.estimateRef}</Pill>
-                  <Small>{e.status}</Small>
-                  <Small>{e.positions.length} positions</Small>
-                </div>
-
-                <Button variant="primary" onClick={() => openEstimateFromPicker(e.id)}>
-                  Open
-                </Button>
-              </div>
-            ))}
-          </div>
-        </div>
+        <ClientInfoTab
+          pickerClient={pickerClient}
+          openEditClientPanel={openEditClientPanel}
+          confirmDeleteEstimate={confirmDeleteEstimate}
+          openEstimateFromPicker={openEstimateFromPicker}
+        />
       )}
 
       {estimatePickerTab === "estimates" && renderEstimateSection("Open", "Client Estimates", "No open estimates yet.")}
@@ -1381,202 +784,46 @@ export default function EstimatePickerTabs(props: Props) {
       {estimatePickerTab === "lost" && renderEstimateSection("Lost", "Client Lost", "No lost estimates yet. Mark an estimate as \"Lost\" in the Client Estimates tab.")}
 
       {estimatePickerTab === "client_notes" && (
-        <div style={{ display: "grid", gap: 10 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-            <H3>Client Notes</H3>
-            <Small>Notes are stored locally for now.</Small>
-          </div>
-
-          <div
-            contentEditable
-            suppressContentEditableWarning
-            dir="ltr"
-            onInput={(e) => setClientNoteDraftHtml((e.currentTarget as HTMLDivElement).innerHTML)}
-            dangerouslySetInnerHTML={{ __html: clientNoteDraftHtml }}
-            style={{
-              minHeight: 120,
-              borderRadius: 14,
-              border: "1px solid #e4e4e7",
-              padding: 12,
-              background: "#fff",
-              outline: "none",
-              direction: "ltr",
-              unicodeBidi: "plaintext",
-            }}
-          />
-
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <Button
-              variant="primary"
-              onClick={() => {
-                const html = (clientNoteDraftHtml ?? "").trim();
-                if (!html) return;
-                const createdAt = new Date().toISOString();
-                setClientNotes((prev) => [{ id: "note_" + createdAt, html, createdAt, createdBy: activeUserName }, ...prev]);
-                setClientNoteDraftHtml("");
-              }}
-            >
-              Add Note
-            </Button>
-          </div>
-
-          <div style={{ display: "grid", gap: 10 }}>
-            {clientNotes.map((n) => (
-              <div key={n.id} style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12, background: "#fff" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                  <Small>{new Date(n.createdAt).toLocaleString()}</Small>
-                  <Small>By: {n.createdBy}</Small>
-                </div>
-                <div dir="ltr" style={{ marginTop: 8, direction: "ltr", unicodeBidi: "plaintext" }} dangerouslySetInnerHTML={{ __html: n.html }} />
-              </div>
-            ))}
-            {clientNotes.length === 0 && (
-              <div style={{ borderRadius: 14, border: "1px dashed #e4e4e7", padding: 14 }}>
-                <Small>No notes yet.</Small>
-              </div>
-            )}
-          </div>
-        </div>
+        <NotesTab
+          pickerClient={pickerClient}
+          notesScope={notesScope}
+          setNotesScope={setNotesScope}
+          accountNotes={accountNotes}
+          accountNoteFilter={accountNoteFilter}
+          setAccountNoteFilter={setAccountNoteFilter}
+          accountNoteCategory={accountNoteCategory}
+          setAccountNoteCategory={setAccountNoteCategory}
+          accountNoteDraft={accountNoteDraft}
+          setAccountNoteDraft={setAccountNoteDraft}
+          accountNoteUpdatedAt={accountNoteUpdatedAt}
+          selectedEstimateNoteId={selectedEstimateNoteId}
+          setSelectedEstimateNoteId={setSelectedEstimateNoteId}
+          estimateNotes={estimateNotes}
+          estimateNoteFilter={estimateNoteFilter}
+          setEstimateNoteFilter={setEstimateNoteFilter}
+          estimateNoteCategory={estimateNoteCategory}
+          setEstimateNoteCategory={setEstimateNoteCategory}
+          estimateNoteDraft={estimateNoteDraft}
+          setEstimateNoteDraft={setEstimateNoteDraft}
+          estimateNoteUpdatedAt={estimateNoteUpdatedAt}
+          notesSaving={notesSaving}
+          saveAccountNotes={saveAccountNotes}
+          saveEstimateNotes={saveEstimateNotes}
+        />
       )}
 
       {estimatePickerTab === "files" && (
-        <div style={{ display: "grid", gap: 10 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-            <H3>Files</H3>
-            <Small>Links to SharePoint/Drive/OneDrive/local paths.</Small>
-          </div>
-
-          <div style={{ display: "grid", gap: 10, borderRadius: 14, border: "1px solid #e4e4e7", padding: 12, background: "#fff" }}>
-            <div style={{ display: "grid", gap: 6 }}>
-              <Small>Label</Small>
-              <input
-                value={clientFileLabel}
-                onChange={(e) => setClientFileLabel(e.currentTarget.value)}
-                placeholder="e.g. Site photos / Survey PDF / CAD"
-                style={{ height: 38, borderRadius: 12, border: "1px solid #e4e4e7", padding: "0 12px" }}
-              />
-            </div>
-
-            <div style={{ display: "grid", gap: 6 }}>
-              <Small>URL / Path</Small>
-              <input
-                value={clientFileUrl}
-                onChange={(e) => setClientFileUrl(e.currentTarget.value)}
-                placeholder="https://...  or  C:\path\file.pdf"
-                style={{ height: 38, borderRadius: 12, border: "1px solid #e4e4e7", padding: "0 12px" }}
-              />
-            </div>
-
-            <div style={{ display: "grid", gap: 6 }}>
-              <Small>Attach files (optional)</Small>
-              <input
-                type="file"
-                multiple
-                accept=".dwg,.dxf,.xls,.xlsx,.doc,.docx,.pdf,.skp,.png,.jpg,.jpeg,.webp,.txt"
-                onChange={(e) => {
-                  const names = Array.from(e.currentTarget.files ?? []).map((f) => f.name);
-                  setClientFileNames(names);
-                }}
-              />
-            </div>
-
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  if (!clientFileUrl.trim()) return;
-                  window.open(clientFileUrl, "_blank");
-                }}
-              >
-                Open link
-              </Button>
-
-              <Button
-                variant="primary"
-                onClick={() => {
-                  const url = clientFileUrl.trim();
-                  if (!url) return;
-                  const addedAt = new Date().toISOString();
-                  setClientFiles((prev) => [
-                    { id: "file_" + addedAt, label: (clientFileLabel || "File").trim(), url, addedAt, addedBy: activeUserName, fileNames: clientFileNames },
-                    ...prev,
-                  ]);
-                  setClientFileLabel("");
-                  setClientFileUrl("");
-                  setClientFileNames([]);
-                }}
-              >
-                Add
-              </Button>
-            </div>
-          </div>
-
-          <div style={{ display: "grid", gap: 10 }}>
-            {clientFiles.map((f) => (
-              <div key={f.id} style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12, background: "#fff" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                  <div style={{ display: "grid", gap: 4 }}>
-                    <div style={{ fontWeight: 800 }}>{f.label}</div>
-                    <Small style={{ wordBreak: "break-all" }}>{f.url}</Small>
-                  </div>
-                  <div style={{ display: "grid", justifyItems: "end", gap: 4 }}>
-                    <Small>{new Date(f.addedAt).toLocaleString()}</Small>
-                    <Small>By: {f.addedBy}</Small>
-                  </div>
-                </div>
-
-                {!!(f.fileNames && f.fileNames.length) && (
-                  <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {f.fileNames.map((n) => (
-                      <Pill key={n}>{n}</Pill>
-                    ))}
-                  </div>
-                )}
-
-                <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
-                  <Button variant="secondary" onClick={() => window.open(f.url, "_blank")}>
-                    Open link
-                  </Button>
-                </div>
-              </div>
-            ))}
-            {clientFiles.length === 0 && (
-              <div style={{ borderRadius: 14, border: "1px dashed #e4e4e7", padding: 14 }}>
-                <Small>No files yet.</Small>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {projectCalculatorEstimateId && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.45)",
-            display: "flex",
-            alignItems: "stretch",
-            justifyContent: "center",
-            padding: 16,
-            zIndex: 9998,
-          }}
-        >
-          <div style={{ width: "min(1200px, 100%)", background: "#fff", borderRadius: 16, border: "1px solid #e4e4e7", overflow: "hidden", display: "grid", gridTemplateRows: "auto 1fr" }}>
-            <div style={{ padding: 14, borderBottom: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", gap: 10 }}>
-              <div>
-                <div style={{ fontSize: 16, fontWeight: 900, color: "#111827" }}>Project Calculator</div>
-                <div style={{ fontSize: 12, color: "#6b7280" }}>
-                  {pickerClient.clientName} • {(pickerClient as any).clientRef ?? ""} • {pickerClient.estimates.find((x) => x.id === projectCalculatorEstimateId)?.estimateRef ?? ""}
-                </div>
-              </div>
-              <Button variant="outline" onClick={() => setProjectCalculatorEstimateId(null)}>Close</Button>
-            </div>
-            <div style={{ overflow: "auto", background: "#f8fafc" }}>
-              <ProjectCalculatorWizard />
-            </div>
-          </div>
-        </div>
+        <FilesTab
+          clientFileLabel={clientFileLabel}
+          setClientFileLabel={setClientFileLabel}
+          clientFileUrl={clientFileUrl}
+          setClientFileUrl={setClientFileUrl}
+          clientFileNames={clientFileNames}
+          setClientFileNames={setClientFileNames}
+          clientFiles={clientFiles}
+          setClientFiles={setClientFiles}
+          activeUserName={activeUserName}
+        />
       )}
 
       {sendModalOpen && sendModalEstimateId && (
@@ -1662,11 +909,11 @@ export default function EstimatePickerTabs(props: Props) {
                       Copy email text
                     </Button>
 
-                    <Button variant="secondary" onClick={() => printEstimatePdf(pickerClient.estimates.find((x) => x.id === sendModalEstimateId)!)}>
+                    <Button variant="secondary" onClick={() => printEstimatePdfService({ pickerClient, e: pickerClient.estimates.find((x) => x.id === sendModalEstimateId)!, itemPriceByPositionId, formatMeasure, formatMoney, positionDescription, alertFn: alert })}>
                       Generate PDF
                     </Button>
 
-                    <Button variant="primary" onClick={() => openMailClient(sendEmailDraft.subject, sendEmailDraft.body)}>
+                    <Button variant="primary" onClick={() => openMailClientService((pickerClient as any)?.email ?? "", sendEmailDraft.subject, sendEmailDraft.body)}>
                       Open email app
                     </Button>
                   </div>
@@ -1713,7 +960,7 @@ export default function EstimatePickerTabs(props: Props) {
                   </div>
 
                   <Small style={{ color: "#6b7280" }}>
-                    Phase 1: Follow-ups are stored locally and appear in Customers - Follow Ups. Export .ics there for Outlook/Google reminders.
+                    Follow-ups are saved to the database and appear in Customers - Follow Ups on the scheduled due date.
                   </Small>
                 </div>
               </div>
@@ -1726,14 +973,14 @@ export default function EstimatePickerTabs(props: Props) {
                 <Button
                   variant="primary"
                   onClick={() => {
-                    printEstimatePdf(pickerClient.estimates.find((x) => x.id === sendModalEstimateId)!);
-                    openMailClient(sendEmailDraft.subject, sendEmailDraft.body);
+                    printEstimatePdfService({ pickerClient, e: pickerClient.estimates.find((x) => x.id === sendModalEstimateId)!, itemPriceByPositionId, formatMeasure, formatMoney, positionDescription, alertFn: alert });
+                    openMailClientService((pickerClient as any)?.email ?? "", sendEmailDraft.subject, sendEmailDraft.body);
                     if (sendModalAddFollowUp) {
-                      addFollowUpForEstimate(sendModalEstimateId, {
+                      addFollowUpForEstimateService({ pickerClient, estimateId: sendModalEstimateId, opts: {
                         days: sendModalFollowUpDays,
                         sendEmail: true,
                         needsCall: sendModalPhoneCall,
-                      });
+                      }, apiFetchJson, activeUserName, alertFn: alert, logError: console.error });
                     }
                     setSendModalOpen(false);
                   }}
