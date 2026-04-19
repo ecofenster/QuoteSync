@@ -1,4 +1,5 @@
 import React from "react";
+import "./Toggle.css";
 
 type ToggleProps = {
   value: boolean;
@@ -14,56 +15,28 @@ export default function Toggle({
   labelOff = "No",
 }: ToggleProps) {
   return (
-    <label
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 12,
-        cursor: "pointer",
-        userSelect: "none",
-      }}
-    >
+    <label className="toggle">
       <span>{value ? labelOn : labelOff}</span>
 
-      <div
-        style={{
-          position: "relative",
-          width: 48,
-          height: 26,
-        }}
-      >
+      <div className="toggle__track-wrap">
         <input
+          className="toggle__input"
           type="checkbox"
           checked={value}
           onChange={(e) => onChange(e.currentTarget.checked)}
-          style={{
-            opacity: 0,
-            width: 0,
-            height: 0,
-          }}
         />
 
         <span
+          className="toggle__track"
           style={{
-            position: "absolute",
-            inset: 0,
             background: value ? "#111827" : "#e5e7eb",
-            borderRadius: 999,
-            transition: "background 0.2s",
           }}
         />
 
         <span
+          className="toggle__thumb"
           style={{
-            position: "absolute",
-            top: 3,
             left: value ? 26 : 3,
-            width: 20,
-            height: 20,
-            background: "#fff",
-            borderRadius: "50%",
-            transition: "left 0.2s",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
           }}
         />
       </div>
