@@ -71,8 +71,6 @@ function CollapsibleSection({
   );
 }
 
-const labelStyle: React.CSSProperties = { fontSize: 13, color: "#3f3f46", fontWeight: 700, marginBottom: 6 };
-
 /* =========================
    Defaults Editor (Estimate-level + Position "Use estimate defaults")
 ========================= */
@@ -127,7 +125,7 @@ export default function DefaultsEditor({
 
             <div className="defaults-editor-card-body">
               <div>
-                <div style={labelStyle}>Supplier</div>
+                <div className="defaults-editor-label">Supplier</div>
                 <select
                   value={value.supplier}
                   onChange={(e) => {
@@ -147,7 +145,7 @@ export default function DefaultsEditor({
               </div>
 
               <div>
-                <div style={labelStyle}>Product type</div>
+                <div className="defaults-editor-label">Product type</div>
                 <select
                   value={value.productType}
                   onChange={(e) => onChange({ ...value, productType: e.target.value as Models.ProductType })}
@@ -162,7 +160,7 @@ export default function DefaultsEditor({
               </div>
 
               <div>
-                <div style={labelStyle}>Product</div>
+                <div className="defaults-editor-label">Product</div>
                 <select
                   value={value.product}
                   onChange={(e) => onChange({ ...value, product: e.target.value })}
@@ -198,11 +196,11 @@ export default function DefaultsEditor({
 
             <div className="defaults-editor-two-col">
               <div>
-                <div style={labelStyle}>External finish</div>
+                <div className="defaults-editor-label">External finish</div>
                 <Input value={value.externalFinish} onChange={(v) => onChange({ ...value, externalFinish: v })} list={"ext-finish-" + title} placeholder="Select or type…" />
               </div>
               <div>
-                <div style={labelStyle}>Internal finish</div>
+                <div className="defaults-editor-label">Internal finish</div>
                 <Input value={value.internalFinish} onChange={(v) => onChange({ ...value, internalFinish: v })} list={"int-finish-" + title} placeholder="Select or type…" />
               </div>
             </div>
@@ -211,7 +209,7 @@ export default function DefaultsEditor({
           <CollapsibleSection title="Hardware" open={hardwareOpen} onToggle={() => setHardwareOpen((prev) => !prev)}>
             <div className="defaults-editor-two-col">
               <div>
-                <div style={labelStyle}>Hinges</div>
+                <div className="defaults-editor-label">Hinges</div>
                 <select
                   value={value.hingeType}
                   onChange={(e) => onChange({ ...value, hingeType: e.target.value as any })}
@@ -227,7 +225,7 @@ export default function DefaultsEditor({
 
               {isTimberProductType(value.productType) ? (
                 <div>
-                  <div style={labelStyle}>Wood type</div>
+                  <div className="defaults-editor-label">Wood type</div>
                   <select
                     value={value.woodType}
                     onChange={(e) => onChange({ ...value, woodType: e.target.value })}
@@ -249,7 +247,7 @@ export default function DefaultsEditor({
           <CollapsibleSection title="Glazing" open={glazingOpen} onToggle={() => setGlazingOpen((prev) => !prev)}>
             <div className="defaults-editor-three-col">
               <div>
-                <div style={labelStyle}>Glass</div>
+                <div className="defaults-editor-label">Glass</div>
                 <select
                   value={value.glassType}
                   onChange={(e) => {
@@ -265,7 +263,7 @@ export default function DefaultsEditor({
               </div>
 
               <div>
-                <div style={labelStyle}>Ug value required</div>
+                <div className="defaults-editor-label">Ug value required</div>
                 <select
                   value={value.ugValue}
                   onChange={(e) => onChange({ ...value, ugValue: e.target.value, gValue: "0.53" })}
@@ -280,7 +278,7 @@ export default function DefaultsEditor({
               </div>
 
               <div>
-                <div style={labelStyle}>G value</div>
+                <div className="defaults-editor-label">G value</div>
                 <Input value={value.gValue} onChange={(v) => onChange({ ...value, gValue: v })} />
                 <Small>Placeholder: fixed at 0.53 for now</Small>
               </div>
@@ -290,7 +288,7 @@ export default function DefaultsEditor({
           <CollapsibleSection title="Window Handle" open={windowHandleOpen} onToggle={() => setWindowHandleOpen((prev) => !prev)}>
             <div className="defaults-editor-window-handle-grid">
               <div>
-                <div style={labelStyle}>Handle type</div>
+                <div className="defaults-editor-label">Handle type</div>
                 <select
                   value={value.windowHandleType}
                   onChange={(e) => onChange({ ...value, windowHandleType: e.target.value as any })}
@@ -309,7 +307,7 @@ export default function DefaultsEditor({
               </div>
             </div>
 
-            <div className="defaults-editor-card-body" style={{ marginTop: 10, gap: 6 }}>
+            <div className="defaults-editor-card-body defaults-editor-card-body-compact">
               <div className="defaults-editor-toggle-row">
                 <Toggle
                   value={lockableHandle}
@@ -352,7 +350,7 @@ export default function DefaultsEditor({
           )}
 
           <CollapsibleSection title="Accessories" open={accessoriesOpen} onToggle={() => setAccessoriesOpen((prev) => !prev)}>
-            <div className="defaults-editor-grid" style={{ gap: 12 }}>
+            <div className="defaults-editor-grid defaults-editor-grid-compact">
               <div className="defaults-editor-two-col">
                 <div className="defaults-editor-toggle-row">
                   <Toggle
@@ -373,7 +371,7 @@ export default function DefaultsEditor({
 
               <div className="defaults-editor-two-col">
                 <div>
-                  <div style={labelStyle}>Window cill depth</div>
+                  <div className="defaults-editor-label">Window cill depth</div>
                   <select
                     value={String(value.cillDepthMm)}
                     onChange={(e) => onChange({ ...value, cillDepthMm: Number(e.target.value) })}
@@ -388,7 +386,7 @@ export default function DefaultsEditor({
                 </div>
 
                 <div>
-                  <div style={labelStyle}>Cill end cap type</div>
+                  <div className="defaults-editor-label">Cill end cap type</div>
                   <select
                     value={value.cillEndCapType}
                     onChange={(e) => onChange({ ...value, cillEndCapType: e.target.value as any })}
@@ -405,7 +403,7 @@ export default function DefaultsEditor({
           <CollapsibleSection title="Frame extensions" open={frameExtensionsOpen} onToggle={() => setFrameExtensionsOpen((prev) => !prev)}>
             <Small>Set each side independently.</Small>
 
-            <div className="defaults-editor-four-col" style={{ marginTop: 10 }}>
+            <div className="defaults-editor-four-col defaults-editor-section-offset">
               {[
                 ["Left", "frameExtLeftMm"],
                 ["Right", "frameExtRightMm"],
@@ -413,7 +411,7 @@ export default function DefaultsEditor({
                 ["Bottom", "frameExtBottomMm"],
               ].map(([label, key]) => (
                 <div key={key}>
-                  <div style={labelStyle}>{label}</div>
+                  <div className="defaults-editor-label">{label}</div>
                   <select
                     value={String((value as any)[key])}
                     onChange={(e) => onChange({ ...value, [key]: Number(e.target.value) } as any)}
@@ -442,7 +440,7 @@ export default function DefaultsEditor({
 
               {value.sunProtectionRequired ? (
                 <div>
-                  <div style={labelStyle}>Type</div>
+                  <div className="defaults-editor-label">Type</div>
                   <select
                     value={value.sunProtectionType}
                     onChange={(e) => onChange({ ...value, sunProtectionType: e.target.value as any })}

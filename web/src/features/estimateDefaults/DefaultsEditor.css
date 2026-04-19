@@ -83,6 +83,14 @@
   margin-top: 10px;
 }
 
+.defaults-editor-card-body-compact {
+  gap: 6px;
+}
+
+.defaults-editor-grid-compact {
+  gap: 12px;
+}
+
 .defaults-editor-two-col {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -99,6 +107,10 @@
   display: grid;
   grid-template-columns: 1fr 1fr 1fr 1fr;
   gap: 12px;
+}
+
+.defaults-editor-section-offset {
+  margin-top: 10px;
 }
 
 .defaults-editor-window-handle-grid {
