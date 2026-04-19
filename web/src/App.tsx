@@ -75,6 +75,7 @@ import GridEditor from "./components/GridEditor";
 import EstimatePickerFeature, { type EstimatePickerFeatureHandle } from "./features/estimatePicker/EstimatePickerFeature";
 import DefaultsEditor from "./features/estimateDefaults/DefaultsEditor";
 import { DEFAULT_CUSTOMER_ADDRESS, makeDefaultClients } from "./features/clients/defaultClients";
+import "./features/clients/ClientsView.css";
 import * as Models from "./models/types";
 import type { Address, Client, Estimate, Position, EstimateDefaults, ClientType } from "./models/types";
 import { emptyAddress, parseAddressString, buildAddressString, resolveStructuredAddress, addressTuple } from "./domain/address";
@@ -1065,6 +1066,193 @@ function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => void })
   );
 }
 
+type ClientCollectionViewMode = "list" | "grid";
+
+type ClientCollectionItem = {
+  client: Client;
+  displayName: string;
+  projectName: string;
+  contactName: string;
+  email: string;
+  primaryPhone: string;
+  secondaryPhone: string;
+  locationSummary: string;
+  estimateCount: number;
+  openEstimateCount: number;
+  orderEstimateCount: number;
+  lostEstimateCount: number;
+};
+
+function getClientCollectionDisplayName(client: Client) {
+  return client.type === "Business" ? (client.businessName || client.clientName || "Business") : (client.clientName || "Client");
+}
+
+function buildClientCollectionItem(client: Client): ClientCollectionItem {
+  const estimates = client.estimates ?? [];
+  const orderEstimateCount = estimates.filter((estimate) => (((estimate as any).outcome ?? "Open") as Models.EstimateOutcome) === "Order").length;
+  const lostEstimateCount = estimates.filter((estimate) => (((estimate as any).outcome ?? "Open") as Models.EstimateOutcome) === "Lost").length;
+  const openEstimateCount = Math.max(0, estimates.length - orderEstimateCount - lostEstimateCount);
+  const locationSummary =
+    buildClientLocationLabel(client) ||
+    client.projectAddress ||
+    client.customerAddress ||
+    client.invoiceAddress ||
+    "No address set";
+
+  return {
+    client,
+    displayName: getClientCollectionDisplayName(client),
+    projectName: client.projectName || "No project name",
+    contactName:
+      client.type === "Business"
+        ? (client.contactPerson || client.clientName || "No contact name")
+        : (client.clientName || "Client"),
+    email: client.email || "No email",
+    primaryPhone: client.mobile || client.home || "No phone",
+    secondaryPhone: client.mobile && client.home ? client.home : "",
+    locationSummary,
+    estimateCount: estimates.length,
+    openEstimateCount,
+    orderEstimateCount,
+    lostEstimateCount,
+  };
+}
+
+function ClientCollectionViewToggle({
+  viewMode,
+  onChange,
+}: {
+  viewMode: ClientCollectionViewMode;
+  onChange: (next: ClientCollectionViewMode) => void;
+}) {
+  return (
+    <div className="clients-view-toggle" role="tablist" aria-label="Client view mode">
+      <Button variant={viewMode === "list" ? "primary" : "secondary"} onClick={() => onChange("list")}>
+        List
+      </Button>
+      <Button variant={viewMode === "grid" ? "primary" : "secondary"} onClick={() => onChange("grid")}>
+        Grid
+      </Button>
+    </div>
+  );
+}
+
+function ClientCollectionStats({ item, compact = false }: { item: ClientCollectionItem; compact?: boolean }) {
+  return (
+    <div className={`clients-collection-stats${compact ? " clients-collection-stats--compact" : ""}`}>
+      <span>{item.estimateCount} total</span>
+      <span>{item.openEstimateCount} open</span>
+      <span>{item.orderEstimateCount} orders</span>
+      <span>{item.lostEstimateCount} lost</span>
+    </div>
+  );
+}
+
+function ClientsListView({
+  items,
+  onOpenClient,
+  onCreateEstimate,
+}: {
+  items: ClientCollectionItem[];
+  onOpenClient: (client: Client) => void;
+  onCreateEstimate: (client: Client) => void;
+}) {
+  return (
+    <div className="clients-surface-list" role="list">
+      {items.map((item) => (
+        <article key={item.client.id} className="clients-surface-row" role="listitem">
+          <div className="clients-surface-row__primary">
+            <div className="clients-surface-row__headline">
+              <div className="clients-surface-row__title">
+                <H3>{item.displayName}</H3>
+                <Pill>{item.client.clientRef}</Pill>
+                <span className="clients-surface-row__type">{item.client.type}</span>
+              </div>
+              <Small>{item.projectName}</Small>
+            </div>
+            <ClientCollectionStats item={item} />
+          </div>
+
+          <div className="clients-surface-row__details">
+            <div className="clients-surface-detail">
+              <span className="clients-surface-detail__label">Contact</span>
+              <span className="clients-surface-detail__value">{item.contactName}</span>
+            </div>
+            <div className="clients-surface-detail">
+              <span className="clients-surface-detail__label">Email</span>
+              <span className="clients-surface-detail__value">{item.email}</span>
+            </div>
+            <div className="clients-surface-detail">
+              <span className="clients-surface-detail__label">Phone</span>
+              <span className="clients-surface-detail__value">
+                {item.primaryPhone}
+                {item.secondaryPhone ? ` • ${item.secondaryPhone}` : ""}
+              </span>
+            </div>
+            <div className="clients-surface-detail">
+              <span className="clients-surface-detail__label">Location</span>
+              <span className="clients-surface-detail__value">{item.locationSummary}</span>
+            </div>
+          </div>
+
+          <div className="clients-surface-row__actions">
+            <Button variant="primary" onClick={() => onOpenClient(item.client)}>
+              Open
+            </Button>
+            <Button variant="secondary" onClick={() => onCreateEstimate(item.client)}>
+              New Estimate
+            </Button>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function ClientsGridView({
+  items,
+  onOpenClient,
+  onCreateEstimate,
+}: {
+  items: ClientCollectionItem[];
+  onOpenClient: (client: Client) => void;
+  onCreateEstimate: (client: Client) => void;
+}) {
+  return (
+    <div className="clients-surface-grid">
+      {items.map((item) => (
+        <article key={item.client.id} className="clients-surface-card">
+          <div className="clients-surface-card__header">
+            <div className="clients-surface-card__title">
+              <H3>{item.displayName}</H3>
+              <Pill>{item.client.clientRef}</Pill>
+            </div>
+            <span className="clients-surface-row__type">{item.client.type}</span>
+          </div>
+
+          <div className="clients-surface-card__project">{item.projectName}</div>
+          <ClientCollectionStats item={item} compact />
+
+          <div className="clients-surface-card__summary">
+            <div>{item.contactName}</div>
+            <div>{item.primaryPhone}</div>
+            <div>{item.locationSummary}</div>
+          </div>
+
+          <div className="clients-surface-card__actions">
+            <Button variant="primary" onClick={() => onOpenClient(item.client)}>
+              Open
+            </Button>
+            <Button variant="secondary" onClick={() => onCreateEstimate(item.client)}>
+              New Estimate
+            </Button>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 function ClientSummary({ c }: { c: Client }) {
   const headline = c.type === "Business" ? (c.businessName || c.clientName) : c.clientName;
   const sub = c.type === "Business" ? (c.contactPerson ? `Contact: ${c.contactPerson}` : "Contact: ") : "Individual";
@@ -1493,6 +1681,7 @@ const [clients, setClients] = useState<Client[]>([]);
   const [clientDbSort, setClientDbSort] = useState<"asc" | "desc">("asc");
 
   const [clientDbSortField, setClientDbSortField] = useState<"client_name" | "client_number" | "project_name">("client_name");
+  const [clientCollectionViewMode, setClientCollectionViewMode] = useState<ClientCollectionViewMode>("list");
 
 
   const currentMonthName = ORDER_MONTHS[new Date().getMonth()];
@@ -1738,7 +1927,7 @@ async function handleWhat3WordsMapPick(lat: number, lng: number) {
 
     return list;
   }, [clients, clientDbSearch, clientDbFilter, clientDbSort, clientDbSortField]);
-
+  const clientCollectionItems = useMemo(() => filteredClients.map((client) => buildClientCollectionItem(client)), [filteredClients]);
 
   function selectMenu(k: Models.MenuKey) {
     setTopShellPage("app");
@@ -4018,6 +4207,11 @@ estimate.id}>
             </Button>
           ))}
         </div>
+
+        <div className="clients-surface-toolbar">
+          <Small>{clientCollectionItems.length} clients shown</Small>
+          <ClientCollectionViewToggle viewMode={clientCollectionViewMode} onChange={setClientCollectionViewMode} />
+        </div>
       </div>
     </div>
 
@@ -4277,48 +4471,23 @@ estimate.id}>
                 )}
 
                 {/* Customers list */}
-				<div style={{ marginTop: 12, display: "grid", gap: 12, flex: 1, minHeight: 0, overflowY: "auto", paddingRight: 4 }}>
-                  {filteredClients.length === 0 && <div style={{ fontSize: 13, color: "#71717a" }}>No clients yet.</div>}
+                <div className="clients-surface-shell">
+                  {clientCollectionItems.length === 0 && <div style={{ fontSize: 13, color: "#71717a" }}>No clients yet.</div>}
 
-                  {filteredClients.map((c) => (
-                    <div
-                      
-                      key={c.id}
-                      style={{
-                        borderRadius: 16,
-                        border: "1px solid #e4e4e7",
-                        padding: 12,
-                        background: "#fff",
-                        display: "grid",
-                        gap: 8,
-                      }}
-                    >
-                      <div
-                       style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                        <div
-                       style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                          <H3>{c.type === "Business" ? (c.businessName || c.clientName) : c.clientName}</H3>
-                          <Pill>{c.clientRef}</Pill>
-                          <Small>{c.estimates.length} estimates</Small>
-                        </div>
-
-                        <div
-                       style={{ display: "flex", gap: 10 }}>
-                          <Button variant="primary" onClick={() => openClient(c)}>
-                            Open
-                          </Button>
-                          <Button variant="secondary" onClick={() => createEstimateForClient(c)}>
-                            New Estimate
-                          </Button>
-                        </div>
-                      </div>
-
-                      <div
-                       style={{ fontSize: 12, color: "#71717a" }}>
-                        {c.projectName || "No project name"}
-                      </div>
-                    </div>
-                  ))}
+                  {clientCollectionItems.length > 0 &&
+                    (clientCollectionViewMode === "list" ? (
+                      <ClientsListView
+                        items={clientCollectionItems}
+                        onOpenClient={openClient}
+                        onCreateEstimate={createEstimateForClient}
+                      />
+                    ) : (
+                      <ClientsGridView
+                        items={clientCollectionItems}
+                        onOpenClient={openClient}
+                        onCreateEstimate={createEstimateForClient}
+                      />
+                    ))}
                 </div>
               </Card>
             )}
@@ -5168,5 +5337,3 @@ estimate.id}>
     </AppShell>
   );
 }
-
-
