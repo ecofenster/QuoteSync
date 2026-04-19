@@ -22,3 +22,49 @@
   font-size: 14px;
   font-weight: 800;
 }
+
+.epf-card-body {
+  display: grid;
+  gap: 12px;
+}
+
+.epf-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.epf-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.epf-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.epf-client-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-surface);
+}
+
+.epf-client-meta {
+  display: grid;
+  gap: 4px;
+}
+
+.epf-client-name {
+  font-size: 13px;
+  font-weight: 900;
+  color: var(--color-text-primary);
+}

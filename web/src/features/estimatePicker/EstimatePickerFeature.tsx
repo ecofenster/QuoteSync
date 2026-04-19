@@ -404,7 +404,7 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
   if (!pickerClient) {
     return (
       <Card style={{ minHeight: 360 }}>
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+        <div className="epf-header">
           <div>
             <H2>Estimate Selection</H2>
             <Small>Select a client to view estimates, orders, notes and files.</Small>
@@ -415,25 +415,13 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
           </Button>
         </div>
 
-        <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
+        <div className="epf-list">
           {clients.length === 0 && <Small>No clients yet.</Small>}
 
           {clients.map((c) => (
-            <div
-              key={c.id}
-              style={{
-                borderRadius: 16,
-                border: "1px solid #e4e4e7",
-                padding: 12,
-                background: "#fff",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: 10,
-              }}
-            >
-              <div style={{ display: "grid", gap: 4 }}>
-                <div style={{ fontWeight: 900, fontSize: 13 }}>
+            <div key={c.id} className="epf-client-row">
+              <div className="epf-client-meta">
+                <div className="epf-client-name">
                   {c.type === "Business" ? (c.businessName || c.clientName) : c.clientName}
                 </div>
                 <Small>
@@ -441,7 +429,7 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
                 </Small>
               </div>
 
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <div className="epf-actions">
                 <Button variant="secondary" onClick={() => openEditClientPanel(c)}>
                   Edit
                 </Button>
@@ -466,8 +454,8 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
 
   return (
     <Card style={{ minHeight: 520 }}>
-      <div style={{ display: "grid", gap: 12 }}>
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+      <div className="epf-card-body">
+        <div className="epf-header">
           <div>
             <H2>Estimate Selection</H2>
             <Small>
@@ -475,7 +463,7 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
             </Small>
           </div>
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <div className="epf-actions">
             <Button
               variant="secondary"
               onClick={() => {
