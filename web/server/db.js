@@ -1,6 +1,12 @@
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 
+const CURRENT_SYSTEM_USER = {
+  id: 'user-1',
+  name: 'User',
+  role: 'estimator',
+};
+
 async function ensureColumn(db, tableName, columnName, definitionSql) {
   const columns = await db.all(`PRAGMA table_info(${tableName})`);
   const exists = columns.some(
@@ -58,6 +64,24 @@ export const dbPromise = open({
 
   await ensureColumn(db, 'clients', 'deleted_at', 'TEXT');
   await ensureColumn(db, 'estimates', 'deleted_at', 'TEXT');
+  await ensureColumn(db, 'estimates', 'created_by_user_id', 'TEXT');
+  await ensureColumn(db, 'estimates', 'created_by_name', 'TEXT');
+  await ensureColumn(db, 'estimates', 'created_by_role', 'TEXT');
+
+  await db.run(
+    `
+      UPDATE estimates
+      SET
+        created_by_user_id = COALESCE(NULLIF(TRIM(created_by_user_id), ''), ?),
+        created_by_name = COALESCE(NULLIF(TRIM(created_by_name), ''), ?),
+        created_by_role = COALESCE(NULLIF(TRIM(created_by_role), ''), ?)
+      WHERE
+        created_by_user_id IS NULL OR TRIM(created_by_user_id) = ''
+        OR created_by_name IS NULL OR TRIM(created_by_name) = ''
+        OR created_by_role IS NULL OR TRIM(created_by_role) = ''
+    `,
+    [CURRENT_SYSTEM_USER.id, CURRENT_SYSTEM_USER.name, CURRENT_SYSTEM_USER.role]
+  );
 
   await ensureTable(
     db,
