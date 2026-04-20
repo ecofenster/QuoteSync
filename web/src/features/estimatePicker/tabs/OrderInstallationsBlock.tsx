@@ -1,4 +1,5 @@
 import React from "react";
+import type { EstimateId } from "../../../models/types";
 import { Button, Input, Small, OrderTimelineBar } from "./shared";
 
 type Props = {
@@ -10,8 +11,8 @@ type Props = {
   timelineWithCompletion: (e: any) => any[];
   openInstallations: (e: any, pickerClient: any) => Promise<void>;
   installerLabel: (installerId: string) => string;
-  selectInstallerForEstimate: (estimateId: string, installerId: string) => void;
-  setOrderMetaField: (estimateId: string, key: string, value: any) => void;
+  selectInstallerForEstimate: (estimateId: EstimateId, installerId: string) => void;
+  setOrderMetaField: (estimateId: EstimateId, key: string, value: any) => void;
 };
 
 const labelStyle: React.CSSProperties = {

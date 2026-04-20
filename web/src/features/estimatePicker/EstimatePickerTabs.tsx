@@ -3,13 +3,13 @@
 // NOTE: This file intentionally duplicates a few small UI primitives (Button/Pill/Small/H3)
 // and ClientDetailsReadonly to avoid risky refactors at this stage.
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { resolveStructuredAddress, addressTuple } from "../../domain/address";
 import { rankInstallersByDistance } from "../../services/distance";
 import { getInstallers } from "../../data/installers";
 import { loadSettings } from "../../system/settings";
 import { createDefaultTimeline } from "../../system/orderTimeline";
-import type { Address, Client, EstimateId, EstimateOutcome, EstimatePickerTab, ClientFile } from "../../models/types";
+import type { Client, ClientId, EstimateId, EstimateOutcome, EstimatePickerTab, ClientFile } from "../../models/types";
 import { estimateTotals, estimateCostTotal } from '../../domain/estimates/estimateCalculations';
 import { addFollowUpForEstimate as addFollowUpForEstimateService } from '../../services/followups/followupService';
 import { buildSendEmailText as buildSendEmailTextService, openMailClient as openMailClientService } from '../../services/email/emailService';
@@ -22,6 +22,8 @@ import './tabs/shared.css';
 
 type Props = {
   estimatePickerTab: EstimatePickerTab;
+  initialExpandedEstimateId?: EstimateId | null;
+  onConsumedInitialExpandedEstimateId?: () => void;
   setEstimatePickerTab: (t: EstimatePickerTab) => void;
 
   pickerClient: Client | null;
@@ -29,12 +31,26 @@ type Props = {
   openEstimateFromPicker: (estimateId: EstimateId) => void;
   copyEstimateForClient: (client: Client, sourceEstimateId: EstimateId) => void;
   deletedEstimatesForClient: { estimate: Client["estimates"][number]; deletedAt: string }[];
-  deleteEstimatesForClient: (clientId: string, estimateIds: EstimateId[]) => void;
-  restoreDeletedEstimatesForClient: (clientId: string, estimateIds: EstimateId[]) => void;
-  purgeDeletedEstimatesForClient: (clientId: string, estimateIds?: EstimateId[]) => void;
-  setEstimateInstaller: (clientId: string, estimateId: string, installerId: string) => void;
-  updateEstimateOrderMeta: (clientId: string, estimateId: string, patch: Record<string, any>) => void;
-  persistEstimateOutcome: (clientId: string, estimateId: EstimateId, outcome: EstimateOutcome) => void;
+  deleteEstimatesForClient: (clientId: ClientId, estimateIds: EstimateId[]) => void;
+  restoreDeletedEstimatesForClient: (clientId: ClientId, estimateIds: EstimateId[]) => void;
+  purgeDeletedEstimatesForClient: (clientId: ClientId, estimateIds?: EstimateId[]) => void;
+  setEstimateInstaller: (clientId: ClientId, estimateId: EstimateId, installerId: string) => void;
+  updateEstimateOrderMeta: (clientId: ClientId, estimateId: EstimateId, patch: Record<string, any>) => void;
+  updateEstimatePosition: (
+    clientId: ClientId,
+    estimateId: EstimateId,
+    positionId: string,
+    patch: {
+      positionRef?: string;
+      roomName?: string;
+      qty?: number;
+      widthMm?: number;
+      heightMm?: number;
+      insertion?: string;
+      positionType?: "Window" | "Door";
+    }
+  ) => void;
+  persistEstimateOutcome: (clientId: ClientId, estimateId: EstimateId, outcome: EstimateOutcome) => void;
 
   accountNoteDraft: string;
   setAccountNoteDraft: (value: string) => void;
@@ -501,7 +517,11 @@ export default function EstimatePickerTabs(props: Props) {
   const [supplierEstimateFilesByEstimateId, setSupplierEstimateFilesByEstimateId] = useState<Record<string, string[]>>({});
   const [notesScope, setNotesScope] = useState<"account" | "estimate">("account");
 
-  const QS_FOLLOWUPS_KEY = "qs_followups_v1";
+  useEffect(() => {
+    if (!props.initialExpandedEstimateId) return;
+    setExpandedEstimateId(props.initialExpandedEstimateId);
+    props.onConsumedInitialExpandedEstimateId?.();
+  }, [props.initialExpandedEstimateId, props.onConsumedInitialExpandedEstimateId]);
 
   if (!pickerClient) return null;
 
@@ -581,7 +601,7 @@ export default function EstimatePickerTabs(props: Props) {
     return installer?.companyName ?? installerId;
   }
 
-  function selectInstallerForEstimate(estimateId: string, installerId: string) {
+  function selectInstallerForEstimate(estimateId: EstimateId, installerId: string) {
     setSelectedInstallerByEstimateId((prev) => {
       const next = { ...prev, [estimateId]: installerId };
       return next;
@@ -589,7 +609,7 @@ export default function EstimatePickerTabs(props: Props) {
     setEstimateInstaller(pickerClient.id, estimateId, installerId);
   }
 
-  function setOrderMetaField(estimateId: string, key: string, value: any) {
+  function setOrderMetaField(estimateId: EstimateId, key: string, value: any) {
     updateEstimateOrderMeta(pickerClient.id, estimateId, { [key]: value });
   }
 
@@ -672,6 +692,7 @@ export default function EstimatePickerTabs(props: Props) {
 
     return (
       <EstimateSectionTab
+        currentTab={estimatePickerTab}
         titleText={titleText}
         emptyText={emptyText}
         estimates={estimates}
@@ -689,7 +710,7 @@ export default function EstimatePickerTabs(props: Props) {
         setItemPriceByPositionId={setItemPriceByPositionId}
         formatMeasure={formatMeasure}
         formatMoney={formatMoney}
-        pickerClient={pickerClient}
+        pickerClient={pickerClient!}
         activeUserName={activeUserName}
         apiFetchJson={apiFetchJson}
         copyEstimateForClient={copyEstimateForClient}

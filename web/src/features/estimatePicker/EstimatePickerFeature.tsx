@@ -1,8 +1,7 @@
-import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
+import React, { useEffect, useImperativeHandle, useMemo, useState } from "react";
 import type { Client, ClientId, EstimateId, EstimateOutcome, EstimatePickerTab, ClientFile } from "../../models/types";
 import { apiFetch } from "../../services/api/apiClient";
 import EstimatePickerTabs from "./EstimatePickerTabs";
-import { EstimateWorkflowProvider } from "../estimateWorkflow/EstimateWorkflowProvider";
 import "./EstimatePickerFeature.css";
 
 type ApiNote = {
@@ -450,8 +449,6 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
     );
   }
 
-  const workflowEstimateId = selectedEstimateNoteId || initialExpandedEstimateId || pickerClient.estimates[0]?.id || null;
-
   return (
     <Card style={{ minHeight: 520 }}>
       <div className="epf-card-body">
@@ -488,75 +485,57 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
           </div>
         </div>
 
-        <EstimateWorkflowProvider
-          currentTab={estimatePickerTab}
-          currentClientId={pickerClient.id}
-          currentEstimateId={workflowEstimateId}
-        >
-          <EstimatePickerTabs
-            estimatePickerTab={estimatePickerTab}
-            initialExpandedEstimateId={initialExpandedEstimateId}
-            onConsumedInitialExpandedEstimateId={() => setInitialExpandedEstimateId(null)}
-            setEstimatePickerTab={setEstimatePickerTab}
-            pickerClient={pickerClient}
-            openEditClientPanel={openEditClientPanel}
-            openEstimateFromPicker={openEstimateFromPicker}
-            copyEstimateForClient={copyEstimateForClient}
-            deletedEstimatesForClient={deletedEstimatesForClient}
-            deleteEstimatesForClient={deleteEstimatesForClient}
-            restoreDeletedEstimatesForClient={restoreDeletedEstimatesForClient}
-            purgeDeletedEstimatesForClient={purgeDeletedEstimatesForClient}
-            setEstimateInstaller={setEstimateInstaller}
-            updateEstimateOrderMeta={updateEstimateOrderMeta}
-            updateEstimatePosition={updateEstimatePosition}
-            persistEstimateOutcome={props.persistEstimateOutcome}
-            accountNoteDraft={accountNoteDraft}
-            setAccountNoteDraft={setAccountNoteDraft}
-            accountNotes={accountNotes}
-            accountNoteCategory={accountNoteCategory}
-            setAccountNoteCategory={setAccountNoteCategory}
-            accountNoteFilter={accountNoteFilter}
-            setAccountNoteFilter={setAccountNoteFilter}
-            accountNoteUpdatedAt={accountNoteUpdatedAt}
-            saveAccountNotes={saveAccountNotes}
-            selectedEstimateNoteId={selectedEstimateNoteId}
-            setSelectedEstimateNoteId={setSelectedEstimateNoteId}
-            estimateNoteDraft={estimateNoteDraft}
-            setEstimateNoteDraft={setEstimateNoteDraft}
-            estimateNotes={estimateNotes}
-            estimateNoteCategory={estimateNoteCategory}
-            setEstimateNoteCategory={setEstimateNoteCategory}
-            estimateNoteFilter={estimateNoteFilter}
-            setEstimateNoteFilter={setEstimateNoteFilter}
-            estimateNoteUpdatedAt={estimateNoteUpdatedAt}
-            saveEstimateNotes={saveEstimateNotes}
-            notesSaving={notesSaving}
-            activeUserName={activeUserName}
-            clientFileLabel={clientFileLabel}
-            setClientFileLabel={setClientFileLabel}
-            clientFileUrl={clientFileUrl}
-            setClientFileUrl={setClientFileUrl}
-            clientFileNames={clientFileNames}
-            setClientFileNames={setClientFileNames}
-            clientFiles={clientFiles}
-            setClientFiles={setClientFiles}
-          />
-        </EstimateWorkflowProvider>
+        <EstimatePickerTabs
+          estimatePickerTab={estimatePickerTab}
+          initialExpandedEstimateId={initialExpandedEstimateId}
+          onConsumedInitialExpandedEstimateId={() => setInitialExpandedEstimateId(null)}
+          setEstimatePickerTab={setEstimatePickerTab}
+          pickerClient={pickerClient}
+          openEditClientPanel={openEditClientPanel}
+          openEstimateFromPicker={openEstimateFromPicker}
+          copyEstimateForClient={copyEstimateForClient}
+          deletedEstimatesForClient={deletedEstimatesForClient}
+          deleteEstimatesForClient={deleteEstimatesForClient}
+          restoreDeletedEstimatesForClient={restoreDeletedEstimatesForClient}
+          purgeDeletedEstimatesForClient={purgeDeletedEstimatesForClient}
+          setEstimateInstaller={setEstimateInstaller}
+          updateEstimateOrderMeta={updateEstimateOrderMeta}
+          updateEstimatePosition={updateEstimatePosition}
+          persistEstimateOutcome={props.persistEstimateOutcome}
+          accountNoteDraft={accountNoteDraft}
+          setAccountNoteDraft={setAccountNoteDraft}
+          accountNotes={accountNotes}
+          accountNoteCategory={accountNoteCategory}
+          setAccountNoteCategory={setAccountNoteCategory}
+          accountNoteFilter={accountNoteFilter}
+          setAccountNoteFilter={setAccountNoteFilter}
+          accountNoteUpdatedAt={accountNoteUpdatedAt}
+          saveAccountNotes={saveAccountNotes}
+          selectedEstimateNoteId={selectedEstimateNoteId}
+          setSelectedEstimateNoteId={setSelectedEstimateNoteId}
+          estimateNoteDraft={estimateNoteDraft}
+          setEstimateNoteDraft={setEstimateNoteDraft}
+          estimateNotes={estimateNotes}
+          estimateNoteCategory={estimateNoteCategory}
+          setEstimateNoteCategory={setEstimateNoteCategory}
+          estimateNoteFilter={estimateNoteFilter}
+          setEstimateNoteFilter={setEstimateNoteFilter}
+          estimateNoteUpdatedAt={estimateNoteUpdatedAt}
+          saveEstimateNotes={saveEstimateNotes}
+          notesSaving={notesSaving}
+          activeUserName={activeUserName}
+          clientFileLabel={clientFileLabel}
+          setClientFileLabel={setClientFileLabel}
+          clientFileUrl={clientFileUrl}
+          setClientFileUrl={setClientFileUrl}
+          clientFileNames={clientFileNames}
+          setClientFileNames={setClientFileNames}
+          clientFiles={clientFiles}
+          setClientFiles={setClientFiles}
+        />
       </div>
     </Card>
   );
 });
 
 export default EstimatePickerFeature;
-
-
-// --- Added by patch: refreshNotesAfterFollowUp ---
-const refreshNotesAfterFollowUp = async (estimateId: string) => {
-  try {
-    if (typeof fetchNotesForEstimate === 'function') {
-      await fetchNotesForEstimate(estimateId);
-    }
-  } catch (err) {
-    console.warn('Failed to refresh notes after follow-up', err);
-  }
-};
