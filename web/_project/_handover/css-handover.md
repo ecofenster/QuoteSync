@@ -249,6 +249,25 @@ Result:
 
 ## ⚠️ Risks
 
+## Update (20260420_170559)
+
+### Direction confirmed
+- The global estimate/order/lost toolbar layout is the live visual reference.
+- Control rows should continue using the shared grouping pattern:
+  - `Scope`
+  - `View`
+  - `Sort by`
+- Client estimate views and Client Database should stay aligned to the same grouping and placement rules where applicable.
+
+### Current live CSS/layout implications
+- Toolbar consistency now depends more on shared wrapper/layout structure than on introducing new button styling.
+- `ControlToolbar` is the active shared render/layout wrapper for keeping grouping and spacing aligned.
+- Client toolbar placement has been moved up to header level so controls do not sit inside content blocks.
+
+### Maintenance-step note
+- This maintenance step did not change CSS directly.
+- This step documents the current toolbar consistency direction and keeps the CSS handover aligned with the live component structure and placement rules.
+
 * App.tsx is tightly coupled → high regression risk
 * Inline styles are duplicated across files
 * No token system currently exists

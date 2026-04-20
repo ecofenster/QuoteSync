@@ -98,4 +98,25 @@ Structure stable post CSS rollout
 ### Structural decisions
 - Persistence boundary is currently correct as a rule: business entities in DB, ephemeral view state in frontend state.
 - User role/group foundation is code-defined only for now and is intentionally not yet a permissions or access-control system.
-- Ownership persistence is partially wired but not yet fully confirmed at the live schema level because the audited DB file still lacks the new estimate creator columns.
+- Ownership persistence concern from the original audit is now superseded by the later safe schema migration and backfill; the live DB now carries the estimate creator columns.
+
+## Update (20260420_170559)
+
+### What was done
+- Refreshed structure tracking after the estimate-system unification, ownership alignment, Stage B entry-point work, and toolbar/persistence cleanup.
+- Recorded the shared estimate collection layer as the live cross-context pattern for:
+  - global estimate/order/lost views
+  - client estimate/order/lost views
+- Recorded `src/components/ControlToolbar.tsx` as the current shared toolbar/layout wrapper for consistent control-row rendering.
+- Recorded `src/utils/userPreferences.ts` as the safe localStorage utility used for per-view preference persistence.
+- Recorded that ownership persistence is now aligned at the live schema level after the safe estimate-column migration.
+
+### What remains
+- Continue reducing `App.tsx` where new work can safely move into dedicated feature files.
+- Keep shared collection behaviour and shared control layout reused instead of reimplemented per context.
+- Start the next design/implementation boundary at Configurator Workflow Definition rather than quick edit.
+
+### Structural decisions
+- The next phase is a workflow-definition phase, not a UI-expansion phase.
+- The configurator is now a workflow boundary decision, not just a renderer decision.
+- Quick edit remains deferred until configurator workflow scope, step ownership, and save/resume responsibilities are defined.
