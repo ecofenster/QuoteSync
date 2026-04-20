@@ -36,6 +36,7 @@ export type MenuKey =
   | "cad_drawing"
   | "remote_support";
 export type ClientType = "Business" | "Individual";
+export type UserRole = "estimator" | "client_account_manager" | "accounts" | "administrator";
 export type EstimateStatus = "Draft" | "Completed";
 export type ProductType =
   | "uPVC"
@@ -57,6 +58,12 @@ export type Address = {
   city: string;
   county: string;
   postcode: string;
+};
+
+export type AppUser = {
+  id: string;
+  name: string;
+  role: UserRole;
 };
 
 export type Client = {
@@ -180,6 +187,9 @@ export type Estimate = {
   baseEstimateRef: string;
   revisionNo: number;
   status: EstimateStatus;
+  createdByUserId?: string;
+  createdByName?: string;
+  createdByRole?: UserRole;
 
   outcome?: EstimateOutcome;
   estimatedOrderMonth: string;
@@ -242,4 +252,3 @@ export type FollowUp = {
   createdAt: string;
   createdBy: string;
 };
-

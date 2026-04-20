@@ -4,4 +4,7 @@ export type EstimateCollectionItem = Estimate & {
   collectionClientId?: ClientId;
   clientName?: string;
   clientReference?: string;
+  createdByUserId?: string;
+  createdByName?: string;
+  createdByRole?: Estimate["createdByRole"];
 };

@@ -1,5 +1,6 @@
 import express from 'express';
 import { dbPromise } from '../db.js';
+import { APP_USER_ROLES, CURRENT_APP_USER } from '../currentUser.js';
 
 const router = express.Router();
 
@@ -32,6 +33,16 @@ function parseFlag(value) {
   if (value === undefined || value === null) return false;
   const normalized = String(value).trim().toLowerCase();
   return normalized === '1' || normalized === 'true' || normalized === 'yes';
+}
+
+function normalizeCreatorRole(value) {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  return APP_USER_ROLES.includes(normalized) ? normalized : CURRENT_APP_USER.role;
+}
+
+function normalizeCreatorField(value, fallback) {
+  const normalized = String(value ?? '').trim();
+  return normalized || fallback;
 }
 
 function parseEstimateTrailingNumber(value) {
@@ -98,6 +109,9 @@ function mapEstimateRow(row) {
     what3words: String(row.what3words || ''),
     latitude: normalizeCoordinate(row.latitude),
     longitude: normalizeCoordinate(row.longitude),
+    created_by_user_id: normalizeCreatorField(row.created_by_user_id, CURRENT_APP_USER.id),
+    created_by_name: normalizeCreatorField(row.created_by_name, CURRENT_APP_USER.name),
+    created_by_role: normalizeCreatorRole(row.created_by_role),
     deleted_at: row.deleted_at ? String(row.deleted_at) : null,
   };
 }
@@ -141,6 +155,9 @@ router.get('/', async (req, res) => {
           e.what3words,
           e.latitude,
           e.longitude,
+          e.created_by_user_id,
+          e.created_by_name,
+          e.created_by_role,
           e.created_at,
           e.updated_at,
           e.deleted_at
@@ -184,6 +201,9 @@ router.post('/', async (req, res) => {
       what3words,
       latitude,
       longitude,
+      createdByUserId,
+      createdByName,
+      createdByRole,
       created_at,
       updated_at,
     } = req.body ?? {};
@@ -237,10 +257,13 @@ router.post('/', async (req, res) => {
           what3words,
           latitude,
           longitude,
+          created_by_user_id,
+          created_by_name,
+          created_by_role,
           created_at,
           updated_at,
           deleted_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
       `,
       [
         id ?? '',
@@ -261,6 +284,9 @@ router.post('/', async (req, res) => {
         what3words ?? '',
         normalizeCoordinate(latitude),
         normalizeCoordinate(longitude),
+        normalizeCreatorField(createdByUserId, CURRENT_APP_USER.id),
+        normalizeCreatorField(createdByName, CURRENT_APP_USER.name),
+        normalizeCreatorRole(createdByRole),
         created_at ?? new Date().toISOString(),
         updated_at ?? new Date().toISOString(),
       ]
@@ -287,6 +313,9 @@ router.post('/', async (req, res) => {
           what3words,
           latitude,
           longitude,
+          created_by_user_id,
+          created_by_name,
+          created_by_role,
           created_at,
           updated_at,
           deleted_at
@@ -329,6 +358,9 @@ router.put('/:id', async (req, res) => {
       what3words,
       latitude,
       longitude,
+      createdByUserId,
+      createdByName,
+      createdByRole,
       updated_at,
     } = req.body ?? {};
 
@@ -426,6 +458,9 @@ router.put('/:id', async (req, res) => {
           what3words = ?,
           latitude = ?,
           longitude = ?,
+          created_by_user_id = ?,
+          created_by_name = ?,
+          created_by_role = ?,
           updated_at = ?
         WHERE id = ?
       `,
@@ -447,6 +482,9 @@ router.put('/:id', async (req, res) => {
         what3words ?? '',
         normalizeCoordinate(latitude),
         normalizeCoordinate(longitude),
+        normalizeCreatorField(createdByUserId, CURRENT_APP_USER.id),
+        normalizeCreatorField(createdByName, CURRENT_APP_USER.name),
+        normalizeCreatorRole(createdByRole),
         updated_at ?? new Date().toISOString(),
         req.params.id,
       ]
@@ -573,4 +611,3 @@ router.delete('/:id/purge', async (req, res) => {
 });
 
 export default router;
-

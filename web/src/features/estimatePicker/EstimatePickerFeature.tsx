@@ -1,6 +1,7 @@
 import React, { useEffect, useImperativeHandle, useMemo, useState } from "react";
 import type { Client, ClientId, EstimateId, EstimateOutcome, EstimatePickerTab, ClientFile } from "../../models/types";
 import { apiFetch } from "../../services/api/apiClient";
+import { CURRENT_APP_USER } from "../../system/currentUser";
 import EstimatePickerTabs from "./EstimatePickerTabs";
 import "./EstimatePickerFeature.css";
 
@@ -209,7 +210,7 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
   const [clientFileLabel, setClientFileLabel] = useState<string>("");
   const [clientFileUrl, setClientFileUrl] = useState<string>("");
   const [clientFileNames, setClientFileNames] = useState<string[]>([]);
-  const activeUserName = "User";
+  const activeUserName = CURRENT_APP_USER.name;
 
   useImperativeHandle(
     ref,

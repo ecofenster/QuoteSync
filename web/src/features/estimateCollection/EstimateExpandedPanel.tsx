@@ -197,6 +197,9 @@ function EstimateExpandedPanelContent(props: Props) {
         what3words: item.what3words ?? "",
         latitude: item.latitude ?? null,
         longitude: item.longitude ?? null,
+        createdByUserId: item.createdByUserId,
+        createdByName: item.createdByName,
+        createdByRole: item.createdByRole,
         updated_at: new Date().toISOString(),
       }),
     });

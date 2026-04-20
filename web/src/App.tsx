@@ -114,6 +114,7 @@ import { addFollowUpForEstimate as addFollowUpForEstimateService } from "./servi
 import { buildSendEmailText as buildSendEmailTextService, openMailClient as openMailClientService } from "./services/email/emailService";
 import { printEstimatePdf as printEstimatePdfService, downloadEstimateWordDoc as downloadEstimateWordDocService } from "./services/documents/estimateDocumentService";
 import { loadSettings, saveSettings } from "./system/settings";
+import { CURRENT_APP_USER } from "./system/currentUser";
 import type { DeletedClientRecord, DeletedEstimateRecord } from "./features/recycle/recycleTypes";
 import BSENStandardsTool from "./features/tools/bsen/BSENStandardsTool";
 import GlassWeightCalculatorTool from "./features/tools/glass/GlassWeightCalculatorTool";
@@ -412,6 +413,9 @@ function buildDbEstimatePayload(clientId: string, estimate: Estimate) {
     what3words: normalizedEstimate.what3words || "",
     latitude: normalizedEstimate.latitude ?? null,
     longitude: normalizedEstimate.longitude ?? null,
+    createdByUserId: normalizedEstimate.createdByUserId || CURRENT_APP_USER.id,
+    createdByName: normalizedEstimate.createdByName || CURRENT_APP_USER.name,
+    createdByRole: normalizedEstimate.createdByRole || CURRENT_APP_USER.role,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -441,6 +445,9 @@ function mapDbEstimateToEstimate(row: any): Estimate {
     what3words,
     latitude,
     longitude,
+    createdByUserId: String(row?.created_by_user_id || CURRENT_APP_USER.id),
+    createdByName: String(row?.created_by_name || CURRENT_APP_USER.name),
+    createdByRole: (String(row?.created_by_role || CURRENT_APP_USER.role).trim().toLowerCase() || CURRENT_APP_USER.role) as Models.UserRole,
     location: {
       projectAddress,
       projectAddressStructured: projectStructured,
@@ -668,6 +675,50 @@ function Input({
         outline: "none",
       }}
     />
+  );
+}
+
+function ModalOverlay({
+  children,
+  width = "min(1100px, 96vw)",
+  onClose,
+}: {
+  children: React.ReactNode;
+  width?: string;
+  onClose?: () => void;
+}) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9998,
+        background: "rgba(24,24,27,0.55)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+      }}
+      onClick={() => onClose?.()}
+    >
+      <div
+        style={{
+          width,
+          maxHeight: "92vh",
+          overflow: "auto",
+          borderRadius: 18,
+          border: "1px solid #e4e4e7",
+          background: "#fff",
+          padding: 16,
+          boxShadow: "0 20px 50px rgba(0,0,0,0.22)",
+          display: "grid",
+          gap: 12,
+        }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        {children}
+      </div>
+    </div>
   );
 }
 
@@ -1315,6 +1366,7 @@ export default function App() {
 
 
 const [clients, setClients] = useState<Client[]>([]);
+  const [clientsLoaded, setClientsLoaded] = useState(false);
 
 
   const [clientCounter, setClientCounter] = useState(() => (systemSettings.loadDemoClients ? 33 : 1));
@@ -1376,6 +1428,7 @@ const [clients, setClients] = useState<Client[]>([]);
 
     const maxRef = maxClientRefNumber(activeRows);
     setClientCounter(Math.max(1, maxRef + 1));
+    setClientsLoaded(true);
   }
 
 
@@ -1395,6 +1448,8 @@ const [clients, setClients] = useState<Client[]>([]);
 
   useEffect(() => {
     async function syncClientsForSettings() {
+      setClientsLoaded(false);
+
       if (systemSettings.loadDemoClients || systemSettings.loadDemoEstimates) {
         const freshClients = makeDefaultClients({
           uid,
@@ -1410,6 +1465,7 @@ const [clients, setClients] = useState<Client[]>([]);
 
         setClients(freshClients);
         setClientCounter(systemSettings.loadDemoClients ? 33 : 1);
+        setClientsLoaded(true);
       } else {
         try {
           await refreshClientsFromApi();
@@ -1419,6 +1475,7 @@ const [clients, setClients] = useState<Client[]>([]);
           setDeletedEstimatesByClientId({});
           setDeletedClientsById({});
           setClientCounter(1);
+          setClientsLoaded(true);
         }
       }
 
@@ -1442,6 +1499,11 @@ const [clients, setClients] = useState<Client[]>([]);
   }, [selectedClient, selectedEstimateId]);
   // Add client UI
   const [showAddClient, setShowAddClient] = useState(false);
+  const [clientSaving, setClientSaving] = useState(false);
+  const [showAddEstimateModal, setShowAddEstimateModal] = useState(false);
+  const [createEstimateClientId, setCreateEstimateClientId] = useState<string>("");
+  const [createEstimateSubmitting, setCreateEstimateSubmitting] = useState(false);
+  const [resumeEstimateCreationAfterClientCreate, setResumeEstimateCreationAfterClientCreate] = useState(false);
 
   // client edit mode
   const [editingClientId, setEditingClientId] = useState<Models.ClientId | null>(null);
@@ -1727,6 +1789,26 @@ const [clients, setClients] = useState<Client[]>([]);
     orders: "list",
     lost: "list",
   });
+  const [globalCreatorFilterByMenu, setGlobalCreatorFilterByMenu] = useState<Record<"estimates" | "orders" | "lost", "mine" | "all">>({
+    estimates: "mine",
+    orders: "mine",
+    lost: "mine",
+  });
+
+  useEffect(() => {
+    if (!showAddEstimateModal) return;
+
+    if (!clientsLoaded) return;
+
+    if (clients.length === 0) {
+      if (createEstimateClientId !== "") setCreateEstimateClientId("");
+      return;
+    }
+
+    if (!clients.some((client) => client.id === createEstimateClientId)) {
+      setCreateEstimateClientId(clients[0].id);
+    }
+  }, [clients, clientsLoaded, createEstimateClientId, showAddEstimateModal]);
 
   const [recycleBinFilter, setRecycleBinFilter] = useState<"all" | "clients" | "estimates">("all");
   const [recycleBinView, setRecycleBinView] = useState<"grid" | "list">("grid");
@@ -2013,6 +2095,9 @@ async function createEstimateForClient(client: Client) {
       baseEstimateRef: "",
       revisionNo: 0,
       status: "Draft",
+      createdByUserId: CURRENT_APP_USER.id,
+      createdByName: CURRENT_APP_USER.name,
+      createdByRole: CURRENT_APP_USER.role,
       estimatedOrderMonth: ORDER_MONTHS[new Date().getMonth()],
       estimatedOrderYear: new Date().getFullYear(),
       defaults: estimateDefaults,
@@ -2066,6 +2151,9 @@ async function createEstimateForClient(client: Client) {
       baseEstimateRef: "",
       revisionNo: 0,
       status: "Draft",
+      createdByUserId: CURRENT_APP_USER.id,
+      createdByName: CURRENT_APP_USER.name,
+      createdByRole: CURRENT_APP_USER.role,
       defaults: { ...sourceEstimate.defaults },
       positions: (sourceEstimate.positions ?? []).map((p) => ({
         ...p,
@@ -2347,7 +2435,7 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
     return Number.isFinite(n) ? n.toFixed(2) : "0.00";
   }
 
-  const activeUserName = "User";
+  const activeUserName = CURRENT_APP_USER.name;
 
   async function apiFetchJson(path: string, options?: RequestInit) {
     return apiFetch(path, options);
@@ -2535,7 +2623,63 @@ function startAddPosition() {
     setPosDraft((p) => ({ ...p, overrides: { ...next } }));
   }
 
-  function createClient(type: ClientType) {
+  function resetClientDraftForm() {
+    setEditingClientId(null);
+    setDraftClientType("Individual");
+    setDraftClientName("");
+    setDraftBusinessName("");
+    setDraftContactName("");
+    setDraftWhat3Words("");
+    setDraftEmail("");
+    setDraftMobile("");
+    setDraftHome("");
+    setDraftProjectName("");
+    setDraftCustAddress1("");
+    setDraftCustAddress2("");
+    setDraftCustAddress3("");
+    setDraftCustTown("");
+    setDraftCustCity("");
+    setDraftCustCounty("");
+    setDraftCustPostcode("");
+    setDraftProjAddress1("");
+    setDraftProjAddress2("");
+    setDraftProjAddress3("");
+    setDraftProjTown("");
+    setDraftProjCity("");
+    setDraftProjCounty("");
+    setDraftProjPostcode("");
+    setInvoiceAddressMode("customer");
+    setDraftInvAddress1("");
+    setDraftInvAddress2("");
+    setDraftInvAddress3("");
+    setDraftInvTown("");
+    setDraftInvCity("");
+    setDraftInvCounty("");
+    setDraftInvPostcode("");
+    setCustomerAddressSectionOpen(false);
+    setInvoiceAddressSectionOpen(false);
+  }
+
+  function closeAddClientPanel() {
+    setShowAddClient(false);
+    setEditingClientId(null);
+    setResumeEstimateCreationAfterClientCreate(false);
+  }
+
+  function closeAddEstimateModal() {
+    setShowAddEstimateModal(false);
+    setCreateEstimateSubmitting(false);
+    if (clients.length > 0) {
+      setCreateEstimateClientId((prev) => (prev && clients.some((client) => client.id === prev) ? prev : clients[0].id));
+    } else {
+      setCreateEstimateClientId("");
+    }
+    setResumeEstimateCreationAfterClientCreate(false);
+  }
+
+  async function createClient(type: ClientType) {
+    if (clientSaving) return null;
+
     const customerAddressStructured: Address = {
       line1: draftCustAddress1.trim(),
       line2: draftCustAddress2.trim(),
@@ -2594,106 +2738,88 @@ function startAddPosition() {
       estimates: [],
     };
 
-    apiFetch("/api/clients", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(buildDbClientPayload(newClient)),
-    })
-      .then(() => {
-        setClients((prev) => [newClient, ...prev]);
-        setClientCounter((n) => n + 1);
-        setClientDbSearch("");
-      })
-      .catch((error) => {
-        if (error instanceof ApiRequestError) {
-          console.error("Failed to create client", {
-            status: error.status,
-            path: error.path,
-            body: error.body,
-            message: error.message,
-          });
-          return;
-        }
-
-        console.error("Failed to create client", error);
+    setClientSaving(true);
+    try {
+      await apiFetch("/api/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildDbClientPayload(newClient)),
       });
 
-    setShowAddClient(false);
-    setDraftClientType("Individual");
-    setDraftClientName("");
-    setDraftBusinessName("");
-    setDraftContactName("");
-    setDraftWhat3Words("");
-    setDraftEmail("");
-    setDraftMobile("");
-    setDraftHome("");
-    setDraftCustAddress1("");
-    setDraftCustAddress2("");
-    setDraftCustAddress3("");
-    setDraftCustTown("");
-    setDraftCustCity("");
-    setDraftCustCounty("");
-    setDraftCustPostcode("");
-    setDraftProjAddress1("");
-    setDraftProjAddress2("");
-    setDraftProjAddress3("");
-    setDraftProjTown("");
-    setDraftProjCity("");
-    setDraftProjCounty("");
-    setDraftProjPostcode("");
+      setClients((prev) => [newClient, ...prev]);
+      setClientCounter((n) => n + 1);
+      setClientDbSearch("");
+      setClientsLoaded(true);
+      setShowAddClient(false);
+      resetClientDraftForm();
 
-    setInvoiceAddressMode("customer");
-    setDraftInvAddress1("");
-    setDraftInvAddress2("");
-    setDraftInvAddress3("");
-    setDraftInvTown("");
-    setDraftInvCity("");
-    setDraftInvCounty("");
-    setDraftInvPostcode("");
-    setCustomerAddressSectionOpen(false);
-      setInvoiceAddressSectionOpen(false);
+      if (resumeEstimateCreationAfterClientCreate) {
+        setCreateEstimateClientId(newClient.id);
+        setShowAddEstimateModal(true);
+        setResumeEstimateCreationAfterClientCreate(false);
+      }
+
+      return newClient;
+    } catch (error) {
+      if (error instanceof ApiRequestError) {
+        console.error("Failed to create client", {
+          status: error.status,
+          path: error.path,
+          body: error.body,
+          message: error.message,
+        });
+      } else {
+        console.error("Failed to create client", error);
+      }
+
+      return null;
+    } finally {
+      setClientSaving(false);
+    }
   }
 
 
   function openAddClientPanel() {
-    setEditingClientId(null);
-    setDraftClientType("Individual");
-    setDraftClientName("");
-    setDraftBusinessName("");
-    setDraftContactName("");
-    setDraftWhat3Words("");
-    setDraftEmail("");
-    setDraftMobile("");
-    setDraftHome("");
-    setDraftProjectName("");
-    setDraftWhat3Words("");
-    setDraftCustAddress1("");
-    setDraftCustAddress2("");
-    setDraftCustAddress3("");
-    setDraftCustTown("");
-    setDraftCustCity("");
-    setDraftCustCounty("");
-    setDraftCustPostcode("");
-    setDraftProjAddress1("");
-    setDraftProjAddress2("");
-    setDraftProjAddress3("");
-    setDraftProjTown("");
-    setDraftProjCity("");
-    setDraftProjCounty("");
-    setDraftProjPostcode("");
-
-    setInvoiceAddressMode("customer");
-    setDraftInvAddress1("");
-    setDraftInvAddress2("");
-    setDraftInvAddress3("");
-    setDraftInvTown("");
-    setDraftInvCity("");
-    setDraftInvCounty("");
-    setDraftInvPostcode("");
-    setCustomerAddressSectionOpen(false);
-      setInvoiceAddressSectionOpen(false);
+    resetClientDraftForm();
     setShowAddClient(true);
   }
+
+  function openAddEstimateModal(preselectedClientId?: Models.ClientId | null) {
+    if (clients.length > 0) {
+      const nextClientId =
+        preselectedClientId && clients.some((client) => client.id === preselectedClientId)
+          ? preselectedClientId
+          : clients[0]?.id ?? "";
+      setCreateEstimateClientId(nextClientId);
+    } else {
+      setCreateEstimateClientId("");
+    }
+    setShowAddEstimateModal(true);
+  }
+
+  function openAddClientThenEstimateFlow() {
+    setShowAddEstimateModal(false);
+    setResumeEstimateCreationAfterClientCreate(true);
+    openAddClientPanel();
+  }
+
+  async function handleCreateEstimateFromModal() {
+    if (createEstimateSubmitting) return;
+
+    const selectedModalClient = clients.find((client) => client.id === createEstimateClientId) ?? null;
+    if (!selectedModalClient) return;
+
+    setCreateEstimateSubmitting(true);
+    try {
+      setShowAddEstimateModal(false);
+      setResumeEstimateCreationAfterClientCreate(false);
+      await createEstimateForClient(selectedModalClient);
+    } finally {
+      setCreateEstimateSubmitting(false);
+    }
+  }
+
+  const selectedCreateEstimateClient = clients.find((client) => client.id === createEstimateClientId) ?? null;
 
 
   const globalEstimateRows = useMemo(() => {
@@ -2738,6 +2864,10 @@ function startAddPosition() {
 
     const rows = globalEstimateRows.filter((row) => {
       if (!matchesGlobalStatus(row, menuKey)) return false;
+      if (menuKey !== "installation" && globalCreatorFilterByMenu[menuKey] === "mine") {
+        const creatorId = String(row.estimate.createdByUserId || CURRENT_APP_USER.id);
+        if (creatorId !== CURRENT_APP_USER.id) return false;
+      }
       if (globalMonthFilter !== "All" && row.estimate.estimatedOrderMonth !== globalMonthFilter) return false;
       if (!q) return true;
 
@@ -2869,7 +2999,7 @@ function startAddPosition() {
     openEstimateFromGlobalMenu(row.client.id, estimateId);
   }
 
-  const installationRowsForBoard = useMemo(() => filteredGlobalRows("installation"), [globalEstimateRows, globalSearch, globalSort, globalSortField, globalMonthFilter]);
+  const installationRowsForBoard = useMemo(() => filteredGlobalRows("installation"), [globalEstimateRows, globalSearch, globalSort, globalSortField, globalMonthFilter, globalCreatorFilterByMenu]);
 
   const estimateMapRowsForBoard = useMemo(() => {
     const q = globalSearch.trim().toLowerCase();
@@ -2917,7 +3047,11 @@ function startAddPosition() {
     });
 
     return rows;
-  }, [globalEstimateRows, globalSearch, globalSort, globalSortField, globalMonthFilter]);
+  }, [globalEstimateRows, globalSearch, globalSort, globalSortField, globalMonthFilter, globalCreatorFilterByMenu]);
+
+  useEffect(() => {
+    setGlobalExpandedEstimateId(null);
+  }, [globalCreatorFilterByMenu]);
 
   function persistResolvedEstimateCoordinates(
     clientId: Models.ClientId,
@@ -3961,6 +4095,7 @@ function renderEstimateMapBoard() {
     const rows = filteredGlobalRows(menuKey);
     const summary = globalSummaryForRows(rows);
     const viewMode = menuKey === "installation" ? "list" : globalEstimateViewModeByMenu[menuKey];
+    const creatorFilter = menuKey === "installation" ? "all" : globalCreatorFilterByMenu[menuKey];
     const collectionOutcome: Models.EstimateOutcome =
       menuKey === "orders" || menuKey === "installation"
         ? "Order"
@@ -4015,6 +4150,23 @@ function renderEstimateMapBoard() {
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   {menuKey !== "installation" && (
                     <>
+                      <Small>Scope</Small>
+                      <Button
+                        variant={creatorFilter === "mine" ? "primary" : "secondary"}
+                        onClick={() =>
+                          setGlobalCreatorFilterByMenu((prev) => ({ ...prev, [menuKey]: "mine" }))
+                        }
+                      >
+                        My {title}
+                      </Button>
+                      <Button
+                        variant={creatorFilter === "all" ? "primary" : "secondary"}
+                        onClick={() =>
+                          setGlobalCreatorFilterByMenu((prev) => ({ ...prev, [menuKey]: "all" }))
+                        }
+                      >
+                        All {title}
+                      </Button>
                       <Small>View</Small>
                       <Button
                         variant={viewMode === "list" ? "primary" : "secondary"}
@@ -4413,6 +4565,25 @@ function renderEstimateMapBoard() {
           {/* Main */}
           <div style={{ display: "grid", gap: 16, minHeight: 0, height: "calc(100vh - 32px)", overflowY: "auto", paddingRight: 4, alignContent: "start" }}>
             {topShellPage === "tools" && <ToolsHubPage />}
+            {topShellPage !== "tools" && (
+              <Card style={{ padding: 14 }}>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                  <div>
+                    <H2>Quick actions</H2>
+                    <Small>Start the core workflow from the main page: Client → Estimate → Order → Installation.</Small>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <Button variant="primary" onClick={openAddClientPanel}>
+                      Add Client
+                    </Button>
+                    <Button variant="secondary" onClick={() => openAddEstimateModal()}>
+                      Add Estimate
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            )}
 			{topShellPage !== "tools" && menu === "dashboard" && view === "customers" && (
               <MainDashboard
                 clients={clients}
@@ -4489,6 +4660,337 @@ function renderEstimateMapBoard() {
   </div>
 )}
 
+{showAddClient && (
+  <ModalOverlay width="min(1100px, 96vw)" onClose={closeAddClientPanel}>
+    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+      <div>
+        <H2>{editingClientId ? "Edit client" : "Add client"}</H2>
+        <Small>
+          {resumeEstimateCreationAfterClientCreate
+            ? "Create the client first, then continue directly into estimate creation."
+            : "Create a client without leaving the current page."}
+        </Small>
+      </div>
+
+      <Button variant="secondary" onClick={closeAddClientPanel}>
+        Close
+      </Button>
+    </div>
+
+    <div style={{ display: "grid", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <H3>Client contact information</H3>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={draftClientType === "Business"}
+              onChange={(e) => setDraftClientType(e.currentTarget.checked ? "Business" : "Individual")}
+            />
+            <span style={{ fontSize: 12, fontWeight: 800, color: "#3f3f46" }}>Business customer</span>
+          </label>
+
+          <Small>Type: {draftClientType}</Small>
+        </div>
+      </div>
+
+      {draftClientType === "Business" ? (
+        <>
+          <div>
+            <div style={labelStyle}>Business name</div>
+            <Input value={draftBusinessName} onChange={setDraftBusinessName} placeholder="Company Ltd" />
+          </div>
+
+          <div>
+            <div style={labelStyle}>Contact name</div>
+            <Input value={draftContactName} onChange={setDraftContactName} placeholder="Name" />
+          </div>
+        </>
+      ) : (
+        <div>
+          <div style={labelStyle}>Client name</div>
+          <Input value={draftClientName} onChange={setDraftClientName} placeholder="Name" />
+        </div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div>
+          <div style={labelStyle}>Email</div>
+          <Input value={draftEmail} onChange={setDraftEmail} placeholder="email@example.com" />
+        </div>
+        <div>
+          <div style={labelStyle}>Mobile</div>
+          <Input value={draftMobile} onChange={setDraftMobile} placeholder="07..." />
+        </div>
+      </div>
+
+      <div>
+        <div style={labelStyle}>Home</div>
+        <Input value={draftHome} onChange={setDraftHome} placeholder="01..." />
+      </div>
+
+      <div>
+        <div style={labelStyle}>Project name</div>
+        <Input value={draftProjectName} onChange={setDraftProjectName} placeholder="Project name" />
+      </div>
+
+      <div style={{ marginTop: 10, borderTop: "1px solid #e4e4e7", paddingTop: 10 }}>
+        <button
+          type="button"
+          onClick={() => setCustomerAddressSectionOpen((prev) => !prev)}
+          style={{
+            border: "none",
+            background: "transparent",
+            padding: 0,
+            margin: 0,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            font: "inherit",
+            color: "#18181b",
+          }}
+        >
+          <H3>{customerAddressSectionOpen ? "▼" : "▶"} Customer address</H3>
+        </button>
+
+        {customerAddressSectionOpen && (
+          <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div>
+                <div style={labelStyle}>Address line 1</div>
+                <Input value={draftCustAddress1} onChange={setDraftCustAddress1} placeholder="Address line 1" />
+              </div>
+              <div>
+                <div style={labelStyle}>Address line 2</div>
+                <Input value={draftCustAddress2} onChange={setDraftCustAddress2} placeholder="Address line 2" />
+              </div>
+            </div>
+
+            <div>
+              <div style={labelStyle}>Address line 3</div>
+              <Input value={draftCustAddress3} onChange={setDraftCustAddress3} placeholder="Address line 3" />
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div>
+                <div style={labelStyle}>Town</div>
+                <Input value={draftCustTown} onChange={setDraftCustTown} placeholder="Town" />
+              </div>
+              <div>
+                <div style={labelStyle}>City</div>
+                <Input value={draftCustCity} onChange={setDraftCustCity} placeholder="City" />
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div>
+                <div style={labelStyle}>County/District</div>
+                <Input value={draftCustCounty} onChange={setDraftCustCounty} placeholder="County/District" />
+              </div>
+              <div>
+                <div style={labelStyle}>Postcode</div>
+                <Input value={draftCustPostcode} onChange={setDraftCustPostcode} placeholder="Postcode" />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginTop: 10, borderTop: "1px solid #e4e4e7", paddingTop: 10 }}>
+        <button
+          type="button"
+          onClick={() => setInvoiceAddressSectionOpen((prev) => !prev)}
+          style={{
+            border: "none",
+            background: "transparent",
+            padding: 0,
+            margin: 0,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            font: "inherit",
+            color: "#18181b",
+          }}
+        >
+          <H3>{invoiceAddressSectionOpen ? "▼" : "▶"} Invoice address</H3>
+        </button>
+
+        {invoiceAddressSectionOpen && (
+          <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700 }}>
+                <input
+                  type="radio"
+                  name="invoiceAddressMode"
+                  checked={invoiceAddressMode === "customer"}
+                  onChange={() => setInvoiceAddressMode("customer")}
+                />
+                Same as customer address
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700 }}>
+                <input
+                  type="radio"
+                  name="invoiceAddressMode"
+                  checked={invoiceAddressMode === "custom"}
+                  onChange={() => setInvoiceAddressMode("custom")}
+                />
+                Custom invoice address
+              </label>
+            </div>
+
+            {invoiceAddressMode === "custom" && (
+              <div style={{ marginTop: 4, display: "grid", gap: 12 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div>
+                    <div style={labelStyle}>Address line 1</div>
+                    <Input value={draftInvAddress1} onChange={setDraftInvAddress1} placeholder="Address line 1" />
+                  </div>
+                  <div>
+                    <div style={labelStyle}>Address line 2</div>
+                    <Input value={draftInvAddress2} onChange={setDraftInvAddress2} placeholder="Address line 2" />
+                  </div>
+                </div>
+
+                <div>
+                  <div style={labelStyle}>Address line 3</div>
+                  <Input value={draftInvAddress3} onChange={setDraftInvAddress3} placeholder="Address line 3" />
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div>
+                    <div style={labelStyle}>Town</div>
+                    <Input value={draftInvTown} onChange={setDraftInvTown} placeholder="Town" />
+                  </div>
+                  <div>
+                    <div style={labelStyle}>City</div>
+                    <Input value={draftInvCity} onChange={setDraftInvCity} placeholder="City" />
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div>
+                    <div style={labelStyle}>County/District</div>
+                    <Input value={draftInvCounty} onChange={setDraftInvCounty} placeholder="County/District" />
+                  </div>
+                  <div>
+                    <div style={labelStyle}>Postcode</div>
+                    <Input value={draftInvPostcode} onChange={setDraftInvPostcode} placeholder="Postcode" />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+        <Button variant="secondary" onClick={closeAddClientPanel}>
+          Cancel
+        </Button>
+        <Button
+          variant="primary"
+          disabled={clientSaving}
+          onClick={() => {
+            if (editingClientId) {
+              updateClient(draftClientType);
+              return;
+            }
+            void createClient(draftClientType);
+          }}
+        >
+          {clientSaving ? "Saving..." : editingClientId ? "Save Changes" : "Create Client"}
+        </Button>
+      </div>
+    </div>
+  </ModalOverlay>
+)}
+
+{showAddEstimateModal && (
+  <ModalOverlay width="min(720px, 96vw)" onClose={closeAddEstimateModal}>
+    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+      <div>
+        <H2>Add estimate</H2>
+        <Small>Create a new estimate from the main page without leaving the current workflow.</Small>
+      </div>
+
+      <Button variant="secondary" onClick={closeAddEstimateModal}>
+        Close
+      </Button>
+    </div>
+
+    {!clientsLoaded ? (
+      <div style={{ display: "grid", gap: 12 }}>
+        <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", background: "#fafafa", padding: 16, display: "grid", gap: 8 }}>
+          <H3>Loading clients</H3>
+          <Small>Checking the live client list before starting estimate creation.</Small>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+          <Button variant="secondary" onClick={closeAddEstimateModal}>
+            Cancel
+          </Button>
+        </div>
+      </div>
+    ) : clients.length === 0 ? (
+      <div style={{ display: "grid", gap: 12 }}>
+        <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", background: "#fafafa", padding: 16, display: "grid", gap: 8 }}>
+          <H3>No clients yet</H3>
+          <Small>Add a client first, then continue straight into estimate creation.</Small>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+          <Button variant="secondary" onClick={closeAddEstimateModal}>
+            Cancel
+          </Button>
+          <Button variant="primary" onClick={openAddClientThenEstimateFlow}>
+            Add Client
+          </Button>
+        </div>
+      </div>
+    ) : (
+      <div style={{ display: "grid", gap: 12 }}>
+        <div style={{ display: "grid", gap: 6 }}>
+          <div style={labelStyle}>Client</div>
+          <select
+            value={createEstimateClientId}
+            onChange={(event) => setCreateEstimateClientId(event.currentTarget.value)}
+            style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14, background: "#fff" }}
+          >
+            {clients.map((client) => (
+              <option key={client.id} value={client.id}>
+                {(client.type === "Business" ? client.businessName || client.clientName : client.clientName) || "Client"} · {client.clientRef || "No client ref"}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {selectedCreateEstimateClient && (
+          <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", background: "#fafafa", padding: 16, display: "grid", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <Pill>{selectedCreateEstimateClient.clientRef || "No client ref"}</Pill>
+              <Pill>{selectedCreateEstimateClient.projectName || "No project name"}</Pill>
+            </div>
+            <H3>{clientDisplayName(selectedCreateEstimateClient)}</H3>
+            <Small>{selectedCreateEstimateClient.email || selectedCreateEstimateClient.mobile || selectedCreateEstimateClient.home || "No contact details set"}</Small>
+          </div>
+        )}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+          <Button variant="secondary" onClick={closeAddEstimateModal}>
+            Cancel
+          </Button>
+          <Button variant="primary" disabled={!selectedCreateEstimateClient || createEstimateSubmitting} onClick={() => void handleCreateEstimateFromModal()}>
+            {createEstimateSubmitting ? "Creating..." : "Create Estimate"}
+          </Button>
+        </div>
+      </div>
+    )}
+  </ModalOverlay>
+)}
+
             {/* CUSTOMERS LIST */}
             {menu === "client_database" && view === "customers" && (
   <Card style={{ minHeight: 0, height: "100%", display: "flex", flexDirection: "column", minWidth: 0, overflow: "auto" }}>
@@ -4562,261 +5064,6 @@ function renderEstimateMapBoard() {
         </div>
       </div>
     </div>
-
-                {showAddClient && (
-                  <div style={{ marginTop: 14, borderRadius: 16, border: "1px solid #e4e4e7", padding: 12, background: "#fff" }}>
-                    <div
-                       style={{ display: "grid", gap: 10 }}>
-                      <div
-                       style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                        <H3>Client contact information</H3>
-
-                        <div
-                       style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                            <input
-                              type="checkbox"
-                              checked={draftClientType === "Business"}
-                              onChange={(e) => setDraftClientType(e.currentTarget.checked ? "Business" : "Individual")}
-                            />
-							
-					<span style={{ fontSize: 12, fontWeight: 800, color: "#3f3f46" }}>
-					Business customer
-					</span>
-                          </label>
-
-                          <Small>Type: {draftClientType}</Small>
-                        </div>
-                      </div>
-
-                      {draftClientType === "Business" ? (
-                        <>
-                          <div
-                      >
-                            <div
-                       style={labelStyle}>Business name</div>
-                            <Input value={draftBusinessName} onChange={setDraftBusinessName} placeholder="Company Ltd" />
-                          </div>
-
-                          <div
-                      >
-                            <div
-                       style={labelStyle}>Contact name</div>
-                            <Input value={draftContactName} onChange={setDraftContactName} placeholder="Name" />
-                          </div>
-                        </>
-                      ) : (
-                        <div
-                      >
-                          <div
-                       style={labelStyle}>Client name</div>
-                          <Input value={draftClientName} onChange={setDraftClientName} placeholder="Name" />
-                        </div>
-                      )}
-
-                      <div
-                       style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                        <div
-                      >
-                          <div
-                       style={labelStyle}>Email</div>
-                          <Input value={draftEmail} onChange={setDraftEmail} placeholder="email@example.com" />
-                        </div>
-                        <div
-                      >
-                          <div
-                       style={labelStyle}>Mobile</div>
-                          <Input value={draftMobile} onChange={setDraftMobile} placeholder="07..." />
-                        </div>
-                      </div>
-
-                      <div
-                      >
-                        <div
-                       style={labelStyle}>Home</div>
-                        <Input value={draftHome} onChange={setDraftHome} placeholder="01..." />
-                      </div>
-
-                      <div
-                      >
-                        <div
-                       style={labelStyle}>Project name</div>
-                        <Input value={draftProjectName} onChange={setDraftProjectName} placeholder="Project name" />
-                      </div>
-
-                      <div
-                       style={{ marginTop: 10, borderTop: "1px solid #e4e4e7", paddingTop: 10 }}>
-                        <button
-                          type="button"
-                          onClick={() => setCustomerAddressSectionOpen((prev) => !prev)}
-                          style={{
-                            border: "none",
-                            background: "transparent",
-                            padding: 0,
-                            margin: 0,
-                            cursor: "pointer",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                            font: "inherit",
-                            color: "#18181b",
-                          }}
-                        >
-                          <H3>{customerAddressSectionOpen ? "▼" : "▶"} Customer address</H3>
-                        </button>
-
-                        {customerAddressSectionOpen && (
-                          <div
-                           style={{ marginTop: 10, display: "grid", gap: 12 }}>
-                            <div
-                             style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                              <div>
-                                <div style={labelStyle}>Address line 1</div>
-                                <Input value={draftCustAddress1} onChange={setDraftCustAddress1} placeholder="Address line 1" />
-                              </div>
-                              <div>
-                                <div style={labelStyle}>Address line 2</div>
-                                <Input value={draftCustAddress2} onChange={setDraftCustAddress2} placeholder="Address line 2" />
-                              </div>
-                            </div>
-
-                            <div>
-                              <div style={labelStyle}>Address line 3</div>
-                              <Input value={draftCustAddress3} onChange={setDraftCustAddress3} placeholder="Address line 3" />
-                            </div>
-
-                            <div
-                             style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                              <div>
-                                <div style={labelStyle}>Town</div>
-                                <Input value={draftCustTown} onChange={setDraftCustTown} placeholder="Town" />
-                              </div>
-                              <div>
-                                <div style={labelStyle}>City</div>
-                                <Input value={draftCustCity} onChange={setDraftCustCity} placeholder="City" />
-                              </div>
-                            </div>
-
-                            <div
-                             style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                              <div>
-                                <div style={labelStyle}>County/District</div>
-                                <Input value={draftCustCounty} onChange={setDraftCustCounty} placeholder="County/District" />
-                              </div>
-                              <div>
-                                <div style={labelStyle}>Postcode</div>
-                                <Input value={draftCustPostcode} onChange={setDraftCustPostcode} placeholder="Postcode" />
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      <div
-                       style={{ marginTop: 10, borderTop: "1px solid #e4e4e7", paddingTop: 10 }}>
-                        <button
-                          type="button"
-                          onClick={() => setInvoiceAddressSectionOpen((prev) => !prev)}
-                          style={{
-                            border: "none",
-                            background: "transparent",
-                            padding: 0,
-                            margin: 0,
-                            cursor: "pointer",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                            font: "inherit",
-                            color: "#18181b",
-                          }}
-                        >
-                          <H3>{invoiceAddressSectionOpen ? "▼" : "▶"} Invoice address</H3>
-                        </button>
-
-                        {invoiceAddressSectionOpen && (
-                          <div
-                           style={{ marginTop: 10, display: "grid", gap: 12 }}>
-                            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-                              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700 }}>
-                                <input
-                                  type="radio"
-                                  name="invoiceAddressMode"
-                                  checked={invoiceAddressMode === "customer"}
-                                  onChange={() => setInvoiceAddressMode("customer")}
-                                />
-                                Same as customer address
-                              </label>
-                              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700 }}>
-                                <input
-                                  type="radio"
-                                  name="invoiceAddressMode"
-                                  checked={invoiceAddressMode === "custom"}
-                                  onChange={() => setInvoiceAddressMode("custom")}
-                                />
-                                Custom invoice address
-                              </label>
-                            </div>
-
-                            {invoiceAddressMode === "custom" && (
-                              <div
-                               style={{ marginTop: 4, display: "grid", gap: 12 }}>
-                                <div
-                                 style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                                  <div>
-                                    <div style={labelStyle}>Address line 1</div>
-                                    <Input value={draftInvAddress1} onChange={setDraftInvAddress1} placeholder="Address line 1" />
-                                  </div>
-                                  <div>
-                                    <div style={labelStyle}>Address line 2</div>
-                                    <Input value={draftInvAddress2} onChange={setDraftInvAddress2} placeholder="Address line 2" />
-                                  </div>
-                                </div>
-
-                                <div>
-                                  <div style={labelStyle}>Address line 3</div>
-                                  <Input value={draftInvAddress3} onChange={setDraftInvAddress3} placeholder="Address line 3" />
-                                </div>
-
-                                <div
-                                 style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                                  <div>
-                                    <div style={labelStyle}>Town</div>
-                                    <Input value={draftInvTown} onChange={setDraftInvTown} placeholder="Town" />
-                                  </div>
-                                  <div>
-                                    <div style={labelStyle}>City</div>
-                                    <Input value={draftInvCity} onChange={setDraftInvCity} placeholder="City" />
-                                  </div>
-                                </div>
-
-                                <div
-                                 style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                                  <div>
-                                    <div style={labelStyle}>County/District</div>
-                                    <Input value={draftInvCounty} onChange={setDraftInvCounty} placeholder="County/District" />
-                                  </div>
-                                  <div>
-                                    <div style={labelStyle}>Postcode</div>
-                                    <Input value={draftInvPostcode} onChange={setDraftInvPostcode} placeholder="Postcode" />
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      <div
-                       style={{ display: "flex", gap: 8, marginTop: 6 }}>
-                        <Button variant="secondary" onClick={() => { setShowAddClient(false); setEditingClientId(null); }}>
-                          Cancel
-                        </Button>
-                        <Button variant="primary" onClick={() => (editingClientId ? updateClient(draftClientType) : createClient(draftClientType))}>
-                          {editingClientId ? "Save Changes" : "Create Client"}
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                )}
 
                 {/* Customers list */}
                 <div className="clients-surface-shell">

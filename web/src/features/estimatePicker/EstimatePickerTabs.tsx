@@ -8,6 +8,7 @@ import { resolveStructuredAddress, addressTuple } from "../../domain/address";
 import { rankInstallersByDistance } from "../../services/distance";
 import { getInstallers } from "../../data/installers";
 import { loadSettings } from "../../system/settings";
+import { CURRENT_APP_USER } from "../../system/currentUser";
 import { createDefaultTimeline } from "../../system/orderTimeline";
 import type { Client, ClientId, EstimateId, EstimateOutcome, EstimatePickerTab, ClientFile } from "../../models/types";
 import { estimateTotals, estimateCostTotal } from '../../domain/estimates/estimateCalculations';
@@ -519,6 +520,11 @@ export default function EstimatePickerTabs(props: Props) {
     orders: "list",
     lost: "list",
   });
+  const [estimateCreatorFilterByTab, setEstimateCreatorFilterByTab] = useState<Record<"estimates" | "orders" | "lost", "mine" | "all">>({
+    estimates: "mine",
+    orders: "mine",
+    lost: "mine",
+  });
   const [itemPriceByPositionId, setItemPriceByPositionId] = useState<Record<string, string>>({});
   const [supplierEstimateFilesByEstimateId, setSupplierEstimateFilesByEstimateId] = useState<Record<string, string[]>>({});
   const [notesScope, setNotesScope] = useState<"account" | "estimate">("account");
@@ -528,6 +534,10 @@ export default function EstimatePickerTabs(props: Props) {
     setExpandedEstimateId(props.initialExpandedEstimateId);
     props.onConsumedInitialExpandedEstimateId?.();
   }, [props.initialExpandedEstimateId, props.onConsumedInitialExpandedEstimateId]);
+
+  useEffect(() => {
+    setExpandedEstimateId(null);
+  }, [estimateCreatorFilterByTab]);
 
   if (!pickerClient) return null;
 
@@ -553,7 +563,18 @@ export default function EstimatePickerTabs(props: Props) {
 }
 
       function getFilteredEstimates(outcome: EstimateOutcome) {
-    return pickerClient.estimates.filter((e) => (((e as any).outcome ?? "Open") as EstimateOutcome) === outcome);
+    const activeFilter =
+      outcome === "Order"
+        ? estimateCreatorFilterByTab.orders
+        : outcome === "Lost"
+          ? estimateCreatorFilterByTab.lost
+          : estimateCreatorFilterByTab.estimates;
+
+    return pickerClient.estimates.filter((e) => {
+      if ((((e as any).outcome ?? "Open") as EstimateOutcome) !== outcome) return false;
+      if (activeFilter === "all") return true;
+      return String(e.createdByUserId || CURRENT_APP_USER.id) === CURRENT_APP_USER.id;
+    });
   }
 
   function sectionCombinedTotals(outcome: EstimateOutcome) {
@@ -815,6 +836,22 @@ export default function EstimatePickerTabs(props: Props) {
 
       {(estimatePickerTab === "estimates" || estimatePickerTab === "orders" || estimatePickerTab === "lost") && (
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+          <Button
+            variant={estimateCreatorFilterByTab[estimatePickerTab] === "mine" ? "primary" : "secondary"}
+            onClick={() =>
+              setEstimateCreatorFilterByTab((prev) => ({ ...prev, [estimatePickerTab]: "mine" }))
+            }
+          >
+            My {estimatePickerTab === "orders" ? "Orders" : estimatePickerTab === "lost" ? "Lost" : "Estimates"}
+          </Button>
+          <Button
+            variant={estimateCreatorFilterByTab[estimatePickerTab] === "all" ? "primary" : "secondary"}
+            onClick={() =>
+              setEstimateCreatorFilterByTab((prev) => ({ ...prev, [estimatePickerTab]: "all" }))
+            }
+          >
+            All {estimatePickerTab === "orders" ? "Orders" : estimatePickerTab === "lost" ? "Lost" : "Estimates"}
+          </Button>
           <Button
             variant={estimateCollectionViewModeByTab[estimatePickerTab] === "list" ? "primary" : "secondary"}
             onClick={() =>

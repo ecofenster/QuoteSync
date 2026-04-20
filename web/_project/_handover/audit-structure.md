@@ -82,3 +82,20 @@ Structure stable post CSS rollout
 ### Structural decisions
 - No app source files were modified in this maintenance-only step.
 - Behaviour model reuse across contexts is now a structure rule, not a suggestion.
+
+## Update (20260420_persistence_audit)
+
+### What was done
+- Audited live persistence boundaries across `server/db.js`, estimate/client/note/follow-up/settings routes, and the current `quotesync.db` schema.
+- Confirmed business data is persisted in SQLite while per-view UI state remains frontend-only.
+- Confirmed orders are persisted as estimates with `outcome = 'Order'` and `order_meta_json`, not as a separate table.
+
+### What remains
+- Run/verify the estimate ownership migration against the live DB so `created_by_user_id`, `created_by_name`, and `created_by_role` are physically present in `quotesync.db`, not just in bootstrap/route code.
+- Decide later whether user preferences such as list/grid or My/All should remain transient or move into persisted settings.
+- Add a real files/documents persistence model if Client Files needs to survive reloads.
+
+### Structural decisions
+- Persistence boundary is currently correct as a rule: business entities in DB, ephemeral view state in frontend state.
+- User role/group foundation is code-defined only for now and is intentionally not yet a permissions or access-control system.
+- Ownership persistence is partially wired but not yet fully confirmed at the live schema level because the audited DB file still lacks the new estimate creator columns.

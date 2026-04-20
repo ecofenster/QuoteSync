@@ -45,6 +45,7 @@ export default function EstimateCollectionRow(props: Props) {
 
         <div className="ep-estimate-summary-meta">
           <Small>{item.status}</Small>
+          <Small>Created by: {item.createdByName || "User"}</Small>
           <Small>{item.positions.length} positions</Small>
           <Small>{formatMeasure(totals.totalSquareMetres)} m²</Small>
           <Small>{formatMeasure(totals.totalLinearMetres)} lm</Small>
