@@ -1,0 +1,23 @@
+QuoteSync maintenance manifest
+Generated: 2026-04-20 10:53:19
+Project root: C:\Github\QuoteSync\web
+Branch at script design time: main
+Commit at script design time: 61b90d9fbcf6e69f13f8c3cdf633269893c71f6a
+
+Artifacts
+Backup zip: C:\Github\QuoteSync\web\_backups\20260420_105229-quotesync-maintenance-backup.zip
+Structure snapshot: C:\Github\QuoteSync\web\_project\structure\20260420_105229-structure-snapshot.txt
+Updated PROJECT_MAP.md: C:\Github\QuoteSync\web\_project\PROJECT_MAP.md
+Updated CHANGELOG.md: C:\Github\QuoteSync\web\_project\CHANGELOG.md
+Updated tracking doc: C:\Github\QuoteSync\web\_project\_handover\css-handover.md
+Updated tracking doc: C:\Github\QuoteSync\web\_project\_handover\audit-structure.md
+Written handover: C:\Github\QuoteSync\web\_project\_handover\20260420_105229-new-chat-handover.md
+Written handover: C:\Github\QuoteSync\web\_project\_handover\20260420_105229-configurator-handover.md
+
+Rules captured in this maintenance refresh
+- Design is handled by the user + ChatGPT; Codex implements.
+- Commit/push at safe logical boundaries; end-of-phase is acceptable.
+- Codex does not create backups automatically; backup must be explicitly done before major structural implementation.
+- Unified Estimate Collection System is the next architecture phase.
+- Main-menu Estimates is wrong; Client Estimates is the correct behaviour model.
+- List-first for data-heavy business views; grid-secondary where useful.
