@@ -103,6 +103,7 @@ import {
 import FollowUpsFeature from "./features/followUps/FollowUpsFeature";
 import MainDashboard from "./dashboard/main/MainDashboard";
 import Toggle from "./components/Toggle";
+import { ControlToolbar, ControlToolbarGroup } from "./components/ControlToolbar";
 import GoogleMapPanel, { type GoogleMapMarkerItem } from "./components/GoogleMapPanel";
 import AppShell from "./layout/AppShell";
 import AdminPlaceholderPage from "./features/admin/AdminPlaceholderPage";
@@ -115,6 +116,7 @@ import { buildSendEmailText as buildSendEmailTextService, openMailClient as open
 import { printEstimatePdf as printEstimatePdfService, downloadEstimateWordDoc as downloadEstimateWordDocService } from "./services/documents/estimateDocumentService";
 import { loadSettings, saveSettings } from "./system/settings";
 import { CURRENT_APP_USER } from "./system/currentUser";
+import { getPreference, setPreference } from "./utils/userPreferences";
 import type { DeletedClientRecord, DeletedEstimateRecord } from "./features/recycle/recycleTypes";
 import BSENStandardsTool from "./features/tools/bsen/BSENStandardsTool";
 import GlassWeightCalculatorTool from "./features/tools/glass/GlassWeightCalculatorTool";
@@ -192,6 +194,51 @@ const ORDER_MONTHS = [
   "November",
   "December",
 ] as const;
+
+const GLOBAL_ESTIMATE_PREF_KEYS = {
+  viewMode: {
+    estimates: "quotesync:viewMode:estimates",
+    orders: "quotesync:viewMode:orders",
+    lost: "quotesync:viewMode:lost",
+  },
+  sortDirection: {
+    estimates: "quotesync:sortDirection:estimates",
+    orders: "quotesync:sortDirection:orders",
+    lost: "quotesync:sortDirection:lost",
+  },
+  creatorFilter: {
+    estimates: "quotesync:filter:estimates",
+    orders: "quotesync:filter:orders",
+    lost: "quotesync:filter:lost",
+  },
+} as const;
+
+const CLIENT_DB_PREF_KEYS = {
+  viewMode: "quotesync:viewMode:clients",
+  sortDirection: "quotesync:sortDirection:clients",
+  filter: "quotesync:filter:clients",
+  sortField: "quotesync:sortField:clients",
+} as const;
+
+function isEstimateCollectionViewMode(value: unknown): value is EstimateCollectionViewMode {
+  return value === "list" || value === "grid";
+}
+
+function isCreatorFilter(value: unknown): value is "mine" | "all" {
+  return value === "mine" || value === "all";
+}
+
+function isSortDirection(value: unknown): value is "asc" | "desc" {
+  return value === "asc" || value === "desc";
+}
+
+function isClientDbFilter(value: unknown): value is "All" | "Open" | "Orders" | "Lost" {
+  return value === "All" || value === "Open" || value === "Orders" || value === "Lost";
+}
+
+function isClientDbSortField(value: unknown): value is "client_name" | "client_number" | "project_name" {
+  return value === "client_name" || value === "client_number" || value === "project_name";
+}
 
 function estimatePotentialValue(est: Estimate) {
   return (est.positions ?? []).reduce((sum, pos) => {
@@ -1746,12 +1793,20 @@ const [clients, setClients] = useState<Client[]>([]);
 
   const [clientDbSearch, setClientDbSearch] = useState("");
 
-  const [clientDbFilter, setClientDbFilter] = useState<"All" | "Open" | "Orders" | "Lost">("All");
+  const [clientDbFilter, setClientDbFilter] = useState<"All" | "Open" | "Orders" | "Lost">(() =>
+    getPreference(CLIENT_DB_PREF_KEYS.filter, "All", isClientDbFilter)
+  );
 
-  const [clientDbSort, setClientDbSort] = useState<"asc" | "desc">("asc");
+  const [clientDbSort, setClientDbSort] = useState<"asc" | "desc">(() =>
+    getPreference(CLIENT_DB_PREF_KEYS.sortDirection, "asc", isSortDirection)
+  );
 
-  const [clientDbSortField, setClientDbSortField] = useState<"client_name" | "client_number" | "project_name">("client_name");
-  const [clientCollectionViewMode, setClientCollectionViewMode] = useState<ClientCollectionViewMode>("list");
+  const [clientDbSortField, setClientDbSortField] = useState<"client_name" | "client_number" | "project_name">(() =>
+    getPreference(CLIENT_DB_PREF_KEYS.sortField, "client_name", isClientDbSortField)
+  );
+  const [clientCollectionViewMode, setClientCollectionViewMode] = useState<ClientCollectionViewMode>(() =>
+    getPreference(CLIENT_DB_PREF_KEYS.viewMode, "list", isEstimateCollectionViewMode)
+  );
 
 
   const currentMonthName = ORDER_MONTHS[new Date().getMonth()];
@@ -1784,16 +1839,21 @@ const [clients, setClients] = useState<Client[]>([]);
   const [globalSendModalAddFollowUp, setGlobalSendModalAddFollowUp] = useState(true);
   const [globalSendModalFollowUpDays, setGlobalSendModalFollowUpDays] = useState(3);
   const [globalSendModalPhoneCall, setGlobalSendModalPhoneCall] = useState(true);
-  const [globalEstimateViewModeByMenu, setGlobalEstimateViewModeByMenu] = useState<Record<"estimates" | "orders" | "lost", EstimateCollectionViewMode>>({
-    estimates: "list",
-    orders: "list",
-    lost: "list",
-  });
-  const [globalCreatorFilterByMenu, setGlobalCreatorFilterByMenu] = useState<Record<"estimates" | "orders" | "lost", "mine" | "all">>({
-    estimates: "mine",
-    orders: "mine",
-    lost: "mine",
-  });
+  const [globalEstimateViewModeByMenu, setGlobalEstimateViewModeByMenu] = useState<Record<"estimates" | "orders" | "lost", EstimateCollectionViewMode>>(() => ({
+    estimates: getPreference(GLOBAL_ESTIMATE_PREF_KEYS.viewMode.estimates, "list", isEstimateCollectionViewMode),
+    orders: getPreference(GLOBAL_ESTIMATE_PREF_KEYS.viewMode.orders, "list", isEstimateCollectionViewMode),
+    lost: getPreference(GLOBAL_ESTIMATE_PREF_KEYS.viewMode.lost, "list", isEstimateCollectionViewMode),
+  }));
+  const [globalSortDirectionByMenu, setGlobalSortDirectionByMenu] = useState<Record<"estimates" | "orders" | "lost", "asc" | "desc">>(() => ({
+    estimates: getPreference(GLOBAL_ESTIMATE_PREF_KEYS.sortDirection.estimates, "asc", isSortDirection),
+    orders: getPreference(GLOBAL_ESTIMATE_PREF_KEYS.sortDirection.orders, "asc", isSortDirection),
+    lost: getPreference(GLOBAL_ESTIMATE_PREF_KEYS.sortDirection.lost, "asc", isSortDirection),
+  }));
+  const [globalCreatorFilterByMenu, setGlobalCreatorFilterByMenu] = useState<Record<"estimates" | "orders" | "lost", "mine" | "all">>(() => ({
+    estimates: getPreference(GLOBAL_ESTIMATE_PREF_KEYS.creatorFilter.estimates, "mine", isCreatorFilter),
+    orders: getPreference(GLOBAL_ESTIMATE_PREF_KEYS.creatorFilter.orders, "mine", isCreatorFilter),
+    lost: getPreference(GLOBAL_ESTIMATE_PREF_KEYS.creatorFilter.lost, "mine", isCreatorFilter),
+  }));
 
   useEffect(() => {
     if (!showAddEstimateModal) return;
@@ -1809,6 +1869,40 @@ const [clients, setClients] = useState<Client[]>([]);
       setCreateEstimateClientId(clients[0].id);
     }
   }, [clients, clientsLoaded, createEstimateClientId, showAddEstimateModal]);
+
+  useEffect(() => {
+    setPreference(GLOBAL_ESTIMATE_PREF_KEYS.viewMode.estimates, globalEstimateViewModeByMenu.estimates);
+    setPreference(GLOBAL_ESTIMATE_PREF_KEYS.viewMode.orders, globalEstimateViewModeByMenu.orders);
+    setPreference(GLOBAL_ESTIMATE_PREF_KEYS.viewMode.lost, globalEstimateViewModeByMenu.lost);
+  }, [globalEstimateViewModeByMenu]);
+
+  useEffect(() => {
+    setPreference(GLOBAL_ESTIMATE_PREF_KEYS.sortDirection.estimates, globalSortDirectionByMenu.estimates);
+    setPreference(GLOBAL_ESTIMATE_PREF_KEYS.sortDirection.orders, globalSortDirectionByMenu.orders);
+    setPreference(GLOBAL_ESTIMATE_PREF_KEYS.sortDirection.lost, globalSortDirectionByMenu.lost);
+  }, [globalSortDirectionByMenu]);
+
+  useEffect(() => {
+    setPreference(GLOBAL_ESTIMATE_PREF_KEYS.creatorFilter.estimates, globalCreatorFilterByMenu.estimates);
+    setPreference(GLOBAL_ESTIMATE_PREF_KEYS.creatorFilter.orders, globalCreatorFilterByMenu.orders);
+    setPreference(GLOBAL_ESTIMATE_PREF_KEYS.creatorFilter.lost, globalCreatorFilterByMenu.lost);
+  }, [globalCreatorFilterByMenu]);
+
+  useEffect(() => {
+    setPreference(CLIENT_DB_PREF_KEYS.viewMode, clientCollectionViewMode);
+  }, [clientCollectionViewMode]);
+
+  useEffect(() => {
+    setPreference(CLIENT_DB_PREF_KEYS.sortDirection, clientDbSort);
+  }, [clientDbSort]);
+
+  useEffect(() => {
+    setPreference(CLIENT_DB_PREF_KEYS.filter, clientDbFilter);
+  }, [clientDbFilter]);
+
+  useEffect(() => {
+    setPreference(CLIENT_DB_PREF_KEYS.sortField, clientDbSortField);
+  }, [clientDbSortField]);
 
   const [recycleBinFilter, setRecycleBinFilter] = useState<"all" | "clients" | "estimates">("all");
   const [recycleBinView, setRecycleBinView] = useState<"grid" | "list">("grid");
@@ -2858,9 +2952,11 @@ function startAddPosition() {
   }
 
   function filteredGlobalRows(menuKey: GlobalEstimateMenuKey) {
-      
-
     const q = globalSearch.trim().toLowerCase();
+    const activeGlobalSortDirection =
+      menuKey === "estimates" || menuKey === "orders" || menuKey === "lost"
+        ? globalSortDirectionByMenu[menuKey]
+        : globalSort;
 
     const rows = globalEstimateRows.filter((row) => {
       if (!matchesGlobalStatus(row, menuKey)) return false;
@@ -2902,7 +2998,7 @@ function startAddPosition() {
         result = clientDisplayName(a.client).localeCompare(clientDisplayName(b.client), undefined, { sensitivity: "base" });
       }
 
-      return globalSort === "asc" ? result : -result;
+      return activeGlobalSortDirection === "asc" ? result : -result;
     });
 
     return rows;
@@ -2999,7 +3095,7 @@ function startAddPosition() {
     openEstimateFromGlobalMenu(row.client.id, estimateId);
   }
 
-  const installationRowsForBoard = useMemo(() => filteredGlobalRows("installation"), [globalEstimateRows, globalSearch, globalSort, globalSortField, globalMonthFilter, globalCreatorFilterByMenu]);
+  const installationRowsForBoard = useMemo(() => filteredGlobalRows("installation"), [globalEstimateRows, globalSearch, globalSort, globalSortField, globalMonthFilter, globalCreatorFilterByMenu, globalSortDirectionByMenu]);
 
   const estimateMapRowsForBoard = useMemo(() => {
     const q = globalSearch.trim().toLowerCase();
@@ -4095,6 +4191,7 @@ function renderEstimateMapBoard() {
     const rows = filteredGlobalRows(menuKey);
     const summary = globalSummaryForRows(rows);
     const viewMode = menuKey === "installation" ? "list" : globalEstimateViewModeByMenu[menuKey];
+    const sortDirection = menuKey === "installation" ? globalSort : globalSortDirectionByMenu[menuKey];
     const creatorFilter = menuKey === "installation" ? "all" : globalCreatorFilterByMenu[menuKey];
     const collectionOutcome: Models.EstimateOutcome =
       menuKey === "orders" || menuKey === "installation"
@@ -4147,10 +4244,9 @@ function renderEstimateMapBoard() {
                   />
                 </div>
 
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <ControlToolbar>
                   {menuKey !== "installation" && (
-                    <>
-                      <Small>Scope</Small>
+                    <ControlToolbarGroup label="Scope">
                       <Button
                         variant={creatorFilter === "mine" ? "primary" : "secondary"}
                         onClick={() =>
@@ -4167,7 +4263,10 @@ function renderEstimateMapBoard() {
                       >
                         All {title}
                       </Button>
-                      <Small>View</Small>
+                    </ControlToolbarGroup>
+                  )}
+                  {menuKey !== "installation" && (
+                    <ControlToolbarGroup label="View">
                       <Button
                         variant={viewMode === "list" ? "primary" : "secondary"}
                         onClick={() =>
@@ -4184,26 +4283,41 @@ function renderEstimateMapBoard() {
                       >
                         Grid
                       </Button>
-                    </>
+                    </ControlToolbarGroup>
                   )}
-                  <Small>Sort by</Small>
-                  <select
-                    value={globalSortField}
-                    onChange={(e) => setGlobalSortField(e.currentTarget.value as GlobalSortField)}
-                    style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14, background: "#fff" }}
-                  >
-                    <option value="client_number">Client Number</option>
-                    <option value="client_name">Client Name</option>
-                    <option value="project_name">Project Name</option>
-                    <option value="total_cost">Total Cost</option>
-                  </select>
-                  <Button variant={globalSort === "asc" ? "primary" : "secondary"} onClick={() => setGlobalSort("asc")}>
-                    Ascending
-                  </Button>
-                  <Button variant={globalSort === "desc" ? "primary" : "secondary"} onClick={() => setGlobalSort("desc")}>
-                    Descending
-                  </Button>
-                </div>
+                  <ControlToolbarGroup label="Sort by">
+                    <select
+                      value={globalSortField}
+                      onChange={(e) => setGlobalSortField(e.currentTarget.value as GlobalSortField)}
+                      style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14, background: "#fff" }}
+                    >
+                      <option value="client_number">Client Number</option>
+                      <option value="client_name">Client Name</option>
+                      <option value="project_name">Project Name</option>
+                      <option value="total_cost">Total Cost</option>
+                    </select>
+                    <Button
+                      variant={sortDirection === "asc" ? "primary" : "secondary"}
+                      onClick={() =>
+                        menuKey === "installation"
+                          ? setGlobalSort("asc")
+                          : setGlobalSortDirectionByMenu((prev) => ({ ...prev, [menuKey]: "asc" }))
+                      }
+                    >
+                      Ascending
+                    </Button>
+                    <Button
+                      variant={sortDirection === "desc" ? "primary" : "secondary"}
+                      onClick={() =>
+                        menuKey === "installation"
+                          ? setGlobalSort("desc")
+                          : setGlobalSortDirectionByMenu((prev) => ({ ...prev, [menuKey]: "desc" }))
+                      }
+                    >
+                      Descending
+                    </Button>
+                  </ControlToolbarGroup>
+                </ControlToolbar>
               </div>
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -5026,41 +5140,45 @@ function renderEstimateMapBoard() {
             />
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <Small>Sort by</Small>
-            <select
-              value={clientDbSortField}
-              onChange={(e) => setClientDbSortField(e.currentTarget.value as "client_name" | "client_number" | "project_name")}
-              style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14, background: "#fff" }}
-            >
-              <option value="client_name">Client Name</option>
-              <option value="client_number">Client Number</option>
-              <option value="project_name">Project Name</option>
-            </select>
-            <Button variant={clientDbSort === "asc" ? "primary" : "secondary"} onClick={() => setClientDbSort("asc")}>
-              Ascending
-            </Button>
-            <Button variant={clientDbSort === "desc" ? "primary" : "secondary"} onClick={() => setClientDbSort("desc")}>
-              Descending
-            </Button>
-          </div>
-        </div>
+          <ControlToolbar>
+            <ControlToolbarGroup label="Scope">
+              {(["All", "Open", "Orders", "Lost"] as const).map((opt) => (
+                <Button
+                  key={opt}
+                  variant={clientDbFilter === opt ? "primary" : "secondary"}
+                  onClick={() => setClientDbFilter(opt)}
+                >
+                  {opt}
+                </Button>
+              ))}
+            </ControlToolbarGroup>
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {(["All", "Open", "Orders", "Lost"] as const).map((opt) => (
-            <Button
-              key={opt}
-              variant={clientDbFilter === opt ? "primary" : "secondary"}
-              onClick={() => setClientDbFilter(opt)}
-            >
-              {opt}
-            </Button>
-          ))}
+            <ControlToolbarGroup label="View">
+              <ClientCollectionViewToggle viewMode={clientCollectionViewMode} onChange={setClientCollectionViewMode} />
+            </ControlToolbarGroup>
+
+            <ControlToolbarGroup label="Sort by">
+              <select
+                value={clientDbSortField}
+                onChange={(e) => setClientDbSortField(e.currentTarget.value as "client_name" | "client_number" | "project_name")}
+                style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14, background: "#fff" }}
+              >
+                <option value="client_name">Client Name</option>
+                <option value="client_number">Client Number</option>
+                <option value="project_name">Project Name</option>
+              </select>
+              <Button variant={clientDbSort === "asc" ? "primary" : "secondary"} onClick={() => setClientDbSort("asc")}>
+                Ascending
+              </Button>
+              <Button variant={clientDbSort === "desc" ? "primary" : "secondary"} onClick={() => setClientDbSort("desc")}>
+                Descending
+              </Button>
+            </ControlToolbarGroup>
+          </ControlToolbar>
         </div>
 
         <div className="clients-surface-toolbar">
           <Small>{clientCollectionItems.length} clients shown</Small>
-          <ClientCollectionViewToggle viewMode={clientCollectionViewMode} onChange={setClientCollectionViewMode} />
         </div>
       </div>
     </div>

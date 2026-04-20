@@ -7,8 +7,10 @@ import React, { useEffect, useState } from "react";
 import { resolveStructuredAddress, addressTuple } from "../../domain/address";
 import { rankInstallersByDistance } from "../../services/distance";
 import { getInstallers } from "../../data/installers";
+import { ControlToolbar, ControlToolbarGroup } from "../../components/ControlToolbar";
 import { loadSettings } from "../../system/settings";
 import { CURRENT_APP_USER } from "../../system/currentUser";
+import { getPreference, setPreference } from "../../utils/userPreferences";
 import { createDefaultTimeline } from "../../system/orderTimeline";
 import type { Client, ClientId, EstimateId, EstimateOutcome, EstimatePickerTab, ClientFile } from "../../models/types";
 import { estimateTotals, estimateCostTotal } from '../../domain/estimates/estimateCalculations';
@@ -21,6 +23,36 @@ import FilesTab from './tabs/FilesTab';
 import EstimateSectionTab from './tabs/EstimateSectionTab';
 import type { EstimateCollectionViewMode } from "../estimateCollection/EstimateCollectionView";
 import './tabs/shared.css';
+
+const CLIENT_ESTIMATE_PREF_KEYS = {
+  viewMode: {
+    estimates: "quotesync:viewMode:client:estimates",
+    orders: "quotesync:viewMode:client:orders",
+    lost: "quotesync:viewMode:client:lost",
+  },
+  sortDirection: {
+    estimates: "quotesync:sortDirection:client:estimates",
+    orders: "quotesync:sortDirection:client:orders",
+    lost: "quotesync:sortDirection:client:lost",
+  },
+  creatorFilter: {
+    estimates: "quotesync:filter:client:estimates",
+    orders: "quotesync:filter:client:orders",
+    lost: "quotesync:filter:client:lost",
+  },
+} as const;
+
+function isEstimateCollectionViewMode(value: unknown): value is EstimateCollectionViewMode {
+  return value === "list" || value === "grid";
+}
+
+function isCreatorFilter(value: unknown): value is "mine" | "all" {
+  return value === "mine" || value === "all";
+}
+
+function isSortDirection(value: unknown): value is "asc" | "desc" {
+  return value === "asc" || value === "desc";
+}
 
 type Props = {
   estimatePickerTab: EstimatePickerTab;
@@ -515,16 +547,21 @@ export default function EstimatePickerTabs(props: Props) {
   const [sendModalFollowUpDays, setSendModalFollowUpDays] = useState(3);
   const [sendModalPhoneCall, setSendModalPhoneCall] = useState(true);
   const [expandedEstimateId, setExpandedEstimateId] = useState<EstimateId | null>(null);
-  const [estimateCollectionViewModeByTab, setEstimateCollectionViewModeByTab] = useState<Record<"estimates" | "orders" | "lost", EstimateCollectionViewMode>>({
-    estimates: "list",
-    orders: "list",
-    lost: "list",
-  });
-  const [estimateCreatorFilterByTab, setEstimateCreatorFilterByTab] = useState<Record<"estimates" | "orders" | "lost", "mine" | "all">>({
-    estimates: "mine",
-    orders: "mine",
-    lost: "mine",
-  });
+  const [estimateCollectionViewModeByTab, setEstimateCollectionViewModeByTab] = useState<Record<"estimates" | "orders" | "lost", EstimateCollectionViewMode>>(() => ({
+    estimates: getPreference(CLIENT_ESTIMATE_PREF_KEYS.viewMode.estimates, "list", isEstimateCollectionViewMode),
+    orders: getPreference(CLIENT_ESTIMATE_PREF_KEYS.viewMode.orders, "list", isEstimateCollectionViewMode),
+    lost: getPreference(CLIENT_ESTIMATE_PREF_KEYS.viewMode.lost, "list", isEstimateCollectionViewMode),
+  }));
+  const [estimateSortDirectionByTab, setEstimateSortDirectionByTab] = useState<Record<"estimates" | "orders" | "lost", "asc" | "desc">>(() => ({
+    estimates: getPreference(CLIENT_ESTIMATE_PREF_KEYS.sortDirection.estimates, "asc", isSortDirection),
+    orders: getPreference(CLIENT_ESTIMATE_PREF_KEYS.sortDirection.orders, "asc", isSortDirection),
+    lost: getPreference(CLIENT_ESTIMATE_PREF_KEYS.sortDirection.lost, "asc", isSortDirection),
+  }));
+  const [estimateCreatorFilterByTab, setEstimateCreatorFilterByTab] = useState<Record<"estimates" | "orders" | "lost", "mine" | "all">>(() => ({
+    estimates: getPreference(CLIENT_ESTIMATE_PREF_KEYS.creatorFilter.estimates, "mine", isCreatorFilter),
+    orders: getPreference(CLIENT_ESTIMATE_PREF_KEYS.creatorFilter.orders, "mine", isCreatorFilter),
+    lost: getPreference(CLIENT_ESTIMATE_PREF_KEYS.creatorFilter.lost, "mine", isCreatorFilter),
+  }));
   const [itemPriceByPositionId, setItemPriceByPositionId] = useState<Record<string, string>>({});
   const [supplierEstimateFilesByEstimateId, setSupplierEstimateFilesByEstimateId] = useState<Record<string, string[]>>({});
   const [notesScope, setNotesScope] = useState<"account" | "estimate">("account");
@@ -537,6 +574,24 @@ export default function EstimatePickerTabs(props: Props) {
 
   useEffect(() => {
     setExpandedEstimateId(null);
+  }, [estimateCreatorFilterByTab]);
+
+  useEffect(() => {
+    setPreference(CLIENT_ESTIMATE_PREF_KEYS.viewMode.estimates, estimateCollectionViewModeByTab.estimates);
+    setPreference(CLIENT_ESTIMATE_PREF_KEYS.viewMode.orders, estimateCollectionViewModeByTab.orders);
+    setPreference(CLIENT_ESTIMATE_PREF_KEYS.viewMode.lost, estimateCollectionViewModeByTab.lost);
+  }, [estimateCollectionViewModeByTab]);
+
+  useEffect(() => {
+    setPreference(CLIENT_ESTIMATE_PREF_KEYS.sortDirection.estimates, estimateSortDirectionByTab.estimates);
+    setPreference(CLIENT_ESTIMATE_PREF_KEYS.sortDirection.orders, estimateSortDirectionByTab.orders);
+    setPreference(CLIENT_ESTIMATE_PREF_KEYS.sortDirection.lost, estimateSortDirectionByTab.lost);
+  }, [estimateSortDirectionByTab]);
+
+  useEffect(() => {
+    setPreference(CLIENT_ESTIMATE_PREF_KEYS.creatorFilter.estimates, estimateCreatorFilterByTab.estimates);
+    setPreference(CLIENT_ESTIMATE_PREF_KEYS.creatorFilter.orders, estimateCreatorFilterByTab.orders);
+    setPreference(CLIENT_ESTIMATE_PREF_KEYS.creatorFilter.lost, estimateCreatorFilterByTab.lost);
   }, [estimateCreatorFilterByTab]);
 
   if (!pickerClient) return null;
@@ -716,7 +771,13 @@ export default function EstimatePickerTabs(props: Props) {
     emptyText: string,
     viewKey: "estimates" | "orders" | "lost"
   ) {
-    const estimates = getFilteredEstimates(outcome);
+    const estimates = [...getFilteredEstimates(outcome)].sort((a, b) => {
+      const result = String(a.estimateRef || "").localeCompare(String(b.estimateRef || ""), undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
+      return estimateSortDirectionByTab[viewKey] === "asc" ? result : -result;
+    });
     if (outcome === "Order") {
       estimates.forEach((e) => ensureOrderMeta(e));
     }
@@ -786,25 +847,88 @@ export default function EstimatePickerTabs(props: Props) {
 
   return (
     <>
-      <div className="ep-tab-list">
-        <Button variant={estimatePickerTab === "client_info" ? "primary" : "secondary"} onClick={() => setEstimatePickerTab("client_info")}>
-          Client Info
-        </Button>
-        <Button variant={estimatePickerTab === "estimates" ? "primary" : "secondary"} onClick={() => setEstimatePickerTab("estimates")}>
-          Client Estimates
-        </Button>
-        <Button variant={estimatePickerTab === "orders" ? "primary" : "secondary"} onClick={() => setEstimatePickerTab("orders")}>
-          Client Orders
-        </Button>
-        <Button variant={estimatePickerTab === "lost" ? "primary" : "secondary"} onClick={() => setEstimatePickerTab("lost")}>
-          Client Lost
-        </Button>
-        <Button variant={estimatePickerTab === "client_notes" ? "primary" : "secondary"} onClick={() => setEstimatePickerTab("client_notes")}>
-          Client Notes
-        </Button>
-        <Button variant={estimatePickerTab === "files" ? "primary" : "secondary"} onClick={() => setEstimatePickerTab("files")}>
-          Files
-        </Button>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div className="ep-tab-list">
+          <Button variant={estimatePickerTab === "client_info" ? "primary" : "secondary"} onClick={() => setEstimatePickerTab("client_info")}>
+            Client Info
+          </Button>
+          <Button variant={estimatePickerTab === "estimates" ? "primary" : "secondary"} onClick={() => setEstimatePickerTab("estimates")}>
+            Client Estimates
+          </Button>
+          <Button variant={estimatePickerTab === "orders" ? "primary" : "secondary"} onClick={() => setEstimatePickerTab("orders")}>
+            Client Orders
+          </Button>
+          <Button variant={estimatePickerTab === "lost" ? "primary" : "secondary"} onClick={() => setEstimatePickerTab("lost")}>
+            Client Lost
+          </Button>
+          <Button variant={estimatePickerTab === "client_notes" ? "primary" : "secondary"} onClick={() => setEstimatePickerTab("client_notes")}>
+            Client Notes
+          </Button>
+          <Button variant={estimatePickerTab === "files" ? "primary" : "secondary"} onClick={() => setEstimatePickerTab("files")}>
+            Files
+          </Button>
+        </div>
+
+        {(estimatePickerTab === "estimates" || estimatePickerTab === "orders" || estimatePickerTab === "lost") && (
+          <ControlToolbar>
+            <ControlToolbarGroup label="Scope">
+              <Button
+                variant={estimateCreatorFilterByTab[estimatePickerTab] === "mine" ? "primary" : "secondary"}
+                onClick={() =>
+                  setEstimateCreatorFilterByTab((prev) => ({ ...prev, [estimatePickerTab]: "mine" }))
+                }
+              >
+                My {estimatePickerTab === "orders" ? "Orders" : estimatePickerTab === "lost" ? "Lost" : "Estimates"}
+              </Button>
+              <Button
+                variant={estimateCreatorFilterByTab[estimatePickerTab] === "all" ? "primary" : "secondary"}
+                onClick={() =>
+                  setEstimateCreatorFilterByTab((prev) => ({ ...prev, [estimatePickerTab]: "all" }))
+                }
+              >
+                All {estimatePickerTab === "orders" ? "Orders" : estimatePickerTab === "lost" ? "Lost" : "Estimates"}
+              </Button>
+            </ControlToolbarGroup>
+
+            <ControlToolbarGroup label="View">
+              <Button
+                variant={estimateCollectionViewModeByTab[estimatePickerTab] === "list" ? "primary" : "secondary"}
+                onClick={() =>
+                  setEstimateCollectionViewModeByTab((prev) => ({ ...prev, [estimatePickerTab]: "list" }))
+                }
+              >
+                List
+              </Button>
+              <Button
+                variant={estimateCollectionViewModeByTab[estimatePickerTab] === "grid" ? "primary" : "secondary"}
+                onClick={() =>
+                  setEstimateCollectionViewModeByTab((prev) => ({ ...prev, [estimatePickerTab]: "grid" }))
+                }
+              >
+                Grid
+              </Button>
+            </ControlToolbarGroup>
+
+            <ControlToolbarGroup label="Sort by">
+              <Button
+                variant={estimateSortDirectionByTab[estimatePickerTab] === "asc" ? "primary" : "secondary"}
+                onClick={() =>
+                  setEstimateSortDirectionByTab((prev) => ({ ...prev, [estimatePickerTab]: "asc" }))
+                }
+              >
+                Ascending
+              </Button>
+              <Button
+                variant={estimateSortDirectionByTab[estimatePickerTab] === "desc" ? "primary" : "secondary"}
+                onClick={() =>
+                  setEstimateSortDirectionByTab((prev) => ({ ...prev, [estimatePickerTab]: "desc" }))
+                }
+              >
+                Descending
+              </Button>
+            </ControlToolbarGroup>
+          </ControlToolbar>
+        )}
       </div>
 
       <div className="ep-stats-grid">
@@ -829,46 +953,7 @@ export default function EstimatePickerTabs(props: Props) {
         <ClientInfoTab
           pickerClient={pickerClient}
           openEditClientPanel={openEditClientPanel}
-          confirmDeleteEstimate={confirmDeleteEstimate}
-          openEstimateFromPicker={openEstimateFromPicker}
         />
-      )}
-
-      {(estimatePickerTab === "estimates" || estimatePickerTab === "orders" || estimatePickerTab === "lost") && (
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
-          <Button
-            variant={estimateCreatorFilterByTab[estimatePickerTab] === "mine" ? "primary" : "secondary"}
-            onClick={() =>
-              setEstimateCreatorFilterByTab((prev) => ({ ...prev, [estimatePickerTab]: "mine" }))
-            }
-          >
-            My {estimatePickerTab === "orders" ? "Orders" : estimatePickerTab === "lost" ? "Lost" : "Estimates"}
-          </Button>
-          <Button
-            variant={estimateCreatorFilterByTab[estimatePickerTab] === "all" ? "primary" : "secondary"}
-            onClick={() =>
-              setEstimateCreatorFilterByTab((prev) => ({ ...prev, [estimatePickerTab]: "all" }))
-            }
-          >
-            All {estimatePickerTab === "orders" ? "Orders" : estimatePickerTab === "lost" ? "Lost" : "Estimates"}
-          </Button>
-          <Button
-            variant={estimateCollectionViewModeByTab[estimatePickerTab] === "list" ? "primary" : "secondary"}
-            onClick={() =>
-              setEstimateCollectionViewModeByTab((prev) => ({ ...prev, [estimatePickerTab]: "list" }))
-            }
-          >
-            List
-          </Button>
-          <Button
-            variant={estimateCollectionViewModeByTab[estimatePickerTab] === "grid" ? "primary" : "secondary"}
-            onClick={() =>
-              setEstimateCollectionViewModeByTab((prev) => ({ ...prev, [estimatePickerTab]: "grid" }))
-            }
-          >
-            Grid
-          </Button>
-        </div>
       )}
 
       {estimatePickerTab === "estimates" && renderEstimateSection("Open", "Client Estimates", "No open estimates yet.", "estimates")}
