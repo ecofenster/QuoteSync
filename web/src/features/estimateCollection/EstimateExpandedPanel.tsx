@@ -14,7 +14,7 @@ type Props = {
   item: EstimateCollectionItem;
   outcome: EstimateOutcome;
   currentTab: string;
-  pickerClient: Client;
+  itemClient: Client;
   statusMenuForEstimateId: string | null;
   setStatusMenuForEstimateId: React.Dispatch<React.SetStateAction<string | null>>;
   selectedOrderForInstallations: string | null;
@@ -50,7 +50,7 @@ function EstimateExpandedPanelContent(props: Props) {
   const {
     item,
     outcome,
-    pickerClient,
+    itemClient,
     statusMenuForEstimateId,
     setStatusMenuForEstimateId,
     selectedOrderForInstallations,
@@ -180,7 +180,7 @@ function EstimateExpandedPanelContent(props: Props) {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        client_id: pickerClient.id,
+        client_id: itemClient.id,
         estimate_ref: item.estimateRef,
         base_estimate_ref: item.baseEstimateRef,
         revision_no: item.revisionNo,
@@ -235,7 +235,7 @@ function EstimateExpandedPanelContent(props: Props) {
     <>
       <EstimateCollectionActions
         item={item}
-        pickerClient={pickerClient}
+        itemClient={itemClient}
         currentOutcome={currentOutcome}
         statusMenuForEstimateId={statusMenuForEstimateId}
         setStatusMenuForEstimateId={setStatusMenuForEstimateId}
@@ -270,7 +270,7 @@ function EstimateExpandedPanelContent(props: Props) {
       {outcome === "Order" && item.orderMeta?.timeline && (
         <OrderInstallationsBlock
           e={item}
-          pickerClient={pickerClient}
+          pickerClient={itemClient}
           selectedOrderForInstallations={selectedOrderForInstallations}
           rankedInstallers={rankedInstallers}
           selectedInstallerByEstimateId={selectedInstallerByEstimateId}
@@ -331,12 +331,12 @@ function EstimateExpandedPanelContent(props: Props) {
 }
 
 export default function EstimateExpandedPanel(props: Props) {
-  const { item, currentTab, pickerClient } = props;
+  const { item, currentTab, itemClient } = props;
 
   return (
     <EstimateWorkflowProvider
       currentTab={currentTab}
-      currentClientId={pickerClient.id}
+      currentClientId={itemClient.id}
       currentEstimateId={item.id}
     >
       <EstimateExpandedPanelContent {...props} />

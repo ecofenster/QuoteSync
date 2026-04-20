@@ -1,12 +1,13 @@
 import React from "react";
 import type { Client, ClientId, EstimateId, EstimateOutcome } from "../../../models/types";
-import EstimateCollectionView from "../../estimateCollection/EstimateCollectionView";
+import EstimateCollectionView, { type EstimateCollectionViewMode } from "../../estimateCollection/EstimateCollectionView";
 
 type Props = {
   currentTab: string;
   titleText: string;
   emptyText: string;
   estimates: Client["estimates"];
+  viewMode: EstimateCollectionViewMode;
   outcome: EstimateOutcome;
   sectionTotals: { totalSquareMetres: number; totalLinearMetres: number; totalQty: number; totalCost: number };
   expandedEstimateId: EstimateId | null;
@@ -49,6 +50,7 @@ export default function EstimateSectionTab(props: Props) {
     titleText,
     emptyText,
     estimates,
+    viewMode,
     outcome,
     sectionTotals,
     expandedEstimateId,
@@ -91,6 +93,7 @@ export default function EstimateSectionTab(props: Props) {
       titleText={titleText}
       emptyText={emptyText}
       items={estimates}
+      viewMode={viewMode}
       outcome={outcome}
       sectionTotals={sectionTotals}
       expandedEstimateId={expandedEstimateId}
@@ -107,7 +110,7 @@ export default function EstimateSectionTab(props: Props) {
       setItemPriceByPositionId={setItemPriceByPositionId}
       formatMeasure={formatMeasure}
       formatMoney={formatMoney}
-      pickerClient={pickerClient}
+      getClientForItem={() => pickerClient}
       activeUserName={activeUserName}
       apiFetchJson={apiFetchJson}
       copyEstimateForClient={copyEstimateForClient}

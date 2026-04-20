@@ -416,6 +416,11 @@
   gap: 10px;
 }
 
+.ep-section-estimates--grid {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  align-items: start;
+}
+
 .ep-estimate-card {
   display: grid;
   gap: 12px;
@@ -423,6 +428,10 @@
   border: 1px solid var(--color-border);
   border-radius: 16px;
   background: var(--color-surface);
+}
+
+.ep-estimate-card--grid {
+  align-content: start;
 }
 
 .ep-estimate-summary {
@@ -433,6 +442,23 @@
   cursor: pointer;
 }
 
+.ep-estimate-summary--grid {
+  align-items: flex-start;
+}
+
+.ep-estimate-summary-main {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ep-estimate-summary-topline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .ep-estimate-summary-meta {
   display: flex;
   align-items: center;
@@ -440,11 +466,21 @@
   flex-wrap: wrap;
 }
 
+.ep-estimate-client-name {
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--color-text-primary);
+}
+
 .ep-estimate-summary-toggle {
   font-size: 12px;
   font-weight: 900;
   color: var(--color-text-secondary);
   white-space: nowrap;
+}
+
+.ep-estimate-summary--grid .ep-estimate-summary-toggle {
+  padding-top: 2px;
 }
 
 .ep-estimate-actions-grid {

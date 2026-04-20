@@ -1,3 +1,7 @@
-import type { Client } from "../../models/types";
+import type { ClientId, Estimate } from "../../models/types";
 
-export type EstimateCollectionItem = Client["estimates"][number];
+export type EstimateCollectionItem = Estimate & {
+  collectionClientId?: ClientId;
+  clientName?: string;
+  clientReference?: string;
+};

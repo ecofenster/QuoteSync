@@ -108,10 +108,18 @@ import AppShell from "./layout/AppShell";
 import AdminPlaceholderPage from "./features/admin/AdminPlaceholderPage";
 import ClientPortalPlaceholderPage from "./features/clientPortal/ClientPortalPlaceholderPage";
 import { buildClientLocationLabel, convertCoordinatesToWhat3Words, resolveClientLocation, resolveEstimateLocation, type ResolvedClientLocation } from "./services/locationService";
+import { rankInstallersByDistance } from "./services/distance";
+import { getInstallers } from "./data/installers";
+import { addFollowUpForEstimate as addFollowUpForEstimateService } from "./services/followups/followupService";
+import { buildSendEmailText as buildSendEmailTextService, openMailClient as openMailClientService } from "./services/email/emailService";
+import { printEstimatePdf as printEstimatePdfService, downloadEstimateWordDoc as downloadEstimateWordDocService } from "./services/documents/estimateDocumentService";
 import { loadSettings, saveSettings } from "./system/settings";
 import type { DeletedClientRecord, DeletedEstimateRecord } from "./features/recycle/recycleTypes";
 import BSENStandardsTool from "./features/tools/bsen/BSENStandardsTool";
 import GlassWeightCalculatorTool from "./features/tools/glass/GlassWeightCalculatorTool";
+import EstimateCollectionView from "./features/estimateCollection/EstimateCollectionView";
+import type { EstimateCollectionViewMode } from "./features/estimateCollection/EstimateCollectionView";
+import mapGlobalEstimateToCollectionItem from "./features/estimateCollection/adapters/mapGlobalEstimateToCollectionItem";
 
 /* =========================
    Helpers
@@ -581,8 +589,8 @@ function H3({ children }: { children: React.ReactNode }) {
   return <h3 style={{ fontSize: 14, margin: 0, fontWeight: 800, color: "#18181b" }}>{children}</h3>;
 }
 
-function Small({ children }: { children: React.ReactNode }) {
-  return <div style={{ fontSize: 12, color: "#71717a" }}>{children}</div>;
+function Small({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return <div style={{ fontSize: 12, color: "#71717a", ...(style || {}) }}>{children}</div>;
 }
 
 function Button({
@@ -1688,6 +1696,7 @@ const [clients, setClients] = useState<Client[]>([]);
   const monthFilterOptions = ["All", ...ORDER_MONTHS] as const;
   type GlobalMonthFilter = (typeof monthFilterOptions)[number];
   type GlobalSortField = "client_name" | "client_number" | "project_name" | "total_cost";
+  type GlobalEstimateMenuKey = "estimates" | "orders" | "lost" | "installation";
 
   const [globalSearch, setGlobalSearch] = useState("");
 
@@ -1701,6 +1710,23 @@ const [clients, setClients] = useState<Client[]>([]);
   const [globalSelectModeByMenu, setGlobalSelectModeByMenu] = useState<Record<string, boolean>>({});
 
   const [globalSelectedEstimateIdsByMenu, setGlobalSelectedEstimateIdsByMenu] = useState<Record<string, Record<string, boolean>>>({});
+  const [globalExpandedEstimateId, setGlobalExpandedEstimateId] = useState<Models.EstimateId | null>(null);
+  const [globalStatusMenuForEstimateId, setGlobalStatusMenuForEstimateId] = useState<string | null>(null);
+  const [globalSelectedOrderForInstallations, setGlobalSelectedOrderForInstallations] = useState<string | null>(null);
+  const [globalRankedInstallers, setGlobalRankedInstallers] = useState<any[]>([]);
+  const [globalSelectedInstallerByEstimateId, setGlobalSelectedInstallerByEstimateId] = useState<Record<string, string>>({});
+  const [globalSupplierEstimateFilesByEstimateId, setGlobalSupplierEstimateFilesByEstimateId] = useState<Record<string, string[]>>({});
+  const [globalItemPriceByPositionId, setGlobalItemPriceByPositionId] = useState<Record<string, string>>({});
+  const [globalSendModalOpen, setGlobalSendModalOpen] = useState(false);
+  const [globalSendModalEstimateId, setGlobalSendModalEstimateId] = useState<string | null>(null);
+  const [globalSendModalAddFollowUp, setGlobalSendModalAddFollowUp] = useState(true);
+  const [globalSendModalFollowUpDays, setGlobalSendModalFollowUpDays] = useState(3);
+  const [globalSendModalPhoneCall, setGlobalSendModalPhoneCall] = useState(true);
+  const [globalEstimateViewModeByMenu, setGlobalEstimateViewModeByMenu] = useState<Record<"estimates" | "orders" | "lost", EstimateCollectionViewMode>>({
+    estimates: "list",
+    orders: "list",
+    lost: "list",
+  });
 
   const [recycleBinFilter, setRecycleBinFilter] = useState<"all" | "clients" | "estimates">("all");
   const [recycleBinView, setRecycleBinView] = useState<"grid" | "list">("grid");
@@ -2321,6 +2347,48 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
     return Number.isFinite(n) ? n.toFixed(2) : "0.00";
   }
 
+  const activeUserName = "User";
+
+  async function apiFetchJson(path: string, options?: RequestInit) {
+    return apiFetch(path, options);
+  }
+
+  function positionDescription(p: Client["estimates"][number]["positions"][number]) {
+    return `${p.positionType} • ${p.insertion} • ${p.widthMm} × ${p.heightMm} mm`;
+  }
+
+  function PositionPreview({ position }: { position: Client["estimates"][number]["positions"][number] }) {
+    return (
+      <div style={{ width: 48, height: 54, borderRadius: 12, border: "1px solid #d4d4d8", background: "#fafafa", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ width: position.positionType === "Door" ? 18 : 28, height: 38, borderRadius: 3, border: "2px solid #52525b", position: "relative", background: "#fff" }}>
+          <div style={{ position: "absolute", inset: 4, border: "1px solid #a1a1aa", borderRadius: 2 }} />
+        </div>
+      </div>
+    );
+  }
+
+  function stageDateValue(e: any, stage: string): string {
+    const meta = e.orderMeta ?? {};
+    if (stage === "signoff_sent") return meta.clientSignoffSentDate ?? "";
+    if (stage === "signoff_received") return meta.clientSignoffReceivedDate ?? "";
+    if (stage === "factory_order") return meta.factoryOrderSignedOffDate ?? "";
+    if (stage === "in_production") return meta.productionStartDate ?? "";
+    if (stage === "pre_dispatch_invoice") return meta.balanceInvoiceDueDate ?? "";
+    if (stage === "production_complete") return meta.productionCompletedDate ?? meta.productionEndDate ?? "";
+    if (stage === "factory_dispatch") return meta.factoryDispatchDate ?? "";
+    if (stage === "delivery") return meta.deliveryDate ?? "";
+    if (stage === "installation") return meta.installationDate ?? "";
+    return "";
+  }
+
+  function timelineWithCompletion(e: any) {
+    const base = e.orderMeta?.timeline ?? [];
+    return base.map((t: any) => ({
+      ...t,
+      completed: !!stageDateValue(e, t.stage),
+    }));
+  }
+
   function openClient(client: Client) {
   setSelectedClientId(client.id);
 
@@ -2663,7 +2731,7 @@ function startAddPosition() {
     return false;
   }
 
-  function filteredGlobalRows(menuKey: "estimates" | "orders" | "lost" | "installation") {
+  function filteredGlobalRows(menuKey: GlobalEstimateMenuKey) {
       
 
     const q = globalSearch.trim().toLowerCase();
@@ -2708,6 +2776,97 @@ function startAddPosition() {
     });
 
     return rows;
+  }
+
+  function globalEstimateRowById(estimateId: Models.EstimateId | string | null) {
+    if (!estimateId) return null;
+    return globalEstimateRows.find((row) => row.estimate.id === estimateId) ?? null;
+  }
+
+  function globalClientForEstimate(estimateId: Models.EstimateId) {
+    const row = globalEstimateRowById(estimateId);
+    if (!row) {
+      throw new Error(`Missing global client context for estimate ${estimateId}`);
+    }
+    return row.client;
+  }
+
+  async function openGlobalInstallations(e: any, _pickerClient: any) {
+    setGlobalSelectedOrderForInstallations(e.id);
+
+    const settings = loadSettings();
+    const installers = getInstallers();
+
+    const projectAddressText = String(e.projectAddress || "");
+    const postcodeMatch = projectAddressText.match(/[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}/i);
+    const sitePostcode = String(e.postcode || (postcodeMatch ? postcodeMatch[0] : ""));
+
+    const provider = settings.mapsProvider === "none" ? "manual" : settings.mapsProvider;
+    const apiKey =
+      settings.mapsProvider === "google"
+        ? settings.googleMapsApiKey
+        : settings.mapsProvider === "azure"
+          ? settings.azureMapsApiKey
+          : "";
+
+    const results = await rankInstallersByDistance({
+      sitePostcode,
+      installers,
+      provider,
+      apiKey,
+    });
+
+    setGlobalRankedInstallers(results);
+  }
+
+  function globalInstallerLabel(installerId: string) {
+    const installer = getInstallers().find((x) => x.id === installerId);
+    return installer?.companyName ?? installerId;
+  }
+
+  function selectGlobalInstallerForEstimate(estimateId: Models.EstimateId, installerId: string) {
+    setGlobalSelectedInstallerByEstimateId((prev) => ({
+      ...prev,
+      [estimateId]: installerId,
+    }));
+    setEstimateInstaller(globalClientForEstimate(estimateId).id, estimateId, installerId);
+  }
+
+  function setGlobalOrderMetaField(estimateId: Models.EstimateId, key: string, value: any) {
+    updateEstimateOrderMeta(globalClientForEstimate(estimateId).id, estimateId, { [key]: value });
+  }
+
+  function importGlobalSupplierEstimate(estimateId: string) {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    input.accept = ".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg,.webp";
+    input.onchange = () => {
+      const names = Array.from(input.files ?? []).map((file) => file.name);
+      if (!names.length) return;
+      setGlobalSupplierEstimateFilesByEstimateId((prev) => ({
+        ...prev,
+        [estimateId]: [...(prev[estimateId] ?? []), ...names],
+      }));
+    };
+    input.click();
+  }
+
+  function confirmDeleteGlobalEstimate(estimateId: Models.EstimateId) {
+    const row = globalEstimateRowById(estimateId);
+    if (!row) return;
+    const ok = window.confirm(`Send estimate ${row.estimate.estimateRef} to recycle bin?`);
+    if (!ok) return;
+    if (globalExpandedEstimateId === estimateId) {
+      setGlobalExpandedEstimateId(null);
+    }
+    deleteEstimatesForClient(row.client.id, [estimateId]);
+  }
+
+  function openEstimateFromGlobalCollection(estimateId: Models.EstimateId) {
+    const row = globalEstimateRowById(estimateId);
+    if (!row) return;
+    openEstimateFromGlobalMenu(row.client.id, estimateId);
   }
 
   const installationRowsForBoard = useMemo(() => filteredGlobalRows("installation"), [globalEstimateRows, globalSearch, globalSort, globalSortField, globalMonthFilter]);
@@ -3801,209 +3960,398 @@ function renderEstimateMapBoard() {
   ) {
     const rows = filteredGlobalRows(menuKey);
     const summary = globalSummaryForRows(rows);
+    const viewMode = menuKey === "installation" ? "list" : globalEstimateViewModeByMenu[menuKey];
+    const collectionOutcome: Models.EstimateOutcome =
+      menuKey === "orders" || menuKey === "installation"
+        ? "Order"
+        : menuKey === "lost"
+          ? "Lost"
+          : "Open";
+    const collectionItems = rows.map((row) => mapGlobalEstimateToCollectionItem(row));
+    const sendModalRow = globalEstimateRowById(globalSendModalEstimateId);
+    const sendEmailDraft = sendModalRow
+      ? buildSendEmailTextService({ pickerClient: sendModalRow.client, estimateId: sendModalRow.estimate.id })
+      : { subject: "", body: "" };
 
     return (
-      <Card style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
-        <div style={{ display: "grid", gap: 12, minHeight: 0, height: "100%", gridTemplateRows: "auto auto 1fr" }}>
-          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-            <div>
-              <H2>{title}</H2>
-              <Small>Status-driven view across all clients and projects.</Small>
-            </div>
-            {menuKey !== "installation" && (
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {!globalSelectModeByMenu[menuKey] ? (
-                  <Button variant="secondary" onClick={() => toggleGlobalSelectMode(menuKey)}>Select</Button>
-                ) : (
-                  <>
-                    <Button
-                      variant="secondary"
-                      onClick={() => deleteSelectedGlobalEstimates(menuKey)}
-                      disabled={!rows.some((row) => !!(globalSelectedEstimateIdsByMenu[menuKey] ?? {})[row.estimate.id])}
-                    >
-                      Delete Selected
-                    </Button>
-                    <Button variant="secondary" onClick={() => toggleGlobalSelectMode(menuKey)}>Cancel</Button>
-                  </>
-                )}
+      <>
+        <Card style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "grid", gap: 12, minHeight: 0, height: "100%", gridTemplateRows: "auto auto 1fr" }}>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <div>
+                <H2>{title}</H2>
+                <Small>Status-driven view across all clients and projects.</Small>
               </div>
-            )}
-          </div>
+              {menuKey !== "installation" && (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {!globalSelectModeByMenu[menuKey] ? (
+                    <Button variant="secondary" onClick={() => toggleGlobalSelectMode(menuKey)}>Select</Button>
+                  ) : (
+                    <>
+                      <Button
+                        variant="secondary"
+                        onClick={() => deleteSelectedGlobalEstimates(menuKey)}
+                        disabled={!rows.some((row) => !!(globalSelectedEstimateIdsByMenu[menuKey] ?? {})[row.estimate.id])}
+                      >
+                        Delete Selected
+                      </Button>
+                      <Button variant="secondary" onClick={() => toggleGlobalSelectMode(menuKey)}>Cancel</Button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
 
-          <div style={{ display: "grid", gap: 10 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-              <div style={{ flex: "1 1 320px", maxWidth: 520 }}>
-                <Input
-                  value={globalSearch}
-                  onChange={setGlobalSearch}
-                  placeholder={`Search ${title.toLowerCase()}, client refs, project names, estimate refs or values`}
+            <div style={{ display: "grid", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <div style={{ flex: "1 1 320px", maxWidth: 520 }}>
+                  <Input
+                    value={globalSearch}
+                    onChange={setGlobalSearch}
+                    placeholder={`Search ${title.toLowerCase()}, client refs, project names, estimate refs or values`}
+                  />
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  {menuKey !== "installation" && (
+                    <>
+                      <Small>View</Small>
+                      <Button
+                        variant={viewMode === "list" ? "primary" : "secondary"}
+                        onClick={() =>
+                          setGlobalEstimateViewModeByMenu((prev) => ({ ...prev, [menuKey]: "list" }))
+                        }
+                      >
+                        List
+                      </Button>
+                      <Button
+                        variant={viewMode === "grid" ? "primary" : "secondary"}
+                        onClick={() =>
+                          setGlobalEstimateViewModeByMenu((prev) => ({ ...prev, [menuKey]: "grid" }))
+                        }
+                      >
+                        Grid
+                      </Button>
+                    </>
+                  )}
+                  <Small>Sort by</Small>
+                  <select
+                    value={globalSortField}
+                    onChange={(e) => setGlobalSortField(e.currentTarget.value as GlobalSortField)}
+                    style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14, background: "#fff" }}
+                  >
+                    <option value="client_number">Client Number</option>
+                    <option value="client_name">Client Name</option>
+                    <option value="project_name">Project Name</option>
+                    <option value="total_cost">Total Cost</option>
+                  </select>
+                  <Button variant={globalSort === "asc" ? "primary" : "secondary"} onClick={() => setGlobalSort("asc")}>
+                    Ascending
+                  </Button>
+                  <Button variant={globalSort === "desc" ? "primary" : "secondary"} onClick={() => setGlobalSort("desc")}>
+                    Descending
+                  </Button>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <Small>Forecast month</Small>
+                {monthFilterOptions.map((month) => {
+                  const isSelected = globalMonthFilter === month;
+                  const isCurrentMonth = month === currentMonthName;
+                  return (
+                    <button
+                      key={month}
+                      type="button"
+                      onClick={() => setGlobalMonthFilter(month)}
+                      style={{
+                        borderRadius: 999,
+                        border: isSelected ? "none" : isCurrentMonth ? "2px solid #18181b" : "1px solid #e4e4e7",
+                        background: isSelected ? "#18181b" : "#fff",
+                        color: isSelected ? "#fff" : "#18181b",
+                        padding: "8px 12px",
+                        fontSize: 12,
+                        fontWeight: 800,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {month}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(140px, 1fr))", gap: 10 }}>
+                <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Items</div>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{summary.count}</div>
+                </div>
+                <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total mÂ²</div>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMeasure(summary.totalSquareMetres)}</div>
+                </div>
+                <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Linear metreage</div>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMeasure(summary.totalLinearMetres)}</div>
+                </div>
+                <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total quantity</div>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{summary.totalQty}</div>
+                </div>
+                <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total cost</div>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMoney(summary.totalCost)}</div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ border: "1px solid #e4e4e7", borderRadius: 14, background: "#fff", overflow: "hidden", minHeight: 0 }}>
+              <div style={{ height: "100%", minHeight: 0, overflow: "auto", padding: 12, display: "grid", gap: 12 }}>
+                {menuKey !== "installation" && globalSelectModeByMenu[menuKey] && rows.length > 0 && (
+                  <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", background: "#fafafa", padding: 12, display: "grid", gap: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: "#3f3f46" }}>Bulk selection</div>
+                    <div style={{ display: "grid", gap: 8 }}>
+                      {rows.map(({ client, estimate }) => (
+                        <label key={`select_${estimate.id}`} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14, color: "#18181b" }}>
+                          <input
+                            type="checkbox"
+                            checked={!!(globalSelectedEstimateIdsByMenu[menuKey] ?? {})[estimate.id]}
+                            onChange={(ev) => toggleGlobalEstimateSelection(menuKey, estimate.id, ev.currentTarget.checked)}
+                          />
+                          <span>{clientDisplayName(client)} • {client.clientRef || "No client ref"} • {estimate.estimateRef}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <EstimateCollectionView
+                  currentTab={menuKey === "orders" ? "orders" : menuKey === "lost" ? "lost" : "estimates"}
+                  titleText={title}
+                  emptyText={emptyText}
+                  items={collectionItems}
+                  showSectionSummary={false}
+                  viewMode={viewMode}
+                  outcome={collectionOutcome}
+                  sectionTotals={{
+                    totalSquareMetres: summary.totalSquareMetres,
+                    totalLinearMetres: summary.totalLinearMetres,
+                    totalQty: summary.totalQty,
+                    totalCost: summary.totalCost,
+                  }}
+                  expandedEstimateId={globalExpandedEstimateId}
+                  onToggleEstimate={(estimateId) =>
+                    setGlobalExpandedEstimateId((prev) => (prev === estimateId ? null : estimateId))
+                  }
+                  statusMenuForEstimateId={globalStatusMenuForEstimateId}
+                  setStatusMenuForEstimateId={setGlobalStatusMenuForEstimateId}
+                  selectedOrderForInstallations={globalSelectedOrderForInstallations}
+                  rankedInstallers={globalRankedInstallers}
+                  selectedInstallerByEstimateId={globalSelectedInstallerByEstimateId}
+                  supplierEstimateFilesByEstimateId={globalSupplierEstimateFilesByEstimateId}
+                  itemPriceByPositionId={globalItemPriceByPositionId}
+                  setItemPriceByPositionId={setGlobalItemPriceByPositionId}
+                  formatMeasure={formatMeasure}
+                  formatMoney={formatMoney}
+                  getClientForItem={(item) => globalClientForEstimate(item.id)}
+                  activeUserName={activeUserName}
+                  apiFetchJson={apiFetchJson}
+                  copyEstimateForClient={copyEstimateForClient}
+                  confirmDeleteEstimate={confirmDeleteGlobalEstimate}
+                  openEstimateFromPicker={openEstimateFromGlobalCollection}
+                  persistEstimateOutcome={persistEstimateOutcome}
+                  downloadEstimateWordDocService={downloadEstimateWordDocService}
+                  printEstimatePdfService={printEstimatePdfService}
+                  addFollowUpForEstimateService={addFollowUpForEstimateService}
+                  positionDescription={positionDescription}
+                  PositionPreview={PositionPreview}
+                  timelineWithCompletion={timelineWithCompletion}
+                  openInstallations={openGlobalInstallations}
+                  installerLabel={globalInstallerLabel}
+                  selectInstallerForEstimate={selectGlobalInstallerForEstimate}
+                  setOrderMetaField={setGlobalOrderMetaField}
+                  setSendModalEstimateId={setGlobalSendModalEstimateId}
+                  setSendModalOpen={setGlobalSendModalOpen}
+                  importSupplierEstimate={importGlobalSupplierEstimate}
                 />
               </div>
-
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <Small>Sort by</Small>
-                <select
-                  value={globalSortField}
-                  onChange={(e) => setGlobalSortField(e.currentTarget.value as GlobalSortField)}
-                  style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14, background: "#fff" }}
-                >
-                  <option value="client_number">Client Number</option>
-                  <option value="client_name">Client Name</option>
-                  <option value="project_name">Project Name</option>
-                  <option value="total_cost">Total Cost</option>
-                </select>
-                <Button variant={globalSort === "asc" ? "primary" : "secondary"} onClick={() => setGlobalSort("asc")}>
-                  Ascending
-                </Button>
-                <Button variant={globalSort === "desc" ? "primary" : "secondary"} onClick={() => setGlobalSort("desc")}>
-                  Descending
-                </Button>
-              </div>
-            </div>
-
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <Small>Forecast month</Small>
-              {monthFilterOptions.map((month) => {
-                const isSelected = globalMonthFilter === month;
-                const isCurrentMonth = month === currentMonthName;
-                return (
-                  <button
-                    key={month}
-                    type="button"
-                    onClick={() => setGlobalMonthFilter(month)}
-                    style={{
-                      borderRadius: 999,
-                      border: isSelected ? "none" : isCurrentMonth ? "2px solid #18181b" : "1px solid #e4e4e7",
-                      background: isSelected ? "#18181b" : "#fff",
-                      color: isSelected ? "#fff" : "#18181b",
-                      padding: "8px 12px",
-                      fontSize: 12,
-                      fontWeight: 800,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {month}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(140px, 1fr))", gap: 10 }}>
-              <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-                <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Items</div>
-                <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{summary.count}</div>
-              </div>
-              <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-                <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total mÂ²</div>
-                <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMeasure(summary.totalSquareMetres)}</div>
-              </div>
-              <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-                <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Linear metreage</div>
-                <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMeasure(summary.totalLinearMetres)}</div>
-              </div>
-              <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-                <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total quantity</div>
-                <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{summary.totalQty}</div>
-              </div>
-              <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-                <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total cost</div>
-                <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMoney(summary.totalCost)}</div>
-              </div>
             </div>
           </div>
+        </Card>
 
-          <div style={{ border: "1px solid #e4e4e7", borderRadius: 14, background: "#fff", overflow: "hidden", minHeight: 0 }}>
-            <div style={{ height: "100%", minHeight: 0, overflow: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1400 }}>
-                <thead>
-                  <tr style={{ background: "#fafafa" }}>
-                    {[
-                      ...(menuKey !== "installation" ? [["", "left"] as const] : []),
-                      ["Client Name", "left"],
-                      ["Estimate Ref", "left"],
-                      ["Client Number", "left"],
-                      ["Project Name", "left"],
-                      ["Contact Number", "left"],
-                      ["Forecast", "left"],
-                      ["Total MÂ²", "right"],
-                      ["Linear Meterage", "right"],
-                      ["Total Quantity", "right"],
-                      ["Status", "left"],
-                      ["Total Cost", "right"],
-                      ["Action", "right"],
-                    ].map(([label, align]) => (
-                      <th
-                        key={label}
-                        style={{
-                          textAlign: align as "left" | "right",
-                          padding: 10,
-                          fontSize: 12,
-                          borderBottom: "1px solid #e4e4e7",
-                          position: "sticky",
-                          top: 0,
-                          zIndex: 2,
-                          background: "#fafafa",
+        {globalSendModalOpen && sendModalRow && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.35)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 16,
+              zIndex: 9999,
+            }}
+          >
+            <div className="ep-send-modal-card">
+              <div className="ep-send-modal-header">
+                <div>
+                  <div className="ep-send-modal-title">Send estimate</div>
+                  <div className="ep-send-modal-meta">
+                    {clientDisplayName(sendModalRow.client)} • {sendModalRow.client.clientRef ?? ""} • {sendModalRow.estimate.estimateRef ?? ""}
+                  </div>
+                </div>
+
+                <div className="ep-send-modal-close">
+                  <Button variant="secondary" onClick={() => setGlobalSendModalOpen(false)}>
+                    Close
+                  </Button>
+                </div>
+              </div>
+
+              <div className="ep-send-modal-body">
+                <div className="ep-send-section">
+                  <div className="ep-send-section-title">Send email</div>
+
+                  <div className="ep-send-stack">
+                    <div className="ep-send-field">
+                      <Small>Subject</Small>
+                      <input className="ep-send-input" value={sendEmailDraft.subject} readOnly />
+                    </div>
+
+                    <div className="ep-send-field">
+                      <Small>Body</Small>
+                      <textarea className="ep-send-textarea" value={sendEmailDraft.body} readOnly rows={8} />
+                    </div>
+
+                    <div className="ep-send-inline-actions">
+                      <Button
+                        variant="secondary"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(`Subject: ${sendEmailDraft.subject}\n\n${sendEmailDraft.body}`);
+                            alert("Email text copied.");
+                          } catch {
+                            alert("Could not copy to clipboard.");
+                          }
                         }}
                       >
-                        {label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map(({ client, estimate, outcome, installerId }) => {
-                    const totals = estimateCommercialTotals(estimate);
-                    const contactNumber = client.mobile || client.home || "";
-                    const statusLabel = menuKey === "installation"
-                      ? (installerId ? "Supply & Install" : "Supply Only")
-                      : outcome;
-                    return (
-                      <tr key={
-      
-estimate.id}>
-                        {menuKey !== "installation" && (
-                          <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top", width: 44 }}>
-                            {globalSelectModeByMenu[menuKey] ? (
-                              <input
-                                type="checkbox"
-                                checked={!!(globalSelectedEstimateIdsByMenu[menuKey] ?? {})[estimate.id]}
-                                onChange={(ev) => toggleGlobalEstimateSelection(menuKey, estimate.id, ev.currentTarget.checked)}
-                              />
-                            ) : null}
-                          </td>
-                        )}
-                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top", fontWeight: 700 }}>{clientDisplayName(client)}</td>
-                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>{estimate.estimateRef}</td>
-                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>{client.clientRef}</td>
-                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>{client.projectName || ""}</td>
-                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>{contactNumber || ""}</td>
-                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>{monthYearLabel(estimate.estimatedOrderMonth || "", estimate.estimatedOrderYear || 0)}</td>
-                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top", textAlign: "right" }}>{formatMeasure(totals.totalSquareMetres)}</td>
-                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top", textAlign: "right" }}>{formatMeasure(totals.totalLinearMetres)}</td>
-                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top", textAlign: "right" }}>{totals.totalQty}</td>
-                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>{statusLabel}</td>
-                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top", textAlign: "right", fontWeight: 800 }}>{formatMoney(totals.estimateTotal)}</td>
-                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top", textAlign: "right" }}>
-                          <Button variant="secondary" onClick={() => openEstimateFromGlobalMenu(client.id, estimate.id)}>
-                            Open Estimate
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {rows.length === 0 && (
-                    <tr>
-                      <td colSpan={menuKey !== "installation" ? 13 : 12} style={{ padding: 16 }}>
-                        <Small>{emptyText}</Small>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                        Copy email text
+                      </Button>
+
+                      <Button
+                        variant="secondary"
+                        onClick={() =>
+                          printEstimatePdfService({
+                            pickerClient: sendModalRow.client,
+                            e: sendModalRow.estimate,
+                            itemPriceByPositionId: globalItemPriceByPositionId,
+                            formatMeasure,
+                            formatMoney,
+                            positionDescription,
+                            alertFn: alert,
+                          })
+                        }
+                      >
+                        Generate PDF
+                      </Button>
+
+                      <Button
+                        variant="primary"
+                        onClick={() =>
+                          openMailClientService(
+                            (sendModalRow.client as any)?.email ?? "",
+                            sendEmailDraft.subject,
+                            sendEmailDraft.body
+                          )
+                        }
+                      >
+                        Open email app
+                      </Button>
+                    </div>
+
+                    <Small style={{ color: "#6b7280" }}>
+                      Use “Print PDF” to generate the customer-facing estimate PDF, then attach that PDF in your email app. Direct file attachment from the browser send flow is not wired yet.
+                    </Small>
+                  </div>
+                </div>
+
+                <div className="ep-send-section">
+                  <div className="ep-send-section-title">Add follow up</div>
+
+                  <div className="ep-send-stack" style={{ gap: 10 }}>
+                    <label className="ep-send-checkbox">
+                      <input type="checkbox" checked={globalSendModalAddFollowUp} onChange={(e) => setGlobalSendModalAddFollowUp(e.currentTarget.checked)} />
+                      <span className="ep-send-checkbox-text">
+                        Create follow-up (default {globalSendModalFollowUpDays} days / 72 hours)
+                      </span>
+                    </label>
+
+                    <div className="ep-send-inline-row">
+                      <Small>Follow up in (days)</Small>
+                      <input
+                        className="ep-send-input ep-send-input--days"
+                        type="number"
+                        min={0}
+                        value={globalSendModalFollowUpDays}
+                        onChange={(e) => setGlobalSendModalFollowUpDays(Math.max(0, Number(e.currentTarget.value || 0)))}
+                      />
+
+                      <label className="ep-send-checkbox">
+                        <input type="checkbox" checked={globalSendModalPhoneCall} onChange={(e) => setGlobalSendModalPhoneCall(e.currentTarget.checked)} />
+                        <span className="ep-send-checkbox-text">Telephone call</span>
+                      </label>
+                    </div>
+
+                    <Small style={{ color: "#6b7280" }}>
+                      Follow-ups are saved to the database and appear in Customers - Follow Ups on the scheduled due date.
+                    </Small>
+                  </div>
+                </div>
+
+                <div className="ep-send-footer">
+                  <Button variant="secondary" onClick={() => setGlobalSendModalOpen(false)}>
+                    Cancel
+                  </Button>
+
+                  <Button
+                    variant="primary"
+                    onClick={() => {
+                      printEstimatePdfService({
+                        pickerClient: sendModalRow.client,
+                        e: sendModalRow.estimate,
+                        itemPriceByPositionId: globalItemPriceByPositionId,
+                        formatMeasure,
+                        formatMoney,
+                        positionDescription,
+                        alertFn: alert,
+                      });
+                      openMailClientService((sendModalRow.client as any)?.email ?? "", sendEmailDraft.subject, sendEmailDraft.body);
+                      if (globalSendModalAddFollowUp) {
+                        addFollowUpForEstimateService({
+                          pickerClient: sendModalRow.client,
+                          estimateId: sendModalRow.estimate.id,
+                          opts: {
+                            days: globalSendModalFollowUpDays,
+                            sendEmail: true,
+                            needsCall: globalSendModalPhoneCall,
+                          },
+                          apiFetchJson,
+                          activeUserName,
+                          alertFn: alert,
+                          logError: console.error,
+                        });
+                      }
+                      setGlobalSendModalOpen(false);
+                    }}
+                  >
+                    Send
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </Card>
+        )}
+      </>
     );
   }
 

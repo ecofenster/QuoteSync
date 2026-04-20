@@ -5,7 +5,7 @@ import type { EstimateCollectionItem } from "./EstimateCollectionItem";
 
 type Props = {
   item: EstimateCollectionItem;
-  pickerClient: Client;
+  itemClient: Client;
   currentOutcome: EstimateOutcome;
   statusMenuForEstimateId: string | null;
   setStatusMenuForEstimateId: Dispatch<SetStateAction<string | null>>;
@@ -32,7 +32,7 @@ type Props = {
 export default function EstimateCollectionActions(props: Props) {
   const {
     item,
-    pickerClient,
+    itemClient,
     currentOutcome,
     statusMenuForEstimateId,
     setStatusMenuForEstimateId,
@@ -79,7 +79,7 @@ export default function EstimateCollectionActions(props: Props) {
           disabled={!canUseOutputActions}
           onClick={() =>
             addFollowUpForEstimateService({
-              pickerClient,
+              pickerClient: itemClient,
               estimateId: item.id,
               opts: { days: 3, sendEmail: true, needsCall: true },
               apiFetchJson,
@@ -140,7 +140,7 @@ export default function EstimateCollectionActions(props: Props) {
                 key={opt}
                 type="button"
                 onClick={() => {
-                  persistEstimateOutcome(pickerClient.id, item.id, opt);
+                  persistEstimateOutcome(itemClient.id, item.id, opt);
                   setStatusMenuForEstimateId(null);
                 }}
                 style={{
@@ -165,7 +165,7 @@ export default function EstimateCollectionActions(props: Props) {
 
       <div className="ep-estimate-action-group">
         <div className="ep-estimate-action-label">Copy estimate</div>
-        <Button variant="outline" onClick={() => copyEstimateForClient(pickerClient, item.id)}>
+        <Button variant="outline" onClick={() => copyEstimateForClient(itemClient, item.id)}>
           Copy
         </Button>
       </div>
@@ -191,7 +191,7 @@ export default function EstimateCollectionActions(props: Props) {
           disabled={!canUseOutputActions}
           onClick={() =>
             downloadEstimateWordDocService({
-              pickerClient,
+              pickerClient: itemClient,
               e: item,
               itemPriceByPositionId,
               formatMeasure,
@@ -211,7 +211,7 @@ export default function EstimateCollectionActions(props: Props) {
           disabled={!canUseOutputActions}
           onClick={() =>
             printEstimatePdfService({
-              pickerClient,
+              pickerClient: itemClient,
               e: item,
               itemPriceByPositionId,
               formatMeasure,

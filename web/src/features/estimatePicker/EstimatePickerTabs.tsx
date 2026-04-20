@@ -18,6 +18,7 @@ import ClientInfoTab from './tabs/ClientInfoTab';
 import NotesTab from './tabs/NotesTab';
 import FilesTab from './tabs/FilesTab';
 import EstimateSectionTab from './tabs/EstimateSectionTab';
+import type { EstimateCollectionViewMode } from "../estimateCollection/EstimateCollectionView";
 import './tabs/shared.css';
 
 type Props = {
@@ -513,6 +514,11 @@ export default function EstimatePickerTabs(props: Props) {
   const [sendModalFollowUpDays, setSendModalFollowUpDays] = useState(3);
   const [sendModalPhoneCall, setSendModalPhoneCall] = useState(true);
   const [expandedEstimateId, setExpandedEstimateId] = useState<EstimateId | null>(null);
+  const [estimateCollectionViewModeByTab, setEstimateCollectionViewModeByTab] = useState<Record<"estimates" | "orders" | "lost", EstimateCollectionViewMode>>({
+    estimates: "list",
+    orders: "list",
+    lost: "list",
+  });
   const [itemPriceByPositionId, setItemPriceByPositionId] = useState<Record<string, string>>({});
   const [supplierEstimateFilesByEstimateId, setSupplierEstimateFilesByEstimateId] = useState<Record<string, string[]>>({});
   const [notesScope, setNotesScope] = useState<"account" | "estimate">("account");
@@ -683,7 +689,12 @@ export default function EstimatePickerTabs(props: Props) {
     deleteEstimatesForClient(pickerClient.id, [estimateId]);
   }
 
-  function renderEstimateSection(outcome: EstimateOutcome, titleText: string, emptyText: string) {
+  function renderEstimateSection(
+    outcome: EstimateOutcome,
+    titleText: string,
+    emptyText: string,
+    viewKey: "estimates" | "orders" | "lost"
+  ) {
     const estimates = getFilteredEstimates(outcome);
     if (outcome === "Order") {
       estimates.forEach((e) => ensureOrderMeta(e));
@@ -696,6 +707,7 @@ export default function EstimatePickerTabs(props: Props) {
         titleText={titleText}
         emptyText={emptyText}
         estimates={estimates}
+        viewMode={estimateCollectionViewModeByTab[viewKey]}
         outcome={outcome}
         sectionTotals={sectionTotals}
         expandedEstimateId={expandedEstimateId}
@@ -801,9 +813,30 @@ export default function EstimatePickerTabs(props: Props) {
         />
       )}
 
-      {estimatePickerTab === "estimates" && renderEstimateSection("Open", "Client Estimates", "No open estimates yet.")}
-      {estimatePickerTab === "orders" && renderEstimateSection("Order", "Client Orders", "No orders yet. Mark an estimate as \"Order\" in the Client Estimates tab.")}
-      {estimatePickerTab === "lost" && renderEstimateSection("Lost", "Client Lost", "No lost estimates yet. Mark an estimate as \"Lost\" in the Client Estimates tab.")}
+      {(estimatePickerTab === "estimates" || estimatePickerTab === "orders" || estimatePickerTab === "lost") && (
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+          <Button
+            variant={estimateCollectionViewModeByTab[estimatePickerTab] === "list" ? "primary" : "secondary"}
+            onClick={() =>
+              setEstimateCollectionViewModeByTab((prev) => ({ ...prev, [estimatePickerTab]: "list" }))
+            }
+          >
+            List
+          </Button>
+          <Button
+            variant={estimateCollectionViewModeByTab[estimatePickerTab] === "grid" ? "primary" : "secondary"}
+            onClick={() =>
+              setEstimateCollectionViewModeByTab((prev) => ({ ...prev, [estimatePickerTab]: "grid" }))
+            }
+          >
+            Grid
+          </Button>
+        </div>
+      )}
+
+      {estimatePickerTab === "estimates" && renderEstimateSection("Open", "Client Estimates", "No open estimates yet.", "estimates")}
+      {estimatePickerTab === "orders" && renderEstimateSection("Order", "Client Orders", "No orders yet. Mark an estimate as \"Order\" in the Client Estimates tab.", "orders")}
+      {estimatePickerTab === "lost" && renderEstimateSection("Lost", "Client Lost", "No lost estimates yet. Mark an estimate as \"Lost\" in the Client Estimates tab.", "lost")}
 
       {estimatePickerTab === "client_notes" && (
         <NotesTab
