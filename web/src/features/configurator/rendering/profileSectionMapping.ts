@@ -73,6 +73,9 @@ type ResolveInput = {
   view?: "inside" | "outside";
   fields?: WindowFieldDefinition[] | null | undefined;
   exactRenderProfile?: ConfiguratorRenderProfileRecord | null;
+  renderDefinitionContextKey?: string | null;
+  internalRenderProfileId?: string | null;
+  externalRenderProfileId?: string | null;
 };
 
 export type RenderDefinitionViewLogic = "inside" | "outside";
@@ -348,6 +351,39 @@ export function findExactRenderProfileForContext(input: {
     })[0] ?? null;
 }
 
+function findRenderProfileByStoredIdentity(input: {
+  bootstrap: ConfiguratorCatalogBootstrap | null | undefined;
+  view: RenderDefinitionViewLogic;
+  operationType: "fixed" | "tilt_turn" | "mixed";
+  renderDefinitionContextKey?: string | null;
+  internalRenderProfileId?: string | null;
+  externalRenderProfileId?: string | null;
+}) {
+  const bootstrap = input.bootstrap;
+  if (!bootstrap) return null;
+  const renderProfiles = Array.isArray(bootstrap.renderProfiles) ? bootstrap.renderProfiles : [];
+  const preferredId =
+    input.view === "outside" ? input.externalRenderProfileId : input.internalRenderProfileId;
+  if (preferredId) {
+    const byId = renderProfiles.find((row) => row.id === preferredId && row.is_active);
+    if (byId) return byId;
+  }
+  if (input.renderDefinitionContextKey) {
+    return (
+      renderProfiles.find((row) =>
+        row.is_active &&
+        matchesRenderDefinitionContext(
+          row,
+          input.renderDefinitionContextKey as string,
+          input.operationType === "mixed" ? "tilt_turn" : input.operationType,
+          input.view
+        )
+      ) ?? null
+    );
+  }
+  return null;
+}
+
 export function buildResolvedSectionProfileSetFromRenderProfile(
   record: ConfiguratorRenderProfileRecord,
   view: RenderDefinitionViewLogic
@@ -572,6 +608,17 @@ export function resolveSectionProfileSet(input: ResolveInput): ResolvedSectionPr
   const view = input.view ?? "inside";
   if (input.exactRenderProfile) {
     return buildResolvedSectionProfileSetFromRenderProfile(input.exactRenderProfile, view);
+  }
+  const storedIdentityProfile = findRenderProfileByStoredIdentity({
+    bootstrap,
+    view,
+    operationType,
+    renderDefinitionContextKey: input.renderDefinitionContextKey,
+    internalRenderProfileId: input.internalRenderProfileId,
+    externalRenderProfileId: input.externalRenderProfileId,
+  });
+  if (storedIdentityProfile) {
+    return buildResolvedSectionProfileSetFromRenderProfile(storedIdentityProfile, view);
   }
   if (!bootstrap) {
     return {

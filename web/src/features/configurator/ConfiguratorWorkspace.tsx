@@ -785,6 +785,61 @@ export default function ConfiguratorWorkspace(props: Props) {
     selectedProductId,
     selectedWindowTypeId,
   ]);
+  const storedViewProfileId =
+    configuration.orientationView === "outside"
+      ? configuration.externalRenderProfileId
+      : configuration.internalRenderProfileId;
+  const preferredRenderProfile = storedViewProfileId
+    ? catalogBootstrap.renderProfiles.find((row) => row.id === storedViewProfileId && row.is_active) ?? null
+    : exactRenderProfile;
+  useEffect(() => {
+    const nextContextKey = exactRenderContextKey ?? null;
+    const nextInternalProfileId =
+      exactRenderContextKey && exactRenderProfile && configuration.orientationView !== "outside"
+        ? exactRenderProfile.id
+        : exactRenderContextKey
+          ? configuration.internalRenderProfileId
+          : null;
+    const nextExternalProfileId =
+      exactRenderContextKey && exactRenderProfile && configuration.orientationView === "outside"
+        ? exactRenderProfile.id
+        : exactRenderContextKey
+          ? configuration.externalRenderProfileId
+          : null;
+    const currentContextKey = configuration.renderDefinitionContextKey ?? null;
+    const currentInternalProfileId = configuration.internalRenderProfileId ?? null;
+    const currentExternalProfileId = configuration.externalRenderProfileId ?? null;
+    if (
+      currentContextKey === nextContextKey &&
+      currentInternalProfileId === nextInternalProfileId &&
+      currentExternalProfileId === nextExternalProfileId
+    ) {
+      return;
+    }
+    setDraft((previousDraft) => {
+      if (!previousDraft) return previousDraft;
+      const previousConfiguration = normalizeConfigurationState(previousDraft.configuration, workflowPosition);
+      return {
+        ...previousDraft,
+        configuration: {
+          ...previousConfiguration,
+          renderDefinitionContextKey: nextContextKey,
+          internalRenderProfileId: nextInternalProfileId,
+          externalRenderProfileId: nextExternalProfileId,
+        },
+        isDirty: true,
+      };
+    });
+  }, [
+    configuration.externalRenderProfileId,
+    configuration.internalRenderProfileId,
+    configuration.orientationView,
+    configuration.renderDefinitionContextKey,
+    exactRenderContextKey,
+    exactRenderProfile,
+    setDraft,
+    workflowPosition,
+  ]);
   const resolvedProfiles = useMemo(
     () =>
       resolveSectionProfileSet({
@@ -793,13 +848,19 @@ export default function ConfiguratorWorkspace(props: Props) {
         productTypeName: workflowPosition.productType,
         view: configuration.orientationView ?? "inside",
         fields: configuration.fields,
-        exactRenderProfile,
+        exactRenderProfile: preferredRenderProfile,
+        renderDefinitionContextKey: configuration.renderDefinitionContextKey,
+        internalRenderProfileId: configuration.internalRenderProfileId,
+        externalRenderProfileId: configuration.externalRenderProfileId,
       }),
     [
       catalogBootstrap,
+      configuration.externalRenderProfileId,
       configuration.fields,
+      configuration.internalRenderProfileId,
       configuration.orientationView,
-      exactRenderProfile,
+      configuration.renderDefinitionContextKey,
+      preferredRenderProfile,
       workflowPosition.product,
       workflowPosition.productType,
     ]

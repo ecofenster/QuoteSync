@@ -214,6 +214,9 @@ export interface ConfiguratorWorkflowDraft {
     bars?: WindowBarsDefinition;
     hardware?: WindowHardwareDefinition;
     systemOptions?: WindowSystemOptionsDefinition;
+    renderDefinitionContextKey?: string | null;
+    internalRenderProfileId?: string | null;
+    externalRenderProfileId?: string | null;
   };
 
   review: {

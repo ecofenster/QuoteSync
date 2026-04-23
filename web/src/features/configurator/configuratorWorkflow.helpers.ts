@@ -479,6 +479,12 @@ export function normalizeConfigurationState(
     bars: normalizeBars(configuration?.bars ?? storedConfiguration?.bars),
     hardware: normalizeHardware(configuration?.hardware ?? storedConfiguration?.hardware),
     systemOptions: normalizeSystemOptions(configuration?.systemOptions ?? storedConfiguration?.systemOptions),
+    renderDefinitionContextKey:
+      configuration?.renderDefinitionContextKey ?? storedConfiguration?.renderDefinitionContextKey ?? null,
+    internalRenderProfileId:
+      configuration?.internalRenderProfileId ?? storedConfiguration?.internalRenderProfileId ?? null,
+    externalRenderProfileId:
+      configuration?.externalRenderProfileId ?? storedConfiguration?.externalRenderProfileId ?? null,
   };
 }
 
