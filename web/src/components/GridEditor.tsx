@@ -1,4 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo } from "react";
+import QuoteSyncDrawingSvg from "../features/configurator/rendering/QuoteSyncDrawingSvg";
+import { buildWindowDrawingModel } from "../features/configurator/rendering/buildWindowDrawingModel";
 
 type PosDraft = {
   widthMm: number;
@@ -9,6 +11,11 @@ type PosDraft = {
   cellInsertions?: Record<string, string>;
   colWidthsMm?: number[];
   rowHeightsMm?: number[];
+  orientationView?: "inside" | "outside";
+  windowConfiguration?: {
+    junctions?: Array<{ key: string; type?: string }>;
+  };
+  resolvedProfiles?: any;
 };
 
 function clamp(n: number, min: number, max: number) {
@@ -23,38 +30,7 @@ function evenSplit(total: number, parts: number) {
   const p = clamp(Math.round(parts), 1, 16);
   const base = Math.floor(total / p);
   const rem = total - base * p;
-  const out: number[] = [];
-  for (let i = 0; i < p; i++) out.push(base + (i < rem ? 1 : 0));
-  return out;
-}
-
-function parseSlashList(raw: string) {
-  const s = (raw ?? "").trim();
-  if (!s) return null;
-  const items = s.split("/").map((x) => x.trim()).filter(Boolean);
-  if (!items.length) return null;
-  const nums = items.map((x) => Number(x));
-  if (nums.some((n) => !Number.isFinite(n) || n <= 0)) return null;
-  return nums.map((n) => Math.round(n));
-}
-
-function fmtSlash(arr: number[]) {
-  return arr.map((n) => String(Math.round(n))).join("/");
-}
-
-function labelForInsertion(ins: string) {
-  const t = (ins || "").toLowerCase();
-  if (t.includes("entrance")) return "Entrance Door";
-  if (t.includes("lift") || t.includes("slide")) return "Lift & Slide";
-  if (t.includes("french")) return "French Doors";
-  if (t.includes("single door")) return "Single Door";
-  if (t.includes("door")) return "Door";
-  if (t.includes("window")) return "Window";
-  return ins || "Insertion";
-}
-
-function cellIndex1Based(col: number, row: number, fieldsX: number) {
-  return row * fieldsX + col + 1;
+  return Array.from({ length: p }, (_, i) => base + (i < rem ? 1 : 0));
 }
 
 function keyForCell(col: number, row: number) {
@@ -65,19 +41,10 @@ function normalizeCellInsertions(fieldsX: number, fieldsY: number, existing: Rec
   const out: Record<string, string> = {};
   for (let r = 0; r < fieldsY; r++) {
     for (let c = 0; c < fieldsX; c++) {
-      const k = keyForCell(c, r);
-      out[k] = existing?.[k] ?? fallback;
+      out[keyForCell(c, r)] = existing?.[keyForCell(c, r)] ?? fallback;
     }
   }
   return out;
-}
-
-function isFixedInsertion(ins: string) {
-  return (ins || "").toLowerCase().includes("fixed");
-}
-
-function makeDashProps(dashed: boolean) {
-  return dashed ? { strokeDasharray: "6 6" } : {};
 }
 
 export default function GridEditor({
@@ -86,13 +53,12 @@ export default function GridEditor({
   selectedCell,
   onSelectCell,
   view = "Inside",
-  openingStd = "DIN",
   showDimensions = true,
 }: {
   pos: PosDraft;
   setPos: React.Dispatch<React.SetStateAction<any>>;
-  selectedCell?: { col: number; row: number };
-  onSelectCell?: (cell: { col: number; row: number }) => void;
+  selectedCell?: { col: number; row: number } | null;
+  onSelectCell?: (cell: { col: number; row: number } | null) => void;
   view?: "Inside" | "Outside";
   openingStd?: "DIN" | "UK";
   showDimensions?: boolean;
@@ -102,91 +68,37 @@ export default function GridEditor({
   const fx = clamp(Math.round(pos.fieldsX || 1), 1, 16);
   const fy = clamp(Math.round(pos.fieldsY || 1), 1, 16);
 
-  const cellInsertions = useMemo(
-    () => normalizeCellInsertions(fx, fy, pos.cellInsertions, pos.insertion),
-    [fx, fy, pos.cellInsertions, pos.insertion]
-  );
-  const allFixed = useMemo(() => Object.values(cellInsertions).every(isFixedInsertion), [cellInsertions]);
-
-  const [colStr, setColStr] = useState("");
-  const [rowStr, setRowStr] = useState("");
-  const [colDirty, setColDirty] = useState(false);
-  const [rowDirty, setRowDirty] = useState(false);
-
   const cols = useMemo(() => {
     const existing = Array.isArray(pos.colWidthsMm) ? pos.colWidthsMm.slice() : null;
     if (!existing || existing.length !== fx) return evenSplit(totalW, fx);
-    const s = sum(existing);
-    if (s !== totalW) {
-      const scaled = existing.map((v) => Math.max(1, Math.round((v / s) * totalW)));
-      let drift = totalW - sum(scaled);
-      for (let i = 0; i < scaled.length && drift !== 0; i++) {
-        const step = drift > 0 ? 1 : -1;
-        if (scaled[i] + step >= 1) {
-          scaled[i] += step;
-          drift -= step;
-        }
-      }
-      return scaled;
-    }
-    return existing.map((v) => Math.max(1, Math.round(v)));
-  }, [pos.colWidthsMm, fx, totalW]);
+    const safe = existing.map((value) => Math.max(1, Math.round(value)));
+    const safeSum = sum(safe);
+    if (safeSum === totalW) return safe;
+    return safe.map((value, index) => (index < safe.length - 1 ? Math.max(1, Math.round((value / safeSum) * totalW)) : Math.max(1, totalW - sum(safe.slice(0, -1).map((entry) => Math.max(1, Math.round((entry / safeSum) * totalW)))))));
+  }, [fx, pos.colWidthsMm, totalW]);
 
   const rows = useMemo(() => {
     const existing = Array.isArray(pos.rowHeightsMm) ? pos.rowHeightsMm.slice() : null;
     if (!existing || existing.length !== fy) return evenSplit(totalH, fy);
-    const s = sum(existing);
-    if (s !== totalH) {
-      const scaled = existing.map((v) => Math.max(1, Math.round((v / s) * totalH)));
-      let drift = totalH - sum(scaled);
-      for (let i = 0; i < scaled.length && drift !== 0; i++) {
-        const step = drift > 0 ? 1 : -1;
-        if (scaled[i] + step >= 1) {
-          scaled[i] += step;
-          drift -= step;
-        }
-      }
-      return scaled;
-    }
-    return existing.map((v) => Math.max(1, Math.round(v)));
-  }, [pos.rowHeightsMm, fy, totalH]);
+    const safe = existing.map((value) => Math.max(1, Math.round(value)));
+    const safeSum = sum(safe);
+    if (safeSum === totalH) return safe;
+    return safe.map((value, index) => (index < safe.length - 1 ? Math.max(1, Math.round((value / safeSum) * totalH)) : Math.max(1, totalH - sum(safe.slice(0, -1).map((entry) => Math.max(1, Math.round((entry / safeSum) * totalH)))))));
+  }, [fy, pos.rowHeightsMm, totalH]);
 
   useEffect(() => {
-    setPos((p: any) => ({
-      ...p,
+    setPos((previous: any) => ({
+      ...previous,
       widthMm: totalW,
       heightMm: totalH,
       fieldsX: fx,
       fieldsY: fy,
       colWidthsMm: cols,
       rowHeightsMm: rows,
+      orientationView: view === "Outside" ? "outside" : "inside",
     }));
-    setColStr((s) => (colDirty ? s : fmtSlash(cols)));
-    setRowStr((s) => (rowDirty ? s : fmtSlash(rows)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [totalW, totalH, fx, fy]);
-
-  const applyCols = () => {
-    const parsed = parseSlashList(colStr);
-    if (!parsed || parsed.length !== fx || sum(parsed) !== totalW) {
-      setColStr(fmtSlash(cols));
-      setColDirty(false);
-      return;
-    }
-    setPos((p: any) => ({ ...p, colWidthsMm: parsed }));
-    setColDirty(false);
-  };
-
-  const applyRows = () => {
-    const parsed = parseSlashList(rowStr);
-    if (!parsed || parsed.length !== fy || sum(parsed) !== totalH) {
-      setRowStr(fmtSlash(rows));
-      setRowDirty(false);
-      return;
-    }
-    setPos((p: any) => ({ ...p, rowHeightsMm: parsed }));
-    setRowDirty(false);
-  };
+  }, [totalW, totalH, fx, fy, view]);
 
   const removeVSplit = (splitIndex: number) => {
     if (fx <= 1) return;
@@ -194,20 +106,17 @@ export default function GridEditor({
     const next = cols.slice();
     next[i - 1] = next[i - 1] + next[i];
     next.splice(i, 1);
-    setPos((p: any) => {
-      const existing = normalizeCellInsertions(p.fieldsX, p.fieldsY, p.cellInsertions, p.insertion);
+    setPos((previous: any) => {
+      const existing = normalizeCellInsertions(previous.fieldsX, previous.fieldsY, previous.cellInsertions, previous.insertion);
       const merged: Record<string, string> = {};
-      for (let r = 0; r < p.fieldsY; r++) {
-        for (let c = 0; c < p.fieldsX - 1; c++) {
-          const srcC = c < i ? c : c + 1;
-          const k = keyForCell(c, r);
-          const srcKey = keyForCell(srcC, r);
-          merged[k] = existing[srcKey];
+      for (let row = 0; row < previous.fieldsY; row += 1) {
+        for (let col = 0; col < previous.fieldsX - 1; col += 1) {
+          const sourceCol = col < i ? col : col + 1;
+          merged[keyForCell(col, row)] = existing[keyForCell(sourceCol, row)];
         }
       }
-      return { ...p, fieldsX: fx - 1, colWidthsMm: next, cellInsertions: merged };
+      return { ...previous, fieldsX: fx - 1, colWidthsMm: next, cellInsertions: merged };
     });
-    setColDirty(false);
   };
 
   const removeHSplit = (splitIndex: number) => {
@@ -216,210 +125,47 @@ export default function GridEditor({
     const next = rows.slice();
     next[i - 1] = next[i - 1] + next[i];
     next.splice(i, 1);
-    setPos((p: any) => {
-      const existing = normalizeCellInsertions(p.fieldsX, p.fieldsY, p.cellInsertions, p.insertion);
+    setPos((previous: any) => {
+      const existing = normalizeCellInsertions(previous.fieldsX, previous.fieldsY, previous.cellInsertions, previous.insertion);
       const merged: Record<string, string> = {};
-      for (let r = 0; r < p.fieldsY - 1; r++) {
-        for (let c = 0; c < p.fieldsX; c++) {
-          const srcR = r < i ? r : r + 1;
-          const k = keyForCell(c, r);
-          const srcKey = keyForCell(c, srcR);
-          merged[k] = existing[srcKey];
+      for (let row = 0; row < previous.fieldsY - 1; row += 1) {
+        for (let col = 0; col < previous.fieldsX; col += 1) {
+          const sourceRow = row < i ? row : row + 1;
+          merged[keyForCell(col, row)] = existing[keyForCell(col, sourceRow)];
         }
       }
-      return { ...p, fieldsY: fy - 1, rowHeightsMm: next, cellInsertions: merged };
+      return { ...previous, fieldsY: fy - 1, rowHeightsMm: next, cellInsertions: merged };
     });
-    setRowDirty(false);
   };
 
-  const vbW = 520;
-  const vbH = 520;
-  const pad = 56;
-  const availW = vbW - pad * 2;
-  const availH = vbH - pad * 2;
+  const drawingModel = useMemo(
+    () =>
+      buildWindowDrawingModel({
+        ...pos,
+        widthMm: totalW,
+        heightMm: totalH,
+        fieldsX: fx,
+        fieldsY: fy,
+        colWidthsMm: cols,
+        rowHeightsMm: rows,
+        orientationView: view === "Outside" ? "outside" : "inside",
+      }),
+    [cols, fx, fy, pos, rows, totalH, totalW, view]
+  );
 
-  const ratio = Math.max(0.1, totalW / Math.max(1, totalH));
-  let frameW = availW;
-  let frameH = frameW / ratio;
-  if (frameH > availH) {
-    frameH = availH;
-    frameW = frameH * ratio;
-  }
-
-  const frameX = pad + (availW - frameW) / 2;
-  const frameY = pad + (availH - frameH) / 2;
-
-  const minFrameSpan = Math.max(12, Math.min(frameW, frameH));
-  const frameTh = Math.min(18, Math.max(6, minFrameSpan * 0.14));
-
-  const sashGap = Math.min(6, Math.max(2, minFrameSpan * 0.05));
-  const sashOuterX = frameX + frameTh + sashGap;
-  const sashOuterY = frameY + frameTh + sashGap;
-  const sashOuterW = Math.max(1, frameW - (frameTh + sashGap) * 2);
-  const sashOuterH = Math.max(1, frameH - (frameTh + sashGap) * 2);
-
-  const sashProfile = Math.min(16, Math.max(4, Math.min(sashOuterW, sashOuterH) * 0.18));
-  const glassX = sashOuterX + sashProfile;
-  const glassY = sashOuterY + sashProfile;
-  const glassW = Math.max(1, sashOuterW - sashProfile * 2);
-  const glassH = Math.max(1, sashOuterH - sashProfile * 2);
-
-  const xStops = useMemo(() => {
-    const xs: number[] = [glassX];
-    let acc = 0;
-    for (let i = 0; i < cols.length; i++) {
-      acc += cols[i] / totalW;
-      xs.push(glassX + glassW * acc);
-    }
-    xs[xs.length - 1] = glassX + glassW;
-    return xs;
-  }, [cols, totalW, glassX, glassW]);
-
-  const yStops = useMemo(() => {
-    const ys: number[] = [glassY];
-    let acc = 0;
-    for (let i = 0; i < rows.length; i++) {
-      acc += rows[i] / totalH;
-      ys.push(glassY + glassH * acc);
-    }
-    ys[ys.length - 1] = glassY + glassH;
-    return ys;
-  }, [rows, totalH, glassY, glassH]);
+  const selectedCellKey = selectedCell ? keyForCell(selectedCell.col, selectedCell.row) : "";
 
   return (
-    <div style={{ display: "grid", gap: 10 }}>
-      <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", background: "#fff", padding: 10 }}>
-        <div style={{ fontSize: 12, color: "#71717a", marginBottom: 8 }}>
-          {labelForInsertion(pos.insertion)} • {fx}×{fy} • {totalW}×{totalH} mm
-        </div>
-
-        <div style={{ width: "100%", aspectRatio: "16/9" }}>
-          <svg viewBox={`0 0 ${vbW} ${vbH}`} width="100%" height="100%" style={{ display: "block" }}>
-            <rect x={0} y={0} width={vbW} height={vbH} fill="#ffffff" />
-            <rect x={frameX} y={frameY} width={frameW} height={frameH} fill="none" stroke="#111" strokeWidth={1.6} />
-            <rect
-              x={frameX + frameTh}
-              y={frameY + frameTh}
-              width={Math.max(1, frameW - frameTh * 2)}
-              height={Math.max(1, frameH - frameTh * 2)}
-              fill="none"
-              stroke="#111"
-              strokeWidth={1}
-            />
-
-            {!allFixed && view === "Inside" ? (
-              <rect x={sashOuterX} y={sashOuterY} width={sashOuterW} height={sashOuterH} fill="#e6e9ee" stroke="#111" strokeWidth={1.2} />
-            ) : null}
-            <rect x={glassX} y={glassY} width={glassW} height={glassH} fill="#b9d7f3" stroke="#111" strokeWidth={1} />
-
-            {xStops.slice(1, -1).map((x, idx) => (
-              <g key={"v" + idx}>
-                <line x1={x} y1={glassY} x2={x} y2={glassY + glassH} stroke="#111" strokeWidth={1} />
-                <line x1={x} y1={glassY} x2={x} y2={glassY + glassH} stroke="transparent" strokeWidth={16} style={{ cursor: "pointer" }} onClick={() => removeVSplit(idx + 1)} />
-              </g>
-            ))}
-
-            {yStops.slice(1, -1).map((y, idx) => (
-              <g key={"h" + idx}>
-                <line x1={glassX} y1={y} x2={glassX + glassW} y2={y} stroke="#111" strokeWidth={1} />
-                <line x1={glassX} y1={y} x2={glassX + glassW} y2={y} stroke="transparent" strokeWidth={16} style={{ cursor: "pointer" }} onClick={() => removeHSplit(idx + 1)} />
-              </g>
-            ))}
-
-            {Array.from({ length: fy }, (_, row) =>
-              Array.from({ length: fx }, (_, col) => {
-                const x0 = xStops[col];
-                const x1 = xStops[col + 1];
-                const y0 = yStops[row];
-                const y1 = yStops[row + 1];
-                const n = cellIndex1Based(col, row, fx);
-                const cx = (x0 + x1) / 2;
-                const cy = (y0 + y1) / 2;
-                const r = 16;
-                const pts = Array.from({ length: 6 }, (_, i) => {
-                  const a = (Math.PI / 3) * i - Math.PI / 6;
-                  return `${cx + r * Math.cos(a)},${cy + r * Math.sin(a)}`;
-                }).join(" ");
-
-                const key = keyForCell(col, row);
-                const ins = cellInsertions[key] ?? pos.insertion;
-                const isSel = selectedCell && selectedCell.col === col && selectedCell.row === row;
-
-                const swap = (view === "Outside") !== (openingStd === "UK");
-                const hingeLeft = !swap;
-                const hx = hingeLeft ? x0 : x1;
-                const ox = hingeLeft ? x1 : x0;
-
-                const dash = { stroke: "#111", strokeWidth: 1.1, ...makeDashProps(true) };
-                const solid = { stroke: "#111", strokeWidth: 1.1 };
-
-                const drawTurn = () => (<><line x1={hx} y1={y0} x2={ox} y2={cy} {...dash} /><line x1={hx} y1={y1} x2={ox} y2={cy} {...dash} /></>);
-                const drawTilt = () => (<><line x1={x0} y1={y1} x2={cx} y2={y0} {...dash} /><line x1={x1} y1={y1} x2={cx} y2={y0} {...dash} /></>);
-                const drawTopHung = () => (<><line x1={x0} y1={y0} x2={cx} y2={y1} {...dash} /><line x1={x1} y1={y0} x2={cx} y2={y1} {...dash} /></>);
-                const drawReversible = () => (<><line x1={cx} y1={y0} x2={x0} y2={cy} {...dash} /><line x1={cx} y1={y0} x2={x1} y2={cy} {...dash} /><line x1={cx} y1={y1} x2={x0} y2={cy} {...dash} /><line x1={cx} y1={y1} x2={x1} y2={cy} {...dash} /></>);
-                const drawFixed = () => (<><line x1={cx - (x1 - x0) * 0.18} y1={cy} x2={cx + (x1 - x0) * 0.18} y2={cy} {...solid} /><line x1={cx} y1={cy - (y1 - y0) * 0.18} x2={cx} y2={cy + (y1 - y0) * 0.18} {...solid} /></>);
-
-                const drawSymbol = () => {
-                  const t = (ins || "").toLowerCase();
-                  if (t.includes("tilt") && t.includes("turn")) return (<>{drawTurn()}{drawTilt()}</>);
-                  if (t.includes("top hung")) return drawTopHung();
-                  if (t.includes("tilt")) return drawTilt();
-                  if (t.includes("reversible")) return drawReversible();
-                  if (t.includes("side hung") || t.includes("turn")) return drawTurn();
-                  if (t.includes("fixed")) return drawFixed();
-                  return null;
-                };
-
-                return (
-                  <g key={`c-${col}-${row}`}>
-                    <rect x={x0} y={y0} width={Math.max(1, x1 - x0)} height={Math.max(1, y1 - y0)} fill="transparent" style={{ cursor: onSelectCell ? "pointer" : "default" }} onClick={() => onSelectCell?.({ col, row })} />
-                    {isSel ? <rect x={x0} y={y0} width={Math.max(1, x1 - x0)} height={Math.max(1, y1 - y0)} fill="none" stroke="#22c55e" strokeWidth={2} /> : null}
-                    {drawSymbol()}
-                    <polygon points={pts} fill="#fff" stroke="#111" strokeWidth={1} />
-                    <text x={cx} y={cy + 4} textAnchor="middle" fontSize={14} fontWeight={600} fill="#111" fontFamily="ui-sans-serif, system-ui, -apple-system">{n}</text>
-                  </g>
-                );
-              })
-            )}
-
-            {showDimensions ? (
-              <>
-                <g stroke="#111" strokeWidth={0.9} fill="none" fontFamily="ui-sans-serif, system-ui, -apple-system" fontSize={12}>
-                  <line x1={frameX} y1={frameY + frameH + 26} x2={frameX + frameW} y2={frameY + frameH + 26} />
-                  <line x1={frameX} y1={frameY + frameH + 20} x2={frameX} y2={frameY + frameH + 32} />
-                  <line x1={frameX + frameW} y1={frameY + frameH + 20} x2={frameX + frameW} y2={frameY + frameH + 32} />
-                  <text x={frameX + frameW / 2} y={frameY + frameH + 46} textAnchor="middle" fill="#111">{totalW}</text>
-
-                  <line x1={frameX + frameW + 26} y1={frameY} x2={frameX + frameW + 26} y2={frameY + frameH} />
-                  <line x1={frameX + frameW + 20} y1={frameY} x2={frameX + frameW + 32} y2={frameY} />
-                  <line x1={frameX + frameW + 20} y1={frameY + frameH} x2={frameX + frameW + 32} y2={frameY + frameH} />
-                  <text x={frameX + frameW + 46} y={frameY + frameH / 2} transform={`rotate(90 ${frameX + frameW + 46} ${frameY + frameH / 2})`} textAnchor="middle" fill="#111">{totalH}</text>
-                </g>
-
-                <g stroke="#111" strokeWidth={1.6} strokeLinecap="round">
-                  <line x1={frameX + frameW + 2} y1={frameY + frameH / 2 - 10} x2={frameX + frameW + 2} y2={frameY + frameH / 2 + 10} />
-                </g>
-              </>
-            ) : null}
-          </svg>
-        </div>
-
-        <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-          {fx > 1 && (
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Column widths (mm) — format: 1000/500 (must sum to {totalW})</div>
-              <input value={colStr} onChange={(e) => { setColStr(e.target.value); setColDirty(true); }} onBlur={applyCols} onKeyDown={(e) => { if (e.key === "Enter") applyCols(); }} style={{ width: "100%", padding: "10px 12px", borderRadius: 12, border: "1px solid #e4e4e7", outline: "none", fontSize: 14 }} />
-            </div>
-          )}
-
-          {fy > 1 && (
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Row heights (mm) — format: 1200/900 (must sum to {totalH})</div>
-              <input value={rowStr} onChange={(e) => { setRowStr(e.target.value); setRowDirty(true); }} onBlur={applyRows} onKeyDown={(e) => { if (e.key === "Enter") applyRows(); }} style={{ width: "100%", padding: "10px 12px", borderRadius: 12, border: "1px solid #e4e4e7", outline: "none", fontSize: 14 }} />
-            </div>
-          )}
-
-          <div style={{ fontSize: 12, color: "#71717a" }}>Tip: click a vertical or horizontal split line in the drawing to remove that split (e.g. 2×2 → remove one split → 3 sections).</div>
+    <div style={{ display: "grid" }}>
+      <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", background: "#fff", padding: 8 }}>
+        <div style={{ width: "100%", aspectRatio: "16/9", minHeight: 420 }}>
+          <QuoteSyncDrawingSvg
+            model={drawingModel}
+            selectedCellKey={selectedCellKey}
+            onSelectCell={onSelectCell}
+            onRemoveVerticalJunction={removeVSplit}
+            onRemoveHorizontalJunction={removeHSplit}
+          />
         </div>
       </div>
     </div>

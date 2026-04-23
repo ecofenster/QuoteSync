@@ -123,6 +123,8 @@ import GlassWeightCalculatorTool from "./features/tools/glass/GlassWeightCalcula
 import EstimateCollectionView from "./features/estimateCollection/EstimateCollectionView";
 import type { EstimateCollectionViewMode } from "./features/estimateCollection/EstimateCollectionView";
 import mapGlobalEstimateToCollectionItem from "./features/estimateCollection/adapters/mapGlobalEstimateToCollectionItem";
+import { EstimateWorkflowProvider } from "./features/estimateWorkflow/EstimateWorkflowProvider";
+import ConfiguratorWorkflowShell from "./features/configurator/components/ConfiguratorWorkflowShell";
 
 /* =========================
    Helpers
@@ -2605,17 +2607,23 @@ function startAddPosition() {
     setShowPositionWizard(true);
   }
 
-  function savePositionToEstimate() {
+  async function savePositionToEstimate(positionInput?: Position | any) {
     if (!selectedClient || !selectedEstimate) return;
 
+    const sourceDraft = positionInput ?? posDraft;
     const newPos: Position = {
-      ...posDraft,
+      ...sourceDraft,
       id: Models.asPositionId(uid()),
-      widthMm: clampNum(Math.round(posDraft.widthMm || 0), 300, 6000),
-      heightMm: clampNum(Math.round(posDraft.heightMm || 0), 300, 6000),
-      fieldsX: clampNum(Math.round(posDraft.fieldsX || 1), 1, 16),
-      fieldsY: clampNum(Math.round(posDraft.fieldsY || 1), 1, 16),
-      cellInsertions: normalizeCellInsertions(posDraft.fieldsX, posDraft.fieldsY, posDraft.cellInsertions, posDraft.insertion),
+      widthMm: clampNum(Math.round(sourceDraft.widthMm || 0), 300, 6000),
+      heightMm: clampNum(Math.round(sourceDraft.heightMm || 0), 300, 6000),
+      fieldsX: clampNum(Math.round(sourceDraft.fieldsX || 1), 1, 16),
+      fieldsY: clampNum(Math.round(sourceDraft.fieldsY || 1), 1, 16),
+      cellInsertions: normalizeCellInsertions(
+        sourceDraft.fieldsX,
+        sourceDraft.fieldsY,
+        sourceDraft.cellInsertions,
+        sourceDraft.insertion
+      ),
     };
 
     setClients((prev) => {
@@ -2642,6 +2650,7 @@ function startAddPosition() {
       return nextClients;
     });
 
+    setPosDraft(newPos);
     setShowPositionWizard(false);
     setPosStep(1);
   }
@@ -4679,7 +4688,7 @@ function renderEstimateMapBoard() {
           {/* Main */}
           <div style={{ display: "grid", gap: 16, minHeight: 0, height: "calc(100vh - 32px)", overflowY: "auto", paddingRight: 4, alignContent: "start" }}>
             {topShellPage === "tools" && <ToolsHubPage />}
-            {topShellPage !== "tools" && (
+            {topShellPage !== "tools" && !(view === "estimate_workspace" && showPositionWizard) && (
               <Card style={{ padding: 14 }}>
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                   <div>
@@ -5482,457 +5491,182 @@ function renderEstimateMapBoard() {
 
             {/* ESTIMATE WORKSPACE */}
             {view === "estimate_workspace" && selectedClient && selectedEstimate && (
-              <Card style={{ minHeight: 520, display: "flex", flexDirection: "column" }}>
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-                  <div>
-                    <H2>Estimate</H2>
-                    <div
-                       style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                      <Pill>{selectedClient.clientRef}</Pill>
-                      <Pill>{selectedEstimate.estimateRef}</Pill>
-                      <Small>{selectedClient.clientName}</Small>
+              showPositionWizard ? (
+                <Card style={{ minHeight: 520, padding: 12 }}>
+                  <EstimateWorkflowProvider
+                    currentClientId={selectedClient.id}
+                    currentEstimateId={selectedEstimate.id}
+                    currentClient={selectedClient}
+                    currentEstimate={selectedEstimate}
+                    currentConfiguredPositionId={posDraft.id}
+                    currentConfiguredPosition={posDraft}
+                    workflowScope="position"
+                    workflowMode="create"
+                  >
+                    <ConfiguratorWorkflowShell
+                      estimate={selectedEstimate}
+                      position={posDraft}
+                      onExit={() => setShowPositionWizard(false)}
+                      onSavePosition={savePositionToEstimate}
+                    />
+                  </EstimateWorkflowProvider>
+                </Card>
+              ) : (
+                <Card style={{ minHeight: 520, display: "flex", flexDirection: "column" }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                    <div>
+                      <H2>Estimate</H2>
+                      <div
+                         style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                        <Pill>{selectedClient.clientRef}</Pill>
+                        <Pill>{selectedEstimate.estimateRef}</Pill>
+                        <Small>{selectedClient.clientName}</Small>
+                      </div>
+                      <Small>Supplier/Product Defaults are set separately. Add Position starts at Position Configuration.</Small>
                     </div>
-                    <Small>Supplier/Product Defaults are set separately. Add Position starts at Position Configuration.</Small>
+
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <Button variant="secondary" onClick={() => setView("estimate_defaults")}>
+                        Supplier & Product Defaults
+                      </Button>
+                      <Button variant="secondary" onClick={() => setView("customers")}>
+                        Back
+                      </Button>
+                    </div>
                   </div>
 
-                  <div style={{ display: "flex", gap: 10 }}>
-                    <Button variant="secondary" onClick={() => setView("estimate_defaults")}>
-                      Supplier & Product Defaults
-                    </Button>
-                    <Button variant="secondary" onClick={() => setView("customers")}>
-                      Back
+                  <div style={{ marginTop: 12 }}>
+                    <ClientSummary c={selectedClient} />
+                  </div>
+
+                  <div style={{ marginTop: 16 }}>
+                    <Button variant="primary" onClick={startAddPosition} style={{ width: "100%" }}>
+                      Add Position
                     </Button>
                   </div>
-                </div>
 
-                <div style={{ marginTop: 12 }}>
-                  <ClientSummary c={selectedClient} />
-                </div>
+                  <div style={{ marginTop: 16, borderTop: "1px solid #e4e4e7", paddingTop: 12, flex: 1 }}>
+                    <H3>Positions</H3>
+                    <Small>Positions added to this estimate appear below.</Small>
 
-                <div style={{ marginTop: 16 }}>
-                  <Button variant="primary" onClick={startAddPosition} style={{ width: "100%" }}>
-                    Add Position
-                  </Button>
-                </div>
+                    <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                      {selectedEstimate.positions.length === 0 && <div style={{ fontSize: 13, color: "#71717a" }}>No positions yet.</div>}
 
-                <div style={{ marginTop: 16, borderTop: "1px solid #e4e4e7", paddingTop: 12, flex: 1 }}>
-                  <H3>Positions</H3>
-                  <Small>Positions added to this estimate appear below.</Small>
-
-                  <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-                    {selectedEstimate.positions.length === 0 && <div style={{ fontSize: 13, color: "#71717a" }}>No positions yet.</div>}
-
-                    {(() => {
-                    const totals = estimateCommercialTotals(selectedEstimate);
-                    return (
-                      <>
-                        <div
-                      
-                          style={{
-                            marginTop: 10,
-                            display: "grid",
-                            gridTemplateColumns: "repeat(4, minmax(140px, 1fr))",
-                            gap: 10,
-                          }}
-                        >
+                      {(() => {
+                      const totals = estimateCommercialTotals(selectedEstimate);
+                      return (
+                        <>
                           <div
-                       style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
+                        
+                            style={{
+                              marginTop: 10,
+                              display: "grid",
+                              gridTemplateColumns: "repeat(4, minmax(140px, 1fr))",
+                              gap: 10,
+                            }}
+                          >
                             <div
-                       style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total mÂ²</div>
-                            <div
-                       style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMeasure(totals.totalSquareMetres)}</div>
-                          </div>
-                          <div
-                       style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-                            <div
-                       style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Linear metreage</div>
-                            <div
-                       style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMeasure(totals.totalLinearMetres)}</div>
-                          </div>
-                          <div
-                       style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-                            <div
-                       style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total quantity</div>
-                            <div
-                       style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{totals.totalQty}</div>
-                          </div>
-                          <div
-                       style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-                            <div
-                       style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Estimate total</div>
-                            <div
-                       style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMoney(totals.estimateTotal)}</div>
-                          </div>
-                        </div>
-
-                        <div
-                       style={{ marginTop: 10, display: "grid", gap: 10 }}>
-                          {selectedEstimate.positions.map((p) => {
-                            const lineTotal = Number(p.itemPrice || 0) * Math.max(1, Number(p.qty || 1));
-                            return (
+                         style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
                               <div
-                       key={p.id} style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 10, background: "#fff" }}>
-                                <div
-                       style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                                  <div
-                       style={{ fontWeight: 900, fontSize: 13 }}>{p.positionRef}</div>
-                                  <div
-                       style={{ fontSize: 12, color: "#71717a" }}>
-                                    Qty {p.qty} {p.fieldsY}
-                                  </div>
-                                </div>
-                                <div
-                       style={{ marginTop: 4, fontSize: 12, color: "#71717a" }}>
-                                  {p.roomName || (p.useEstimateDefaults ? "Using estimate defaults" : "Overrides")}
-                                </div>
+                         style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total mÂ²</div>
+                              <div
+                         style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMeasure(totals.totalSquareMetres)}</div>
+                            </div>
+                            <div
+                         style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
+                              <div
+                         style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Linear metreage</div>
+                              <div
+                         style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMeasure(totals.totalLinearMetres)}</div>
+                            </div>
+                            <div
+                         style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
+                              <div
+                         style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total quantity</div>
+                              <div
+                         style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{totals.totalQty}</div>
+                            </div>
+                            <div
+                         style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
+                              <div
+                         style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Estimate total</div>
+                              <div
+                         style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMoney(totals.estimateTotal)}</div>
+                            </div>
+                          </div>
 
+                          <div
+                         style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                            {selectedEstimate.positions.map((p) => {
+                              const lineTotal = Number(p.itemPrice || 0) * Math.max(1, Number(p.qty || 1));
+                              return (
                                 <div
-                       style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 160px 160px", gap: 12, alignItems: "end" }}>
+                         key={p.id} style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 10, background: "#fff" }}>
                                   <div
-                       />
-                                  <div
-                      >
+                         style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                                     <div
-                       style={labelStyle}>Item price</div>
-                                    <Input
-                                      type="number"
-                                      value={String(p.itemPrice ?? "")}
-                                      onChange={(v) =>
-                                        updateEstimatePosition(selectedClient.id, selectedEstimate.id, p.id, {
-                                          itemPrice: v === "" ? 0 : Number(v || 0),
-                                        })
-                                      }
-                                      placeholder="0.00"
-                                    />
+                         style={{ fontWeight: 900, fontSize: 13 }}>{p.positionRef}</div>
+                                    <div
+                         style={{ fontSize: 12, color: "#71717a" }}>
+                                      Qty {p.qty} {p.fieldsY}
+                                    </div>
                                   </div>
                                   <div
-                      >
+                         style={{ marginTop: 4, fontSize: 12, color: "#71717a" }}>
+                                    {p.roomName || (p.useEstimateDefaults ? "Using estimate defaults" : "Overrides")}
+                                  </div>
+
+                                  <div
+                         style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 160px 160px", gap: 12, alignItems: "end" }}>
                                     <div
-                       style={labelStyle}>Quantity price</div>
+                         />
                                     <div
-                      
-                                      style={{
-                                        width: "100%",
-                                        borderRadius: 12,
-                                        border: "1px solid #e4e4e7",
-                                        padding: "10px 12px",
-                                        fontSize: 14,
-                                        background: "#fafafa",
-                                        fontWeight: 800,
-                                        textAlign: "right",
-                                      }}
-                                    >
-                                      {formatMoney(lineTotal)}
+                        >
+                                      <div
+                         style={labelStyle}>Item price</div>
+                                      <Input
+                                        type="number"
+                                        value={String(p.itemPrice ?? "")}
+                                        onChange={(v) =>
+                                          updateEstimatePosition(selectedClient.id, selectedEstimate.id, p.id, {
+                                            itemPrice: v === "" ? 0 : Number(v || 0),
+                                          })
+                                        }
+                                        placeholder="0.00"
+                                      />
+                                    </div>
+                                    <div
+                        >
+                                      <div
+                         style={labelStyle}>Quantity price</div>
+                                      <div
+                        
+                                        style={{
+                                          width: "100%",
+                                          borderRadius: 12,
+                                          border: "1px solid #e4e4e7",
+                                          padding: "10px 12px",
+                                          fontSize: 14,
+                                          background: "#fafafa",
+                                          fontWeight: 800,
+                                          textAlign: "right",
+                                        }}
+                                      >
+                                        {formatMoney(lineTotal)}
+                                      </div>
                                     </div>
                                   </div>
                                 </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
-
-                {/* Position wizard */}
-                {showPositionWizard && selectedEstimate && (
-                  <div style={{ marginTop: 14, borderRadius: 14, border: "1px solid #e4e4e7", padding: 12, background: "#fff" }}>
-                    <div
-                       style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                      <H3>Add Position</H3>
-                      <Button variant="secondary" onClick={() => setShowPositionWizard(false)} style={{ borderRadius: 14, padding: "8px 10px" }}>
-                        Close
-                      </Button>
-                    </div>
-
-                    <div
-                       style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      {[1, 2, 3].map((s) => (
-                        <div
-                      
-                          key={s}
-                          style={{
-                            borderRadius: 14,
-                            border: "1px solid " + (posStep === s ? "#18181b" : "#e4e4e7"),
-                            background: posStep === s ? "#18181b" : "#fff",
-                            color: posStep === s ? "#fff" : "#3f3f46",
-                            padding: "8px 10px",
-                            fontSize: 14,
-                            fontWeight: 800,
-                          }}
-                        >
-                          {s}. {stepLabel(s as any)}
-                        </div>
-                      ))}
-                    </div>
-
-                    <div
-                       style={{ marginTop: 12, borderRadius: 14, border: "1px solid #e4e4e7", padding: 12 }}>
-                      {posStep === 1 && (
-                        <div
-                       style={{ display: "grid", gap: 12 }}>
-                          <div
-                       style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                            <div
-                      >
-                              <div
-                       style={labelStyle}>Position reference</div>
-                              <Input value={posDraft.positionRef} onChange={(v) => setPosDraft((p) => ({ ...p, positionRef: v }))} />
-                            </div>
-                            <div
-                      >
-                              <div
-                       style={labelStyle}>Quantity</div>
-                              <Input type="number" value={String(posDraft.qty)} onChange={(v) => setPosDraft((p) => ({ ...p, qty: Math.max(1, Math.min(999, Number(v || 1))) }))} />
-                            </div>
+                              );
+                            })}
                           </div>
-
-                          <div
-                      >
-                            <div
-                       style={labelStyle}>Room name</div>
-                            <Input value={posDraft.roomName} onChange={(v) => setPosDraft((p) => ({ ...p, roomName: v }))} />
-                          </div>
-
-                          <div
-                      >
-                            <div
-                       style={labelStyle}>Position type</div>
-                            <select
-                              value={posDraft.positionType}
-                              onChange={(e) => setPosDraft((p) => ({ ...p, positionType: e.target.value as "Window" | "Door" }))}
-                              style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
-                            >
-                              <option value="Window">Window</option>
-                              <option value="Door">Door</option>
-                            </select>
-                          </div>
-                        </div>
-                      )}
-
-                      {posStep === 2 && (
-                        <div
-                       style={{ display: "grid", gap: 12 }}>
-                          <div
-                       style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                            <div
-                      >
-                              <div
-                       style={labelStyle}>Total width (mm)</div>
-                              <Input type="number" value={String(posDraft.widthMm)} onChange={(v) => setPosDraft((p) => ({ ...p, widthMm: Number(v || p.widthMm) }))} />
-                            </div>
-                            <div
-                      >
-                              <div
-                       style={labelStyle}>Total height (mm)</div>
-                              <Input type="number" value={String(posDraft.heightMm)} onChange={(v) => setPosDraft((p) => ({ ...p, heightMm: Number(v || p.heightMm) }))} />
-                            </div>
-                          </div>
-
-                          <div
-                       style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                            <div
-                      >
-                              <div
-                       style={labelStyle}>Fields (width)</div>
-                              <Input
-                                type="number"
-                                value={String(posDraft.fieldsX)}
-                                onChange={(v) =>
-                                  setPosDraft((p) => {
-                                    const fx = Math.max(1, Math.min(16, Number(v || 1)));
-                                    return {
-                                      ...p,
-                                      fieldsX: fx,
-                                      colWidthsMm: scaleSplitsToTotal(p.colWidthsMm, p.widthMm, fx),
-                                      cellInsertions: normalizeCellInsertions(fx, p.fieldsY, p.cellInsertions, p.insertion),
-                                    };
-                                  })
-                                }
-                              />
-                            </div>
-                            <div
-                      >
-                              <div
-                       style={labelStyle}>Fields (height)</div>
-                              <Input
-                                type="number"
-                                value={String(posDraft.fieldsY)}
-                                onChange={(v) =>
-                                  setPosDraft((p) => {
-                                    const fy = Math.max(1, Math.min(16, Number(v || 1)));
-                                    return {
-                                      ...p,
-                                      fieldsY: fy,
-                                      rowHeightsMm: scaleSplitsToTotal(p.rowHeightsMm, p.heightMm, fy),
-                                      cellInsertions: normalizeCellInsertions(p.fieldsX, fy, p.cellInsertions, p.insertion),
-                                    };
-                                  })
-                                }
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {posStep === 3 && (
-                        <div
-                       style={{ display: "grid", gridTemplateColumns: "420px 1fr", gap: 16 }}>
-                          {/* Left column */}
-                          <div
-                       style={{ display: "grid", gap: 12 }}>
-                            <div
-                       style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12 }}>
-                              <H3>Insertion</H3>
-
-                              <div
-                       style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                                <div
-                       style={{ fontSize: 12, color: "#71717a" }}>
-                                  Selected field: #{draftSelectedCell.row * posDraft.fieldsX + draftSelectedCell.col + 1}
-                                </div>
-
-                                <div
-                       style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                                  <select value={openingStd} onChange={(e) => setOpeningStd(e.target.value as any)} style={{ borderRadius: 10, border: "1px solid #e4e4e7", padding: "6px 10px", fontSize: 12 }} title="Opening convention">
-                                    <option value="DIN">DIN</option>
-                                    <option value="UK">UK</option>
-                                  </select>
-
-                                  <select value={previewView} onChange={(e) => setPreviewView(e.target.value as any)} style={{ borderRadius: 10, border: "1px solid #e4e4e7", padding: "6px 10px", fontSize: 12 }} title="View">
-                                    <option value="Inside">Inside</option>
-                                    <option value="Outside">Outside</option>
-                                  </select>
-                                </div>
-                              </div>
-
-                              <div
-                       style={{ marginTop: 8 }}>
-                                <select
-                                  value={(posDraft.cellInsertions ?? {})[keyForCell(draftSelectedCell.col, draftSelectedCell.row)] ?? posDraft.insertion}
-                                  onChange={(e) =>
-                                    setPosDraft((p) => ({
-                                      ...p,
-                                      cellInsertions: { ...(p.cellInsertions ?? {}), [keyForCell(draftSelectedCell.col, draftSelectedCell.row)]: e.target.value },
-                                    }))
-                                  }
-                                  style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14 }}
-                                >
-                                  <option>Fixed</option>
-                                  <option>Turn</option>
-                                  <option>Tilt</option>
-                                  <option>Tilt & Turn</option>
-                                  <option>Top Hung</option>
-                                  <option>Side Hung</option>
-                                  <option>Reversible</option>
-                                </select>
-                              </div>
-                            </div>
-
-                            <div
-                       style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12 }}>
-                              <H3>Use estimate defaults</H3>
-                              <div
-                       style={{ marginTop: 10, display: "grid", gap: 10 }}>
-                                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700 }}>
-                                  <input type="checkbox" checked={posDraft.useEstimateDefaults} onChange={(e) => setPosDraft((p) => ({ ...p, useEstimateDefaults: e.target.checked }))} />
-                                  Use estimate defaults for this position
-                                </label>
-                                <Small>When unticked, you can override the same defaults below (same option set as).</Small>
-                              </div>
-                            </div>
-
-                            {!posDraft.useEstimateDefaults && (
-                              <DefaultsEditor
-                                title="Position Overrides"
-                                productType={(posDraft.overrides.productType as Models.ProductType) || selectedEstimate.defaults.productType}
-                                value={{ ...selectedEstimate.defaults, ...posDraft.overrides }}
-                                onChange={(next) => setPositionDefaultsOverride(next)}
-                                showDoorOptions={posDraft.positionType === "Door"}
-                              />
-                            )}
-                          </div>
-
-                          {/* Right column */}
-                          <div
-                       style={{ display: "grid", gap: 12 }}>
-                            <div
-                       style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12 }}>
-                              <div
-                       style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                                <H3>Preview</H3>
-                                <Pill>{posDraft.insertion}</Pill>
-                              </div>
-
-                              <div
-                       style={{ marginTop: 12 }}>
-                                <GridEditor
-                                  pos={{
-                                    widthMm: posDraft.widthMm,
-                                    heightMm: posDraft.heightMm,
-                                    fieldsX: posDraft.fieldsX,
-                                    fieldsY: posDraft.fieldsY,
-                                    insertion: posDraft.insertion,
-                                    cellInsertions: posDraft.cellInsertions,
-                                    colWidthsMm: posDraft.colWidthsMm,
-                                    rowHeightsMm: posDraft.rowHeightsMm,
-                                  }}
-                                  selectedCell={draftSelectedCell}
-                                  onSelectCell={setDraftSelectedCell}
-                                  view={previewView}
-                                  openingStd={openingStd}
-                                  setPos={(fn: any) =>
-                                    setPosDraft((p) => {
-                                      const next = fn(p);
-                                      const fx = next.fieldsX ?? p.fieldsX;
-                                      const fy = next.fieldsY ?? p.fieldsY;
-                                      const ins = (next.insertion ?? p.insertion) as any;
-                                      const cellInsertions = normalizeCellInsertions(fx, fy, next.cellInsertions ?? p.cellInsertions, ins);
-                                      return { ...p, ...next, cellInsertions };
-                                    })
-                                  }
-                                />
-                              </div>
-
-                              <div
-                       style={{ marginTop: 12, borderTop: "1px solid #e4e4e7", paddingTop: 10 }}>
-                                <H3>Summary</H3>
-                                <Small>
-                                  {(() => {
-                                    const eff = effectiveDefaultsForPosition(selectedEstimate, posDraft);
-                                    return eff.supplier
-										? eff.supplier
-										: `Glass: ${eff.glassType} Ug ${eff.ugValue} G ${eff.gValue}`;
-                                  })()}
-                                </Small>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    <div
-                       style={{ marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                      <Button variant="secondary" onClick={() => setPosStep((s) => (s === 1 ? 1 : ((s - 1) as any)))} disabled={posStep === 1}>
-                        Back
-                      </Button>
-
-                      {posStep < 3 ? (
-                        <Button variant="primary" onClick={() => setPosStep((s) => ((s + 1) as any))}>
-                          Next
-                        </Button>
-                      ) : (
-                        <Button variant="primary" onClick={savePositionToEstimate}>
-                          Save Position
-                        </Button>
-                      )}
-                    </div>
+                        </>
+                      );
+                    })()}
                   </div>
-                )}
                 </div>
-              </Card>
+                </Card>
+              )
             )}
 
             {/* CLIENT DATABASE VIEW FALLBACK (Phase 4F) */}

@@ -1,7 +1,7 @@
 import React from "react";
 import type { Client, ClientId, EstimateId, EstimateOutcome } from "../../models/types";
 import { estimateCostTotal, estimateTotals } from "../../domain/estimates/estimateCalculations";
-import ConfiguratorWorkspace from "../configurator/ConfiguratorWorkspace";
+import ConfiguratorWorkflowShell from "../configurator/components/ConfiguratorWorkflowShell";
 import EstimatePositionsFeature from "../estimatePositions/EstimatePositionsFeature";
 import { EstimateWorkflowProvider } from "../estimateWorkflow/EstimateWorkflowProvider";
 import { useEstimateWorkflow } from "../estimateWorkflow/useEstimateWorkflow";
@@ -84,11 +84,8 @@ function EstimateExpandedPanelContent(props: Props) {
 
   const {
     currentEstimateId,
-    currentStepKey,
     currentConfiguredEstimateId,
     currentConfiguredPositionId,
-    markStepComplete,
-    setCurrentStepKey,
     clearConfigurationTarget,
   } = useEstimateWorkflow();
 
@@ -115,27 +112,17 @@ function EstimateExpandedPanelContent(props: Props) {
     [item.id, supplierEstimateFilesByEstimateId]
   );
 
-  const activeHasOpenings = React.useMemo(
-    () => !!activeEstimate && Array.isArray(activeEstimate.positions) && activeEstimate.positions.length > 0,
-    [activeEstimate]
-  );
-
-  const activeHasExplicitPricing = React.useMemo(() => {
-    if (!activeEstimate) return false;
-    return (activeEstimate.positions ?? []).some((position: any) => {
+  function canUsePricingActions() {
+    if (String(item?.id) !== String(activeEstimate?.id || "")) return false;
+    return (activeEstimate?.positions ?? []).some((position: any) => {
       const raw = itemPriceByPositionId[position.id];
       const value = Number(raw);
       return raw != null && raw !== "" && Number.isFinite(value) && value > 0;
     });
-  }, [activeEstimate, itemPriceByPositionId]);
+  }
 
-  const activeHasConfigurationSignal = React.useMemo(
-    () => activeHasOpenings && (activeImportedFiles.length > 0 || activeHasExplicitPricing),
-    [activeHasOpenings, activeImportedFiles, activeHasExplicitPricing]
-  );
-
-  const activeHasReviewSignal = React.useMemo(() => {
-    if (!activeEstimate) return false;
+  function canUseOutputActions() {
+    if (String(item?.id) !== String(activeEstimate?.id || "")) return false;
     const timeline = activeEstimate?.orderMeta?.timeline ?? [];
     const completedTimeline = timeline.some((timelineItem: any) => !!timelineItem?.completed);
     const hasOrderDates =
@@ -145,32 +132,7 @@ function EstimateExpandedPanelContent(props: Props) {
       !!activeEstimate?.orderMeta?.factoryOrderSignedOffDate ||
       !!activeEstimate?.orderMeta?.deliveryDate ||
       !!activeEstimate?.orderMeta?.installationDate;
-
     return completedTimeline || hasOrderDates;
-  }, [activeEstimate]);
-
-  React.useEffect(() => {
-    markStepComplete("project_setup", !!activeEstimate);
-    markStepComplete("openings", activeHasOpenings);
-    markStepComplete("configuration", activeHasConfigurationSignal);
-    markStepComplete("pricing", activeHasExplicitPricing);
-    markStepComplete("review", activeHasReviewSignal);
-    markStepComplete("output", false);
-  }, [
-    activeEstimate,
-    activeHasOpenings,
-    activeHasConfigurationSignal,
-    activeHasExplicitPricing,
-    activeHasReviewSignal,
-    markStepComplete,
-  ]);
-
-  function canUsePricingActions() {
-    return String(item?.id) === String(activeEstimate?.id || "") && activeHasExplicitPricing;
-  }
-
-  function canUseOutputActions() {
-    return String(item?.id) === String(activeEstimate?.id || "") && activeHasReviewSignal;
   }
 
   async function updateEstimatePositions(updatedPositions: any[]) {
@@ -213,17 +175,15 @@ function EstimateExpandedPanelContent(props: Props) {
     );
 
     await updateEstimatePositions(updatedPositions);
-    markStepComplete("configuration", true);
   }
 
-  if (currentStepKey === "configuration" && configuredEstimate && configuredPosition) {
+  if (configuredEstimate && configuredPosition) {
     return (
-      <ConfiguratorWorkspace
+      <ConfiguratorWorkflowShell
         estimate={configuredEstimate}
         position={configuredPosition}
-        onBack={() => {
+        onExit={() => {
           clearConfigurationTarget();
-          setCurrentStepKey("openings");
         }}
         onSavePosition={saveConfiguredPosition}
       />
@@ -341,6 +301,10 @@ export default function EstimateExpandedPanel(props: Props) {
       currentTab={currentTab}
       currentClientId={itemClient.id}
       currentEstimateId={item.id}
+      currentClient={itemClient}
+      currentEstimate={item}
+      workflowScope="position"
+      workflowMode="edit"
     >
       <EstimateExpandedPanelContent {...props} />
     </EstimateWorkflowProvider>
