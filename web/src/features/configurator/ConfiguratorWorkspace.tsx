@@ -29,7 +29,11 @@ import {
   normalizeConfigurationState,
   normalizeLayoutDefinition,
 } from "./configuratorWorkflow.helpers";
-import { resolveSectionProfileSet } from "./rendering/profileSectionMapping";
+import {
+  buildRenderDefinitionContextKey,
+  findExactRenderProfileForContext,
+  resolveSectionProfileSet,
+} from "./rendering/profileSectionMapping";
 
 type Props = {
   estimate: any;
@@ -602,6 +606,33 @@ function describeJunction(junction: WindowJunctionDefinition) {
   return `Between row ${junction.startRow + 1} and ${junction.endRow + 1}`;
 }
 
+function deriveConfiguratorRenderOperationType(
+  layout: { rows: number; columns: number; freehand?: { enabled?: boolean } | undefined },
+  fields: WindowFieldDefinition[] | undefined
+) {
+  if (layout.freehand?.enabled) return null;
+  if (layout.rows !== 1 || layout.columns !== 1) return null;
+  const field = (fields ?? [])[0];
+  switch (field?.type) {
+    case "fixed":
+      return "fixed";
+    case "tiltAndTurn":
+    case "tiltAndTurnLeft":
+    case "tiltAndTurnRight":
+    case "turnTiltLeft":
+    case "turnTiltRight":
+      return "tilt_turn";
+    case "topHung":
+      return "top_hung";
+    case "sideHung":
+      return "side_hung";
+    case "reversible":
+      return "reversible";
+    default:
+      return null;
+  }
+}
+
 function renderJunctionRow(
   junction: WindowJunctionDefinition,
   flyingAllowed: boolean,
@@ -714,17 +745,6 @@ export default function ConfiguratorWorkspace(props: Props) {
   const workflowPosition = useMemo(() => buildPositionFromWorkflowDraft(position, draft), [draft, position]);
   const configuration = useMemo(() => normalizeConfigurationState(draft.configuration, workflowPosition), [draft.configuration, workflowPosition]);
   const layout = useMemo(() => normalizeLayoutDefinition(configuration.layout, workflowPosition), [configuration.layout, workflowPosition]);
-  const resolvedProfiles = useMemo(
-    () =>
-      resolveSectionProfileSet({
-        bootstrap: catalogBootstrap,
-        productName: workflowPosition.product,
-        productTypeName: workflowPosition.productType,
-        view: configuration.orientationView ?? "inside",
-        fields: configuration.fields,
-      }),
-    [catalogBootstrap, configuration.fields, configuration.orientationView, workflowPosition.product, workflowPosition.productType]
-  );
   const defaultsSnapshot = draft.estimateDefaults.defaultsSnapshot ?? {};
   const selectedManufacturerId = String(
     draft.estimateDefaults.manufacturerId ?? defaultsSnapshot.manufacturerId ?? ""
@@ -733,6 +753,57 @@ export default function ConfiguratorWorkspace(props: Props) {
   const selectedWindowTypeId = String(
     draft.estimateDefaults.windowTypeId ?? defaultsSnapshot.windowTypeId ?? ""
   ).trim();
+  const exactRenderOperationType = useMemo(
+    () => deriveConfiguratorRenderOperationType(layout, configuration.fields),
+    [configuration.fields, layout]
+  );
+  const exactRenderContextKey = useMemo(() => {
+    if (!exactRenderOperationType) return null;
+    const fieldCount = layout.rows * layout.columns;
+    if (fieldCount < 1 || fieldCount > 6) return null;
+    const windowTab = `${fieldCount}field`;
+    const viewCode = configuration.orientationView === "outside" ? "EV" : "IV";
+    return buildRenderDefinitionContextKey("windows", windowTab, exactRenderOperationType, viewCode);
+  }, [configuration.orientationView, exactRenderOperationType, layout.columns, layout.rows]);
+  const exactRenderProfile = useMemo(() => {
+    if (!exactRenderContextKey || !exactRenderOperationType) return null;
+    return findExactRenderProfileForContext({
+      renderProfiles: catalogBootstrap.renderProfiles,
+      contextKey: exactRenderContextKey,
+      operationType: exactRenderOperationType,
+      view: configuration.orientationView === "outside" ? "outside" : "inside",
+      manufacturerId: selectedManufacturerId || null,
+      productId: selectedProductId || null,
+      windowTypeId: selectedWindowTypeId || null,
+    });
+  }, [
+    catalogBootstrap.renderProfiles,
+    configuration.orientationView,
+    exactRenderContextKey,
+    exactRenderOperationType,
+    selectedManufacturerId,
+    selectedProductId,
+    selectedWindowTypeId,
+  ]);
+  const resolvedProfiles = useMemo(
+    () =>
+      resolveSectionProfileSet({
+        bootstrap: catalogBootstrap,
+        productName: workflowPosition.product,
+        productTypeName: workflowPosition.productType,
+        view: configuration.orientationView ?? "inside",
+        fields: configuration.fields,
+        exactRenderProfile,
+      }),
+    [
+      catalogBootstrap,
+      configuration.fields,
+      configuration.orientationView,
+      exactRenderProfile,
+      workflowPosition.product,
+      workflowPosition.productType,
+    ]
+  );
   const filteredColourOptions = useMemo(() => {
     const colours = catalogBootstrap.colours.filter((colour) => {
       if (selectedProductId && colour.product_id && String(colour.product_id) !== selectedProductId) return false;

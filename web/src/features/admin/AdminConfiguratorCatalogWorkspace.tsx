@@ -15,7 +15,12 @@ import type {
 import { Button, H3, Small } from "../estimatePicker/tabs/shared";
 import { buildWindowDrawingModel } from "../configurator/rendering/buildWindowDrawingModel";
 import QuoteSyncDrawingSvg from "../configurator/rendering/QuoteSyncDrawingSvg";
-import type { ResolvedSectionProfileSet } from "../configurator/rendering/profileSectionMapping";
+import {
+  buildRenderDefinitionContextKey,
+  buildResolvedSectionProfileSetFromRenderProfile,
+  matchesRenderDefinitionContext,
+  normalizeRenderProfileForView,
+} from "../configurator/rendering/profileSectionMapping";
 
 type AdminConfiguratorTopTab = "manufacturers" | "windowTypes" | "configuratorRender";
 type ProductGroupKey =
@@ -264,21 +269,6 @@ function blankRenderProfile(context: {
   };
 }
 
-function applyInternalRenderDefaults(
-  record: ConfiguratorRenderProfileRecord,
-  viewLogic: "inside" | "outside" | "both"
-): ConfiguratorRenderProfileRecord {
-  if (viewLogic !== "inside") return record;
-  const nextBottom =
-    record.frame_bottom_visible_mm == null || Number(record.frame_bottom_visible_mm) === 37.5
-      ? 52.5
-      : record.frame_bottom_visible_mm;
-  return {
-    ...record,
-    frame_bottom_visible_mm: nextBottom,
-  };
-}
-
 function numericOrNull(value: unknown) {
   if (value === null || value === undefined || value === "") return null;
   const next = Number(value);
@@ -357,183 +347,6 @@ function buildPreviewInsertion(operationType: string) {
   }
 }
 
-function buildRenderDefinitionContextKey(
-  productGroup: ProductGroupKey,
-  windowTab: WindowRenderTab,
-  operationType: string,
-  viewCode: RenderProfileViewCode
-) {
-  return `${productGroup}:${windowTab}:${String(operationType || "fixed").trim().toLowerCase()}:${viewCode}`;
-}
-
-function matchesRenderDefinitionContext(
-  row: ConfiguratorRenderProfileRecord,
-  contextKey: string,
-  operationType: string,
-  viewLogic: "inside" | "outside"
-) {
-  const normalizedName = String(row.name || "").trim().toLowerCase();
-  if (normalizedName === contextKey.toLowerCase()) return true;
-  const legacyName = String(row.name || "").trim();
-  const rowViewLogic = String(row.view_logic || "").trim().toLowerCase();
-  const isLegacyProfile = !legacyName.includes(":");
-  if (!isLegacyProfile) return false;
-  return row.operation_type === operationType && (rowViewLogic === viewLogic || rowViewLogic === "both");
-}
-
-function buildResolvedProfiles(record: ConfiguratorRenderProfileRecord, view: "inside" | "outside"): ResolvedSectionProfileSet {
-  const operationType = record.operation_type === "fixed" ? "fixed" : "tilt_turn";
-  const beadTop = view === "inside" ? numericOrNull(record.bead_top_visible_mm) : null;
-  const beadLeft = view === "inside" ? numericOrNull(record.bead_left_visible_mm) : null;
-  const beadRight = view === "inside" ? numericOrNull(record.bead_right_visible_mm) : null;
-  const beadBottom = view === "inside" ? numericOrNull(record.bead_bottom_visible_mm) : null;
-  const sashTop = numericOrNull(record.sash_top_visible_mm);
-  const sashLeft = numericOrNull(record.sash_left_visible_mm);
-  const sashRight = numericOrNull(record.sash_right_visible_mm);
-  const sashBottom = numericOrNull(record.sash_bottom_visible_mm);
-  const handleOffset = numericOrNull(record.handle_axis_offset_mm);
-  const pivotOffset = numericOrNull(record.hinge_pivot_offset_mm);
-  const externalCladdingInsetMm = view === "outside" ? numericOrNull(record.external_cladding_inset_mm) ?? 3 : 0;
-
-  const baseProfile = (
-    name: string,
-    visibleFaceWidthMm: number,
-    beadVisibleFaceMm: number | null,
-    side: "top" | "left" | "right" | "bottom"
-  ) => ({
-    id: `${record.id || "draft"}-${name}-${view}`,
-    code: record.code,
-    name,
-    visibleFaceWidthMm,
-    depthMm: visibleFaceWidthMm,
-    insetMm: view === "outside" ? externalCladdingInsetMm : beadVisibleFaceMm ?? 10,
-    overlapMm: 0,
-    visibleInternalFaceMm: view === "inside" ? visibleFaceWidthMm : null,
-    glassInsetMm: view === "inside" ? beadVisibleFaceMm : null,
-    beadOffsetMm: view === "inside" ? beadVisibleFaceMm : null,
-    beadVisibleFaceMm: view === "inside" ? beadVisibleFaceMm : null,
-    handleAxisOffsetMm: side === "left" || side === "right" ? handleOffset : null,
-    hingePivotOffsetMm: side === "left" || side === "right" ? pivotOffset : null,
-    meetingGapMm: null,
-    drawingReferenceIds: [],
-    referenceInputs: [],
-    notes: record.notes,
-  });
-
-  const sashProfile = (
-    name: string,
-    visibleFaceWidthMm: number | null,
-    beadVisibleFaceMm: number | null,
-    side: "top" | "left" | "right" | "bottom"
-  ) =>
-    visibleFaceWidthMm == null
-        ? null
-      : {
-          id: `${record.id || "draft"}-${name}-${view}`,
-          code: record.code,
-          name,
-          visibleFaceWidthMm,
-          depthMm: visibleFaceWidthMm,
-          insetMm:
-            view === "inside"
-              ? side === "bottom"
-                ? 0
-                : beadVisibleFaceMm ?? 8
-              : externalCladdingInsetMm,
-          overlapMm: 0,
-          visibleInternalFaceMm: view === "inside" ? visibleFaceWidthMm : null,
-          glassInsetMm: view === "inside" ? beadVisibleFaceMm : null,
-          beadOffsetMm: view === "inside" ? beadVisibleFaceMm : null,
-          beadVisibleFaceMm: view === "inside" ? beadVisibleFaceMm : null,
-          handleAxisOffsetMm: side === "left" || side === "right" ? handleOffset : null,
-          hingePivotOffsetMm: side === "left" || side === "right" ? pivotOffset : null,
-          meetingGapMm: null,
-          drawingReferenceIds: [],
-          referenceInputs: [],
-          notes: record.notes,
-        };
-
-  return {
-    operationType,
-    manufacturerId: record.manufacturer_id,
-    productId: record.product_id,
-    windowTypeId: record.window_type_id,
-    frame: {
-      head: baseProfile("Frame head", Number(record.frame_top_visible_mm || 63), beadTop, "top"),
-      jambLeft: baseProfile("Frame jamb left", Number(record.frame_left_visible_mm || 63), beadLeft, "left"),
-      jambRight: baseProfile("Frame jamb right", Number(record.frame_right_visible_mm || 63), beadRight, "right"),
-      bottom: baseProfile("Frame bottom", Number(record.frame_bottom_visible_mm || 52.5), beadBottom, "bottom"),
-    },
-    sash: operationType === "fixed"
-      ? { head: null, jambLeft: null, jambRight: null, bottom: null }
-      : {
-          head: sashProfile("Sash head", sashTop, beadTop, "top"),
-          jambLeft: sashProfile("Sash jamb left", sashLeft, beadLeft, "left"),
-          jambRight: sashProfile("Sash jamb right", sashRight, beadRight, "right"),
-          bottom: sashProfile("Sash bottom", sashBottom, beadBottom, "bottom"),
-        },
-    mullion: {
-      id: `${record.id || "draft"}-mullion-${view}`,
-      code: record.code,
-      name: "Default mullion",
-      visibleFaceWidthMm: 76,
-      depthMm: 76,
-      insetMm: 0,
-      overlapMm: 0,
-      visibleInternalFaceMm: null,
-      glassInsetMm: null,
-      beadOffsetMm: null,
-      beadVisibleFaceMm: null,
-      handleAxisOffsetMm: null,
-      hingePivotOffsetMm: null,
-      meetingGapMm: null,
-      drawingReferenceIds: [],
-      referenceInputs: [],
-      notes: record.notes,
-    },
-    flyingMullion: {
-      id: `${record.id || "draft"}-flying-${view}`,
-      code: record.code,
-      name: "Default flying mullion",
-      visibleFaceWidthMm: 62,
-      depthMm: 62,
-      insetMm: 0,
-      overlapMm: 0,
-      visibleInternalFaceMm: null,
-      glassInsetMm: null,
-      beadOffsetMm: null,
-      beadVisibleFaceMm: null,
-      handleAxisOffsetMm: null,
-      hingePivotOffsetMm: null,
-      meetingGapMm: 5,
-      drawingReferenceIds: [],
-      referenceInputs: [],
-      notes: record.notes,
-    },
-    transom: {
-      id: `${record.id || "draft"}-transom-${view}`,
-      code: record.code,
-      name: "Default transom",
-      visibleFaceWidthMm: 76,
-      depthMm: 76,
-      insetMm: 0,
-      overlapMm: 0,
-      visibleInternalFaceMm: null,
-      glassInsetMm: null,
-      beadOffsetMm: null,
-      beadVisibleFaceMm: null,
-      handleAxisOffsetMm: null,
-      hingePivotOffsetMm: null,
-      meetingGapMm: null,
-      drawingReferenceIds: [],
-      referenceInputs: [],
-      notes: record.notes,
-    },
-    cill: null,
-    sectionReferenceIds: [],
-    referenceInputs: [],
-  };
-}
 
 function ManufacturersPanel(props: {
   bootstrap: ConfiguratorCatalogBootstrap;
@@ -955,8 +768,8 @@ function ConfiguratorRenderPanel(props: {
     renderViewCode === "IV"
       ? renderDraft
       : comparisonViewCode === "IV" && comparisonRenderProfile
-        ? applyInternalRenderDefaults(comparisonRenderProfile, "inside")
-        : applyInternalRenderDefaults({
+        ? normalizeRenderProfileForView(comparisonRenderProfile, "inside")
+        : normalizeRenderProfileForView({
             ...blankRenderProfile({ manufacturerId: "", productId: "", windowTypeId: matchingWindowTypeId ?? "" }),
             name: buildRenderDefinitionContextKey(productGroup, windowTab, selectedOpeningOperation, "IV"),
             code: generatedInternalCode,
@@ -982,7 +795,7 @@ function ConfiguratorRenderPanel(props: {
     const selected = renderProfileRecords.find((row) => row.id === selectedRenderProfileId);
     if (selected) {
       setRenderDraft(
-        applyInternalRenderDefaults(
+        normalizeRenderProfileForView(
           selected,
           String(selected.view_logic || "").trim().toLowerCase() === "outside" ? "outside" : "inside"
         )
@@ -1032,7 +845,7 @@ function ConfiguratorRenderPanel(props: {
     if (selectedRenderProfileId) return;
     setRenderDraft((previous) => {
       const nextCode = manualCodeOverride ? previous.code : generatedRenderCode;
-      return applyInternalRenderDefaults(
+      return normalizeRenderProfileForView(
         {
           ...blankRenderProfile({ manufacturerId: "", productId: "", windowTypeId: "" }),
           id: "",
@@ -1087,7 +900,7 @@ function ConfiguratorRenderPanel(props: {
         fieldsY: 1,
         insertion: previewInsertion,
         orientationView: "inside",
-        resolvedProfiles: buildResolvedProfiles(internalPreviewDraft, "inside"),
+        resolvedProfiles: buildResolvedSectionProfileSetFromRenderProfile(internalPreviewDraft, "inside"),
         windowConfiguration: {
           hardware: {
             defaultHandleHeightMm: numericOrNull(internalPreviewDraft.handle_height_mm) ?? 1050,
@@ -1106,7 +919,7 @@ function ConfiguratorRenderPanel(props: {
         fieldsY: 1,
         insertion: previewInsertion,
         orientationView: "outside",
-        resolvedProfiles: buildResolvedProfiles(externalPreviewDraft, "outside"),
+        resolvedProfiles: buildResolvedSectionProfileSetFromRenderProfile(externalPreviewDraft, "outside"),
         windowConfiguration: {
           hardware: {
             defaultHandleHeightMm: numericOrNull(externalPreviewDraft.handle_height_mm) ?? 1050,
@@ -1156,7 +969,7 @@ function ConfiguratorRenderPanel(props: {
       }));
       setSelectedRenderProfileId("");
       setRenderDraft(
-        applyInternalRenderDefaults(
+        normalizeRenderProfileForView(
           blankRenderProfile({ manufacturerId: "", productId: "", windowTypeId: "" }),
           activeViewLogic
         )

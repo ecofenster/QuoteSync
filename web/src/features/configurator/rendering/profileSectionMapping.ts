@@ -72,7 +72,10 @@ type ResolveInput = {
   productTypeName?: string | null;
   view?: "inside" | "outside";
   fields?: WindowFieldDefinition[] | null | undefined;
+  exactRenderProfile?: ConfiguratorRenderProfileRecord | null;
 };
+
+export type RenderDefinitionViewLogic = "inside" | "outside";
 
 const DEFAULT_PROFILE = (name: string, width: number, extra?: Partial<ResolvedDrawingProfile>): ResolvedDrawingProfile => ({
   id: null,
@@ -271,6 +274,239 @@ function chooseBestRenderProfile(
     })[0];
 }
 
+function numericOrNull(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const next = Number(value);
+  return Number.isFinite(next) ? next : null;
+}
+
+export function normalizeRenderProfileForView(
+  record: ConfiguratorRenderProfileRecord,
+  viewLogic: "inside" | "outside" | "both"
+): ConfiguratorRenderProfileRecord {
+  if (viewLogic !== "inside") return record;
+  const nextBottom =
+    record.frame_bottom_visible_mm == null || Number(record.frame_bottom_visible_mm) === 37.5
+      ? 52.5
+      : record.frame_bottom_visible_mm;
+  return {
+    ...record,
+    frame_bottom_visible_mm: nextBottom,
+  };
+}
+
+export function buildRenderDefinitionContextKey(
+  productGroup: string,
+  windowTab: string,
+  operationType: string,
+  viewCode: string
+) {
+  return `${productGroup}:${windowTab}:${String(operationType || "fixed").trim().toLowerCase()}:${String(viewCode || "IV").trim().toUpperCase()}`;
+}
+
+export function matchesRenderDefinitionContext(
+  row: ConfiguratorRenderProfileRecord,
+  contextKey: string,
+  operationType: string,
+  viewLogic: RenderDefinitionViewLogic
+) {
+  const normalizedName = String(row.name || "").trim().toLowerCase();
+  if (normalizedName === contextKey.toLowerCase()) return true;
+  const legacyName = String(row.name || "").trim();
+  const rowViewLogic = String(row.view_logic || "").trim().toLowerCase();
+  const isLegacyProfile = !legacyName.includes(":");
+  if (!isLegacyProfile) return false;
+  return row.operation_type === operationType && (rowViewLogic === viewLogic || rowViewLogic === "both");
+}
+
+export function findExactRenderProfileForContext(input: {
+  renderProfiles: ConfiguratorRenderProfileRecord[] | null | undefined;
+  contextKey: string;
+  operationType: string;
+  view: RenderDefinitionViewLogic;
+  manufacturerId?: string | null;
+  productId?: string | null;
+  windowTypeId?: string | null;
+}) {
+  const rows = Array.isArray(input.renderProfiles) ? input.renderProfiles : [];
+  return rows
+    .filter((row) => row.is_active)
+    .filter((row) => matchesRenderDefinitionContext(row, input.contextKey, input.operationType, input.view))
+    .filter((row) => {
+      if (input.windowTypeId && row.window_type_id && row.window_type_id !== input.windowTypeId) return false;
+      if (input.productId && row.product_id && row.product_id !== input.productId) return false;
+      if (input.manufacturerId && row.manufacturer_id && row.manufacturer_id !== input.manufacturerId) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      const score = (profile: ConfiguratorRenderProfileRecord) =>
+        (profile.window_type_id ? 8 : 0) +
+        (profile.product_id ? 4 : 0) +
+        (profile.manufacturer_id ? 2 : 0) +
+        (String(profile.name || "").includes(":") ? 1 : 0);
+      return score(b) - score(a);
+    })[0] ?? null;
+}
+
+export function buildResolvedSectionProfileSetFromRenderProfile(
+  record: ConfiguratorRenderProfileRecord,
+  view: RenderDefinitionViewLogic
+): ResolvedSectionProfileSet {
+  const normalizedRecord = normalizeRenderProfileForView(record, view);
+  const operationType = normalizedRecord.operation_type === "fixed" ? "fixed" : "tilt_turn";
+  const beadTop = view === "inside" ? numericOrNull(normalizedRecord.bead_top_visible_mm) : null;
+  const beadLeft = view === "inside" ? numericOrNull(normalizedRecord.bead_left_visible_mm) : null;
+  const beadRight = view === "inside" ? numericOrNull(normalizedRecord.bead_right_visible_mm) : null;
+  const beadBottom = view === "inside" ? numericOrNull(normalizedRecord.bead_bottom_visible_mm) : null;
+  const sashTop = numericOrNull(normalizedRecord.sash_top_visible_mm);
+  const sashLeft = numericOrNull(normalizedRecord.sash_left_visible_mm);
+  const sashRight = numericOrNull(normalizedRecord.sash_right_visible_mm);
+  const sashBottom = numericOrNull(normalizedRecord.sash_bottom_visible_mm);
+  const handleOffset = numericOrNull(normalizedRecord.handle_axis_offset_mm);
+  const pivotOffset = numericOrNull(normalizedRecord.hinge_pivot_offset_mm);
+  const externalCladdingInsetMm = view === "outside" ? numericOrNull(normalizedRecord.external_cladding_inset_mm) ?? 3 : 0;
+
+  const baseProfile = (
+    name: string,
+    visibleFaceWidthMm: number,
+    beadVisibleFaceMm: number | null,
+    side: "top" | "left" | "right" | "bottom"
+  ) => ({
+    id: `${normalizedRecord.id || "draft"}-${name}-${view}`,
+    code: normalizedRecord.code,
+    name,
+    visibleFaceWidthMm,
+    depthMm: visibleFaceWidthMm,
+    insetMm: view === "outside" ? externalCladdingInsetMm : beadVisibleFaceMm ?? 10,
+    overlapMm: 0,
+    visibleInternalFaceMm: view === "inside" ? visibleFaceWidthMm : null,
+    glassInsetMm: view === "inside" ? beadVisibleFaceMm : null,
+    beadOffsetMm: view === "inside" ? beadVisibleFaceMm : null,
+    beadVisibleFaceMm: view === "inside" ? beadVisibleFaceMm : null,
+    handleAxisOffsetMm: side === "left" || side === "right" ? handleOffset : null,
+    hingePivotOffsetMm: side === "left" || side === "right" ? pivotOffset : null,
+    meetingGapMm: null,
+    drawingReferenceIds: [],
+    referenceInputs: [],
+    notes: normalizedRecord.notes,
+  });
+
+  const sashProfile = (
+    name: string,
+    visibleFaceWidthMm: number | null,
+    beadVisibleFaceMm: number | null,
+    side: "top" | "left" | "right" | "bottom"
+  ) =>
+    visibleFaceWidthMm == null
+      ? null
+      : {
+          id: `${normalizedRecord.id || "draft"}-${name}-${view}`,
+          code: normalizedRecord.code,
+          name,
+          visibleFaceWidthMm,
+          depthMm: visibleFaceWidthMm,
+          insetMm:
+            view === "inside"
+              ? side === "bottom"
+                ? 0
+                : beadVisibleFaceMm ?? 8
+              : externalCladdingInsetMm,
+          overlapMm: 0,
+          visibleInternalFaceMm: view === "inside" ? visibleFaceWidthMm : null,
+          glassInsetMm: view === "inside" ? beadVisibleFaceMm : null,
+          beadOffsetMm: view === "inside" ? beadVisibleFaceMm : null,
+          beadVisibleFaceMm: view === "inside" ? beadVisibleFaceMm : null,
+          handleAxisOffsetMm: side === "left" || side === "right" ? handleOffset : null,
+          hingePivotOffsetMm: side === "left" || side === "right" ? pivotOffset : null,
+          meetingGapMm: null,
+          drawingReferenceIds: [],
+          referenceInputs: [],
+          notes: normalizedRecord.notes,
+        };
+
+  return {
+    operationType,
+    manufacturerId: normalizedRecord.manufacturer_id,
+    productId: normalizedRecord.product_id,
+    windowTypeId: normalizedRecord.window_type_id,
+    frame: {
+      head: baseProfile("Frame head", Number(normalizedRecord.frame_top_visible_mm || 63), beadTop, "top"),
+      jambLeft: baseProfile("Frame jamb left", Number(normalizedRecord.frame_left_visible_mm || 63), beadLeft, "left"),
+      jambRight: baseProfile("Frame jamb right", Number(normalizedRecord.frame_right_visible_mm || 63), beadRight, "right"),
+      bottom: baseProfile("Frame bottom", Number(normalizedRecord.frame_bottom_visible_mm || 52.5), beadBottom, "bottom"),
+    },
+    sash:
+      operationType === "fixed"
+        ? { head: null, jambLeft: null, jambRight: null, bottom: null }
+        : {
+            head: sashProfile("Sash head", sashTop, beadTop, "top"),
+            jambLeft: sashProfile("Sash jamb left", sashLeft, beadLeft, "left"),
+            jambRight: sashProfile("Sash jamb right", sashRight, beadRight, "right"),
+            bottom: sashProfile("Sash bottom", sashBottom, beadBottom, "bottom"),
+          },
+    mullion: {
+      id: `${normalizedRecord.id || "draft"}-mullion-${view}`,
+      code: normalizedRecord.code,
+      name: "Default mullion",
+      visibleFaceWidthMm: 76,
+      depthMm: 76,
+      insetMm: 0,
+      overlapMm: 0,
+      visibleInternalFaceMm: null,
+      glassInsetMm: null,
+      beadOffsetMm: null,
+      beadVisibleFaceMm: null,
+      handleAxisOffsetMm: null,
+      hingePivotOffsetMm: null,
+      meetingGapMm: null,
+      drawingReferenceIds: [],
+      referenceInputs: [],
+      notes: normalizedRecord.notes,
+    },
+    flyingMullion: {
+      id: `${normalizedRecord.id || "draft"}-flying-${view}`,
+      code: normalizedRecord.code,
+      name: "Default flying mullion",
+      visibleFaceWidthMm: 62,
+      depthMm: 62,
+      insetMm: 0,
+      overlapMm: 0,
+      visibleInternalFaceMm: null,
+      glassInsetMm: null,
+      beadOffsetMm: null,
+      beadVisibleFaceMm: null,
+      handleAxisOffsetMm: null,
+      hingePivotOffsetMm: null,
+      meetingGapMm: 5,
+      drawingReferenceIds: [],
+      referenceInputs: [],
+      notes: normalizedRecord.notes,
+    },
+    transom: {
+      id: `${normalizedRecord.id || "draft"}-transom-${view}`,
+      code: normalizedRecord.code,
+      name: "Default transom",
+      visibleFaceWidthMm: 76,
+      depthMm: 76,
+      insetMm: 0,
+      overlapMm: 0,
+      visibleInternalFaceMm: null,
+      glassInsetMm: null,
+      beadOffsetMm: null,
+      beadVisibleFaceMm: null,
+      handleAxisOffsetMm: null,
+      hingePivotOffsetMm: null,
+      meetingGapMm: null,
+      drawingReferenceIds: [],
+      referenceInputs: [],
+      notes: normalizedRecord.notes,
+    },
+    cill: null,
+    sectionReferenceIds: [],
+    referenceInputs: [],
+  };
+}
+
 function applyRenderProfileSide(
   profile: ResolvedDrawingProfile | null,
   visibleFaceWidthMm: number | null | undefined,
@@ -334,6 +570,9 @@ export function resolveSectionProfileSet(input: ResolveInput): ResolvedSectionPr
   const bootstrap = input.bootstrap;
   const operationType = deriveOperationType(input.fields);
   const view = input.view ?? "inside";
+  if (input.exactRenderProfile) {
+    return buildResolvedSectionProfileSetFromRenderProfile(input.exactRenderProfile, view);
+  }
   if (!bootstrap) {
     return {
       ...DEFAULT_RESOLVED_SECTION_PROFILE_SET,
