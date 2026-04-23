@@ -1,5 +1,12 @@
+import fs from 'fs';
+import path from 'path';
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const dbPath = path.resolve(__dirname, '../quotesync.db');
 
 const CURRENT_SYSTEM_USER = {
   id: 'user-1',
@@ -8,6 +15,18 @@ const CURRENT_SYSTEM_USER = {
 };
 
 async function ensureColumn(db, tableName, columnName, definitionSql) {
+  const tableExists = await db.get(
+    `
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'table'
+        AND name = ?
+      LIMIT 1
+    `,
+    [tableName]
+  );
+  if (!tableExists) return;
+
   const columns = await db.all(`PRAGMA table_info(${tableName})`);
   const exists = columns.some(
     (column) => String(column.name || '').toLowerCase() === columnName.toLowerCase()
@@ -18,6 +37,20 @@ async function ensureColumn(db, tableName, columnName, definitionSql) {
 
 async function ensureTable(db, createSql) {
   await db.exec(createSql);
+}
+
+async function tableExists(db, tableName) {
+  const row = await db.get(
+    `
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'table'
+        AND name = ?
+      LIMIT 1
+    `,
+    [tableName]
+  );
+  return !!row;
 }
 
 async function ensureIndex(db, indexName, createSql) {
@@ -56,11 +89,466 @@ async function seedSetting(db, key, value, groupName) {
   );
 }
 
-export const dbPromise = open({
-  filename: '../quotesync.db',
-  driver: sqlite3.Database
-}).then(async (db) => {
+async function openDatabaseWithRecovery(filename) {
+  const attemptOpen = async () => {
+    const db = await open({
+      filename,
+      driver: sqlite3.Database,
+    });
+    await db.get(`SELECT name FROM sqlite_master LIMIT 1`);
+    return db;
+  };
+
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  try {
+    return await attemptOpen();
+  } catch (error) {
+    const code = String(error?.code || '');
+    const journalPath = `${filename}-journal`;
+    if (code !== 'SQLITE_IOERR' || !fs.existsSync(journalPath)) {
+      throw error;
+    }
+
+    console.warn(`SQLite I/O error opening ${filename}; retrying recovery against ${journalPath}.`);
+
+    let lastError = error;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        if (fs.existsSync(journalPath)) {
+          try {
+            fs.unlinkSync(journalPath);
+          } catch (unlinkError) {
+            lastError = unlinkError;
+          }
+        }
+        return await attemptOpen();
+      } catch (retryError) {
+        lastError = retryError;
+        await sleep(500);
+      }
+    }
+
+    throw lastError;
+  }
+}
+
+async function countRows(db, tableName) {
+  if (!(await tableExists(db, tableName))) return 0;
+  const row = await db.get(`SELECT COUNT(*) AS count FROM ${tableName}`);
+  return Number(row?.count || 0);
+}
+
+async function seedConfiguratorSectionProfiles(db) {
+  const existingCount = await countRows(db, 'configurator_section_profiles');
+  if (existingCount > 0) return;
+
+  const profiles = [
+    {
+      id: 'profile-frame-fixed',
+      category: 'outer_frame',
+      family: 'window',
+      code: 'FRAME-FIXED',
+      name: 'Fixed outer frame',
+      description: 'Default fixed-window perimeter frame profile.',
+      orientation_applicability_json: JSON.stringify(['head', 'jamb_left', 'jamb_right', 'bottom']),
+      inside_outside_applicability: 'both',
+      operation_applicability_json: JSON.stringify(['fixed']),
+      visible_face_width_mm: 70,
+      depth_mm: 70,
+      inset_mm: 10,
+      overlap_mm: 0,
+      drawing_reference_ids_json: JSON.stringify([]),
+      notes: 'Seeded fallback fixed profile for native renderer.',
+    },
+    {
+      id: 'profile-frame-tt',
+      category: 'outer_frame',
+      family: 'window',
+      code: 'FRAME-TT',
+      name: 'Tilt & turn outer frame',
+      description: 'Default inward tilt-and-turn perimeter frame profile.',
+      orientation_applicability_json: JSON.stringify(['head', 'jamb_left', 'jamb_right', 'bottom']),
+      inside_outside_applicability: 'both',
+      operation_applicability_json: JSON.stringify(['tilt_turn']),
+      visible_face_width_mm: 76,
+      depth_mm: 78,
+      inset_mm: 12,
+      overlap_mm: 0,
+      drawing_reference_ids_json: JSON.stringify([]),
+      notes: 'Seeded fallback inward T&T frame profile.',
+    },
+    {
+      id: 'profile-sash-tt',
+      category: 'sash',
+      family: 'window',
+      code: 'SASH-TT',
+      name: 'Tilt & turn sash',
+      description: 'Default inward tilt-and-turn sash profile.',
+      orientation_applicability_json: JSON.stringify(['head', 'jamb_left', 'jamb_right', 'bottom']),
+      inside_outside_applicability: 'inside',
+      operation_applicability_json: JSON.stringify(['tilt_turn']),
+      visible_face_width_mm: 58,
+      depth_mm: 68,
+      inset_mm: 8,
+      overlap_mm: 6,
+      drawing_reference_ids_json: JSON.stringify([]),
+      notes: 'Seeded fallback inward T&T sash profile.',
+    },
+    {
+      id: 'profile-mullion-static',
+      category: 'mullion',
+      family: 'window',
+      code: 'MULL-STATIC',
+      name: 'Static mullion',
+      description: 'Default static mullion profile.',
+      orientation_applicability_json: JSON.stringify(['mullion']),
+      inside_outside_applicability: 'both',
+      operation_applicability_json: JSON.stringify(['fixed', 'tilt_turn']),
+      visible_face_width_mm: 76,
+      depth_mm: 76,
+      inset_mm: 0,
+      overlap_mm: 0,
+      drawing_reference_ids_json: JSON.stringify([]),
+      notes: 'Seeded fallback static mullion profile.',
+    },
+    {
+      id: 'profile-mullion-flying',
+      category: 'flying_mullion',
+      family: 'window',
+      code: 'MULL-FLYING',
+      name: 'Flying mullion',
+      description: 'Default flying mullion profile.',
+      orientation_applicability_json: JSON.stringify(['mullion']),
+      inside_outside_applicability: 'both',
+      operation_applicability_json: JSON.stringify(['tilt_turn']),
+      visible_face_width_mm: 62,
+      depth_mm: 72,
+      inset_mm: 0,
+      overlap_mm: 0,
+      drawing_reference_ids_json: JSON.stringify([]),
+      notes: 'Seeded fallback flying mullion profile.',
+    },
+    {
+      id: 'profile-transom-static',
+      category: 'transom',
+      family: 'window',
+      code: 'TRANSOM-STATIC',
+      name: 'Static transom',
+      description: 'Default static transom profile.',
+      orientation_applicability_json: JSON.stringify(['transom']),
+      inside_outside_applicability: 'both',
+      operation_applicability_json: JSON.stringify(['fixed', 'tilt_turn']),
+      visible_face_width_mm: 76,
+      depth_mm: 76,
+      inset_mm: 0,
+      overlap_mm: 0,
+      drawing_reference_ids_json: JSON.stringify([]),
+      notes: 'Seeded fallback static transom profile.',
+    },
+    {
+      id: 'profile-cill-standard',
+      category: 'cill',
+      family: 'window',
+      code: 'CILL-STANDARD',
+      name: 'Standard cill / bottom profile',
+      description: 'Default cill profile used where a bottom profile is mapped.',
+      orientation_applicability_json: JSON.stringify(['bottom']),
+      inside_outside_applicability: 'outside',
+      operation_applicability_json: JSON.stringify(['fixed', 'tilt_turn']),
+      visible_face_width_mm: 32,
+      depth_mm: 110,
+      inset_mm: 0,
+      overlap_mm: 0,
+      drawing_reference_ids_json: JSON.stringify([]),
+      notes: 'Seeded fallback cill profile.',
+    },
+  ];
+
+  for (const profile of profiles) {
+    await db.run(
+      `
+        INSERT INTO configurator_section_profiles (
+          id,
+          category,
+          family,
+          code,
+          name,
+          description,
+          orientation_applicability_json,
+          inside_outside_applicability,
+          operation_applicability_json,
+          visible_face_width_mm,
+          depth_mm,
+          inset_mm,
+          overlap_mm,
+          drawing_reference_ids_json,
+          notes,
+          is_active,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+      `,
+      [
+        profile.id,
+        profile.category,
+        profile.family,
+        profile.code,
+        profile.name,
+        profile.description,
+        profile.orientation_applicability_json,
+        profile.inside_outside_applicability,
+        profile.operation_applicability_json,
+        profile.visible_face_width_mm,
+        profile.depth_mm,
+        profile.inset_mm,
+        profile.overlap_mm,
+        profile.drawing_reference_ids_json,
+        profile.notes,
+      ]
+    );
+  }
+}
+
+async function seedConfiguratorProfileMappings(db) {
+  const existingCount = await countRows(db, 'configurator_window_type_profile_mappings');
+  if (existingCount > 0) return;
+
+  const mappings = [
+    ['mapping-fixed-frame-head', 'frame_head', 'profile-frame-fixed', 'fixed'],
+    ['mapping-fixed-frame-jamb-left', 'frame_jamb_left', 'profile-frame-fixed', 'fixed'],
+    ['mapping-fixed-frame-jamb-right', 'frame_jamb_right', 'profile-frame-fixed', 'fixed'],
+    ['mapping-fixed-frame-bottom', 'frame_bottom', 'profile-frame-fixed', 'fixed'],
+    ['mapping-fixed-mullion', 'mullion', 'profile-mullion-static', 'fixed'],
+    ['mapping-fixed-transom', 'transom', 'profile-transom-static', 'fixed'],
+    ['mapping-fixed-cill', 'cill', 'profile-cill-standard', 'fixed'],
+    ['mapping-tt-frame-head', 'frame_head', 'profile-frame-tt', 'tilt_turn'],
+    ['mapping-tt-frame-jamb-left', 'frame_jamb_left', 'profile-frame-tt', 'tilt_turn'],
+    ['mapping-tt-frame-jamb-right', 'frame_jamb_right', 'profile-frame-tt', 'tilt_turn'],
+    ['mapping-tt-frame-bottom', 'frame_bottom', 'profile-frame-tt', 'tilt_turn'],
+    ['mapping-tt-sash-head', 'sash_head', 'profile-sash-tt', 'tilt_turn'],
+    ['mapping-tt-sash-jamb-left', 'sash_jamb_left', 'profile-sash-tt', 'tilt_turn'],
+    ['mapping-tt-sash-jamb-right', 'sash_jamb_right', 'profile-sash-tt', 'tilt_turn'],
+    ['mapping-tt-sash-bottom', 'sash_bottom', 'profile-sash-tt', 'tilt_turn'],
+    ['mapping-tt-mullion', 'mullion', 'profile-mullion-static', 'tilt_turn'],
+    ['mapping-tt-flying-mullion', 'flying_mullion', 'profile-mullion-flying', 'tilt_turn'],
+    ['mapping-tt-transom', 'transom', 'profile-transom-static', 'tilt_turn'],
+    ['mapping-tt-cill', 'cill', 'profile-cill-standard', 'tilt_turn'],
+  ];
+
+  for (const [id, mappingKey, profileId, operationType] of mappings) {
+    await db.run(
+      `
+        INSERT INTO configurator_window_type_profile_mappings (
+          id,
+          mapping_key,
+          profile_id,
+          operation_type,
+          notes,
+          is_active,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+      `,
+      [id, mappingKey, profileId, operationType, 'Seeded fallback mapping for the native renderer.']
+    );
+  }
+}
+
+async function seedConfiguratorRenderProfiles(db) {
+  const existingCount = await countRows(db, 'configurator_render_profiles');
+  if (existingCount > 0) return;
+
+  const profiles = [
+    {
+      id: 'render-profile-fixed-inside',
+      name: 'Fixed window inside render profile',
+      code: 'FIXED-INSIDE',
+      operation_type: 'fixed',
+      view_logic: 'inside',
+      frame_top_visible_mm: 63,
+      frame_left_visible_mm: 63,
+      frame_right_visible_mm: 63,
+      frame_bottom_visible_mm: 63,
+      sash_top_visible_mm: null,
+      sash_left_visible_mm: null,
+      sash_right_visible_mm: null,
+      sash_bottom_visible_mm: null,
+      bead_top_visible_mm: 21,
+      bead_left_visible_mm: 21,
+      bead_right_visible_mm: 21,
+      bead_bottom_visible_mm: 21,
+      preview_width_mm: 1000,
+      preview_height_mm: 1200,
+      handle_axis_offset_mm: null,
+      handle_height_mm: null,
+      hinge_pivot_offset_mm: null,
+      external_frame_cladding_colour: '',
+      external_sash_cladding_colour: '',
+      notes: 'Seeded inside-view fixed render profile for manual dimension editing.',
+    },
+    {
+      id: 'render-profile-tilt-turn-inside',
+      name: 'Tilt & turn inside render profile',
+      code: 'TT-INSIDE',
+      operation_type: 'tilt_turn',
+      view_logic: 'inside',
+      frame_top_visible_mm: 37.5,
+      frame_left_visible_mm: 37.5,
+      frame_right_visible_mm: 37.5,
+      frame_bottom_visible_mm: 37.5,
+      sash_top_visible_mm: 57,
+      sash_left_visible_mm: 57,
+      sash_right_visible_mm: 57,
+      sash_bottom_visible_mm: 57,
+      bead_top_visible_mm: 21,
+      bead_left_visible_mm: 21,
+      bead_right_visible_mm: 21,
+      bead_bottom_visible_mm: 21,
+      preview_width_mm: 1000,
+      preview_height_mm: 1200,
+      handle_axis_offset_mm: 22,
+      handle_height_mm: 1050,
+      hinge_pivot_offset_mm: 0,
+      external_frame_cladding_colour: '',
+      external_sash_cladding_colour: '',
+      notes: 'Seeded inside-view tilt & turn render profile for manual dimension editing.',
+    },
+  ];
+
+  for (const profile of profiles) {
+    await db.run(
+      `
+        INSERT INTO configurator_render_profiles (
+          id,
+          name,
+          code,
+          operation_type,
+          view_logic,
+          frame_top_visible_mm,
+          frame_left_visible_mm,
+          frame_right_visible_mm,
+          frame_bottom_visible_mm,
+          sash_top_visible_mm,
+          sash_left_visible_mm,
+          sash_right_visible_mm,
+          sash_bottom_visible_mm,
+          bead_top_visible_mm,
+          bead_left_visible_mm,
+          bead_right_visible_mm,
+          bead_bottom_visible_mm,
+          preview_width_mm,
+          preview_height_mm,
+          handle_axis_offset_mm,
+          handle_height_mm,
+          hinge_pivot_offset_mm,
+          external_frame_cladding_colour,
+          external_sash_cladding_colour,
+          notes,
+          is_active,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+      `,
+      [
+        profile.id,
+        profile.name,
+        profile.code,
+        profile.operation_type,
+        profile.view_logic,
+        profile.frame_top_visible_mm,
+        profile.frame_left_visible_mm,
+        profile.frame_right_visible_mm,
+        profile.frame_bottom_visible_mm,
+        profile.sash_top_visible_mm,
+        profile.sash_left_visible_mm,
+        profile.sash_right_visible_mm,
+        profile.sash_bottom_visible_mm,
+        profile.bead_top_visible_mm,
+        profile.bead_left_visible_mm,
+        profile.bead_right_visible_mm,
+        profile.bead_bottom_visible_mm,
+        profile.preview_width_mm,
+        profile.preview_height_mm,
+        profile.handle_axis_offset_mm,
+        profile.handle_height_mm,
+        profile.hinge_pivot_offset_mm,
+        profile.external_frame_cladding_colour,
+        profile.external_sash_cladding_colour,
+        profile.notes,
+      ]
+    );
+  }
+}
+
+export const dbPromise = openDatabaseWithRecovery(dbPath).then(async (db) => {
+  console.log(`QuoteSync SQLite DB: ${dbPath}`);
   await db.exec('PRAGMA foreign_keys = ON');
+
+  await ensureTable(
+    db,
+    `
+      CREATE TABLE IF NOT EXISTS clients (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL DEFAULT '',
+        email TEXT NOT NULL DEFAULT '',
+        phone TEXT NOT NULL DEFAULT '',
+        mobile TEXT NOT NULL DEFAULT '',
+        home TEXT NOT NULL DEFAULT '',
+        project_name TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        client_ref TEXT NOT NULL DEFAULT '',
+        client_type TEXT NOT NULL DEFAULT 'Individual',
+        contact_name TEXT NOT NULL DEFAULT '',
+        company_name TEXT NOT NULL DEFAULT '',
+        customer_address TEXT NOT NULL DEFAULT '',
+        project_address TEXT NOT NULL DEFAULT '',
+        invoice_address TEXT NOT NULL DEFAULT '',
+        invoice_same_as_customer INTEGER NOT NULL DEFAULT 0,
+        invoice_same_as_project INTEGER NOT NULL DEFAULT 0,
+        customer_address_json TEXT NOT NULL DEFAULT '{}',
+        project_address_json TEXT NOT NULL DEFAULT '{}',
+        invoice_address_json TEXT NOT NULL DEFAULT '{}',
+        what3words TEXT NOT NULL DEFAULT '',
+        latitude REAL,
+        longitude REAL,
+        deleted_at TEXT
+      )
+    `
+  );
+
+  await ensureTable(
+    db,
+    `
+      CREATE TABLE IF NOT EXISTS estimates (
+        id TEXT PRIMARY KEY,
+        client_id TEXT NOT NULL,
+        estimate_ref TEXT NOT NULL DEFAULT '',
+        base_estimate_ref TEXT NOT NULL DEFAULT '',
+        revision_no INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'Estimate',
+        estimated_order_month TEXT NOT NULL DEFAULT '',
+        estimated_order_year TEXT NOT NULL DEFAULT '',
+        defaults_json TEXT NOT NULL DEFAULT '{}',
+        positions_json TEXT NOT NULL DEFAULT '[]',
+        order_meta_json TEXT NOT NULL DEFAULT '{}',
+        outcome TEXT NOT NULL DEFAULT 'Estimate',
+        project_address TEXT NOT NULL DEFAULT '',
+        project_address_json TEXT NOT NULL DEFAULT '{}',
+        postcode TEXT NOT NULL DEFAULT '',
+        what3words TEXT NOT NULL DEFAULT '',
+        latitude REAL,
+        longitude REAL,
+        created_by_user_id TEXT,
+        created_by_name TEXT,
+        created_by_role TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        deleted_at TEXT,
+        FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+      )
+    `
+  );
 
   await ensureColumn(db, 'clients', 'deleted_at', 'TEXT');
   await ensureColumn(db, 'estimates', 'deleted_at', 'TEXT');
@@ -162,6 +650,271 @@ export const dbPromise = open({
     `
   );
 
+  await ensureTable(
+    db,
+    `
+      CREATE TABLE IF NOT EXISTS configurator_manufacturers (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        code TEXT NOT NULL DEFAULT '',
+        notes TEXT NOT NULL DEFAULT '',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `
+  );
+
+  await ensureTable(
+    db,
+    `
+      CREATE TABLE IF NOT EXISTS configurator_products (
+        id TEXT PRIMARY KEY,
+        manufacturer_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        code TEXT NOT NULL DEFAULT '',
+        product_family TEXT NOT NULL DEFAULT '',
+        notes TEXT NOT NULL DEFAULT '',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (manufacturer_id) REFERENCES configurator_manufacturers(id) ON DELETE CASCADE
+      )
+    `
+  );
+
+  await ensureTable(
+    db,
+    `
+      CREATE TABLE IF NOT EXISTS configurator_window_types (
+        id TEXT PRIMARY KEY,
+        product_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        code TEXT NOT NULL DEFAULT '',
+        opening_direction TEXT NOT NULL DEFAULT 'inward',
+        operation_type TEXT NOT NULL DEFAULT 'fixed',
+        sliding_direction TEXT NOT NULL DEFAULT 'none',
+        view_logic TEXT NOT NULL DEFAULT 'both',
+        notes TEXT NOT NULL DEFAULT '',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (product_id) REFERENCES configurator_products(id) ON DELETE CASCADE
+      )
+    `
+  );
+
+  await ensureTable(
+    db,
+    `
+      CREATE TABLE IF NOT EXISTS configurator_section_profiles (
+        id TEXT PRIMARY KEY,
+        category TEXT NOT NULL DEFAULT 'outer_frame',
+        family TEXT NOT NULL DEFAULT 'window',
+        code TEXT NOT NULL DEFAULT '',
+        name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        orientation_applicability_json TEXT NOT NULL DEFAULT '[]',
+        inside_outside_applicability TEXT NOT NULL DEFAULT 'both',
+        operation_applicability_json TEXT NOT NULL DEFAULT '[]',
+        visible_face_width_mm REAL NOT NULL DEFAULT 70,
+        depth_mm REAL NOT NULL DEFAULT 70,
+        inset_mm REAL NOT NULL DEFAULT 0,
+        overlap_mm REAL NOT NULL DEFAULT 0,
+        drawing_reference_ids_json TEXT NOT NULL DEFAULT '[]',
+        notes TEXT NOT NULL DEFAULT '',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `
+  );
+
+  await ensureTable(
+    db,
+    `
+      CREATE TABLE IF NOT EXISTS configurator_window_type_profile_mappings (
+        id TEXT PRIMARY KEY,
+        manufacturer_id TEXT,
+        product_id TEXT,
+        window_type_id TEXT,
+        profile_id TEXT NOT NULL,
+        mapping_key TEXT NOT NULL,
+        operation_type TEXT NOT NULL DEFAULT '',
+        notes TEXT NOT NULL DEFAULT '',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (manufacturer_id) REFERENCES configurator_manufacturers(id) ON DELETE SET NULL,
+        FOREIGN KEY (product_id) REFERENCES configurator_products(id) ON DELETE SET NULL,
+        FOREIGN KEY (window_type_id) REFERENCES configurator_window_types(id) ON DELETE SET NULL,
+        FOREIGN KEY (profile_id) REFERENCES configurator_section_profiles(id) ON DELETE CASCADE
+      )
+    `
+  );
+
+  await ensureTable(
+    db,
+    `
+      CREATE TABLE IF NOT EXISTS configurator_render_profiles (
+        id TEXT PRIMARY KEY,
+        manufacturer_id TEXT,
+        product_id TEXT,
+        window_type_id TEXT,
+        name TEXT NOT NULL,
+        code TEXT NOT NULL DEFAULT '',
+        operation_type TEXT NOT NULL DEFAULT 'fixed',
+        view_logic TEXT NOT NULL DEFAULT 'inside',
+        frame_top_visible_mm REAL NOT NULL DEFAULT 63,
+        frame_left_visible_mm REAL NOT NULL DEFAULT 63,
+        frame_right_visible_mm REAL NOT NULL DEFAULT 63,
+        frame_bottom_visible_mm REAL NOT NULL DEFAULT 63,
+        sash_top_visible_mm REAL,
+        sash_left_visible_mm REAL,
+        sash_right_visible_mm REAL,
+        sash_bottom_visible_mm REAL,
+        bead_top_visible_mm REAL,
+        bead_left_visible_mm REAL,
+        bead_right_visible_mm REAL,
+        bead_bottom_visible_mm REAL,
+        preview_width_mm REAL NOT NULL DEFAULT 1000,
+        preview_height_mm REAL NOT NULL DEFAULT 1200,
+        handle_axis_offset_mm REAL,
+        handle_height_mm REAL,
+        hinge_pivot_offset_mm REAL,
+        external_cladding_inset_mm REAL,
+        external_frame_cladding_colour TEXT NOT NULL DEFAULT '',
+        external_sash_cladding_colour TEXT NOT NULL DEFAULT '',
+        notes TEXT NOT NULL DEFAULT '',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (manufacturer_id) REFERENCES configurator_manufacturers(id) ON DELETE SET NULL,
+        FOREIGN KEY (product_id) REFERENCES configurator_products(id) ON DELETE SET NULL,
+        FOREIGN KEY (window_type_id) REFERENCES configurator_window_types(id) ON DELETE SET NULL
+      )
+    `
+  );
+
+  await ensureTable(
+    db,
+    `
+      CREATE TABLE IF NOT EXISTS configurator_section_drawings (
+        id TEXT PRIMARY KEY,
+        manufacturer_id TEXT,
+        product_id TEXT,
+        window_type_id TEXT,
+        title TEXT NOT NULL,
+        code TEXT NOT NULL DEFAULT '',
+        represents TEXT NOT NULL DEFAULT '',
+        orientation TEXT NOT NULL DEFAULT 'head',
+        inside_outside_applicability TEXT NOT NULL DEFAULT 'both',
+        section_ref_id TEXT NOT NULL DEFAULT '',
+        profile_ref_id TEXT NOT NULL DEFAULT '',
+        drawing_purpose TEXT NOT NULL DEFAULT 'elevation_reference',
+        source_dxf_path TEXT NOT NULL DEFAULT '',
+        source_svg_path TEXT NOT NULL DEFAULT '',
+        geometry_rules_json TEXT NOT NULL DEFAULT '{}',
+        render_behaviour_json TEXT NOT NULL DEFAULT '{}',
+        notes TEXT NOT NULL DEFAULT '',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (manufacturer_id) REFERENCES configurator_manufacturers(id) ON DELETE SET NULL,
+        FOREIGN KEY (product_id) REFERENCES configurator_products(id) ON DELETE SET NULL,
+        FOREIGN KEY (window_type_id) REFERENCES configurator_window_types(id) ON DELETE SET NULL
+      )
+    `
+  );
+
+  await ensureColumn(db, 'configurator_render_profiles', 'external_cladding_inset_mm', 'REAL');
+
+  await ensureTable(
+    db,
+    `
+      CREATE TABLE IF NOT EXISTS configurator_materials (
+        id TEXT PRIMARY KEY,
+        manufacturer_id TEXT,
+        product_id TEXT,
+        name TEXT NOT NULL,
+        code TEXT NOT NULL DEFAULT '',
+        material_type TEXT NOT NULL DEFAULT '',
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        notes TEXT NOT NULL DEFAULT '',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (manufacturer_id) REFERENCES configurator_manufacturers(id) ON DELETE SET NULL,
+        FOREIGN KEY (product_id) REFERENCES configurator_products(id) ON DELETE SET NULL
+      )
+    `
+  );
+
+  await ensureTable(
+    db,
+    `
+      CREATE TABLE IF NOT EXISTS configurator_colours (
+        id TEXT PRIMARY KEY,
+        manufacturer_id TEXT,
+        product_id TEXT,
+        name TEXT NOT NULL,
+        code TEXT NOT NULL DEFAULT '',
+        finish TEXT NOT NULL DEFAULT '',
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        notes TEXT NOT NULL DEFAULT '',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (manufacturer_id) REFERENCES configurator_manufacturers(id) ON DELETE SET NULL,
+        FOREIGN KEY (product_id) REFERENCES configurator_products(id) ON DELETE SET NULL
+      )
+    `
+  );
+
+  await ensureTable(
+    db,
+    `
+      CREATE TABLE IF NOT EXISTS configurator_hardware (
+        id TEXT PRIMARY KEY,
+        manufacturer_id TEXT,
+        product_id TEXT,
+        window_type_id TEXT,
+        name TEXT NOT NULL,
+        code TEXT NOT NULL DEFAULT '',
+        hardware_type TEXT NOT NULL DEFAULT '',
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        notes TEXT NOT NULL DEFAULT '',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (manufacturer_id) REFERENCES configurator_manufacturers(id) ON DELETE SET NULL,
+        FOREIGN KEY (product_id) REFERENCES configurator_products(id) ON DELETE SET NULL,
+        FOREIGN KEY (window_type_id) REFERENCES configurator_window_types(id) ON DELETE SET NULL
+      )
+    `
+  );
+
+  await ensureTable(
+    db,
+    `
+      CREATE TABLE IF NOT EXISTS configurator_glass_presets (
+        id TEXT PRIMARY KEY,
+        manufacturer_id TEXT,
+        product_id TEXT,
+        name TEXT NOT NULL,
+        code TEXT NOT NULL DEFAULT '',
+        specification TEXT NOT NULL DEFAULT '',
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        notes TEXT NOT NULL DEFAULT '',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (manufacturer_id) REFERENCES configurator_manufacturers(id) ON DELETE SET NULL,
+        FOREIGN KEY (product_id) REFERENCES configurator_products(id) ON DELETE SET NULL
+      )
+    `
+  );
+
   await ensureIndex(
     db,
     'idx_client_notes_client_id',
@@ -228,6 +981,72 @@ export const dbPromise = open({
     'CREATE INDEX IF NOT EXISTS idx_settings_group_name ON settings(group_name)'
   );
 
+  await ensureIndex(
+    db,
+    'idx_configurator_products_manufacturer_id',
+    'CREATE INDEX IF NOT EXISTS idx_configurator_products_manufacturer_id ON configurator_products(manufacturer_id)'
+  );
+
+  await ensureIndex(
+    db,
+    'idx_configurator_window_types_product_id',
+    'CREATE INDEX IF NOT EXISTS idx_configurator_window_types_product_id ON configurator_window_types(product_id)'
+  );
+
+  await ensureIndex(
+    db,
+    'idx_configurator_section_profiles_category',
+    'CREATE INDEX IF NOT EXISTS idx_configurator_section_profiles_category ON configurator_section_profiles(category)'
+  );
+
+  await ensureIndex(
+    db,
+    'idx_configurator_profile_mappings_window_type_id',
+    'CREATE INDEX IF NOT EXISTS idx_configurator_profile_mappings_window_type_id ON configurator_window_type_profile_mappings(window_type_id)'
+  );
+
+  await ensureIndex(
+    db,
+    'idx_configurator_profile_mappings_profile_id',
+    'CREATE INDEX IF NOT EXISTS idx_configurator_profile_mappings_profile_id ON configurator_window_type_profile_mappings(profile_id)'
+  );
+
+  await ensureIndex(
+    db,
+    'idx_configurator_render_profiles_window_type_id',
+    'CREATE INDEX IF NOT EXISTS idx_configurator_render_profiles_window_type_id ON configurator_render_profiles(window_type_id)'
+  );
+
+  await ensureIndex(
+    db,
+    'idx_configurator_section_drawings_window_type_id',
+    'CREATE INDEX IF NOT EXISTS idx_configurator_section_drawings_window_type_id ON configurator_section_drawings(window_type_id)'
+  );
+
+  await ensureIndex(
+    db,
+    'idx_configurator_materials_product_id',
+    'CREATE INDEX IF NOT EXISTS idx_configurator_materials_product_id ON configurator_materials(product_id)'
+  );
+
+  await ensureIndex(
+    db,
+    'idx_configurator_colours_product_id',
+    'CREATE INDEX IF NOT EXISTS idx_configurator_colours_product_id ON configurator_colours(product_id)'
+  );
+
+  await ensureIndex(
+    db,
+    'idx_configurator_hardware_window_type_id',
+    'CREATE INDEX IF NOT EXISTS idx_configurator_hardware_window_type_id ON configurator_hardware(window_type_id)'
+  );
+
+  await ensureIndex(
+    db,
+    'idx_configurator_glass_product_id',
+    'CREATE INDEX IF NOT EXISTS idx_configurator_glass_product_id ON configurator_glass_presets(product_id)'
+  );
+
   await seedSetting(db, 'feature.configurator.enabled', { enabled: true }, 'featureFlags');
   await seedSetting(db, 'feature.clientPortal.enabled', { enabled: false }, 'featureFlags');
   await seedSetting(db, 'feature.projectCalculator.enabled', { enabled: false }, 'featureFlags');
@@ -241,6 +1060,10 @@ export const dbPromise = open({
   await seedSetting(db, 'configurator.showDimensions', { enabled: true }, 'configurator');
   await seedSetting(db, 'integrations.googleMaps.enabled', { enabled: true }, 'integrations');
   await seedSetting(db, 'integrations.what3words.enabled', { enabled: true }, 'integrations');
+
+  await seedConfiguratorSectionProfiles(db);
+  await seedConfiguratorProfileMappings(db);
+  await seedConfiguratorRenderProfiles(db);
 
   return db;
 });

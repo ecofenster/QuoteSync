@@ -7,6 +7,7 @@ import estimateNotesRoute from './routes/estimateNotes.js';
 import followupsRoute from './routes/followups.js';
 import notesRoute from './routes/notes.js';
 import settingsRoute from './routes/settings.js';
+import configuratorCatalogRoute from './routes/configuratorCatalog.js';
 
 const app = express();
 
@@ -20,6 +21,7 @@ app.use('/api/estimate-notes', estimateNotesRoute);
 app.use('/api/followups', followupsRoute);
 app.use('/api/notes', notesRoute);
 app.use('/api/settings', settingsRoute);
+app.use('/api/configurator-catalog', configuratorCatalogRoute);
 
 app.get('/api/fx-rate', async (req, res) => {
   const from = String(req.query.from || 'EUR').trim() || 'EUR';
