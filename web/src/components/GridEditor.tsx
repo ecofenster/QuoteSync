@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo } from "react";
-import QuoteSyncDrawingSvg from "../features/configurator/rendering/QuoteSyncDrawingSvg";
 import { buildWindowDrawingModel } from "../features/configurator/rendering/buildWindowDrawingModel";
+import DrawingViewport from "../features/configurator/rendering/DrawingViewport";
 
 type PosDraft = {
   widthMm: number;
@@ -158,15 +158,15 @@ export default function GridEditor({
   return (
     <div style={{ display: "grid" }}>
       <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", background: "#fff", padding: 8 }}>
-        <div style={{ width: "100%", aspectRatio: "16/9", minHeight: 420 }}>
-          <QuoteSyncDrawingSvg
-            model={drawingModel}
-            selectedCellKey={selectedCellKey}
-            onSelectCell={onSelectCell}
-            onRemoveVerticalJunction={removeVSplit}
-            onRemoveHorizontalJunction={removeHSplit}
-          />
-        </div>
+        <DrawingViewport
+          model={drawingModel}
+          selectedCellKey={selectedCellKey}
+          onSelectCell={onSelectCell}
+          onRemoveVerticalJunction={removeVSplit}
+          onRemoveHorizontalJunction={removeHSplit}
+          minHeight={420}
+          aspectRatio="16 / 9"
+        />
       </div>
     </div>
   );

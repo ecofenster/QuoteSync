@@ -15,7 +15,7 @@ import type {
 } from "./configuratorCatalog.types";
 import { Button, H3, Small } from "../estimatePicker/tabs/shared";
 import { buildWindowDrawingModel } from "../configurator/rendering/buildWindowDrawingModel";
-import QuoteSyncDrawingSvg from "../configurator/rendering/QuoteSyncDrawingSvg";
+import DrawingViewport from "../configurator/rendering/DrawingViewport";
 import {
   buildRenderDefinitionContextKey,
   buildResolvedSectionProfileSetFromRenderProfile,
@@ -1224,7 +1224,7 @@ function ConfiguratorRenderPanel(props: {
                   </div>
                 </div>
                 <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", background: "#fff", padding: 12 }}>
-                  <QuoteSyncDrawingSvg model={visibleTwoFieldInternalModel} />
+                  <DrawingViewport model={visibleTwoFieldInternalModel} minHeight={360} aspectRatio="16 / 9" />
                 </div>
               </div>
             </div>
@@ -1337,7 +1337,7 @@ function ConfiguratorRenderPanel(props: {
                           boxShadow: renderViewCode === "IV" ? "0 0 0 2px rgba(59,130,246,0.12)" : "none",
                         }}
                       >
-                        <QuoteSyncDrawingSvg model={visibleInternalModel} />
+                        <DrawingViewport model={visibleInternalModel} minHeight={320} aspectRatio="16 / 9" />
                       </div>
                     </div>
                     <div style={{ display: "grid", gap: 8, alignContent: "start" }}>
@@ -1354,7 +1354,7 @@ function ConfiguratorRenderPanel(props: {
                           boxShadow: renderViewCode === "EV" ? "0 0 0 2px rgba(59,130,246,0.12)" : "none",
                         }}
                       >
-                        <QuoteSyncDrawingSvg model={visibleExternalModel} />
+                        <DrawingViewport model={visibleExternalModel} minHeight={320} aspectRatio="16 / 9" />
                       </div>
                     </div>
                   </div>
