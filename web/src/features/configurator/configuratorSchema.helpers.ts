@@ -6,6 +6,8 @@ import type {
   ConfiguratorJunctionDefinitionV2,
   ConfiguratorLayoutDefinitionV2,
   ConfiguratorLayoutMode,
+  ConfiguratorStaticMullionDefinition,
+  ConfiguratorStaticMullionWidth,
 } from "./configuratorSchema.types";
 import type {
   WindowFieldDefinition,
@@ -180,6 +182,24 @@ export function mapLegacyJunctionToConfiguratorJunctionDefinition(
     endCol: junction.endCol,
     startRow: junction.startRow,
     endRow: junction.endRow,
+    staticMullion: null,
+  };
+}
+
+export function buildStaticMullionDefinition(
+  totalWidthMm: ConfiguratorStaticMullionWidth
+): ConfiguratorStaticMullionDefinition {
+  return {
+    type: "static",
+    totalWidthMm,
+    internal: {
+      beadLeftVisibleMm: 21,
+      beadRightVisibleMm: 21,
+      centerProfileVisibleMm: totalWidthMm - 42,
+    },
+    external: {
+      visibleWidthMm: totalWidthMm,
+    },
   };
 }
 

@@ -40,6 +40,21 @@ export type ConfiguratorFieldRenderDefinitionRef = {
   externalRenderProfileId?: string | null;
 };
 
+export type ConfiguratorStaticMullionWidth = 78 | 115 | 135;
+
+export type ConfiguratorStaticMullionDefinition = {
+  type: "static";
+  totalWidthMm: ConfiguratorStaticMullionWidth;
+  internal: {
+    beadLeftVisibleMm: number;
+    beadRightVisibleMm: number;
+    centerProfileVisibleMm: number;
+  };
+  external: {
+    visibleWidthMm: number;
+  };
+};
+
 export type ConfiguratorGlassOptionRef = {
   glassOptionId?: string | null;
   glassLabel?: string | null;
@@ -64,6 +79,7 @@ export type ConfiguratorJunctionDefinitionV2 = {
   endCol: number;
   startRow: number;
   endRow: number;
+  staticMullion?: ConfiguratorStaticMullionDefinition | null;
 };
 
 export type ConfiguratorLayoutDefinitionV2 = {
