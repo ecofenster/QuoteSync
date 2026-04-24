@@ -782,6 +782,14 @@ export const dbPromise = openDatabaseWithRecovery(dbPath).then(async (db) => {
         handle_axis_offset_mm REAL,
         handle_height_mm REAL,
         hinge_pivot_offset_mm REAL,
+        trickle_vent_enabled INTEGER NOT NULL DEFAULT 0,
+        trickle_vent_ea_value TEXT NOT NULL DEFAULT '',
+        trickle_vent_head_visible_mm REAL,
+        trickle_vent_slot_top_offset_mm REAL,
+        trickle_vent_slot_height_mm REAL,
+        trickle_vent_slot_bottom_offset_mm REAL,
+        trickle_vent_slot_widths_json TEXT NOT NULL DEFAULT '[]',
+        trickle_vent_slot_gaps_json TEXT NOT NULL DEFAULT '[]',
         external_cladding_inset_mm REAL,
         external_frame_cladding_colour TEXT NOT NULL DEFAULT '',
         external_sash_cladding_colour TEXT NOT NULL DEFAULT '',
@@ -828,6 +836,14 @@ export const dbPromise = openDatabaseWithRecovery(dbPath).then(async (db) => {
   );
 
   await ensureColumn(db, 'configurator_render_profiles', 'external_cladding_inset_mm', 'REAL');
+  await ensureColumn(db, 'configurator_render_profiles', 'trickle_vent_enabled', 'INTEGER NOT NULL DEFAULT 0');
+  await ensureColumn(db, 'configurator_render_profiles', 'trickle_vent_ea_value', "TEXT NOT NULL DEFAULT ''");
+  await ensureColumn(db, 'configurator_render_profiles', 'trickle_vent_head_visible_mm', 'REAL');
+  await ensureColumn(db, 'configurator_render_profiles', 'trickle_vent_slot_top_offset_mm', 'REAL');
+  await ensureColumn(db, 'configurator_render_profiles', 'trickle_vent_slot_height_mm', 'REAL');
+  await ensureColumn(db, 'configurator_render_profiles', 'trickle_vent_slot_bottom_offset_mm', 'REAL');
+  await ensureColumn(db, 'configurator_render_profiles', 'trickle_vent_slot_widths_json', "TEXT NOT NULL DEFAULT '[]'");
+  await ensureColumn(db, 'configurator_render_profiles', 'trickle_vent_slot_gaps_json', "TEXT NOT NULL DEFAULT '[]'");
 
   await ensureTable(
     db,

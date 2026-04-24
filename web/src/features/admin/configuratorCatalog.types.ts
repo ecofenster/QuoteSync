@@ -148,6 +148,8 @@ export type ConfiguratorSectionGeometryRuleSet = {
   meeting_gap_mm?: number;
 };
 
+export type ConfiguratorTrickleVentEaValue = "2200" | "4400" | "6600";
+
 export type ConfiguratorRenderProfileRecord = {
   id: string;
   manufacturer_id: string | null;
@@ -174,6 +176,14 @@ export type ConfiguratorRenderProfileRecord = {
   handle_axis_offset_mm: number | null;
   handle_height_mm: number | null;
   hinge_pivot_offset_mm: number | null;
+  trickle_vent_enabled: boolean;
+  trickle_vent_ea_value: ConfiguratorTrickleVentEaValue | "" | null;
+  trickle_vent_head_visible_mm: number | null;
+  trickle_vent_slot_top_offset_mm: number | null;
+  trickle_vent_slot_height_mm: number | null;
+  trickle_vent_slot_bottom_offset_mm: number | null;
+  trickle_vent_slot_widths_mm: number[];
+  trickle_vent_slot_gaps_mm: number[];
   external_cladding_inset_mm?: number | null;
   external_frame_cladding_colour: string;
   external_sash_cladding_colour: string;

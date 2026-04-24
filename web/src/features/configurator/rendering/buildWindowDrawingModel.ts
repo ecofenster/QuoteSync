@@ -171,6 +171,12 @@ function isFixedSashInsertion(insertion: string) {
   return normalized.includes("fixed sash");
 }
 
+function supportsTrickleVentInsertion(insertion: string) {
+  const normalized = normalizedInsertion(insertion);
+  if (normalized.includes("fixed sash") || normalized === "fixed") return true;
+  return normalized.includes("tilt") || normalized.includes("turn");
+}
+
 function isTiltAndTurnInsertion(insertion: string) {
   const normalized = normalizedInsertion(insertion);
   return normalized.includes("tilt") && normalized.includes("turn");
@@ -529,13 +535,47 @@ function buildMitredLoop(bounds: { x0: number; x1: number; y0: number; y1: numbe
   };
 }
 
+function buildTrickleVentSlotRects(
+  fieldBounds: { x0: number; x1: number; y0: number; y1: number },
+  frameTopY: number,
+  trickleVent: NonNullable<ResolvedSectionProfileSet["trickleVent"]>,
+  scale: number
+): DrawingRect[] {
+  const slotWidthsPx = trickleVent.slotWidthsMm.map((width) => Math.max(1, mmToPx(width, scale, 0, 240)));
+  const slotGapsPx = trickleVent.slotGapsMm.map((gap) => Math.max(0, mmToPx(gap, scale, 0, 60)));
+  if (!slotWidthsPx.length) return [];
+  const slotHeightPx = Math.max(1, mmToPx(trickleVent.slotHeightMm, scale, 0, 40));
+  const totalWidthPx =
+    sum(slotWidthsPx) + sum(slotGapsPx);
+  const startX = (fieldBounds.x0 + fieldBounds.x1 - totalWidthPx) / 2;
+  const y = frameTopY + mmToPx(trickleVent.slotTopOffsetMm, scale, 0, 80);
+  const slots: DrawingRect[] = [];
+  let cursorX = startX;
+  slotWidthsPx.forEach((widthPx, index) => {
+    slots.push({
+      kind: "rect",
+      x: cursorX,
+      y,
+      width: widthPx,
+      height: slotHeightPx,
+      stroke: "#111",
+      strokeWidth: 1,
+      fill: "transparent",
+      role: "trickle_vent_slot",
+    });
+    cursorX += widthPx + (slotGapsPx[index] ?? 0);
+  });
+  return slots;
+}
+
 function buildInternalSashJoinLines(
   frameBounds: { x0: number; x1: number; y0: number; y1: number },
   sashOuter: { x0: number; x1: number; y0: number; y1: number },
   beadOuterBounds: { x0: number; x1: number; y0: number; y1: number },
-  scale: number
+  scale: number,
+  topJoinReferencePx: number
 ): DrawingLine[] {
-  const topJoinY = frameBounds.y0 + mmToPx(63, scale, 0, 80);
+  const topJoinY = frameBounds.y0 + topJoinReferencePx;
   const bottomJoinY = frameBounds.y1 - mmToPx(63, scale, 0, 80);
   const verticalJoinInset = mmToPx(57, scale, 0, 80);
   const topVerticalBottomY = Math.min(beadOuterBounds.y0, sashOuter.y0 + verticalJoinInset);
@@ -854,6 +894,16 @@ export function buildWindowDrawingModel(pos: PosDraft): DrawingModel {
 
       const hasSashCell = !isFixedInsertion(insertion) || isFixedSashInsertion(insertion);
       const openingCell = !isFixedInsertion(insertion) && !isFixedSashInsertion(insertion);
+      if (view === "inside" && profiles?.trickleVent && supportsTrickleVentInsertion(insertion)) {
+        frameShapes.push(
+          ...buildTrickleVentSlotRects(
+            cellBounds,
+            frameY,
+            profiles.trickleVent,
+            scale
+          )
+        );
+      }
       if (view === "outside" && fieldsX === 1 && fieldsY === 1) {
         const isSashBasedExternal = hasSashCell;
         const frameOuterBounds = { x0: frameX, x1: frameX + frameWidth, y0: frameY, y1: frameY + frameHeight };
@@ -1083,12 +1133,14 @@ export function buildWindowDrawingModel(pos: PosDraft): DrawingModel {
           },
         };
         if (view === "inside" && fieldsX === 1 && fieldsY === 1) {
+          const topJoinReferencePx = profiles?.trickleVent ? frameTop : mmToPx(63, scale, 0, 80);
           sashShapes.push(
             ...buildInternalSashJoinLines(
               { x0: frameX, x1: frameX + frameWidth, y0: frameY, y1: frameY + frameHeight },
               sashGeometry.outer,
               beadOuterBounds,
-              scale
+              scale,
+              topJoinReferencePx
             )
           );
         }

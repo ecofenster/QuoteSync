@@ -35,6 +35,17 @@ export type ResolvedDrawingProfile = {
   notes: string;
 };
 
+export type ResolvedTrickleVentDefinition = {
+  enabled: true;
+  eaValue: string;
+  headVisibleMm: number;
+  slotTopOffsetMm: number;
+  slotHeightMm: number;
+  slotBottomOffsetMm: number;
+  slotWidthsMm: number[];
+  slotGapsMm: number[];
+};
+
 export type ResolvedSectionProfileSet = {
   operationType: "fixed" | "tilt_turn" | "mixed";
   manufacturerId: string | null;
@@ -56,6 +67,7 @@ export type ResolvedSectionProfileSet = {
   flyingMullion: ResolvedDrawingProfile;
   transom: ResolvedDrawingProfile;
   cill: ResolvedDrawingProfile | null;
+  trickleVent: ResolvedTrickleVentDefinition | null;
   sectionReferenceIds: string[];
   referenceInputs: Array<{
     drawingId: string;
@@ -122,6 +134,7 @@ const DEFAULT_RESOLVED_SECTION_PROFILE_SET: ResolvedSectionProfileSet = {
   flyingMullion: DEFAULT_PROFILE("Default flying mullion", 62),
   transom: DEFAULT_PROFILE("Default transom", 76),
   cill: DEFAULT_PROFILE("Default cill", 32, { depthMm: 110 }),
+  trickleVent: null,
   sectionReferenceIds: [],
   referenceInputs: [],
 };
@@ -283,6 +296,41 @@ function numericOrNull(value: unknown) {
   return Number.isFinite(next) ? next : null;
 }
 
+function buildResolvedTrickleVentFromRenderProfile(
+  record: ConfiguratorRenderProfileRecord
+): ResolvedTrickleVentDefinition | null {
+  if (!record.trickle_vent_enabled) return null;
+  const headVisibleMm = numericOrNull(record.trickle_vent_head_visible_mm);
+  const slotTopOffsetMm = numericOrNull(record.trickle_vent_slot_top_offset_mm);
+  const slotHeightMm = numericOrNull(record.trickle_vent_slot_height_mm);
+  const slotBottomOffsetMm = numericOrNull(record.trickle_vent_slot_bottom_offset_mm);
+  const slotWidthsMm = Array.isArray(record.trickle_vent_slot_widths_mm)
+    ? record.trickle_vent_slot_widths_mm.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)
+    : [];
+  const slotGapsMm = Array.isArray(record.trickle_vent_slot_gaps_mm)
+    ? record.trickle_vent_slot_gaps_mm.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value >= 0)
+    : [];
+  if (
+    headVisibleMm === null ||
+    slotTopOffsetMm === null ||
+    slotHeightMm === null ||
+    slotBottomOffsetMm === null ||
+    slotWidthsMm.length === 0
+  ) {
+    return null;
+  }
+  return {
+    enabled: true,
+    eaValue: String(record.trickle_vent_ea_value || "").trim(),
+    headVisibleMm,
+    slotTopOffsetMm,
+    slotHeightMm,
+    slotBottomOffsetMm,
+    slotWidthsMm,
+    slotGapsMm,
+  };
+}
+
 export function normalizeRenderProfileForView(
   record: ConfiguratorRenderProfileRecord,
   viewLogic: "inside" | "outside" | "both"
@@ -292,8 +340,13 @@ export function normalizeRenderProfileForView(
     record.frame_bottom_visible_mm == null || Number(record.frame_bottom_visible_mm) === 37.5
       ? 52.5
       : record.frame_bottom_visible_mm;
+  const nextTop =
+    record.trickle_vent_enabled
+      ? 85
+      : record.frame_top_visible_mm;
   return {
     ...record,
+    frame_top_visible_mm: nextTop,
     frame_bottom_visible_mm: nextBottom,
   };
 }
@@ -389,6 +442,7 @@ export function buildResolvedSectionProfileSetFromRenderProfile(
   view: RenderDefinitionViewLogic
 ): ResolvedSectionProfileSet {
   const normalizedRecord = normalizeRenderProfileForView(record, view);
+  const trickleVent = buildResolvedTrickleVentFromRenderProfile(normalizedRecord);
   const operationType = normalizedRecord.operation_type === "fixed" ? "fixed" : "tilt_turn";
   const beadTop = view === "inside" ? numericOrNull(normalizedRecord.bead_top_visible_mm) : null;
   const beadLeft = view === "inside" ? numericOrNull(normalizedRecord.bead_left_visible_mm) : null;
@@ -406,7 +460,8 @@ export function buildResolvedSectionProfileSetFromRenderProfile(
     name: string,
     visibleFaceWidthMm: number,
     beadVisibleFaceMm: number | null,
-    side: "top" | "left" | "right" | "bottom"
+    side: "top" | "left" | "right" | "bottom",
+    visibleInternalFaceMmOverride?: number | null
   ) => ({
     id: `${normalizedRecord.id || "draft"}-${name}-${view}`,
     code: normalizedRecord.code,
@@ -415,7 +470,7 @@ export function buildResolvedSectionProfileSetFromRenderProfile(
     depthMm: visibleFaceWidthMm,
     insetMm: view === "outside" ? externalCladdingInsetMm : beadVisibleFaceMm ?? 10,
     overlapMm: 0,
-    visibleInternalFaceMm: view === "inside" ? visibleFaceWidthMm : null,
+    visibleInternalFaceMm: view === "inside" ? visibleInternalFaceMmOverride ?? visibleFaceWidthMm : null,
     glassInsetMm: view === "inside" ? beadVisibleFaceMm : null,
     beadOffsetMm: view === "inside" ? beadVisibleFaceMm : null,
     beadVisibleFaceMm: view === "inside" ? beadVisibleFaceMm : null,
@@ -466,7 +521,13 @@ export function buildResolvedSectionProfileSetFromRenderProfile(
     productId: normalizedRecord.product_id,
     windowTypeId: normalizedRecord.window_type_id,
     frame: {
-      head: baseProfile("Frame head", Number(normalizedRecord.frame_top_visible_mm || 63), beadTop, "top"),
+      head: baseProfile(
+        "Frame head",
+        Number(normalizedRecord.frame_top_visible_mm || 63),
+        beadTop,
+        "top",
+        view === "inside" && trickleVent ? trickleVent.headVisibleMm : null
+      ),
       jambLeft: baseProfile("Frame jamb left", Number(normalizedRecord.frame_left_visible_mm || 63), beadLeft, "left"),
       jambRight: baseProfile("Frame jamb right", Number(normalizedRecord.frame_right_visible_mm || 63), beadRight, "right"),
       bottom: baseProfile("Frame bottom", Number(normalizedRecord.frame_bottom_visible_mm || 52.5), beadBottom, "bottom"),
@@ -538,6 +599,7 @@ export function buildResolvedSectionProfileSetFromRenderProfile(
       notes: normalizedRecord.notes,
     },
     cill: null,
+    trickleVent,
     sectionReferenceIds: [],
     referenceInputs: [],
   };
@@ -547,7 +609,11 @@ function applyRenderProfileSide(
   profile: ResolvedDrawingProfile | null,
   visibleFaceWidthMm: number | null | undefined,
   beadVisibleFaceMm: number | null | undefined,
-  sideOffsets: { handleAxisOffsetMm?: number | null; hingePivotOffsetMm?: number | null },
+  sideOffsets: {
+    handleAxisOffsetMm?: number | null;
+    hingePivotOffsetMm?: number | null;
+    visibleInternalFaceMm?: number | null;
+  },
   view: "inside" | "outside"
 ) {
   if (!profile) return profile;
@@ -560,7 +626,12 @@ function applyRenderProfileSide(
   return {
     ...profile,
     visibleFaceWidthMm: nextVisibleFaceWidth,
-    visibleInternalFaceMm: view === "inside" ? nextVisibleFaceWidth : profile.visibleInternalFaceMm,
+    visibleInternalFaceMm:
+      view === "inside"
+        ? Number.isFinite(Number(sideOffsets.visibleInternalFaceMm))
+          ? Number(sideOffsets.visibleInternalFaceMm)
+          : nextVisibleFaceWidth
+        : profile.visibleInternalFaceMm,
     glassInsetMm: nextBeadVisibleFace ?? profile.glassInsetMm,
     beadVisibleFaceMm: nextBeadVisibleFace,
     handleAxisOffsetMm:
@@ -667,6 +738,7 @@ export function resolveSectionProfileSet(input: ResolveInput): ResolvedSectionPr
             jambRight: DEFAULT_PROFILE("Default sash jamb right", 58, { insetMm: 8, overlapMm: 6 }),
             bottom: DEFAULT_PROFILE("Default sash bottom", 58, { insetMm: 8, overlapMm: 6 }),
           },
+    trickleVent: null,
     sectionReferenceIds: [],
     referenceInputs: [],
   };
@@ -728,11 +800,15 @@ export function resolveSectionProfileSet(input: ResolveInput): ResolvedSectionPr
 
   const renderProfile = chooseBestRenderProfile(bootstrap.renderProfiles ?? [], scope, view);
   if (renderProfile) {
+    const trickleVent = buildResolvedTrickleVentFromRenderProfile(renderProfile);
+    resolved.trickleVent = trickleVent;
     resolved.frame.head = applyRenderProfileSide(
       resolved.frame.head,
       renderProfile.frame_top_visible_mm,
       renderProfile.bead_top_visible_mm,
-      {},
+      {
+        visibleInternalFaceMm: view === "inside" && trickleVent ? trickleVent.headVisibleMm : null,
+      },
       view
     )!;
     resolved.frame.jambLeft = applyRenderProfileSide(

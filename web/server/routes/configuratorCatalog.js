@@ -37,8 +37,8 @@ const ENTITY_CONFIG = {
   },
   renderProfiles: {
     table: 'configurator_render_profiles',
-    columns: ['id', 'manufacturer_id', 'product_id', 'window_type_id', 'name', 'code', 'operation_type', 'view_logic', 'frame_top_visible_mm', 'frame_left_visible_mm', 'frame_right_visible_mm', 'frame_bottom_visible_mm', 'sash_top_visible_mm', 'sash_left_visible_mm', 'sash_right_visible_mm', 'sash_bottom_visible_mm', 'bead_top_visible_mm', 'bead_left_visible_mm', 'bead_right_visible_mm', 'bead_bottom_visible_mm', 'preview_width_mm', 'preview_height_mm', 'handle_axis_offset_mm', 'handle_height_mm', 'hinge_pivot_offset_mm', 'external_cladding_inset_mm', 'external_frame_cladding_colour', 'external_sash_cladding_colour', 'notes', 'is_active', 'created_at', 'updated_at'],
-    mutableColumns: ['manufacturer_id', 'product_id', 'window_type_id', 'name', 'code', 'operation_type', 'view_logic', 'frame_top_visible_mm', 'frame_left_visible_mm', 'frame_right_visible_mm', 'frame_bottom_visible_mm', 'sash_top_visible_mm', 'sash_left_visible_mm', 'sash_right_visible_mm', 'sash_bottom_visible_mm', 'bead_top_visible_mm', 'bead_left_visible_mm', 'bead_right_visible_mm', 'bead_bottom_visible_mm', 'preview_width_mm', 'preview_height_mm', 'handle_axis_offset_mm', 'handle_height_mm', 'hinge_pivot_offset_mm', 'external_cladding_inset_mm', 'external_frame_cladding_colour', 'external_sash_cladding_colour', 'notes', 'is_active'],
+    columns: ['id', 'manufacturer_id', 'product_id', 'window_type_id', 'name', 'code', 'operation_type', 'view_logic', 'frame_top_visible_mm', 'frame_left_visible_mm', 'frame_right_visible_mm', 'frame_bottom_visible_mm', 'sash_top_visible_mm', 'sash_left_visible_mm', 'sash_right_visible_mm', 'sash_bottom_visible_mm', 'bead_top_visible_mm', 'bead_left_visible_mm', 'bead_right_visible_mm', 'bead_bottom_visible_mm', 'preview_width_mm', 'preview_height_mm', 'handle_axis_offset_mm', 'handle_height_mm', 'hinge_pivot_offset_mm', 'trickle_vent_enabled', 'trickle_vent_ea_value', 'trickle_vent_head_visible_mm', 'trickle_vent_slot_top_offset_mm', 'trickle_vent_slot_height_mm', 'trickle_vent_slot_bottom_offset_mm', 'trickle_vent_slot_widths_json', 'trickle_vent_slot_gaps_json', 'external_cladding_inset_mm', 'external_frame_cladding_colour', 'external_sash_cladding_colour', 'notes', 'is_active', 'created_at', 'updated_at'],
+    mutableColumns: ['manufacturer_id', 'product_id', 'window_type_id', 'name', 'code', 'operation_type', 'view_logic', 'frame_top_visible_mm', 'frame_left_visible_mm', 'frame_right_visible_mm', 'frame_bottom_visible_mm', 'sash_top_visible_mm', 'sash_left_visible_mm', 'sash_right_visible_mm', 'sash_bottom_visible_mm', 'bead_top_visible_mm', 'bead_left_visible_mm', 'bead_right_visible_mm', 'bead_bottom_visible_mm', 'preview_width_mm', 'preview_height_mm', 'handle_axis_offset_mm', 'handle_height_mm', 'hinge_pivot_offset_mm', 'trickle_vent_enabled', 'trickle_vent_ea_value', 'trickle_vent_head_visible_mm', 'trickle_vent_slot_top_offset_mm', 'trickle_vent_slot_height_mm', 'trickle_vent_slot_bottom_offset_mm', 'trickle_vent_slot_widths_json', 'trickle_vent_slot_gaps_json', 'external_cladding_inset_mm', 'external_frame_cladding_colour', 'external_sash_cladding_colour', 'notes', 'is_active'],
     orderBy: 'updated_at DESC, name ASC',
   },
   sectionDrawings: {
@@ -166,6 +166,9 @@ function normaliseRow(entityKey, row) {
   }
 
   if (entityKey === 'renderProfiles') {
+    next.trickle_vent_enabled = !!row.trickle_vent_enabled;
+    next.trickle_vent_slot_widths_mm = parseJsonArray(row.trickle_vent_slot_widths_json).map((value) => Number(value)).filter((value) => Number.isFinite(value));
+    next.trickle_vent_slot_gaps_mm = parseJsonArray(row.trickle_vent_slot_gaps_json).map((value) => Number(value)).filter((value) => Number.isFinite(value));
     return next;
   }
   if (['materials', 'colours', 'hardware', 'glass'].includes(entityKey)) {
@@ -274,6 +277,14 @@ function buildValues(entityKey, body, isCreate) {
       handle_axis_offset_mm: body.handle_axis_offset_mm === "" || body.handle_axis_offset_mm == null ? null : Number(body.handle_axis_offset_mm),
       handle_height_mm: body.handle_height_mm === "" || body.handle_height_mm == null ? null : Number(body.handle_height_mm),
       hinge_pivot_offset_mm: body.hinge_pivot_offset_mm === "" || body.hinge_pivot_offset_mm == null ? null : Number(body.hinge_pivot_offset_mm),
+      trickle_vent_enabled: normalizeBoolean(body.trickle_vent_enabled ?? false),
+      trickle_vent_ea_value: safeString(body.trickle_vent_ea_value),
+      trickle_vent_head_visible_mm: body.trickle_vent_head_visible_mm === "" || body.trickle_vent_head_visible_mm == null ? null : Number(body.trickle_vent_head_visible_mm),
+      trickle_vent_slot_top_offset_mm: body.trickle_vent_slot_top_offset_mm === "" || body.trickle_vent_slot_top_offset_mm == null ? null : Number(body.trickle_vent_slot_top_offset_mm),
+      trickle_vent_slot_height_mm: body.trickle_vent_slot_height_mm === "" || body.trickle_vent_slot_height_mm == null ? null : Number(body.trickle_vent_slot_height_mm),
+      trickle_vent_slot_bottom_offset_mm: body.trickle_vent_slot_bottom_offset_mm === "" || body.trickle_vent_slot_bottom_offset_mm == null ? null : Number(body.trickle_vent_slot_bottom_offset_mm),
+      trickle_vent_slot_widths_json: safeJsonText(body.trickle_vent_slot_widths_mm ?? body.trickle_vent_slot_widths_json ?? []),
+      trickle_vent_slot_gaps_json: safeJsonText(body.trickle_vent_slot_gaps_mm ?? body.trickle_vent_slot_gaps_json ?? []),
       external_cladding_inset_mm: body.external_cladding_inset_mm === "" || body.external_cladding_inset_mm == null ? null : Number(body.external_cladding_inset_mm),
       external_frame_cladding_colour: safeString(body.external_frame_cladding_colour),
       external_sash_cladding_colour: safeString(body.external_sash_cladding_colour),

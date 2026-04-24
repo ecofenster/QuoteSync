@@ -10,6 +10,7 @@ import type {
   ConfiguratorManufacturerRecord,
   ConfiguratorProductRecord,
   ConfiguratorRenderProfileRecord,
+  ConfiguratorTrickleVentEaValue,
   ConfiguratorWindowTypeRecord,
 } from "./configuratorCatalog.types";
 import { Button, H3, Small } from "../estimatePicker/tabs/shared";
@@ -84,6 +85,47 @@ const RENDER_PROFILE_PRODUCT_CODES: Array<{ code: RenderProfileProductCode; labe
   { code: "VBE", label: "Vertical Blind External" },
   { code: "VBI", label: "Vertical Blind Internal" },
 ];
+
+const TRICKLE_VENT_PRESETS: Record<
+  ConfiguratorTrickleVentEaValue,
+  {
+    label: string;
+    slotWidthsMm: number[];
+    slotGapsMm: number[];
+    headVisibleMm: number;
+    slotTopOffsetMm: number;
+    slotHeightMm: number;
+    slotBottomOffsetMm: number;
+  }
+> = {
+  "2200": {
+    label: "2200 EA",
+    slotWidthsMm: [223],
+    slotGapsMm: [],
+    headVisibleMm: 59.5,
+    slotTopOffsetMm: 31,
+    slotHeightMm: 13,
+    slotBottomOffsetMm: 15.5,
+  },
+  "4400": {
+    label: "4400 EA",
+    slotWidthsMm: [173.5, 173.5],
+    slotGapsMm: [20],
+    headVisibleMm: 59.5,
+    slotTopOffsetMm: 31,
+    slotHeightMm: 13,
+    slotBottomOffsetMm: 15.5,
+  },
+  "6600": {
+    label: "6600 EA",
+    slotWidthsMm: [173.5, 173.5, 173.5],
+    slotGapsMm: [12, 12],
+    headVisibleMm: 59.5,
+    slotTopOffsetMm: 31,
+    slotHeightMm: 13,
+    slotBottomOffsetMm: 15.5,
+  },
+};
 
 const WINDOW_TYPE_CHOOSER = {
   inward: [
@@ -261,6 +303,14 @@ function blankRenderProfile(context: {
     handle_axis_offset_mm: 22,
     handle_height_mm: 1050,
     hinge_pivot_offset_mm: 0,
+    trickle_vent_enabled: false,
+    trickle_vent_ea_value: "",
+    trickle_vent_head_visible_mm: null,
+    trickle_vent_slot_top_offset_mm: null,
+    trickle_vent_slot_height_mm: null,
+    trickle_vent_slot_bottom_offset_mm: null,
+    trickle_vent_slot_widths_mm: [],
+    trickle_vent_slot_gaps_mm: [],
     external_cladding_inset_mm: 3,
     external_frame_cladding_colour: "",
     external_sash_cladding_colour: "",
@@ -273,6 +323,52 @@ function numericOrNull(value: unknown) {
   if (value === null || value === undefined || value === "") return null;
   const next = Number(value);
   return Number.isFinite(next) ? next : null;
+}
+
+function applyTrickleVentPreset(
+  draft: ConfiguratorRenderProfileRecord,
+  eaValue: ConfiguratorTrickleVentEaValue | ""
+): ConfiguratorRenderProfileRecord {
+  if (!eaValue) {
+    return {
+      ...draft,
+      trickle_vent_enabled: false,
+      trickle_vent_ea_value: "",
+      trickle_vent_head_visible_mm: null,
+      trickle_vent_slot_top_offset_mm: null,
+      trickle_vent_slot_height_mm: null,
+      trickle_vent_slot_bottom_offset_mm: null,
+      trickle_vent_slot_widths_mm: [],
+      trickle_vent_slot_gaps_mm: [],
+    };
+  }
+  const preset = TRICKLE_VENT_PRESETS[eaValue];
+  return {
+    ...draft,
+    trickle_vent_enabled: true,
+    trickle_vent_ea_value: eaValue,
+    trickle_vent_head_visible_mm: preset.headVisibleMm,
+    trickle_vent_slot_top_offset_mm: preset.slotTopOffsetMm,
+    trickle_vent_slot_height_mm: preset.slotHeightMm,
+    trickle_vent_slot_bottom_offset_mm: preset.slotBottomOffsetMm,
+    trickle_vent_slot_widths_mm: [...preset.slotWidthsMm],
+    trickle_vent_slot_gaps_mm: [...preset.slotGapsMm],
+  };
+}
+
+function formatTrickleVentLayout(draft: ConfiguratorRenderProfileRecord) {
+  const widths = Array.isArray(draft.trickle_vent_slot_widths_mm) ? draft.trickle_vent_slot_widths_mm : [];
+  const gaps = Array.isArray(draft.trickle_vent_slot_gaps_mm) ? draft.trickle_vent_slot_gaps_mm : [];
+  if (!widths.length) return "No slot layout defined";
+  const parts: string[] = [];
+  widths.forEach((width, index) => {
+    if (index > 0) {
+      const gap = gaps[index - 1];
+      if (Number.isFinite(Number(gap))) parts.push(`${gap} gap`);
+    }
+    parts.push(`${width} slot`);
+  });
+  return parts.join(" + ");
 }
 
 function buildRenderProfileCode(
@@ -937,13 +1033,18 @@ function ConfiguratorRenderPanel(props: {
     setIsSaving(true);
     try {
       const finalCode = manualCodeOverride ? String(renderDraft.code || "").trim() || generatedRenderCode : generatedRenderCode;
+      const activeViewLogic = renderViewCode === "EV" ? "outside" : "inside";
       const payload = {
         ...renderDraft,
         name: selectedDefinitionContextKey,
         code: finalCode,
         operation_type: selectedOpeningOperation,
-        view_logic: renderViewCode === "EV" ? "outside" : "inside",
+        view_logic: activeViewLogic,
         window_type_id: matchingWindowTypeId,
+        frame_top_visible_mm:
+          activeViewLogic === "inside" && renderDraft.trickle_vent_enabled
+            ? 85
+            : renderDraft.frame_top_visible_mm,
       };
       const saved = selectedRenderProfileId
         ? await updateConfiguratorCatalogRecord<ConfiguratorRenderProfileRecord>("renderProfiles", selectedRenderProfileId, payload)
@@ -1321,6 +1422,91 @@ function ConfiguratorRenderPanel(props: {
                       />
                     </FormField>
                   </div>
+
+                  {selectedOpeningDirection === "inward" ? (
+                    <div className="admin-card ui-card" style={{ padding: 16, display: "grid", gap: 12, alignContent: "start" }}>
+                      <div style={{ display: "grid", gap: 2 }}>
+                        <div className="admin-group-title">Trickle vent definition</div>
+                        <div className="admin-body-copy">
+                          Stored on the render definition and resolved into the shared drawing model. Confirmed geometry only; canopy remains out of scope.
+                        </div>
+                      </div>
+
+                      <label className="admin-flex-row" style={{ fontWeight: 700, color: "var(--color-text-primary)" }}>
+                        <input
+                          type="checkbox"
+                          checked={!!renderDraft.trickle_vent_enabled}
+                          onChange={(event) => {
+                            const checked = event.currentTarget.checked;
+                            setRenderDraft((previous) =>
+                              checked
+                                ? applyTrickleVentPreset(previous, (previous.trickle_vent_ea_value as ConfiguratorTrickleVentEaValue) || "2200")
+                                : applyTrickleVentPreset(previous, "")
+                            );
+                          }}
+                        />
+                        <span>Enable trickle vent</span>
+                      </label>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+                        <FormField label="EA layout">
+                          <select
+                            value={renderDraft.trickle_vent_ea_value ?? ""}
+                            onChange={(event) => {
+                              const value = event.currentTarget.value as ConfiguratorTrickleVentEaValue | "";
+                              setRenderDraft((previous) => applyTrickleVentPreset(previous, value));
+                            }}
+                            disabled={!renderDraft.trickle_vent_enabled}
+                            style={inputStyle}
+                          >
+                            <option value="">Select EA</option>
+                            {Object.entries(TRICKLE_VENT_PRESETS).map(([value, preset]) => (
+                              <option key={value} value={value}>{preset.label}</option>
+                            ))}
+                          </select>
+                        </FormField>
+                        <FormField label="Head visible with vent">
+                          <input
+                            value={renderDraft.trickle_vent_head_visible_mm ?? ""}
+                            readOnly
+                            style={{ ...inputStyle, background: "var(--color-surface-muted)" }}
+                          />
+                        </FormField>
+                        <FormField label="Top of head to top of slot">
+                          <input
+                            value={renderDraft.trickle_vent_slot_top_offset_mm ?? ""}
+                            readOnly
+                            style={{ ...inputStyle, background: "var(--color-surface-muted)" }}
+                          />
+                        </FormField>
+                        <FormField label="Slot height">
+                          <input
+                            value={renderDraft.trickle_vent_slot_height_mm ?? ""}
+                            readOnly
+                            style={{ ...inputStyle, background: "var(--color-surface-muted)" }}
+                          />
+                        </FormField>
+                        <FormField label="Bottom of slot to lower head line">
+                          <input
+                            value={renderDraft.trickle_vent_slot_bottom_offset_mm ?? ""}
+                            readOnly
+                            style={{ ...inputStyle, background: "var(--color-surface-muted)" }}
+                          />
+                        </FormField>
+                        <FormField label="Slot assembly">
+                          <input
+                            value={formatTrickleVentLayout(renderDraft)}
+                            readOnly
+                            style={{ ...inputStyle, background: "var(--color-surface-muted)" }}
+                          />
+                        </FormField>
+                      </div>
+
+                      <Small>
+                        Internal and external slot geometry are stored identically. Internal head geometry uses the confirmed 59.5mm vent head rule.
+                      </Small>
+                    </div>
+                  ) : null}
 
                   {selectedOpeningOperation !== "fixed" && selectedOpeningOperation !== "fixed_sash" ? (
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
