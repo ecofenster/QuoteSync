@@ -203,6 +203,61 @@ export function buildStaticMullionDefinition(
   };
 }
 
+export function buildTwoFieldFixedStaticMullionLayoutDefinition(
+  mullionWidth: ConfiguratorStaticMullionWidth = 78
+): ConfiguratorLayoutDefinitionV2 {
+  return {
+    rows: 1,
+    columns: 2,
+    capacity: 2,
+    mode: "linear_horizontal",
+    presetKey: "two-field-fixed-static-mullion",
+    fields: [
+      {
+        key: "0,0",
+        row: 0,
+        col: 0,
+        opening: {
+          operationType: "fixed",
+          openingDirection: "neutral",
+          handing: "center",
+          sequence: null,
+          sourceFieldType: "fixed",
+        },
+        glass: null,
+        renderDefinition: null,
+      },
+      {
+        key: "1,0",
+        row: 0,
+        col: 1,
+        opening: {
+          operationType: "fixed",
+          openingDirection: "neutral",
+          handing: "center",
+          sequence: null,
+          sourceFieldType: "fixed",
+        },
+        glass: null,
+        renderDefinition: null,
+      },
+    ],
+    junctions: [
+      {
+        key: "vertical-1",
+        axis: "vertical",
+        index: 1,
+        type: "static",
+        startCol: 0,
+        endCol: 1,
+        startRow: 0,
+        endRow: 0,
+        staticMullion: buildStaticMullionDefinition(mullionWidth),
+      },
+    ],
+  };
+}
+
 export function mapLegacyLayoutToConfiguratorLayoutDefinition(
   layout: WindowLayoutDefinition,
   fields: WindowFieldDefinition[] | undefined,
