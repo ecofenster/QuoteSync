@@ -6,11 +6,13 @@ type Props = {
   scalePreset: DrawingScalePreset;
   tool: DrawingViewportTool;
   zoomMultiplier: number;
+  measurementCount?: number;
   onScalePresetChange: (value: DrawingScalePreset) => void;
   onToolChange: (value: DrawingViewportTool) => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onResetZoom: () => void;
+  onClearMeasurements?: () => void;
 };
 
 const controlStyle: React.CSSProperties = {
@@ -22,7 +24,18 @@ const controlStyle: React.CSSProperties = {
 };
 
 export default function DrawingPreviewToolbar(props: Props) {
-  const { scalePreset, tool, zoomMultiplier, onScalePresetChange, onToolChange, onZoomIn, onZoomOut, onResetZoom } = props;
+  const {
+    scalePreset,
+    tool,
+    zoomMultiplier,
+    measurementCount = 0,
+    onScalePresetChange,
+    onToolChange,
+    onZoomIn,
+    onZoomOut,
+    onResetZoom,
+    onClearMeasurements,
+  } = props;
 
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
@@ -36,9 +49,7 @@ export default function DrawingPreviewToolbar(props: Props) {
           >
             <option value="select">Select</option>
             <option value="pan">Pan</option>
-            <option value="measure" disabled>
-              Measure
-            </option>
+            <option value="measure">Measure</option>
           </select>
         </label>
         <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -64,9 +75,19 @@ export default function DrawingPreviewToolbar(props: Props) {
         <button type="button" onClick={onResetZoom} style={{ ...controlStyle, padding: "0 10px", fontWeight: 600 }}>
           Reset
         </button>
+        {tool === "measure" ? (
+          <button
+            type="button"
+            onClick={onClearMeasurements}
+            style={{ ...controlStyle, padding: "0 10px", fontWeight: 600 }}
+            disabled={!measurementCount}
+          >
+            Clear Measurements
+          </button>
+        ) : null}
       </div>
       <div style={{ fontSize: 12, fontWeight: 600, color: "#71717a" }}>
-        Zoom {(zoomMultiplier * 100).toFixed(0)}%
+        {tool === "measure" ? `Measurements ${measurementCount} • ` : ""}Zoom {(zoomMultiplier * 100).toFixed(0)}%
       </div>
     </div>
   );

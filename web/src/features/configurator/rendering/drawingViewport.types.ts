@@ -35,3 +35,31 @@ export type DrawingViewportPan = {
   x: number;
   y: number;
 };
+
+export type DrawingViewportFrameRect = {
+  x0: number;
+  x1: number;
+  y0: number;
+  y1: number;
+  width: number;
+  height: number;
+};
+
+export type DrawingMeasurementPoint = {
+  model: DrawingViewportPoint;
+  mm: DrawingViewportPoint;
+};
+
+export type DrawingSnapAnchor = {
+  key: string;
+  role: string;
+  point: DrawingViewportPoint;
+};
+
+export type DrawingMeasurementAnnotation = {
+  id: string;
+  start: DrawingMeasurementPoint;
+  end: DrawingMeasurementPoint;
+  distanceMm: number;
+  angleDeg: number;
+};
