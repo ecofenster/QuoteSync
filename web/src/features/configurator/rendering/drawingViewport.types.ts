@@ -8,6 +8,8 @@ export type DrawingScaleOption = {
   ratio: number | null;
 };
 
+export type DrawingViewportTool = "select" | "pan" | "measure";
+
 export type DrawingViewportInteractionProps = {
   selectedCellKey?: string;
   onSelectCell?: (cell: { col: number; row: number }) => void;
@@ -20,10 +22,16 @@ export type DrawingViewportProps = DrawingViewportInteractionProps & {
   minHeight?: number;
   aspectRatio?: string;
   initialScalePreset?: DrawingScalePreset;
+  initialTool?: DrawingViewportTool;
   showToolbar?: boolean;
 };
 
 export type DrawingViewportPoint = {
+  x: number;
+  y: number;
+};
+
+export type DrawingViewportPan = {
   x: number;
   y: number;
 };

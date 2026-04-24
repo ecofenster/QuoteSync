@@ -1,11 +1,13 @@
 import React from "react";
-import type { DrawingScalePreset } from "./drawingViewport.types";
+import type { DrawingScalePreset, DrawingViewportTool } from "./drawingViewport.types";
 import { DRAWING_SCALE_OPTIONS } from "./drawingViewport.helpers";
 
 type Props = {
   scalePreset: DrawingScalePreset;
+  tool: DrawingViewportTool;
   zoomMultiplier: number;
   onScalePresetChange: (value: DrawingScalePreset) => void;
+  onToolChange: (value: DrawingViewportTool) => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onResetZoom: () => void;
@@ -20,11 +22,25 @@ const controlStyle: React.CSSProperties = {
 };
 
 export default function DrawingPreviewToolbar(props: Props) {
-  const { scalePreset, zoomMultiplier, onScalePresetChange, onZoomIn, onZoomOut, onResetZoom } = props;
+  const { scalePreset, tool, zoomMultiplier, onScalePresetChange, onToolChange, onZoomIn, onZoomOut, onResetZoom } = props;
 
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: "#52525b" }}>Tool</span>
+          <select
+            value={tool}
+            onChange={(event) => onToolChange(event.currentTarget.value as DrawingViewportTool)}
+            style={{ ...controlStyle, minWidth: 96, padding: "0 10px" }}
+          >
+            <option value="select">Select</option>
+            <option value="pan">Pan</option>
+            <option value="measure" disabled>
+              Measure
+            </option>
+          </select>
+        </label>
         <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontSize: 12, fontWeight: 600, color: "#52525b" }}>Scale</span>
           <select

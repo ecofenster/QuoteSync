@@ -2,11 +2,12 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import QuoteSyncDrawingSvg from "./QuoteSyncDrawingSvg";
 import DrawingPreviewToolbar from "./DrawingPreviewToolbar";
 import {
+  clampPan,
   clampZoomMultiplier,
   getEffectiveDisplayScale,
   stepZoomMultiplier,
 } from "./drawingViewport.helpers";
-import type { DrawingViewportProps, DrawingScalePreset } from "./drawingViewport.types";
+import type { DrawingViewportPan, DrawingViewportProps, DrawingScalePreset, DrawingViewportTool } from "./drawingViewport.types";
 
 export default function DrawingViewport(props: DrawingViewportProps) {
   const {
@@ -18,12 +19,22 @@ export default function DrawingViewport(props: DrawingViewportProps) {
     minHeight = 320,
     aspectRatio = "16 / 9",
     initialScalePreset = "auto",
+    initialTool = "select",
     showToolbar = true,
   } = props;
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const dragStartRef = useRef<{
+    pointerX: number;
+    pointerY: number;
+    scrollLeft: number;
+    scrollTop: number;
+  } | null>(null);
   const [scalePreset, setScalePreset] = useState<DrawingScalePreset>(initialScalePreset);
+  const [tool, setTool] = useState<DrawingViewportTool>(initialTool);
   const [zoomMultiplier, setZoomMultiplier] = useState(1);
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
+  const [pan, setPan] = useState<DrawingViewportPan>({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
     const element = viewportRef.current;
@@ -60,20 +71,66 @@ export default function DrawingViewport(props: DrawingViewportProps) {
   const contentWidth = Math.max(1, model.viewBox.width * effectiveScale);
   const contentHeight = Math.max(1, model.viewBox.height * effectiveScale);
 
+  useEffect(() => {
+    const element = viewportRef.current;
+    if (!element) return;
+    const nextPan = clampPan(pan);
+    if (Math.abs(element.scrollLeft - nextPan.x) > 1) element.scrollLeft = nextPan.x;
+    if (Math.abs(element.scrollTop - nextPan.y) > 1) element.scrollTop = nextPan.y;
+  }, [contentHeight, contentWidth, pan]);
+
   return (
     <div style={{ display: "grid", gap: 10 }}>
       {showToolbar ? (
         <DrawingPreviewToolbar
           scalePreset={scalePreset}
+          tool={tool}
           zoomMultiplier={zoomMultiplier}
           onScalePresetChange={setScalePreset}
+          onToolChange={setTool}
           onZoomIn={() => setZoomMultiplier((current) => stepZoomMultiplier(current, "in"))}
           onZoomOut={() => setZoomMultiplier((current) => stepZoomMultiplier(current, "out"))}
-          onResetZoom={() => setZoomMultiplier(1)}
+          onResetZoom={() => {
+            setZoomMultiplier(1);
+            setPan({ x: 0, y: 0 });
+          }}
         />
       ) : null}
       <div
         ref={viewportRef}
+        onMouseDown={(event) => {
+          if (tool !== "pan") return;
+          if (event.button !== 0) return;
+          const element = viewportRef.current;
+          if (!element) return;
+          dragStartRef.current = {
+            pointerX: event.clientX,
+            pointerY: event.clientY,
+            scrollLeft: element.scrollLeft,
+            scrollTop: element.scrollTop,
+          };
+          setIsDragging(true);
+        }}
+        onMouseMove={(event) => {
+          const element = viewportRef.current;
+          const dragStart = dragStartRef.current;
+          if (!element || !dragStart) return;
+          const nextPan = clampPan({
+            x: dragStart.scrollLeft - (event.clientX - dragStart.pointerX),
+            y: dragStart.scrollTop - (event.clientY - dragStart.pointerY),
+          });
+          element.scrollLeft = nextPan.x;
+          element.scrollTop = nextPan.y;
+          setPan(nextPan);
+        }}
+        onMouseUp={() => {
+          dragStartRef.current = null;
+          setIsDragging(false);
+        }}
+        onMouseLeave={() => {
+          dragStartRef.current = null;
+          setIsDragging(false);
+        }}
         onWheel={(event) => {
           if (!event.ctrlKey) return;
           event.preventDefault();
@@ -90,6 +147,8 @@ export default function DrawingViewport(props: DrawingViewportProps) {
           borderRadius: 12,
           display: "grid",
           placeItems: "center",
+          cursor: tool === "pan" ? (isDragging ? "grabbing" : "grab") : "default",
+          userSelect: "none",
         }}
       >
         <div
@@ -97,14 +156,15 @@ export default function DrawingViewport(props: DrawingViewportProps) {
             width: contentWidth,
             height: contentHeight,
             flex: "0 0 auto",
+            pointerEvents: tool === "pan" ? "none" : "auto",
           }}
         >
           <QuoteSyncDrawingSvg
             model={model}
-            selectedCellKey={selectedCellKey}
-            onSelectCell={onSelectCell}
-            onRemoveVerticalJunction={onRemoveVerticalJunction}
-            onRemoveHorizontalJunction={onRemoveHorizontalJunction}
+            selectedCellKey={tool === "pan" ? "" : selectedCellKey}
+            onSelectCell={tool === "pan" ? undefined : onSelectCell}
+            onRemoveVerticalJunction={tool === "pan" ? undefined : onRemoveVerticalJunction}
+            onRemoveHorizontalJunction={tool === "pan" ? undefined : onRemoveHorizontalJunction}
           />
         </div>
       </div>
