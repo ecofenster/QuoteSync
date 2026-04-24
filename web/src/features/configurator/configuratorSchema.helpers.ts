@@ -15,6 +15,7 @@ import type {
   WindowJunctionDefinition,
   WindowLayoutDefinition,
 } from "../estimateWorkflow/workflow.types";
+import type { ResolvedSectionProfileSet } from "./rendering/profileSectionMapping";
 
 function mapLayoutMode(layout: Pick<WindowLayoutDefinition, "compositionMode" | "freehand">): ConfiguratorLayoutMode {
   if (layout.freehand?.enabled || layout.compositionMode === "freehand") return "freehand";
@@ -255,6 +256,75 @@ export function buildTwoFieldFixedStaticMullionLayoutDefinition(
         staticMullion: buildStaticMullionDefinition(mullionWidth),
       },
     ],
+  };
+}
+
+export type ConfiguratorLayoutRendererInput = {
+  fieldsX: number;
+  fieldsY: number;
+  insertion: string;
+  cellInsertions: Record<string, string>;
+  windowConfiguration: {
+    junctions: Array<{ key: string; type?: string }>;
+  };
+};
+
+export function mapConfiguratorOpeningToRendererInsertion(
+  opening: ConfiguratorFieldOpeningDefinition
+): string {
+  if (opening.operationType === "fixed") return "Fixed";
+  if (opening.operationType === "fixed_sash") return "Fixed Sash";
+  if (opening.operationType === "tilt") return "Tilt";
+  if (opening.operationType === "turn" && opening.handing === "left") return "Turn Left";
+  if (opening.operationType === "turn" && opening.handing === "right") return "Turn Right";
+  if (opening.operationType === "tilt_turn" && opening.handing === "left") return "Tilt & Turn Left";
+  if (opening.operationType === "tilt_turn" && opening.handing === "right") return "Tilt & Turn Right";
+  if (opening.operationType === "tilt_turn") return "Tilt & Turn";
+  if (opening.operationType === "top_hung") return "Top Hung";
+  if (opening.operationType === "side_hung") return "Side Hung";
+  if (opening.operationType === "reversible") return "Reversible";
+  if (opening.operationType === "sliding") return "Sliding";
+  if (opening.operationType === "pivot") return "Pivot";
+  return "Fixed";
+}
+
+export function buildRendererInputFromConfiguratorLayoutDefinition(
+  layout: ConfiguratorLayoutDefinitionV2
+): ConfiguratorLayoutRendererInput {
+  const cellInsertions = Object.fromEntries(
+    layout.fields.map((field) => [field.key, mapConfiguratorOpeningToRendererInsertion(field.opening)])
+  );
+  const fallbackInsertion =
+    cellInsertions[layout.fields[0]?.key ?? "0,0"] ?? "Fixed";
+
+  return {
+    fieldsX: layout.columns,
+    fieldsY: layout.rows,
+    insertion: fallbackInsertion,
+    cellInsertions,
+    windowConfiguration: {
+      junctions: layout.junctions.map((junction) => ({
+        key: junction.key,
+        type: junction.type,
+      })),
+    },
+  };
+}
+
+export function applyLayoutDefinitionOverridesToResolvedProfiles(
+  layout: ConfiguratorLayoutDefinitionV2,
+  resolvedProfiles: ResolvedSectionProfileSet | null | undefined
+): ResolvedSectionProfileSet | null | undefined {
+  if (!resolvedProfiles) return resolvedProfiles;
+  const staticMullion = layout.junctions.find((junction) => junction.staticMullion)?.staticMullion ?? null;
+  if (!staticMullion) return resolvedProfiles;
+
+  return {
+    ...resolvedProfiles,
+    mullion: {
+      ...resolvedProfiles.mullion,
+      visibleFaceWidthMm: staticMullion.totalWidthMm,
+    },
   };
 }
 

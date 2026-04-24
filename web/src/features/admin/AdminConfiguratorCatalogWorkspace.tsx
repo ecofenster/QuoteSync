@@ -22,6 +22,11 @@ import {
   matchesRenderDefinitionContext,
   normalizeRenderProfileForView,
 } from "../configurator/rendering/profileSectionMapping";
+import {
+  applyLayoutDefinitionOverridesToResolvedProfiles,
+  buildRendererInputFromConfiguratorLayoutDefinition,
+  buildTwoFieldFixedStaticMullionLayoutDefinition,
+} from "../configurator/configuratorSchema.helpers";
 
 type AdminConfiguratorTopTab = "manufacturers" | "windowTypes" | "configuratorRender";
 type ProductGroupKey =
@@ -1026,8 +1031,60 @@ function ConfiguratorRenderPanel(props: {
     [externalPreviewDraft, previewInsertion]
   );
 
+  const twoFieldPreviewLayout = useMemo(
+    () => buildTwoFieldFixedStaticMullionLayoutDefinition(78),
+    []
+  );
+  const twoFieldRendererInput = useMemo(
+    () => buildRendererInputFromConfiguratorLayoutDefinition(twoFieldPreviewLayout),
+    [twoFieldPreviewLayout]
+  );
+  const twoFieldBaseResolvedProfiles = useMemo(() => {
+    const fixedInternalProfile =
+      renderProfileRecords.find(
+        (row) =>
+          row.is_active &&
+          String(row.name || "").trim().toLowerCase() === "windows:1field:fixed:iv"
+      ) ?? null;
+    return fixedInternalProfile
+      ? buildResolvedSectionProfileSetFromRenderProfile(fixedInternalProfile, "inside")
+      : buildResolvedSectionProfileSetFromRenderProfile(internalPreviewDraft, "inside");
+  }, [internalPreviewDraft, renderProfileRecords]);
+  const twoFieldResolvedProfiles = useMemo(
+    () =>
+      applyLayoutDefinitionOverridesToResolvedProfiles(
+        twoFieldPreviewLayout,
+        twoFieldBaseResolvedProfiles
+      ) ?? twoFieldBaseResolvedProfiles,
+    [twoFieldBaseResolvedProfiles, twoFieldPreviewLayout]
+  );
+  const twoFieldInternalModel = useMemo(
+    () =>
+      buildWindowDrawingModel({
+        widthMm: 1600,
+        heightMm: Math.max(300, Number(internalPreviewDraft.preview_height_mm || 1200)),
+        fieldsX: twoFieldRendererInput.fieldsX,
+        fieldsY: twoFieldRendererInput.fieldsY,
+        insertion: twoFieldRendererInput.insertion,
+        cellInsertions: twoFieldRendererInput.cellInsertions,
+        orientationView: "inside",
+        resolvedProfiles: twoFieldResolvedProfiles,
+        windowConfiguration: {
+          ...twoFieldRendererInput.windowConfiguration,
+          hardware: {
+            defaultHandleHeightMm: numericOrNull(internalPreviewDraft.handle_height_mm) ?? 1050,
+            defaultHingeType: "Standard",
+          },
+        },
+      }),
+    [internalPreviewDraft.handle_height_mm, twoFieldRendererInput, twoFieldResolvedProfiles]
+  );
+
   const visibleInternalModel = showDimensions ? internalModel : { ...internalModel, annotations: { ...internalModel.annotations, dimensions: [] } };
   const visibleExternalModel = showDimensions ? externalModel : { ...externalModel, annotations: { ...externalModel.annotations, dimensions: [] } };
+  const visibleTwoFieldInternalModel = showDimensions
+    ? twoFieldInternalModel
+    : { ...twoFieldInternalModel, annotations: { ...twoFieldInternalModel.annotations, dimensions: [] } };
 
   async function saveRenderProfile() {
     setIsSaving(true);
@@ -1119,7 +1176,59 @@ function ConfiguratorRenderPanel(props: {
             </div>
           </div>
 
-          {windowTab !== "1field" ? (
+          {windowTab === "2field" ? (
+            <div style={{ display: "grid", gridTemplateColumns: "340px minmax(0, 1fr)", gap: 16 }}>
+              <div className="admin-card ui-card" style={{ ...denseCardStyle, alignContent: "start" }}>
+                <div style={{ display: "grid", gap: 8 }}>
+                  <H3>2 Field Preview</H3>
+                  <div className="admin-body-copy">
+                    Preview-only schema-driven test using the shared layout definition and existing renderer pipeline. No 2-field save/edit flow is enabled in this pass.
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div className="admin-setting-label">Layout</div>
+                  <div className="admin-placeholder-box">
+                    1 row × 2 columns
+                    <br />
+                    Fixed + Fixed
+                    <br />
+                    Static mullion 78mm
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div className="admin-setting-label">Renderer adapter</div>
+                  <div className="admin-placeholder-box">
+                    fieldsX: {twoFieldRendererInput.fieldsX}
+                    <br />
+                    fieldsY: {twoFieldRendererInput.fieldsY}
+                    <br />
+                    insertion: {twoFieldRendererInput.insertion}
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div className="admin-setting-label">Mullion override</div>
+                  <div className="admin-placeholder-box">
+                    Resolved mullion width: {twoFieldResolvedProfiles?.mullion.visibleFaceWidthMm ?? "n/a"}mm
+                  </div>
+                </div>
+              </div>
+
+              <div className="admin-card ui-card" style={{ padding: 18, display: "grid", gap: 16, alignContent: "start" }}>
+                <div style={{ display: "grid", gap: 2 }}>
+                  <div className="admin-group-title">2 Field • Fixed / Fixed • Internal preview</div>
+                  <div className="admin-body-copy">
+                    This branch reuses the existing native renderer. The layout comes from `ConfiguratorLayoutDefinitionV2`; the static mullion width is applied through resolved profile override only.
+                  </div>
+                </div>
+                <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", background: "#fff", padding: 12 }}>
+                  <QuoteSyncDrawingSvg model={visibleTwoFieldInternalModel} />
+                </div>
+              </div>
+            </div>
+          ) : windowTab !== "1field" ? (
             <PlaceholderGroup label={WINDOW_RENDER_TABS.find((tab) => tab.key === windowTab)?.label || "Window render mode"} />
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "340px minmax(0, 1fr)", gap: 16 }}>
