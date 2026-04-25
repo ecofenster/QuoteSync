@@ -342,7 +342,7 @@ export function normalizeRenderProfileForView(
       : record.frame_bottom_visible_mm;
   const nextTop =
     record.trickle_vent_enabled
-      ? 85
+      ? 59.5
       : record.frame_top_visible_mm;
   return {
     ...record,
@@ -496,12 +496,10 @@ export function buildResolvedSectionProfileSetFromRenderProfile(
           name,
           visibleFaceWidthMm,
           depthMm: visibleFaceWidthMm,
-          insetMm:
-            view === "inside"
-              ? side === "bottom"
-                ? 0
-                : beadVisibleFaceMm ?? 8
-              : externalCladdingInsetMm,
+          // Inside sash-based renders should sit off the clear opening without
+          // adding an extra bead-width inset, otherwise the approved frame reveal
+          // gets inflated (for example 37.5mm frame + 21mm bead => ~58.5mm).
+          insetMm: view === "inside" ? 0 : externalCladdingInsetMm,
           overlapMm: 0,
           visibleInternalFaceMm: view === "inside" ? visibleFaceWidthMm : null,
           glassInsetMm: view === "inside" ? beadVisibleFaceMm : null,
