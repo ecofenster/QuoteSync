@@ -7,6 +7,7 @@ import {
   clampZoomMultiplier,
   collectDrawingSnapAnchors,
   getEffectiveDisplayScale,
+  getMeasurementLabelPlacement,
   getMeasurementPointFromClientEvent,
   stepZoomMultiplier,
 } from "./drawingViewport.helpers";
@@ -49,6 +50,7 @@ export default function DrawingViewport(props: DrawingViewportProps) {
   const [measurementStart, setMeasurementStart] = useState<DrawingMeasurementPoint | null>(null);
   const [measurementPreview, setMeasurementPreview] = useState<DrawingMeasurementPoint | null>(null);
   const [measurements, setMeasurements] = useState<DrawingMeasurementAnnotation[]>([]);
+  const [hoveredMeasurementId, setHoveredMeasurementId] = useState<string | null>(null);
 
   useEffect(() => {
     const element = viewportRef.current;
@@ -113,11 +115,13 @@ export default function DrawingViewport(props: DrawingViewportProps) {
             setMeasurementStart(null);
             setMeasurementPreview(null);
             setMeasurements([]);
+            setHoveredMeasurementId(null);
           }}
           onClearMeasurements={() => {
             setMeasurementStart(null);
             setMeasurementPreview(null);
             setMeasurements([]);
+            setHoveredMeasurementId(null);
           }}
         />
       ) : null}
@@ -171,6 +175,7 @@ export default function DrawingViewport(props: DrawingViewportProps) {
           dragStartRef.current = null;
           setIsDragging(false);
           if (tool === "measure") setMeasurementPreview(null);
+          setHoveredMeasurementId(null);
         }}
         onClick={(event) => {
           if (tool !== "measure") return;
@@ -239,21 +244,50 @@ export default function DrawingViewport(props: DrawingViewportProps) {
             viewBox={`0 0 ${model.viewBox.width} ${model.viewBox.height}`}
             width="100%"
             height="100%"
-            style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "visible" }}
+            style={{ position: "absolute", inset: 0, pointerEvents: tool === "measure" ? "auto" : "none", overflow: "visible" }}
           >
             {measurements.map((measurement) => (
-              <g key={measurement.id}>
+              <g
+                key={measurement.id}
+                onMouseEnter={() => tool === "measure" && setHoveredMeasurementId(measurement.id)}
+                onMouseLeave={() => setHoveredMeasurementId((current) => (current === measurement.id ? null : current))}
+              >
                 <line
                   x1={measurement.start.model.x}
                   y1={measurement.start.model.y}
                   x2={measurement.end.model.x}
                   y2={measurement.end.model.y}
-                  stroke="#0f766e"
-                  strokeWidth={2}
+                  stroke="transparent"
+                  strokeWidth={14}
+                  style={{ cursor: tool === "measure" ? "pointer" : "default" }}
+                  onClick={(event) => {
+                    if (tool !== "measure") return;
+                    event.stopPropagation();
+                    setMeasurements((current) => current.filter((entry) => entry.id !== measurement.id));
+                    setHoveredMeasurementId((current) => (current === measurement.id ? null : current));
+                  }}
+                />
+                <line
+                  x1={measurement.start.model.x}
+                  y1={measurement.start.model.y}
+                  x2={measurement.end.model.x}
+                  y2={measurement.end.model.y}
+                  stroke={hoveredMeasurementId === measurement.id ? "#0f766e" : "#115e59"}
+                  strokeWidth={hoveredMeasurementId === measurement.id ? 2.6 : 2}
                 />
                 <circle cx={measurement.start.model.x} cy={measurement.start.model.y} r={3.5} fill="#0f766e" />
                 <circle cx={measurement.end.model.x} cy={measurement.end.model.y} r={3.5} fill="#0f766e" />
-                <g transform={`translate(${(measurement.start.model.x + measurement.end.model.x) / 2} ${(measurement.start.model.y + measurement.end.model.y) / 2 - 10})`}>
+                <g
+                  transform={`translate(${getMeasurementLabelPlacement({
+                    start: measurement.start,
+                    end: measurement.end,
+                    viewBox: model.viewBox,
+                  }).x} ${getMeasurementLabelPlacement({
+                    start: measurement.start,
+                    end: measurement.end,
+                    viewBox: model.viewBox,
+                  }).y})`}
+                >
                   <rect x={-62} y={-18} width={124} height={28} rx={6} fill="#ffffff" stroke="#0f766e" strokeWidth={1} />
                   <text x={0} y={-2} textAnchor="middle" fontSize={11} fontWeight={700} fill="#0f766e">
                     {`${measurement.distanceMm.toFixed(1)} mm`}
@@ -262,6 +296,30 @@ export default function DrawingViewport(props: DrawingViewportProps) {
                     {`${measurement.angleDeg.toFixed(1)}°`}
                   </text>
                 </g>
+                {tool === "measure" && hoveredMeasurementId === measurement.id ? (
+                  <g
+                    transform={`translate(${getMeasurementLabelPlacement({
+                      start: measurement.start,
+                      end: measurement.end,
+                      viewBox: model.viewBox,
+                    }).x + 52} ${getMeasurementLabelPlacement({
+                      start: measurement.start,
+                      end: measurement.end,
+                      viewBox: model.viewBox,
+                    }).y - 10})`}
+                    style={{ cursor: "pointer" }}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setMeasurements((current) => current.filter((entry) => entry.id !== measurement.id));
+                      setHoveredMeasurementId(null);
+                    }}
+                  >
+                    <circle cx={0} cy={0} r={8} fill="#ffffff" stroke="#b91c1c" strokeWidth={1} />
+                    <text x={0} y={4} textAnchor="middle" fontSize={12} fontWeight={700} fill="#b91c1c">
+                      ×
+                    </text>
+                  </g>
+                ) : null}
               </g>
             ))}
           </svg>
@@ -283,7 +341,17 @@ export default function DrawingViewport(props: DrawingViewportProps) {
               />
               <circle cx={measurementStart.model.x} cy={measurementStart.model.y} r={4} fill="#2563eb" />
               <circle cx={activeMeasurementEnd.model.x} cy={activeMeasurementEnd.model.y} r={4} fill="#2563eb" />
-              <g transform={`translate(${(measurementStart.model.x + activeMeasurementEnd.model.x) / 2} ${(measurementStart.model.y + activeMeasurementEnd.model.y) / 2 - 10})`}>
+              <g
+                transform={`translate(${getMeasurementLabelPlacement({
+                  start: measurementStart,
+                  end: activeMeasurementEnd,
+                  viewBox: model.viewBox,
+                }).x} ${getMeasurementLabelPlacement({
+                  start: measurementStart,
+                  end: activeMeasurementEnd,
+                  viewBox: model.viewBox,
+                }).y})`}
+              >
                 <rect x={-62} y={-18} width={124} height={28} rx={6} fill="#ffffff" stroke="#2563eb" strokeWidth={1} />
                 <text x={0} y={-2} textAnchor="middle" fontSize={11} fontWeight={700} fill="#1d4ed8">
                   {`${buildMeasurementAnnotation("preview", measurementStart, activeMeasurementEnd).distanceMm.toFixed(1)} mm`}

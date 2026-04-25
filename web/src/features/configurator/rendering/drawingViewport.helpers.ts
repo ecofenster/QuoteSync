@@ -1,5 +1,6 @@
 import type {
   DrawingMeasurementAnnotation,
+  DrawingMeasurementLabelPlacement,
   DrawingMeasurementPoint,
   DrawingSnapAnchor,
   DrawingViewportFrameRect,
@@ -258,8 +259,23 @@ export function collectDrawingSnapAnchors(model: DrawingModel): DrawingSnapAncho
   for (const junction of model.interaction.horizontalJunctions) {
     addLineAnchors(anchors, seen, `horizontal_junction:${junction.index}`, junction.x1, junction.y, junction.x2, junction.y);
   }
+  for (const vertical of model.interaction.verticalJunctions) {
+    for (const horizontal of model.interaction.horizontalJunctions) {
+      if (vertical.x >= horizontal.x1 && vertical.x <= horizontal.x2 && horizontal.y >= vertical.y1 && horizontal.y <= vertical.y2) {
+        addAnchor(anchors, seen, "junction:intersection", vertical.x, horizontal.y);
+      }
+    }
+  }
 
   return anchors;
+}
+
+function getSnapPriority(role: string) {
+  if (role.includes("intersection") || role.includes(":end")) return 1;
+  if (role.includes(":corner")) return 2;
+  if (role.includes(":mid")) return 3;
+  if (role.includes(":center")) return 4;
+  return 5;
 }
 
 export function getNearestSnapAnchorPoint(
@@ -269,11 +285,17 @@ export function getNearestSnapAnchorPoint(
 ): DrawingViewportPoint | null {
   let nearest: DrawingSnapAnchor | null = null;
   let nearestDistance = Number.POSITIVE_INFINITY;
+  let nearestPriority = Number.POSITIVE_INFINITY;
   for (const anchor of anchors) {
     const distance = Math.hypot(anchor.point.x - point.x, anchor.point.y - point.y);
-    if (distance <= maxDistance && distance < nearestDistance) {
+    const priority = getSnapPriority(anchor.role);
+    if (
+      distance <= maxDistance &&
+      (priority < nearestPriority || (priority === nearestPriority && distance < nearestDistance))
+    ) {
       nearest = anchor;
       nearestDistance = distance;
+      nearestPriority = priority;
     }
   }
   return nearest?.point ?? null;
@@ -286,5 +308,30 @@ export function buildMeasurementAnnotation(id: string, start: DrawingMeasurement
     end,
     distanceMm: getMeasurementDistanceMm(start, end),
     angleDeg: getMeasurementAngleDeg(start, end),
+  };
+}
+
+export function getMeasurementLabelPlacement(input: {
+  start: DrawingMeasurementPoint;
+  end: DrawingMeasurementPoint;
+  viewBox: { width: number; height: number };
+  labelSize?: { width: number; height: number };
+}): DrawingMeasurementLabelPlacement {
+  const { start, end, viewBox } = input;
+  const labelWidth = input.labelSize?.width ?? 124;
+  const labelHeight = input.labelSize?.height ?? 28;
+  const midX = (start.model.x + end.model.x) / 2;
+  const midY = (start.model.y + end.model.y) / 2;
+  const dx = end.model.x - start.model.x;
+  const dy = end.model.y - start.model.y;
+  const length = Math.max(1, Math.hypot(dx, dy));
+  const nx = -dy / length;
+  const ny = dx / length;
+  const offset = 16;
+  const preferredX = midX + nx * offset;
+  const preferredY = midY + ny * offset;
+  return {
+    x: Math.max(labelWidth / 2 + 4, Math.min(viewBox.width - labelWidth / 2 - 4, preferredX)),
+    y: Math.max(labelHeight / 2 + 4, Math.min(viewBox.height - labelHeight / 2 - 4, preferredY)),
   };
 }

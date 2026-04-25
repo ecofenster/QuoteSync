@@ -63,3 +63,8 @@ export type DrawingMeasurementAnnotation = {
   distanceMm: number;
   angleDeg: number;
 };
+
+export type DrawingMeasurementLabelPlacement = {
+  x: number;
+  y: number;
+};
