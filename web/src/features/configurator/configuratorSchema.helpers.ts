@@ -259,6 +259,191 @@ export function buildTwoFieldFixedStaticMullionLayoutDefinition(
   };
 }
 
+export function buildThreeFieldFixedStaticMullionLayoutDefinition(
+  mullionWidth: ConfiguratorStaticMullionWidth = 78
+): ConfiguratorLayoutDefinitionV2 {
+  return {
+    rows: 1,
+    columns: 3,
+    capacity: 3,
+    mode: "linear_horizontal",
+    presetKey: "three-field-fixed-static-mullion",
+    fields: [
+      {
+        key: "0,0",
+        row: 0,
+        col: 0,
+        opening: {
+          operationType: "fixed",
+          openingDirection: "neutral",
+          handing: "center",
+          sequence: null,
+          sourceFieldType: "fixed",
+        },
+        glass: null,
+        renderDefinition: null,
+      },
+      {
+        key: "1,0",
+        row: 0,
+        col: 1,
+        opening: {
+          operationType: "fixed",
+          openingDirection: "neutral",
+          handing: "center",
+          sequence: null,
+          sourceFieldType: "fixed",
+        },
+        glass: null,
+        renderDefinition: null,
+      },
+      {
+        key: "2,0",
+        row: 0,
+        col: 2,
+        opening: {
+          operationType: "fixed",
+          openingDirection: "neutral",
+          handing: "center",
+          sequence: null,
+          sourceFieldType: "fixed",
+        },
+        glass: null,
+        renderDefinition: null,
+      },
+    ],
+    junctions: [
+      {
+        key: "vertical-1",
+        axis: "vertical",
+        index: 1,
+        type: "static",
+        startCol: 0,
+        endCol: 1,
+        startRow: 0,
+        endRow: 0,
+        staticMullion: buildStaticMullionDefinition(mullionWidth),
+      },
+      {
+        key: "vertical-2",
+        axis: "vertical",
+        index: 2,
+        type: "static",
+        startCol: 1,
+        endCol: 2,
+        startRow: 0,
+        endRow: 0,
+        staticMullion: buildStaticMullionDefinition(mullionWidth),
+      },
+    ],
+  };
+}
+
+export function buildFourFieldFixedStaticMullionLayoutDefinition(
+  mullionWidth: ConfiguratorStaticMullionWidth = 78
+): ConfiguratorLayoutDefinitionV2 {
+  return {
+    rows: 1,
+    columns: 4,
+    capacity: 4,
+    mode: "linear_horizontal",
+    presetKey: "four-field-fixed-static-mullion",
+    fields: [
+      {
+        key: "0,0",
+        row: 0,
+        col: 0,
+        opening: {
+          operationType: "fixed",
+          openingDirection: "neutral",
+          handing: "center",
+          sequence: null,
+          sourceFieldType: "fixed",
+        },
+        glass: null,
+        renderDefinition: null,
+      },
+      {
+        key: "1,0",
+        row: 0,
+        col: 1,
+        opening: {
+          operationType: "fixed",
+          openingDirection: "neutral",
+          handing: "center",
+          sequence: null,
+          sourceFieldType: "fixed",
+        },
+        glass: null,
+        renderDefinition: null,
+      },
+      {
+        key: "2,0",
+        row: 0,
+        col: 2,
+        opening: {
+          operationType: "fixed",
+          openingDirection: "neutral",
+          handing: "center",
+          sequence: null,
+          sourceFieldType: "fixed",
+        },
+        glass: null,
+        renderDefinition: null,
+      },
+      {
+        key: "3,0",
+        row: 0,
+        col: 3,
+        opening: {
+          operationType: "fixed",
+          openingDirection: "neutral",
+          handing: "center",
+          sequence: null,
+          sourceFieldType: "fixed",
+        },
+        glass: null,
+        renderDefinition: null,
+      },
+    ],
+    junctions: [
+      {
+        key: "vertical-1",
+        axis: "vertical",
+        index: 1,
+        type: "static",
+        startCol: 0,
+        endCol: 1,
+        startRow: 0,
+        endRow: 0,
+        staticMullion: buildStaticMullionDefinition(mullionWidth),
+      },
+      {
+        key: "vertical-2",
+        axis: "vertical",
+        index: 2,
+        type: "static",
+        startCol: 1,
+        endCol: 2,
+        startRow: 0,
+        endRow: 0,
+        staticMullion: buildStaticMullionDefinition(mullionWidth),
+      },
+      {
+        key: "vertical-3",
+        axis: "vertical",
+        index: 3,
+        type: "static",
+        startCol: 2,
+        endCol: 3,
+        startRow: 0,
+        endRow: 0,
+        staticMullion: buildStaticMullionDefinition(mullionWidth),
+      },
+    ],
+  };
+}
+
 export type ConfiguratorLayoutRendererInput = {
   fieldsX: number;
   fieldsY: number;
