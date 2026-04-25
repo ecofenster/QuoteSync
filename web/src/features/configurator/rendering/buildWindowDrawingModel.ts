@@ -535,6 +535,103 @@ function buildMitredLoop(bounds: { x0: number; x1: number; y0: number; y1: numbe
   };
 }
 
+function resolveFixedCellEdgeBeadPx(input: {
+  side: "left" | "right" | "top" | "bottom";
+  col: number;
+  row: number;
+  fieldsX: number;
+  fieldsY: number;
+  scale: number;
+  junctionTypeByKey: Map<string, string>;
+  profiles: ResolvedSectionProfileSet | null;
+}) {
+  const { side, col, row, fieldsX, fieldsY, scale, junctionTypeByKey, profiles } = input;
+  const fallbackProfile =
+    side === "left"
+      ? profiles?.frame.jambLeft
+      : side === "right"
+        ? profiles?.frame.jambRight
+        : side === "top"
+          ? profiles?.frame.head
+          : profiles?.frame.bottom;
+  const fallbackBeadPx = resolveVisibleBeadPx(
+    fallbackProfile?.beadVisibleFaceMm,
+    fallbackProfile?.glassInsetMm,
+    scale
+  );
+
+  if (fieldsX <= 1 && fieldsY <= 1) return fallbackBeadPx;
+
+  const sourceProfile =
+    side === "left" && col > 0 && junctionTypeByKey.get(`vertical-${col}`) === "static"
+      ? profiles?.mullion
+      : side === "right" && col < fieldsX - 1 && junctionTypeByKey.get(`vertical-${col + 1}`) === "static"
+        ? profiles?.mullion
+        : side === "top" && row > 0 && junctionTypeByKey.get(`horizontal-${row}`) === "static"
+          ? profiles?.transom
+          : side === "bottom" && row < fieldsY - 1 && junctionTypeByKey.get(`horizontal-${row + 1}`) === "static"
+            ? profiles?.transom
+            : fallbackProfile;
+
+  const nextBeadPx = resolveVisibleBeadPx(
+    sourceProfile?.beadVisibleFaceMm,
+    sourceProfile?.glassInsetMm,
+    scale
+  );
+  return nextBeadPx ?? fallbackBeadPx;
+}
+
+function buildFixedFieldUnit(
+  fieldBounds: { x0: number; x1: number; y0: number; y1: number },
+  frameInsets: { left: number; right: number; top: number; bottom: number },
+  beadInsets: { left: number | null; right: number | null; top: number | null; bottom: number | null },
+  frameFinishFill: string
+) {
+  const frameOpeningBounds = insetBounds(fieldBounds, frameInsets);
+  let previewBounds = frameOpeningBounds;
+  const frameShapes: DrawingShape[] = [];
+
+  const hasVisibleBead =
+    beadInsets.left !== null &&
+    beadInsets.right !== null &&
+    beadInsets.top !== null &&
+    beadInsets.bottom !== null;
+
+  if (hasVisibleBead) {
+    const beadLoop = buildMitredLoop(
+      frameOpeningBounds,
+      {
+        left: beadInsets.left ?? 0,
+        right: beadInsets.right ?? 0,
+        top: beadInsets.top ?? 0,
+        bottom: beadInsets.bottom ?? 0,
+      },
+      frameFinishFill,
+      "glazing_bead"
+    );
+    frameShapes.push(...beadLoop.shapes);
+    previewBounds = beadLoop.innerBounds;
+  }
+
+  const glassShape: DrawingShape = {
+    kind: "rect",
+    x: previewBounds.x0,
+    y: previewBounds.y0,
+    width: Math.max(1, previewBounds.x1 - previewBounds.x0),
+    height: Math.max(1, previewBounds.y1 - previewBounds.y0),
+    stroke: "#111",
+    strokeWidth: 1,
+    fill: "#b9d7f3",
+    role: "glass_fixed",
+  };
+
+  return {
+    frameShapes,
+    glassShape,
+    previewBounds,
+  };
+}
+
 function buildTrickleVentSlotRects(
   fieldBounds: { x0: number; x1: number; y0: number; y1: number },
   frameTopY: number,
@@ -1147,10 +1244,19 @@ export function buildWindowDrawingModel(pos: PosDraft): DrawingModel {
         previewBounds = sashGeometry.inner;
       } else {
         previewBounds = cellBounds;
-        const beadLeft = resolveVisibleBeadPx(profiles?.frame.jambLeft.beadVisibleFaceMm, profiles?.frame.jambLeft.glassInsetMm, scale);
-        const beadRight = resolveVisibleBeadPx(profiles?.frame.jambRight.beadVisibleFaceMm, profiles?.frame.jambRight.glassInsetMm, scale);
-        const beadTop = resolveVisibleBeadPx(profiles?.frame.head.beadVisibleFaceMm, profiles?.frame.head.glassInsetMm, scale);
-        const beadBottom = resolveVisibleBeadPx(profiles?.frame.bottom.beadVisibleFaceMm, profiles?.frame.bottom.glassInsetMm, scale);
+        const useEdgeAwareFixedCellBeads = fieldsX > 1 || fieldsY > 1;
+        const beadLeft = useEdgeAwareFixedCellBeads
+          ? resolveFixedCellEdgeBeadPx({ side: "left", col, row, fieldsX, fieldsY, scale, junctionTypeByKey, profiles })
+          : resolveVisibleBeadPx(profiles?.frame.jambLeft.beadVisibleFaceMm, profiles?.frame.jambLeft.glassInsetMm, scale);
+        const beadRight = useEdgeAwareFixedCellBeads
+          ? resolveFixedCellEdgeBeadPx({ side: "right", col, row, fieldsX, fieldsY, scale, junctionTypeByKey, profiles })
+          : resolveVisibleBeadPx(profiles?.frame.jambRight.beadVisibleFaceMm, profiles?.frame.jambRight.glassInsetMm, scale);
+        const beadTop = useEdgeAwareFixedCellBeads
+          ? resolveFixedCellEdgeBeadPx({ side: "top", col, row, fieldsX, fieldsY, scale, junctionTypeByKey, profiles })
+          : resolveVisibleBeadPx(profiles?.frame.head.beadVisibleFaceMm, profiles?.frame.head.glassInsetMm, scale);
+        const beadBottom = useEdgeAwareFixedCellBeads
+          ? resolveFixedCellEdgeBeadPx({ side: "bottom", col, row, fieldsX, fieldsY, scale, junctionTypeByKey, profiles })
+          : resolveVisibleBeadPx(profiles?.frame.bottom.beadVisibleFaceMm, profiles?.frame.bottom.glassInsetMm, scale);
         const hasVisibleBead = beadLeft !== null && beadRight !== null && beadTop !== null && beadBottom !== null;
         if (hasVisibleBead) {
           if (view === "inside") {
