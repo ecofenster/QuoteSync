@@ -25,6 +25,8 @@ import {
 import {
   applyLayoutDefinitionOverridesToResolvedProfiles,
   buildRendererInputFromConfiguratorLayoutDefinition,
+  buildFourFieldFixedStaticMullionLayoutDefinition,
+  buildThreeFieldFixedStaticMullionLayoutDefinition,
   buildTwoFieldFixedStaticMullionLayoutDefinition,
 } from "../configurator/configuratorSchema.helpers";
 
@@ -1035,9 +1037,25 @@ function ConfiguratorRenderPanel(props: {
     () => buildTwoFieldFixedStaticMullionLayoutDefinition(78),
     []
   );
+  const threeFieldPreviewLayout = useMemo(
+    () => buildThreeFieldFixedStaticMullionLayoutDefinition(78),
+    []
+  );
+  const fourFieldPreviewLayout = useMemo(
+    () => buildFourFieldFixedStaticMullionLayoutDefinition(78),
+    []
+  );
   const twoFieldRendererInput = useMemo(
     () => buildRendererInputFromConfiguratorLayoutDefinition(twoFieldPreviewLayout),
     [twoFieldPreviewLayout]
+  );
+  const threeFieldRendererInput = useMemo(
+    () => buildRendererInputFromConfiguratorLayoutDefinition(threeFieldPreviewLayout),
+    [threeFieldPreviewLayout]
+  );
+  const fourFieldRendererInput = useMemo(
+    () => buildRendererInputFromConfiguratorLayoutDefinition(fourFieldPreviewLayout),
+    [fourFieldPreviewLayout]
   );
   const twoFieldBaseResolvedProfiles = useMemo(() => {
     const fixedInternalProfile =
@@ -1050,6 +1068,8 @@ function ConfiguratorRenderPanel(props: {
       ? buildResolvedSectionProfileSetFromRenderProfile(fixedInternalProfile, "inside")
       : buildResolvedSectionProfileSetFromRenderProfile(internalPreviewDraft, "inside");
   }, [internalPreviewDraft, renderProfileRecords]);
+  const threeFieldBaseResolvedProfiles = twoFieldBaseResolvedProfiles;
+  const fourFieldBaseResolvedProfiles = twoFieldBaseResolvedProfiles;
   const twoFieldResolvedProfiles = useMemo(
     () =>
       applyLayoutDefinitionOverridesToResolvedProfiles(
@@ -1057,6 +1077,22 @@ function ConfiguratorRenderPanel(props: {
         twoFieldBaseResolvedProfiles
       ) ?? twoFieldBaseResolvedProfiles,
     [twoFieldBaseResolvedProfiles, twoFieldPreviewLayout]
+  );
+  const threeFieldResolvedProfiles = useMemo(
+    () =>
+      applyLayoutDefinitionOverridesToResolvedProfiles(
+        threeFieldPreviewLayout,
+        threeFieldBaseResolvedProfiles
+      ) ?? threeFieldBaseResolvedProfiles,
+    [threeFieldBaseResolvedProfiles, threeFieldPreviewLayout]
+  );
+  const fourFieldResolvedProfiles = useMemo(
+    () =>
+      applyLayoutDefinitionOverridesToResolvedProfiles(
+        fourFieldPreviewLayout,
+        fourFieldBaseResolvedProfiles
+      ) ?? fourFieldBaseResolvedProfiles,
+    [fourFieldBaseResolvedProfiles, fourFieldPreviewLayout]
   );
   const twoFieldInternalModel = useMemo(
     () =>
@@ -1079,12 +1115,60 @@ function ConfiguratorRenderPanel(props: {
       }),
     [internalPreviewDraft.handle_height_mm, twoFieldRendererInput, twoFieldResolvedProfiles]
   );
+  const threeFieldInternalModel = useMemo(
+    () =>
+      buildWindowDrawingModel({
+        widthMm: 2400,
+        heightMm: Math.max(300, Number(internalPreviewDraft.preview_height_mm || 1200)),
+        fieldsX: threeFieldRendererInput.fieldsX,
+        fieldsY: threeFieldRendererInput.fieldsY,
+        insertion: threeFieldRendererInput.insertion,
+        cellInsertions: threeFieldRendererInput.cellInsertions,
+        orientationView: "inside",
+        resolvedProfiles: threeFieldResolvedProfiles,
+        windowConfiguration: {
+          ...threeFieldRendererInput.windowConfiguration,
+          hardware: {
+            defaultHandleHeightMm: numericOrNull(internalPreviewDraft.handle_height_mm) ?? 1050,
+            defaultHingeType: "Standard",
+          },
+        },
+      }),
+    [internalPreviewDraft.handle_height_mm, threeFieldRendererInput, threeFieldResolvedProfiles]
+  );
+  const fourFieldInternalModel = useMemo(
+    () =>
+      buildWindowDrawingModel({
+        widthMm: 3200,
+        heightMm: Math.max(300, Number(internalPreviewDraft.preview_height_mm || 1200)),
+        fieldsX: fourFieldRendererInput.fieldsX,
+        fieldsY: fourFieldRendererInput.fieldsY,
+        insertion: fourFieldRendererInput.insertion,
+        cellInsertions: fourFieldRendererInput.cellInsertions,
+        orientationView: "inside",
+        resolvedProfiles: fourFieldResolvedProfiles,
+        windowConfiguration: {
+          ...fourFieldRendererInput.windowConfiguration,
+          hardware: {
+            defaultHandleHeightMm: numericOrNull(internalPreviewDraft.handle_height_mm) ?? 1050,
+            defaultHingeType: "Standard",
+          },
+        },
+      }),
+    [fourFieldRendererInput, fourFieldResolvedProfiles, internalPreviewDraft.handle_height_mm]
+  );
 
   const visibleInternalModel = showDimensions ? internalModel : { ...internalModel, annotations: { ...internalModel.annotations, dimensions: [] } };
   const visibleExternalModel = showDimensions ? externalModel : { ...externalModel, annotations: { ...externalModel.annotations, dimensions: [] } };
   const visibleTwoFieldInternalModel = showDimensions
     ? twoFieldInternalModel
     : { ...twoFieldInternalModel, annotations: { ...twoFieldInternalModel.annotations, dimensions: [] } };
+  const visibleThreeFieldInternalModel = showDimensions
+    ? threeFieldInternalModel
+    : { ...threeFieldInternalModel, annotations: { ...threeFieldInternalModel.annotations, dimensions: [] } };
+  const visibleFourFieldInternalModel = showDimensions
+    ? fourFieldInternalModel
+    : { ...fourFieldInternalModel, annotations: { ...fourFieldInternalModel.annotations, dimensions: [] } };
 
   async function saveRenderProfile() {
     setIsSaving(true);
@@ -1225,6 +1309,110 @@ function ConfiguratorRenderPanel(props: {
                 </div>
                 <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", background: "#fff", padding: 12 }}>
                   <DrawingViewport model={visibleTwoFieldInternalModel} minHeight={360} aspectRatio="16 / 9" />
+                </div>
+              </div>
+            </div>
+          ) : windowTab === "3field" ? (
+            <div style={{ display: "grid", gridTemplateColumns: "340px minmax(0, 1fr)", gap: 16 }}>
+              <div className="admin-card ui-card" style={{ ...denseCardStyle, alignContent: "start" }}>
+                <div style={{ display: "grid", gap: 8 }}>
+                  <H3>3 Field Preview</H3>
+                  <div className="admin-body-copy">
+                    Preview-only schema-driven test using the shared layout definition and existing renderer pipeline. No 3-field save/edit flow is enabled in this pass.
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div className="admin-setting-label">Layout</div>
+                  <div className="admin-placeholder-box">
+                    1 row × 3 columns
+                    <br />
+                    Fixed + Fixed + Fixed
+                    <br />
+                    Static mullions 78mm
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div className="admin-setting-label">Renderer adapter</div>
+                  <div className="admin-placeholder-box">
+                    fieldsX: {threeFieldRendererInput.fieldsX}
+                    <br />
+                    fieldsY: {threeFieldRendererInput.fieldsY}
+                    <br />
+                    insertion: {threeFieldRendererInput.insertion}
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div className="admin-setting-label">Mullion override</div>
+                  <div className="admin-placeholder-box">
+                    Resolved mullion width: {threeFieldResolvedProfiles?.mullion.visibleFaceWidthMm ?? "n/a"}mm
+                  </div>
+                </div>
+              </div>
+
+              <div className="admin-card ui-card" style={{ padding: 18, display: "grid", gap: 16, alignContent: "start" }}>
+                <div style={{ display: "grid", gap: 2 }}>
+                  <div className="admin-group-title">3 Field • Fixed / Fixed / Fixed • Internal preview</div>
+                  <div className="admin-body-copy">
+                    This branch reuses the existing native renderer. The layout comes from `ConfiguratorLayoutDefinitionV2`; static mullion width is applied through resolved profile override only.
+                  </div>
+                </div>
+                <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", background: "#fff", padding: 12 }}>
+                  <DrawingViewport model={visibleThreeFieldInternalModel} minHeight={360} aspectRatio="16 / 9" />
+                </div>
+              </div>
+            </div>
+          ) : windowTab === "4field" ? (
+            <div style={{ display: "grid", gridTemplateColumns: "340px minmax(0, 1fr)", gap: 16 }}>
+              <div className="admin-card ui-card" style={{ ...denseCardStyle, alignContent: "start" }}>
+                <div style={{ display: "grid", gap: 8 }}>
+                  <H3>4 Field Preview</H3>
+                  <div className="admin-body-copy">
+                    Preview-only schema-driven test using the shared layout definition and existing renderer pipeline. No 4-field save/edit flow is enabled in this pass.
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div className="admin-setting-label">Layout</div>
+                  <div className="admin-placeholder-box">
+                    1 row × 4 columns
+                    <br />
+                    Fixed + Fixed + Fixed + Fixed
+                    <br />
+                    Static mullions 78mm
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div className="admin-setting-label">Renderer adapter</div>
+                  <div className="admin-placeholder-box">
+                    fieldsX: {fourFieldRendererInput.fieldsX}
+                    <br />
+                    fieldsY: {fourFieldRendererInput.fieldsY}
+                    <br />
+                    insertion: {fourFieldRendererInput.insertion}
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div className="admin-setting-label">Mullion override</div>
+                  <div className="admin-placeholder-box">
+                    Resolved mullion width: {fourFieldResolvedProfiles?.mullion.visibleFaceWidthMm ?? "n/a"}mm
+                  </div>
+                </div>
+              </div>
+
+              <div className="admin-card ui-card" style={{ padding: 18, display: "grid", gap: 16, alignContent: "start" }}>
+                <div style={{ display: "grid", gap: 2 }}>
+                  <div className="admin-group-title">4 Field • Fixed / Fixed / Fixed / Fixed • Internal preview</div>
+                  <div className="admin-body-copy">
+                    This branch reuses the existing native renderer. The layout comes from `ConfiguratorLayoutDefinitionV2`; static mullion width is applied through resolved profile override only.
+                  </div>
+                </div>
+                <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", background: "#fff", padding: 12 }}>
+                  <DrawingViewport model={visibleFourFieldInternalModel} minHeight={360} aspectRatio="16 / 9" />
                 </div>
               </div>
             </div>
