@@ -36,6 +36,8 @@ function renderShape(shape: DrawingShape, key: string) {
       points={shape.points.map((point) => `${point.x},${point.y}`).join(" ")}
       stroke={shape.stroke || "#111"}
       strokeWidth={shape.strokeWidth ?? 1}
+      strokeLinejoin="bevel"
+      strokeMiterlimit={1}
       fill={shape.fill ?? "none"}
     />
   );
