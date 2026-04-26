@@ -85,6 +85,7 @@ export interface WindowJunctionDefinition {
   endCol: number;
   startRow: number;
   endRow: number;
+  ownerFieldId?: string | null;
 }
 
 export interface WindowLayoutDefinition {

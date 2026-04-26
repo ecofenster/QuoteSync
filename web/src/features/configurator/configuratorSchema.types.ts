@@ -79,6 +79,7 @@ export type ConfiguratorJunctionDefinitionV2 = {
   endCol: number;
   startRow: number;
   endRow: number;
+  ownerFieldId?: string | null;
   staticMullion?: ConfiguratorStaticMullionDefinition | null;
 };
 

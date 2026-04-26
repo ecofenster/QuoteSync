@@ -23,7 +23,7 @@ type PosDraft = {
   orientationView?: "inside" | "outside";
   resolvedProfiles?: ResolvedSectionProfileSet | null;
   windowConfiguration?: {
-    junctions?: Array<{ key: string; type?: string }>;
+    junctions?: Array<{ key: string; type?: string; ownerFieldId?: string | null }>;
     fields?: Array<{
       key: string;
       type?: string;

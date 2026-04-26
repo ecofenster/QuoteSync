@@ -274,6 +274,7 @@ function buildDefaultJunctions(rows: number, columns: number): WindowJunctionDef
       endCol: index,
       startRow: 0,
       endRow: rows - 1,
+      ownerFieldId: null,
     });
   }
   for (let index = 1; index < rows; index += 1) {
@@ -286,6 +287,7 @@ function buildDefaultJunctions(rows: number, columns: number): WindowJunctionDef
       endCol: columns - 1,
       startRow: index - 1,
       endRow: index,
+      ownerFieldId: null,
     });
   }
   return junctions;

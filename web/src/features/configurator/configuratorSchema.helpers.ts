@@ -183,6 +183,7 @@ export function mapLegacyJunctionToConfiguratorJunctionDefinition(
     endCol: junction.endCol,
     startRow: junction.startRow,
     endRow: junction.endRow,
+    ownerFieldId: junction.ownerFieldId ?? null,
     staticMullion: null,
   };
 }
@@ -450,7 +451,7 @@ export type ConfiguratorLayoutRendererInput = {
   insertion: string;
   cellInsertions: Record<string, string>;
   windowConfiguration: {
-    junctions: Array<{ key: string; type?: string }>;
+    junctions: Array<{ key: string; type?: string; ownerFieldId?: string | null }>;
   };
 };
 
@@ -491,6 +492,7 @@ export function buildRendererInputFromConfiguratorLayoutDefinition(
       junctions: layout.junctions.map((junction) => ({
         key: junction.key,
         type: junction.type,
+        ownerFieldId: junction.ownerFieldId ?? null,
       })),
     },
   };
