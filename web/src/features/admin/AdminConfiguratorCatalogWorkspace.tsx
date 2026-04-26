@@ -1003,6 +1003,7 @@ function ConfiguratorRenderPanel(props: {
         fieldsY: 1,
         insertion: previewInsertion,
         orientationView: "inside",
+        openingSymbolMode: "din",
         resolvedProfiles: buildResolvedSectionProfileSetFromRenderProfile(internalPreviewDraft, "inside"),
         windowConfiguration: {
           hardware: {
@@ -1022,6 +1023,7 @@ function ConfiguratorRenderPanel(props: {
         fieldsY: 1,
         insertion: previewInsertion,
         orientationView: "outside",
+        openingSymbolMode: "din",
         resolvedProfiles: buildResolvedSectionProfileSetFromRenderProfile(externalPreviewDraft, "outside"),
         windowConfiguration: {
           hardware: {
@@ -1104,6 +1106,7 @@ function ConfiguratorRenderPanel(props: {
         insertion: twoFieldRendererInput.insertion,
         cellInsertions: twoFieldRendererInput.cellInsertions,
         orientationView: "inside",
+        openingSymbolMode: "din",
         resolvedProfiles: twoFieldResolvedProfiles,
         windowConfiguration: {
           ...twoFieldRendererInput.windowConfiguration,
@@ -1125,6 +1128,7 @@ function ConfiguratorRenderPanel(props: {
         insertion: threeFieldRendererInput.insertion,
         cellInsertions: threeFieldRendererInput.cellInsertions,
         orientationView: "inside",
+        openingSymbolMode: "din",
         resolvedProfiles: threeFieldResolvedProfiles,
         windowConfiguration: {
           ...threeFieldRendererInput.windowConfiguration,
@@ -1146,6 +1150,7 @@ function ConfiguratorRenderPanel(props: {
         insertion: fourFieldRendererInput.insertion,
         cellInsertions: fourFieldRendererInput.cellInsertions,
         orientationView: "inside",
+        openingSymbolMode: "din",
         resolvedProfiles: fourFieldResolvedProfiles,
         windowConfiguration: {
           ...fourFieldRendererInput.windowConfiguration,

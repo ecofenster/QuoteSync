@@ -54,6 +54,7 @@ export default function GridEditor({
   onSelectCell,
   view = "Inside",
   showDimensions = true,
+  openingStd = "DIN",
 }: {
   pos: PosDraft;
   setPos: React.Dispatch<React.SetStateAction<any>>;
@@ -149,8 +150,9 @@ export default function GridEditor({
         colWidthsMm: cols,
         rowHeightsMm: rows,
         orientationView: view === "Outside" ? "outside" : "inside",
+        openingSymbolMode: openingStd === "UK" ? "uk" : "din",
       }),
-    [cols, fx, fy, pos, rows, totalH, totalW, view]
+    [cols, fx, fy, openingStd, pos, rows, totalH, totalW, view]
   );
 
   const selectedCellKey = selectedCell ? keyForCell(selectedCell.col, selectedCell.row) : "";
