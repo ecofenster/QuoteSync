@@ -2,6 +2,9 @@ import React from "react";
 import { buildWorkflowReviewSummary } from "../../configuratorWorkflow.summary";
 import { useEstimateWorkflow } from "../../../estimateWorkflow/useEstimateWorkflow";
 
+// TODO/DEPRECATED(C7.7): Old estimate-side review/save step. Retained temporarily
+// for compatibility until the replacement configurator flow is ready.
+
 export default function ReviewStep() {
   const { draft, updateDraftSection } = useEstimateWorkflow();
   if (!draft) return null;

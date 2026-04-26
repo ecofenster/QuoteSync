@@ -1,14 +1,16 @@
 import React from "react";
 import type { Client, ClientId, EstimateId, EstimateOutcome } from "../../models/types";
 import { estimateCostTotal, estimateTotals } from "../../domain/estimates/estimateCalculations";
-import ConfiguratorWorkflowShell from "../configurator/components/ConfiguratorWorkflowShell";
 import EstimatePositionsFeature from "../estimatePositions/EstimatePositionsFeature";
 import { EstimateWorkflowProvider } from "../estimateWorkflow/EstimateWorkflowProvider";
 import { useEstimateWorkflow } from "../estimateWorkflow/useEstimateWorkflow";
 import OrderInstallationsBlock from "../estimatePicker/tabs/OrderInstallationsBlock";
-import { Pill } from "../estimatePicker/tabs/shared";
+import { Button, Pill, Small } from "../estimatePicker/tabs/shared";
 import EstimateCollectionActions from "./EstimateCollectionActions";
 import type { EstimateCollectionItem } from "./EstimateCollectionItem";
+
+const DISABLED_ESTIMATE_CONFIGURATOR_MESSAGE =
+  "Estimate configurator flow is temporarily disabled while the Admin-led configurator is rebuilt.";
 
 type Props = {
   item: EstimateCollectionItem;
@@ -167,26 +169,17 @@ function EstimateExpandedPanelContent(props: Props) {
     });
   }
 
-  async function saveConfiguredPosition(updatedPosition: any) {
-    if (!configuredEstimate || !configuredPosition) return;
-
-    const updatedPositions = (configuredEstimate.positions ?? []).map((position: any) =>
-      String(position?.id) === String(configuredPosition.id) ? { ...updatedPosition } : position
-    );
-
-    await updateEstimatePositions(updatedPositions);
-  }
-
   if (configuredEstimate && configuredPosition) {
     return (
-      <ConfiguratorWorkflowShell
-        estimate={configuredEstimate}
-        position={configuredPosition}
-        onExit={() => {
-          clearConfigurationTarget();
-        }}
-        onSavePosition={saveConfiguredPosition}
-      />
+      <div style={{ display: "grid", gap: 12 }}>
+        <div style={{ fontSize: 22, fontWeight: 800, color: "#18181b" }}>Estimate Configurator Disabled</div>
+        <Small>{DISABLED_ESTIMATE_CONFIGURATOR_MESSAGE}</Small>
+        <div>
+          <Button variant="secondary" onClick={() => clearConfigurationTarget()}>
+            Back to Estimate
+          </Button>
+        </div>
+      </div>
     );
   }
 

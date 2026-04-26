@@ -63,12 +63,7 @@ export default function EstimatePositionsTable(props: Props) {
   }
 
   function handleConfigurePosition(positionId: string) {
-    if (onConfigurePosition) {
-      onConfigurePosition(positionId);
-      return;
-    }
-
-    window.alert("Configurator entry hook added. Full configurator workspace wiring is the next integration step for this position.");
+    if (onConfigurePosition) onConfigurePosition(positionId);
   }
 
   return (
@@ -239,21 +234,23 @@ export default function EstimatePositionsTable(props: Props) {
                       onClick={(ev) => ev.stopPropagation()}
                     >
                       <div className="ep-positions-actions">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            handleConfigurePosition(p.id);
-                          }}
-                          disabled={isSaving}
-                          title="Open configurator"
-                          className="ep-positions-action-button ep-positions-action-button--configure"
-                          style={{
-                            cursor: isSaving ? "not-allowed" : "pointer",
-                            opacity: isSaving ? 0.55 : 1,
-                          }}
-                        >
-                          Configure
-                        </button>
+                        {onConfigurePosition ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleConfigurePosition(p.id);
+                            }}
+                            disabled={isSaving}
+                            title="Edit position"
+                            className="ep-positions-action-button ep-positions-action-button--configure"
+                            style={{
+                              cursor: isSaving ? "not-allowed" : "pointer",
+                              opacity: isSaving ? 0.55 : 1,
+                            }}
+                          >
+                            Edit position
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => {

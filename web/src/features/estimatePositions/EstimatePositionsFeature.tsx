@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import EstimatePositionsTable from "../estimatePicker/tabs/EstimatePositionsTable";
-import { useEstimateWorkflow } from "../estimateWorkflow/useEstimateWorkflow";
 
 type Props = {
   e: any;
@@ -36,7 +35,6 @@ function nextPositionRef(positions: any[], positionType: QuickAddPositionType) {
 
 export default function EstimatePositionsFeature(props: Props) {
   const { e, onUpdatePositions } = props;
-  const { openConfigurationStep } = useEstimateWorkflow();
 
   const [expandedPositionId, setExpandedPositionId] = useState<string | null>(null);
   const [draftPositions, setDraftPositions] = useState<any[]>(() => (Array.isArray(e?.positions) ? e.positions : []));
@@ -186,11 +184,6 @@ export default function EstimatePositionsFeature(props: Props) {
     await movePosition(positionId, 1);
   }
 
-  function handleConfigurePosition(positionId: string) {
-    console.log("QuoteSync configurator requested for position:", positionId, "estimate:", e?.id);
-    openConfigurationStep(String(e?.id || ""), String(positionId || ""));
-  }
-
   const effectiveEstimate = useMemo(() => ({ ...e, positions: draftPositions }), [e, draftPositions]);
 
   return (
@@ -205,7 +198,6 @@ export default function EstimatePositionsFeature(props: Props) {
       onDeletePosition={deletePosition}
       onMovePositionUp={movePositionUp}
       onMovePositionDown={movePositionDown}
-      onConfigurePosition={handleConfigurePosition}
       quickAddPositionType={quickAddPositionType}
       setQuickAddPositionType={setQuickAddPositionType}
       quickAddInsertion={quickAddInsertion}

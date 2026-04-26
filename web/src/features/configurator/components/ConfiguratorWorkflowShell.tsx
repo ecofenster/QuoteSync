@@ -10,6 +10,9 @@ import ReviewStep from "./steps/ReviewStep";
 import { Button, Small } from "../../estimatePicker/tabs/shared";
 import { useEstimateWorkflow } from "../../estimateWorkflow/useEstimateWorkflow";
 
+// TODO/DEPRECATED(C7.7): Old estimate configurator shell. Keep in place for compatibility
+// while the Admin-led configurator flow is rebuilt, then delete or replace.
+
 type Props = {
   estimate: any;
   position: any;

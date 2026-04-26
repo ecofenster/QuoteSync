@@ -2,6 +2,9 @@ import React from "react";
 import ConfiguratorWorkspace from "../../ConfiguratorWorkspace";
 import { useEstimateWorkflow } from "../../../estimateWorkflow/useEstimateWorkflow";
 
+// TODO/DEPRECATED(C7.7): Old estimate-side configuration step. Retained temporarily
+// while the Admin-led configurator rebuild is in progress.
+
 type Props = {
   estimate: any;
   position: any;

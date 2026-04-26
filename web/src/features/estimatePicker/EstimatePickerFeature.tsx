@@ -433,9 +433,6 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
                 <Button variant="secondary" onClick={() => openEditClientPanel(c)}>
                   Edit
                 </Button>
-                <Button variant="secondary" onClick={() => createEstimateForClient(c)}>
-                  New Estimate
-                </Button>
                 <Button variant="secondary" onClick={() => confirmDeleteClient(c)}>
                   Delete Client
                 </Button>
@@ -473,15 +470,6 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
             </Button>
             <Button variant="secondary" onClick={() => confirmDeleteClient(pickerClient)}>
               Delete Client
-            </Button>
-            <Button
-              variant="primary"
-              onClick={() => {
-                setEstimatePickerTab("client_info");
-                createEstimateForClient(pickerClient);
-              }}
-            >
-              New Estimate
             </Button>
           </div>
         </div>

@@ -9,6 +9,9 @@ import type {
 } from "../../../admin/configuratorCatalog.types";
 import type { ConfiguratorEstimateDefaultsSectionId } from "../../../estimateWorkflow/workflow.types";
 
+// TODO/DEPRECATED(C7.7): Old estimate-side defaults step. Retained temporarily only
+// until the Admin-led configurator flow replaces this path.
+
 const EMPTY_BOOTSTRAP: ConfiguratorCatalogBootstrap = {
   manufacturers: [],
   products: [],

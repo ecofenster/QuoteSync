@@ -2,6 +2,9 @@ import React from "react";
 import { Input, Small, labelStyle } from "../../../estimatePicker/tabs/shared";
 import { useEstimateWorkflow } from "../../../estimateWorkflow/useEstimateWorkflow";
 
+// TODO/DEPRECATED(C7.7): Old estimate-side add-position seed step. Retained only
+// until the rebuilt Admin-led configurator replaces this path.
+
 export default function AddPositionStep() {
   const { draft, updateDraftSection } = useEstimateWorkflow();
   if (!draft) return null;

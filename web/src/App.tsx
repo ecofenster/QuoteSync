@@ -73,7 +73,6 @@ async function purgeEstimateAPI(id: string) {
 }
 import GridEditor from "./components/GridEditor";
 import EstimatePickerFeature, { type EstimatePickerFeatureHandle } from "./features/estimatePicker/EstimatePickerFeature";
-import DefaultsEditor from "./features/estimateDefaults/DefaultsEditor";
 import { DEFAULT_CUSTOMER_ADDRESS, makeDefaultClients } from "./features/clients/defaultClients";
 import "./features/clients/ClientsView.css";
 import * as Models from "./models/types";
@@ -123,8 +122,6 @@ import GlassWeightCalculatorTool from "./features/tools/glass/GlassWeightCalcula
 import EstimateCollectionView from "./features/estimateCollection/EstimateCollectionView";
 import type { EstimateCollectionViewMode } from "./features/estimateCollection/EstimateCollectionView";
 import mapGlobalEstimateToCollectionItem from "./features/estimateCollection/adapters/mapGlobalEstimateToCollectionItem";
-import { EstimateWorkflowProvider } from "./features/estimateWorkflow/EstimateWorkflowProvider";
-import ConfiguratorWorkflowShell from "./features/configurator/components/ConfiguratorWorkflowShell";
 
 /* =========================
    Helpers
@@ -1307,9 +1304,6 @@ function ClientsListView({
             <Button variant="primary" onClick={() => onOpenClient(item.client)}>
               Open
             </Button>
-            <Button variant="secondary" onClick={() => onCreateEstimate(item.client)}>
-              New Estimate
-            </Button>
           </div>
         </article>
       ))}
@@ -1350,9 +1344,6 @@ function ClientsGridView({
           <div className="clients-surface-card__actions">
             <Button variant="primary" onClick={() => onOpenClient(item.client)}>
               Open
-            </Button>
-            <Button variant="secondary" onClick={() => onCreateEstimate(item.client)}>
-              New Estimate
             </Button>
           </div>
         </article>
@@ -2174,12 +2165,12 @@ if (key === "menu_5") {
     setTopShellPage("app");
   }
 
-  function openEstimateDefaults(clientId: string, estimateId: string) {
-    setSelectedClientId(clientId);
-    setSelectedEstimateId(estimateId);
-    setView("estimate_defaults");
-    setShowPositionWizard(false);
-  }
+function openEstimateDefaults(clientId: string, estimateId: string) {
+  setSelectedClientId(clientId);
+  setSelectedEstimateId(estimateId);
+  setView("estimate_workspace");
+  setShowPositionWizard(false);
+}
 
   
 async function createEstimateForClient(client: Client) {
@@ -4700,9 +4691,6 @@ function renderEstimateMapBoard() {
                     <Button variant="primary" onClick={openAddClientPanel}>
                       Add Client
                     </Button>
-                    <Button variant="secondary" onClick={() => openAddEstimateModal()}>
-                      Add Estimate
-                    </Button>
                   </div>
                 </div>
               </Card>
@@ -5288,14 +5276,15 @@ function renderEstimateMapBoard() {
               <Card style={{ minHeight: 520 }}>
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
                   <div>
-                    <H2>Supplier & Product Defaults</H2>
+                    <H2>Estimate Configurator Disabled</H2>
                     <div
-                       style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}
+                    >
                       <Pill>{selectedClient.clientRef}</Pill>
                       <Pill>{selectedEstimate.estimateRef}</Pill>
                       <Small>{selectedClient.clientName}</Small>
                     </div>
-                    <Small>Set estimate-level defaults here. Add Position will use these when is on.</Small>
+                    <Small>{DISABLED_ESTIMATE_CONFIGURATOR_MESSAGE}</Small>
                   </div>
 
                   <div style={{ display: "flex", gap: 10 }}>
@@ -5303,188 +5292,13 @@ function renderEstimateMapBoard() {
                       Back
                     </Button>
                     <Button variant="primary" onClick={() => setView("estimate_workspace")}>
-                      Continue
+                      Go to Estimate
                     </Button>
                   </div>
                 </div>
 
                 <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
                   <ClientSummary c={selectedClient} />
-
-                  <Card style={{ padding: 14 }}>
-                    <div
-                       style={{ display: "grid", gap: 12 }}>
-                      <div
-                      >
-                        <H3>Estimated Order Forecast</H3>
-                        <Small>Select the expected order month and year for this estimate.</Small>
-                      </div>
-
-                      <div
-                       style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                        <div
-                      >
-                          <div
-                       style={labelStyle}>Estimated order month</div>
-                          <select
-                            value={selectedEstimate.estimatedOrderMonth || ORDER_MONTHS[new Date().getMonth()]}
-                            onChange={(e) => setEstimateForecast({ estimatedOrderMonth: e.currentTarget.value })}
-                            style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14, outline: "none", background: "#fff" }}
-                          >
-                            {ORDER_MONTHS.map((month) => (
-                              <option key={month} value={month}>
-                                {month}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div
-                      >
-                          <div
-                       style={labelStyle}>Estimated order year</div>
-                          <select
-                            value={selectedEstimate.estimatedOrderYear || new Date().getFullYear()}
-                            onChange={(e) => setEstimateForecast({ estimatedOrderYear: Number(e.currentTarget.value) })}
-                            style={{ width: "100%", borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14, outline: "none", background: "#fff" }}
-                          >
-                            {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - 1 + i).map((year) => (
-                              <option key={year} value={year}>
-                                {year}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-
-                      <div
-                      
-                        style={{
-                          borderRadius: 14,
-                          border: "1px solid #e4e4e7",
-                          background: "#fafafa",
-                          padding: 12,
-                          display: "grid",
-                          gap: 4,
-                        }}
-                      >
-                        <div
-                       style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "#71717a" }}>
-                          Potential order raised
-                        </div>
-                        <div
-                       style={{ fontSize: 22, fontWeight: 900, color: "#18181b" }}>
-                          {monthYearLabel(selectedEstimate.estimatedOrderMonth, selectedEstimate.estimatedOrderYear)}
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
-
-                  <Card style={{ padding: 14 }}>
-                    <div style={{ display: "grid", gap: 12 }}>
-                      <div>
-                        <H3>Project Site Address</H3>
-                        <Small>This address belongs to the estimate, not the client.</Small>
-                      </div>
-
-                      {(() => {
-                        const projectStructured = resolveStructuredAddress(
-                          selectedEstimate.projectAddressStructured,
-                          selectedEstimate.projectAddress || ""
-                        );
-                        const [p1, p2, p3, pt, pc, pco, pp] = addressTuple(projectStructured);
-                        return (
-                          <div style={{ display: "grid", gap: 12 }}>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                              <div>
-                                <div style={labelStyle}>Address line 1</div>
-                                <Input value={p1} onChange={(v) => updateSelectedEstimateProjectAddress({ line1: v })} placeholder="Address line 1" />
-                              </div>
-                              <div>
-                                <div style={labelStyle}>Address line 2</div>
-                                <Input value={p2} onChange={(v) => updateSelectedEstimateProjectAddress({ line2: v })} placeholder="Address line 2" />
-                              </div>
-                            </div>
-
-                            <div>
-                              <div style={labelStyle}>Address line 3</div>
-                              <Input value={p3} onChange={(v) => updateSelectedEstimateProjectAddress({ line3: v })} placeholder="Address line 3" />
-                            </div>
-
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                              <div>
-                                <div style={labelStyle}>Town</div>
-                                <Input value={pt} onChange={(v) => updateSelectedEstimateProjectAddress({ town: v })} placeholder="Town" />
-                              </div>
-                              <div>
-                                <div style={labelStyle}>City</div>
-                                <Input value={pc} onChange={(v) => updateSelectedEstimateProjectAddress({ city: v })} placeholder="City" />
-                              </div>
-                            </div>
-
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 12, alignItems: "end" }}>
-                              <div>
-                                <div style={labelStyle}>County/District</div>
-                                <Input value={pco} onChange={(v) => updateSelectedEstimateProjectAddress({ county: v })} placeholder="County/District" />
-                              </div>
-                              <div>
-                                <div style={labelStyle}>Postcode</div>
-                                <Input
-                                  value={selectedEstimate.postcode || pp}
-                                  onChange={(v) => {
-                                    const structured = resolveStructuredAddress(
-                                      selectedEstimate.projectAddressStructured,
-                                      selectedEstimate.projectAddress || ""
-                                    );
-                                    const nextEstimate: Estimate = {
-                                      ...selectedEstimate,
-                                      projectAddressStructured: { ...structured, postcode: v },
-                                      projectAddress: buildAddressString({ ...structured, postcode: v }),
-                                      postcode: v,
-                                      latitude: null,
-                                      longitude: null,
-                                    };
-                                    updateSelectedEstimateLocation(nextEstimate);
-                                  }}
-                                  placeholder="Postcode"
-                                />
-                              </div>
-                              <div>
-                                <div style={labelStyle}>what3words</div>
-                                <Input
-                                  value={selectedEstimate.what3words || ""}
-                                  onChange={(v) => updateSelectedEstimateLocation({ ...selectedEstimate, what3words: v, latitude: null, longitude: null })}
-                                  placeholder="index.home.raft"
-                                />
-                              </div>
-                              <div>
-                                <div style={labelStyle}>Map</div>
-                                <Button
-                                  variant="secondary"
-                                  onClick={() => {
-                                    setWhat3WordsPickerError("");
-                                    setWhat3WordsPickerOpen(true);
-                                  }}
-                                  disabled={!googleMapsApiKey}
-                                  style={{ whiteSpace: "nowrap" }}
-                                >
-                                  Pick on map
-                                </Button>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  </Card>
-
-                  <DefaultsEditor
-                    title="Estimate Defaults"
-                    productType={selectedEstimate.defaults.productType}
-                    value={selectedEstimate.defaults}
-                    onChange={setEstimateDefaults}
-                    showDoorOptions={true}
-                  />
                 </div>
               </Card>
             )}
@@ -5493,23 +5307,15 @@ function renderEstimateMapBoard() {
             {view === "estimate_workspace" && selectedClient && selectedEstimate && (
               showPositionWizard ? (
                 <Card style={{ minHeight: 520, padding: 12 }}>
-                  <EstimateWorkflowProvider
-                    currentClientId={selectedClient.id}
-                    currentEstimateId={selectedEstimate.id}
-                    currentClient={selectedClient}
-                    currentEstimate={selectedEstimate}
-                    currentConfiguredPositionId={posDraft.id}
-                    currentConfiguredPosition={posDraft}
-                    workflowScope="position"
-                    workflowMode="create"
-                  >
-                    <ConfiguratorWorkflowShell
-                      estimate={selectedEstimate}
-                      position={posDraft}
-                      onExit={() => setShowPositionWizard(false)}
-                      onSavePosition={savePositionToEstimate}
-                    />
-                  </EstimateWorkflowProvider>
+                  <div style={{ display: "grid", gap: 12 }}>
+                    <H2>Estimate Configurator Disabled</H2>
+                    <Small>{DISABLED_ESTIMATE_CONFIGURATOR_MESSAGE}</Small>
+                    <div>
+                      <Button variant="secondary" onClick={() => setShowPositionWizard(false)}>
+                        Back to Estimate
+                      </Button>
+                    </div>
+                  </div>
                 </Card>
               ) : (
                 <Card style={{ minHeight: 520, display: "flex", flexDirection: "column" }}>
@@ -5526,9 +5332,6 @@ function renderEstimateMapBoard() {
                     </div>
 
                     <div style={{ display: "flex", gap: 10 }}>
-                      <Button variant="secondary" onClick={() => setView("estimate_defaults")}>
-                        Supplier & Product Defaults
-                      </Button>
                       <Button variant="secondary" onClick={() => setView("customers")}>
                         Back
                       </Button>
@@ -5784,3 +5587,5 @@ function renderEstimateMapBoard() {
     </AppShell>
   );
 }
+const DISABLED_ESTIMATE_CONFIGURATOR_MESSAGE =
+  "Estimate configurator flow is temporarily disabled while the Admin-led configurator is rebuilt.";
