@@ -4,6 +4,7 @@ import { getGroupedSettings } from "../../services/settings/settingsService";
 import { apiFetch } from "../../services/api/apiClient";
 import type { GroupedSystemSettings, SystemSettingRecord } from "../../types/systemSettings";
 import { H3, Small } from "../estimatePicker/tabs/shared";
+import AdminConfiguratorCatalogWorkspace from "./AdminConfiguratorCatalogWorkspace";
 import "./AdminPlaceholderPage.css";
 
 type AdminSectionKey =
@@ -28,7 +29,7 @@ const sectionList: Array<{ key: AdminSectionKey; label: string; description: str
   { key: "settings", label: "Settings", description: "System-wide settings and feature behaviour." },
   { key: "project_preferences", label: "Project Preferences", description: "Default/demo loading behaviour for QuoteSync projects." },
   { key: "feature_controls", label: "Feature Controls", description: "Enable or disable major system capabilities." },
-  { key: "configurator_controls", label: "Configurator Controls", description: "Default configurator behaviour and presentation." },
+  { key: "configurator_controls", label: "Configurator Controls", description: "Manufacturers, window types, and render-definition controls." },
   { key: "branding", label: "Branding", description: "Brand identity, logo, colours, and document identity." },
   { key: "integrations", label: "Integrations", description: "Maps, what3words, and future third-party services." },
   { key: "supplier_defaults", label: "Supplier / Product Defaults", description: "Future supplier and product control area." },
@@ -447,10 +448,7 @@ export default function AdminPlaceholderPage() {
         description="Dedicated feature access and capability controls will live here. This phase keeps the main settings section active first."
       />
     ) : activeSection === "configurator_controls" ? (
-      <AdminSectionPlaceholder
-        title="Configurator Controls"
-        description="Configurator-specific admin controls will move here as the configurator becomes settings-driven rather than hardcoded."
-      />
+      <AdminConfiguratorCatalogWorkspace />
     ) : activeSection === "branding" ? (
       <AdminSectionPlaceholder
         title="Branding"
