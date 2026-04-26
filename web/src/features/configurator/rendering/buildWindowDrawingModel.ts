@@ -5,6 +5,7 @@ import type {
   DrawingLine,
   DrawingMarker,
   DrawingModel,
+  DrawingPolygon,
   DrawingRect,
   DrawingShape,
 } from "./drawingModel";
@@ -451,6 +452,45 @@ function buildOpeningSymbol(
   return [
     dash({ x1: pivotX, y1: topPivotY, x2: openingSideMidpoint.x, y2: openingSideMidpoint.y }),
     dash({ x1: pivotX, y1: bottomPivotY, x2: openingSideMidpoint.x, y2: openingSideMidpoint.y }),
+  ];
+}
+
+function buildExternalTiltTurnShortcutSymbol(
+  glassBounds: { x0: number; x1: number; y0: number; y1: number },
+  insertion: string
+): DrawingLine[] {
+  const dash = (line: Omit<DrawingLine, "kind">): DrawingLine => ({
+    kind: "line",
+    dashed: true,
+    stroke: "#111",
+    strokeWidth: 1.1,
+    ...line,
+  });
+  const internalHingeSide =
+    isRightHandInsertion(insertion) ? "right" : "left";
+  const mirroredHingeSide = internalHingeSide === "left" ? "right" : "left";
+  const glassPoints = {
+    topLeft: { x: glassBounds.x0, y: glassBounds.y0 },
+    topRight: { x: glassBounds.x1, y: glassBounds.y0 },
+    bottomLeft: { x: glassBounds.x0, y: glassBounds.y1 },
+    bottomRight: { x: glassBounds.x1, y: glassBounds.y1 },
+    topCenter: { x: (glassBounds.x0 + glassBounds.x1) / 2, y: glassBounds.y0 },
+    leftCenter: { x: glassBounds.x0, y: (glassBounds.y0 + glassBounds.y1) / 2 },
+    rightCenter: { x: glassBounds.x1, y: (glassBounds.y0 + glassBounds.y1) / 2 },
+  };
+  if (mirroredHingeSide === "left") {
+    return [
+      dash({ x1: glassPoints.topLeft.x, y1: glassPoints.topLeft.y, x2: glassPoints.rightCenter.x, y2: glassPoints.rightCenter.y }),
+      dash({ x1: glassPoints.bottomLeft.x, y1: glassPoints.bottomLeft.y, x2: glassPoints.rightCenter.x, y2: glassPoints.rightCenter.y }),
+      dash({ x1: glassPoints.bottomLeft.x, y1: glassPoints.bottomLeft.y, x2: glassPoints.topCenter.x, y2: glassPoints.topCenter.y }),
+      dash({ x1: glassPoints.topCenter.x, y1: glassPoints.topCenter.y, x2: glassPoints.bottomRight.x, y2: glassPoints.bottomRight.y }),
+    ];
+  }
+  return [
+    dash({ x1: glassPoints.topRight.x, y1: glassPoints.topRight.y, x2: glassPoints.leftCenter.x, y2: glassPoints.leftCenter.y }),
+    dash({ x1: glassPoints.bottomRight.x, y1: glassPoints.bottomRight.y, x2: glassPoints.leftCenter.x, y2: glassPoints.leftCenter.y }),
+    dash({ x1: glassPoints.bottomRight.x, y1: glassPoints.bottomRight.y, x2: glassPoints.topCenter.x, y2: glassPoints.topCenter.y }),
+    dash({ x1: glassPoints.topCenter.x, y1: glassPoints.topCenter.y, x2: glassPoints.bottomLeft.x, y2: glassPoints.bottomLeft.y }),
   ];
 }
 
@@ -1001,7 +1041,7 @@ export function buildWindowDrawingModel(pos: PosDraft): DrawingModel {
           )
         );
       }
-      if (view === "outside" && fieldsX === 1 && fieldsY === 1) {
+      if (view === "outside" && fieldsX === 1 && fieldsY === 1 && (!openingCell || isTiltAndTurnInsertion(insertion))) {
         const isSashBasedExternal = hasSashCell;
         const frameOuterBounds = { x0: frameX, x1: frameX + frameWidth, y0: frameY, y1: frameY + frameHeight };
         const frameCladdingLeftMm = isSashBasedExternal ? profiles?.sash.jambLeft?.visibleFaceWidthMm ?? 78 : 78;
@@ -1071,6 +1111,9 @@ export function buildWindowDrawingModel(pos: PosDraft): DrawingModel {
           fill: "#b9d7f3",
           role: isSashBasedExternal ? "glass_opening" : "glass_fixed",
         });
+        if (openingCell && isTiltAndTurnInsertion(insertion)) {
+          glassShapes.push(...buildExternalTiltTurnShortcutSymbol(glassBounds, insertion));
+        }
 
         labels.push({
           x: glassBounds.x0 + 8,
