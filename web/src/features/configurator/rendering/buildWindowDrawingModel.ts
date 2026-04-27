@@ -868,23 +868,39 @@ export function buildWindowDrawingModel(pos: PosDraft): DrawingModel {
     pos.windowConfiguration?.frame?.externalColour,
     view
   );
+  const junctionRecordsByKey = new Map(
+    (pos.windowConfiguration?.junctions ?? []).map((junction) => [
+      junction.key,
+      {
+        key: junction.key,
+        type: String(junction.type || "static"),
+        ownerFieldId: junction.ownerFieldId ?? null,
+      },
+    ])
+  );
   const junctionTypeByKey = new Map(
-    (pos.windowConfiguration?.junctions ?? []).map((junction) => [junction.key, String(junction.type || "static")])
+    Array.from(junctionRecordsByKey.values()).map((junction) => [junction.key, junction.type])
   );
   const fieldConfigByKey = new Map(
     (pos.windowConfiguration?.fields ?? []).map((field) => [field.key, field])
   );
   const defaultHandleHeightMm = pos.windowConfiguration?.hardware?.defaultHandleHeightMm ?? 1050;
   const defaultHingeType = pos.windowConfiguration?.hardware?.defaultHingeType ?? "Standard";
-  const isFlyingPair = fieldsX === 2 && fieldsY === 1 && junctionTypeByKey.get("vertical-1") === "flying";
-  const leftInsertion = insertions[keyForCell(0, 0)] ?? pos.insertion;
-  const rightInsertion = insertions[keyForCell(1, 0)] ?? pos.insertion;
+  const primaryVerticalJunction = junctionRecordsByKey.get("vertical-1") ?? null;
+  const flyingOwnerFieldId =
+    fieldsX === 2 &&
+    fieldsY === 1 &&
+    primaryVerticalJunction?.type === "flying" &&
+    primaryVerticalJunction.ownerFieldId
+      ? primaryVerticalJunction.ownerFieldId
+      : null;
   const flyingMasterCol =
-    isFlyingPair && isTurnOnlyInsertion(leftInsertion) && isTiltAndTurnInsertion(rightInsertion)
+    flyingOwnerFieldId === keyForCell(0, 0)
       ? 0
-      : isFlyingPair && isTiltAndTurnInsertion(leftInsertion) && isTurnOnlyInsertion(rightInsertion)
+      : flyingOwnerFieldId === keyForCell(1, 0)
         ? 1
         : null;
+  const isFlyingPair = flyingMasterCol !== null;
   const configuredMeetingGapMm = Number(profiles?.flyingMullion.meetingGapMm || 5);
   const flyingGapPx = mmToPx(configuredMeetingGapMm, scale, 1, 12);
   const verticalJunctionWidths = Array.from({ length: Math.max(0, fieldsX - 1) }, (_, index) => {
