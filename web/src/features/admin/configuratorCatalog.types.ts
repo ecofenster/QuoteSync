@@ -29,6 +29,29 @@ export type ConfiguratorProductRecord = {
   is_active: boolean;
 };
 
+export type ConfiguratorProductCategory =
+  | "windows"
+  | "side_balcony_doors"
+  | "lift_slide"
+  | "sliding"
+  | "curtain_wall"
+  | "rooflights"
+  | "internal_doors"
+  | "garage_doors"
+  | "pergolas"
+  | "blinds"
+  | "shutters";
+
+export type ConfiguratorFieldCountMode =
+  | "1"
+  | "2"
+  | "3"
+  | "4"
+  | "5"
+  | "6"
+  | "grid"
+  | "freehand";
+
 export type ConfiguratorWindowTypeRecord = {
   id: string;
   product_id: string;
@@ -38,8 +61,49 @@ export type ConfiguratorWindowTypeRecord = {
   operation_type: string;
   sliding_direction: string;
   view_logic: string;
+  product_category?: ConfiguratorProductCategory | string | null;
+  layout_mode?: "single" | "linear_horizontal" | "linear_vertical" | "grid" | "freehand" | string | null;
+  field_count_mode?: ConfiguratorFieldCountMode | string | null;
   notes: string;
   is_active: boolean;
+};
+
+export type ConfiguratorWindowTypeDesignDefinitionRecord = {
+  id: string;
+  window_type_id: string;
+  field_key: string;
+  operation_type: string;
+  opening_direction: string;
+  handing?: "left" | "right" | "center" | string | null;
+  sequence?: "tilt_first" | "turn_first" | string | null;
+  notes?: string | null;
+  is_active?: boolean;
+};
+
+export type ConfiguratorSectionMappingRole =
+  | "left_jamb"
+  | "right_jamb"
+  | "head"
+  | "bottom"
+  | "cill"
+  | "static_mullion"
+  | "flying_mullion"
+  | "threshold";
+
+export type ConfiguratorDivisionJunctionKind =
+  | "static_vertical"
+  | "static_horizontal"
+  | "flying_vertical";
+
+export type ConfiguratorWindowTypeDivisionRuleRecord = {
+  id: string;
+  window_type_id: string;
+  junction_kind: ConfiguratorDivisionJunctionKind | string;
+  adjustable_split_position: boolean;
+  supports_owner_field: boolean;
+  default_owner_field_id?: string | null;
+  notes?: string | null;
+  is_active?: boolean;
 };
 
 export type ConfiguratorSectionProfileCategory =
@@ -111,6 +175,7 @@ export type ConfiguratorProfileMappingRecord = {
   window_type_id: string | null;
   profile_id: string;
   mapping_key: ConfiguratorProfileMappingKey | string;
+  section_role?: ConfiguratorSectionMappingRole | string | null;
   operation_type: ConfiguratorOperationApplicability | string;
   notes: string;
   is_active: boolean;

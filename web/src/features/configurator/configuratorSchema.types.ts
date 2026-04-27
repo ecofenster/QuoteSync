@@ -7,6 +7,29 @@ export type ConfiguratorLayoutMode =
   | "grid"
   | "freehand";
 
+export type ConfiguratorFieldCountMode =
+  | "1"
+  | "2"
+  | "3"
+  | "4"
+  | "5"
+  | "6"
+  | "grid"
+  | "freehand";
+
+export type ConfiguratorProductCategory =
+  | "windows"
+  | "side_balcony_doors"
+  | "lift_slide"
+  | "sliding"
+  | "curtain_wall"
+  | "rooflights"
+  | "internal_doors"
+  | "garage_doors"
+  | "pergolas"
+  | "blinds"
+  | "shutters";
+
 export type ConfiguratorOpeningDirection = "inward" | "outward" | "neutral";
 
 export type ConfiguratorOpeningHanding = "left" | "right" | "center";
@@ -70,6 +93,29 @@ export type ConfiguratorFieldDefinitionV2 = {
   renderDefinition?: ConfiguratorFieldRenderDefinitionRef | null;
 };
 
+export type ConfiguratorWindowTypeFieldDesignDefinitionV2 = {
+  fieldKey: string;
+  operationType: ConfiguratorOperationType;
+  openingDirection: ConfiguratorOpeningDirection;
+  handing?: ConfiguratorOpeningHanding | null;
+  sequence?: ConfiguratorOpeningSequence | null;
+};
+
+export type ConfiguratorSectionMappingRole =
+  | "left_jamb"
+  | "right_jamb"
+  | "head"
+  | "bottom"
+  | "cill"
+  | "static_mullion"
+  | "flying_mullion"
+  | "threshold";
+
+export type ConfiguratorDivisionJunctionKind =
+  | "static_vertical"
+  | "static_horizontal"
+  | "flying_vertical";
+
 export type ConfiguratorJunctionDefinitionV2 = {
   key: string;
   axis: "vertical" | "horizontal";
@@ -81,6 +127,13 @@ export type ConfiguratorJunctionDefinitionV2 = {
   endRow: number;
   ownerFieldId?: string | null;
   staticMullion?: ConfiguratorStaticMullionDefinition | null;
+};
+
+export type ConfiguratorWindowTypeDivisionRuleV2 = {
+  junctionKind: ConfiguratorDivisionJunctionKind;
+  adjustableSplitPosition: boolean;
+  supportsOwnerField: boolean;
+  defaultOwnerFieldId?: string | null;
 };
 
 export type ConfiguratorLayoutDefinitionV2 = {
@@ -113,6 +166,13 @@ export type ConfiguratorSystemDefinitionV2 = {
   manufacturerId?: string | null;
   productId?: string | null;
   windowTypeId?: string | null;
-  productGroup: string;
+  productGroup: ConfiguratorProductCategory | string;
   layout: ConfiguratorLayoutDefinitionV2;
+  fieldCountMode?: ConfiguratorFieldCountMode | null;
+  fieldDesigns?: ConfiguratorWindowTypeFieldDesignDefinitionV2[] | null;
+  sectionMappings?: Array<{
+    role: ConfiguratorSectionMappingRole;
+    sectionRefId?: string | null;
+  }> | null;
+  divisionRules?: ConfiguratorWindowTypeDivisionRuleV2[] | null;
 };
