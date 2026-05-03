@@ -43,7 +43,12 @@ export type DrawingText = {
 };
 
 export type DrawingDimension = {
-  axis: "horizontal" | "vertical";
+  id?: string;
+  role?: string;
+  axis: "horizontal" | "vertical" | "x" | "y";
+  index?: number;
+  valueMm?: number;
+  editable?: boolean;
   value: string;
   line: DrawingLine;
   tickA: DrawingLine;
@@ -88,6 +93,7 @@ export type DrawingModel = {
     }>;
     renderSource: "native_drawing_model";
     layerHints: string[];
+    devReports?: Record<string, unknown>;
   };
   interaction: {
     cells: Array<{ key: string; x: number; y: number; width: number; height: number }>;

@@ -10,6 +10,7 @@ import type {
   DrawingShape,
 } from "./drawingModel";
 import type { ResolvedSectionProfileSet } from "./profileSectionMapping";
+import { validateB92FixedInternalContractPreview } from "./profileResolution/b92ContractValidation";
 
 type PosDraft = {
   widthMm: number;
@@ -34,6 +35,10 @@ type PosDraft = {
     }>;
     hardware?: { defaultHandleHeightMm?: number | null; defaultHingeType?: string | null };
     frame?: { finishMode?: "single" | "dual"; internalColour?: string | null; externalColour?: string | null };
+    dev?: {
+      b92FixedInternalContractValidation?: boolean | null;
+      b92System?: string | null;
+    };
   };
 };
 
@@ -862,6 +867,26 @@ export function buildWindowDrawingModel(pos: PosDraft): DrawingModel {
   const rowSplits = normalizeSplits(heightMm, fieldsY, pos.rowHeightsMm);
   const insertions = normalizeCellInsertions(fieldsX, fieldsY, pos.cellInsertions, pos.insertion);
   const view = pos.orientationView ?? "inside";
+  const shouldValidateB92FixedInternalContract =
+    view === "inside" &&
+    fieldsX === 1 &&
+    fieldsY === 1 &&
+    isFixedInsertion(pos.insertion) &&
+    !isFixedSashInsertion(pos.insertion) &&
+    !!pos.windowConfiguration?.dev?.b92FixedInternalContractValidation &&
+    pos.windowConfiguration.dev.b92System === "B92";
+  const b92FixedInternalContractValidationReport = shouldValidateB92FixedInternalContract
+    ? validateB92FixedInternalContractPreview({
+        system: pos.windowConfiguration.dev.b92System ?? null,
+        view,
+        fieldsX,
+        fieldsY,
+        insertion: pos.insertion,
+        widthMm,
+        heightMm,
+        devFlagEnabled: pos.windowConfiguration.dev.b92FixedInternalContractValidation,
+      })
+    : null;
   const frameFinishFill = resolveFrameFinishColour(
     pos.windowConfiguration?.frame?.finishMode,
     pos.windowConfiguration?.frame?.internalColour,
@@ -1481,6 +1506,13 @@ export function buildWindowDrawingModel(pos: PosDraft): DrawingModel {
       referenceInputs: profiles?.referenceInputs ?? [],
       renderSource: "native_drawing_model",
       layerHints: ["frame", "sash", "glass", "junctions", "dimensions", "annotations", "cill"],
+      ...(b92FixedInternalContractValidationReport
+        ? {
+            devReports: {
+              b92FixedInternalContractValidation: b92FixedInternalContractValidationReport,
+            },
+          }
+        : {}),
     },
     interaction: {
       cells: interactionCells,

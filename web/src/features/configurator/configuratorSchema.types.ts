@@ -84,6 +84,11 @@ export type ConfiguratorGlassOptionRef = {
   glassSpec?: string | null;
 };
 
+export type ConfiguratorRenderDevFlags = {
+  b92FixedInternalContractValidation?: boolean | null;
+  b92System?: "B92" | string | null;
+};
+
 export type ConfiguratorFieldDefinitionV2 = {
   key: string;
   row: number;
@@ -109,7 +114,35 @@ export type ConfiguratorSectionMappingRole =
   | "cill"
   | "static_mullion"
   | "flying_mullion"
+  | "glazing_bar"
   | "threshold";
+
+export type ConfiguratorSectionVariantCondition =
+  | "standard"
+  | "wider_frame"
+  | "frame_only"
+  | "frame_with_sash"
+  | "no_rebate"
+  | "internal_rebate"
+  | "external_rebate"
+  | "rebate_both_sides";
+
+export type ConfiguratorSectionOperationContext =
+  | "fixed"
+  | "fixed_sash"
+  | "turn"
+  | "tilt"
+  | "tilt_turn"
+  | "sliding"
+  | "lift_slide"
+  | "door";
+
+export type ConfiguratorSectionMappingRuleV2 = {
+  profileRole: ConfiguratorSectionMappingRole;
+  variantCondition: ConfiguratorSectionVariantCondition;
+  operationContext: ConfiguratorSectionOperationContext;
+  sectionReferenceId?: string | null;
+};
 
 export type ConfiguratorDivisionJunctionKind =
   | "static_vertical"
@@ -174,5 +207,6 @@ export type ConfiguratorSystemDefinitionV2 = {
     role: ConfiguratorSectionMappingRole;
     sectionRefId?: string | null;
   }> | null;
+  sectionMappingRules?: ConfiguratorSectionMappingRuleV2[] | null;
   divisionRules?: ConfiguratorWindowTypeDivisionRuleV2[] | null;
 };
