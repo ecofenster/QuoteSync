@@ -17,6 +17,7 @@ export type B92FixedInternalContractValidationInput = {
   widthMm: number;
   heightMm: number;
   devFlagEnabled?: boolean | null;
+  useAdminSourceModel?: boolean | null;
   fieldId?: string;
   glassValidationDimensionsMm?: {
     width: number;
@@ -88,6 +89,9 @@ export function validateB92FixedInternalContractPreview(
     heightMm: input.heightMm,
     fieldId: input.fieldId,
     glassValidationDimensionsMm: input.glassValidationDimensionsMm,
+    dev: {
+      useAdminSourceModel: input.useAdminSourceModel,
+    },
   });
   const comparison = compareB92FixedSingleFieldContract({
     expectedProfileRefs: {

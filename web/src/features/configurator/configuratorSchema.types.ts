@@ -87,6 +87,7 @@ export type ConfiguratorGlassOptionRef = {
 export type ConfiguratorRenderDevFlags = {
   b92FixedInternalContractValidation?: boolean | null;
   b92System?: "B92" | string | null;
+  useAdminSourceModel?: boolean | null;
 };
 
 export type ConfiguratorFieldDefinitionV2 = {

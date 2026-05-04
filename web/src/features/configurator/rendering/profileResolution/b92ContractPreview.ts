@@ -1,3 +1,6 @@
+import { buildWindowTypeRenderModelFromSource } from "./adminWindowTypeSourceAdapter";
+import { compareAdminSourceContractToResolverContract } from "./adminSourceContractComparison";
+import { b92FixedInternalWindowTypeSourceSeed } from "./b92FixedInternalWindowTypeSource.seed";
 import { resolveB92Profiles } from "./b92ProfileResolver";
 import type { B92ResolverInput } from "./b92ProfileTypes";
 import { buildB92WindowTypeRenderModel } from "./b92WindowTypeRenderAdapter";
@@ -12,6 +15,9 @@ export type BuildB92FixedSingleFieldContractPreviewInput = {
     height: number;
     note?: string;
   } | null;
+  dev?: {
+    useAdminSourceModel?: boolean | null;
+  };
 };
 
 function assertFiniteDimension(value: number, label: string) {
@@ -19,6 +25,35 @@ function assertFiniteDimension(value: number, label: string) {
     throw new Error(`Invalid B92 fixed single-field contract preview ${label}: expected a finite number.`);
   }
   return value;
+}
+
+function adminSourceComparisonNotes(input: {
+  widthMm: number;
+  heightMm: number;
+  resolverContract: WindowTypeRenderModel;
+}): string[] {
+  try {
+    const adminSourceContract = buildWindowTypeRenderModelFromSource(b92FixedInternalWindowTypeSourceSeed, {
+      widthMm: input.widthMm,
+      heightMm: input.heightMm,
+    });
+    const comparison = compareAdminSourceContractToResolverContract({
+      resolverContract: input.resolverContract,
+      adminSourceContract,
+    });
+    const failingKeys = comparison.differences.map((difference) => difference.key);
+    return [
+      `devReports.adminSourceModelUsed=false`,
+      `devReports.adminVsResolverContractComparison.pass=${comparison.pass}`,
+      `devReports.adminVsResolverContractComparison.failingKeys=${failingKeys.length ? failingKeys.join(",") : "none"}`,
+    ];
+  } catch (error) {
+    return [
+      `devReports.adminSourceModelUsed=false`,
+      `devReports.adminVsResolverContractComparison.pass=false`,
+      `devReports.adminVsResolverContractComparison.error=${error instanceof Error ? error.message : String(error)}`,
+    ];
+  }
 }
 
 export function buildB92FixedSingleFieldContractPreview(
@@ -49,7 +84,7 @@ export function buildB92FixedSingleFieldContractPreview(
       }
     : null;
 
-  return buildB92WindowTypeRenderModel({
+  const resolverContract = buildB92WindowTypeRenderModel({
     resolverInput,
     resolverOutput: resolveB92Profiles(resolverInput),
     overallDimensionsMm: {
@@ -76,4 +111,23 @@ export function buildB92FixedSingleFieldContractPreview(
       : {}),
     validationMode: "external_refs_internal_validation",
   });
+
+  if (input.dev?.useAdminSourceModel === true) {
+    return {
+      ...resolverContract,
+      meta: {
+        ...resolverContract.meta,
+        notes: [
+          ...(resolverContract.meta.notes ?? []),
+          ...adminSourceComparisonNotes({
+            widthMm,
+            heightMm,
+            resolverContract,
+          }),
+        ],
+      },
+    };
+  }
+
+  return resolverContract;
 }
