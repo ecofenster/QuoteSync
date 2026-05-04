@@ -17,6 +17,7 @@ export type BuildB92FixedSingleFieldContractPreviewInput = {
   } | null;
   dev?: {
     useAdminSourceModel?: boolean | null;
+    useAdminSourceModelReturn?: boolean | null;
   };
 };
 
@@ -27,11 +28,12 @@ function assertFiniteDimension(value: number, label: string) {
   return value;
 }
 
-function adminSourceComparisonNotes(input: {
+function buildAdminSourceComparison(input: {
   widthMm: number;
   heightMm: number;
   resolverContract: WindowTypeRenderModel;
-}): string[] {
+  allowReturn: boolean;
+}): { contract: WindowTypeRenderModel | null; notes: string[]; canReturn: boolean } {
   try {
     const adminSourceContract = buildWindowTypeRenderModelFromSource(b92FixedInternalWindowTypeSourceSeed, {
       widthMm: input.widthMm,
@@ -42,17 +44,35 @@ function adminSourceComparisonNotes(input: {
       adminSourceContract,
     });
     const failingKeys = comparison.differences.map((difference) => difference.key);
-    return [
-      `devReports.adminSourceModelUsed=false`,
-      `devReports.adminVsResolverContractComparison.pass=${comparison.pass}`,
-      `devReports.adminVsResolverContractComparison.failingKeys=${failingKeys.length ? failingKeys.join(",") : "none"}`,
-    ];
+    const canReturn = input.allowReturn && comparison.pass === true && comparison.differences.length === 0;
+    const fallbackReason = canReturn
+      ? "none"
+      : input.allowReturn
+        ? "admin comparison did not pass exactly"
+        : "useAdminSourceModelReturn flag is not enabled";
+    return {
+      contract: adminSourceContract,
+      canReturn,
+      notes: [
+        `devReports.adminSourceModelUsed=false`,
+        `devReports.adminVsResolverContractComparison.pass=${comparison.pass}`,
+        `devReports.adminVsResolverContractComparison.failingKeys=${failingKeys.length ? failingKeys.join(",") : "none"}`,
+        `devReports.adminSourceModelReturnAllowed=${input.allowReturn}`,
+        `devReports.adminSourceModelFallbackReason=${fallbackReason}`,
+      ],
+    };
   } catch (error) {
-    return [
-      `devReports.adminSourceModelUsed=false`,
-      `devReports.adminVsResolverContractComparison.pass=false`,
-      `devReports.adminVsResolverContractComparison.error=${error instanceof Error ? error.message : String(error)}`,
-    ];
+    return {
+      contract: null,
+      canReturn: false,
+      notes: [
+        `devReports.adminSourceModelUsed=false`,
+        `devReports.adminVsResolverContractComparison.pass=false`,
+        `devReports.adminVsResolverContractComparison.error=${error instanceof Error ? error.message : String(error)}`,
+        `devReports.adminSourceModelReturnAllowed=${input.allowReturn}`,
+        `devReports.adminSourceModelFallbackReason=admin source adapter or comparison failed`,
+      ],
+    };
   }
 }
 
@@ -113,17 +133,35 @@ export function buildB92FixedSingleFieldContractPreview(
   });
 
   if (input.dev?.useAdminSourceModel === true) {
+    const adminSourceComparison = buildAdminSourceComparison({
+      widthMm,
+      heightMm,
+      resolverContract,
+      allowReturn: input.dev.useAdminSourceModelReturn === true,
+    });
+
+    if (adminSourceComparison.canReturn && adminSourceComparison.contract) {
+      return {
+        ...adminSourceComparison.contract,
+        meta: {
+          ...adminSourceComparison.contract.meta,
+          notes: [
+            ...(adminSourceComparison.contract.meta.notes ?? []),
+            ...adminSourceComparison.notes.map((note) =>
+              note === "devReports.adminSourceModelUsed=false" ? "devReports.adminSourceModelUsed=true" : note
+            ),
+          ],
+        },
+      };
+    }
+
     return {
       ...resolverContract,
       meta: {
         ...resolverContract.meta,
         notes: [
           ...(resolverContract.meta.notes ?? []),
-          ...adminSourceComparisonNotes({
-            widthMm,
-            heightMm,
-            resolverContract,
-          }),
+          ...adminSourceComparison.notes,
         ],
       },
     };

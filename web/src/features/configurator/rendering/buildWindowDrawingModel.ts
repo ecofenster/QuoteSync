@@ -48,6 +48,7 @@ type PosDraft = {
       b92ContractDrawingReturn?: boolean | null;
       b92System?: string | null;
       useAdminSourceModel?: boolean | null;
+      useAdminSourceModelReturn?: boolean | null;
     };
   };
 };
@@ -903,6 +904,7 @@ export function buildWindowDrawingModel(pos: PosDraft): DrawingModel {
         heightMm,
         devFlagEnabled: pos.windowConfiguration?.dev?.b92FixedInternalContractValidation,
         useAdminSourceModel: pos.windowConfiguration?.dev?.useAdminSourceModel,
+        useAdminSourceModelReturn: pos.windowConfiguration?.dev?.useAdminSourceModelReturn,
       })
     : null;
   const shouldRunB92ContractDrawingParity =
