@@ -11,6 +11,13 @@ import type {
 } from "./drawingModel";
 import type { ResolvedSectionProfileSet } from "./profileSectionMapping";
 import { validateB92FixedInternalContractPreview } from "./profileResolution/b92ContractValidation";
+import { buildB92FixedInternalDrawingModelFromContract } from "./profileResolution/b92ContractDrawingAdapter";
+import {
+  buildB92FixedInternalParityTarget,
+  compareB92FixedInternalParity,
+  serializeDrawingModelForB92FixedInternalParity,
+  type B92FixedInternalParityComparison,
+} from "./profileResolution/b92FixedInternalParity";
 
 type PosDraft = {
   widthMm: number;
@@ -37,10 +44,19 @@ type PosDraft = {
     frame?: { finishMode?: "single" | "dual"; internalColour?: string | null; externalColour?: string | null };
     dev?: {
       b92FixedInternalContractValidation?: boolean | null;
+      b92ContractDrawing?: boolean | null;
+      b92ContractDrawingReturn?: boolean | null;
       b92System?: string | null;
     };
   };
 };
+
+type B92FixedInternalParityDevReport =
+  | B92FixedInternalParityComparison
+  | {
+      pass: false;
+      error: string;
+    };
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
@@ -877,16 +893,53 @@ export function buildWindowDrawingModel(pos: PosDraft): DrawingModel {
     pos.windowConfiguration.dev.b92System === "B92";
   const b92FixedInternalContractValidationReport = shouldValidateB92FixedInternalContract
     ? validateB92FixedInternalContractPreview({
-        system: pos.windowConfiguration.dev.b92System ?? null,
+        system: pos.windowConfiguration?.dev?.b92System ?? null,
         view,
         fieldsX,
         fieldsY,
         insertion: pos.insertion,
         widthMm,
         heightMm,
-        devFlagEnabled: pos.windowConfiguration.dev.b92FixedInternalContractValidation,
+        devFlagEnabled: pos.windowConfiguration?.dev?.b92FixedInternalContractValidation,
       })
     : null;
+  const shouldRunB92ContractDrawingParity =
+    !!pos.windowConfiguration?.dev?.b92ContractDrawing &&
+    pos.windowConfiguration?.dev?.b92System === "B92" &&
+    view === "inside" &&
+    fieldsX === 1 &&
+    fieldsY === 1 &&
+    isFixedInsertion(pos.insertion) &&
+    !isFixedSashInsertion(pos.insertion) &&
+    b92FixedInternalContractValidationReport?.eligible === true &&
+    !!b92FixedInternalContractValidationReport.contract &&
+    b92FixedInternalContractValidationReport.comparison?.pass === true;
+  let b92FixedInternalParityResult: B92FixedInternalParityDevReport | null = null;
+  if (shouldRunB92ContractDrawingParity && b92FixedInternalContractValidationReport?.contract) {
+    try {
+      const b92ContractDrawingModel = buildB92FixedInternalDrawingModelFromContract(
+        b92FixedInternalContractValidationReport.contract
+      );
+      const b92FixedInternalParityTarget = buildB92FixedInternalParityTarget({
+        widthMm,
+        heightMm,
+        glassOrderNoteMm: {
+          widthMm: widthMm - 156 + 26,
+          heightMm: heightMm - 171 + 26,
+        },
+      });
+      b92FixedInternalParityResult = compareB92FixedInternalParity({
+        expected: b92FixedInternalParityTarget,
+        actual: serializeDrawingModelForB92FixedInternalParity(b92ContractDrawingModel),
+        toleranceMm: 0,
+      });
+    } catch (error) {
+      b92FixedInternalParityResult = {
+        pass: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
   const frameFinishFill = resolveFrameFinishColour(
     pos.windowConfiguration?.frame?.finishMode,
     pos.windowConfiguration?.frame?.internalColour,
@@ -1506,10 +1559,18 @@ export function buildWindowDrawingModel(pos: PosDraft): DrawingModel {
       referenceInputs: profiles?.referenceInputs ?? [],
       renderSource: "native_drawing_model",
       layerHints: ["frame", "sash", "glass", "junctions", "dimensions", "annotations", "cill"],
-      ...(b92FixedInternalContractValidationReport
+      ...(b92FixedInternalContractValidationReport || b92FixedInternalParityResult
         ? {
             devReports: {
-              b92FixedInternalContractValidation: b92FixedInternalContractValidationReport,
+              ...(b92FixedInternalContractValidationReport
+                ? { b92FixedInternalContractValidation: b92FixedInternalContractValidationReport }
+                : {}),
+              ...(b92FixedInternalParityResult
+                ? {
+                    b92FixedInternalParityResult,
+                    b92ContractDrawingUsed: false,
+                  }
+                : {}),
             },
           }
         : {}),
