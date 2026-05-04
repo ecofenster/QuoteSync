@@ -27,6 +27,10 @@ export type WindowTypeSourceModelProfileRole =
   | "left_jamb"
   | "right_jamb"
   | "sill"
+  | "sash_head"
+  | "sash_left_jamb"
+  | "sash_right_jamb"
+  | "sash_bottom"
   | "fixed_internal_interface"
   | "glazing_bead_head"
   | "glazing_bead_left"
@@ -51,6 +55,20 @@ export type WindowTypeSourceModelPerimeterProfiles = {
   bottom: WindowTypeSourceModelProfileRef;
 };
 
+export type WindowTypeSourceModelSashProfiles = {
+  top?: WindowTypeSourceModelProfileRef;
+  left?: WindowTypeSourceModelProfileRef;
+  right?: WindowTypeSourceModelProfileRef;
+  bottom?: WindowTypeSourceModelProfileRef;
+};
+
+export type WindowTypeSourceModelBeadProfiles = {
+  top?: WindowTypeSourceModelProfileRef;
+  left?: WindowTypeSourceModelProfileRef;
+  right?: WindowTypeSourceModelProfileRef;
+  bottom?: WindowTypeSourceModelProfileRef;
+};
+
 export type WindowTypeSourceModelInterfaceProfiles = {
   fixedInternal?: WindowTypeSourceModelProfileRef;
 };
@@ -62,6 +80,41 @@ export type WindowTypeSourceModelVisibleFrameRule = {
   bottom: number;
 };
 
+export type WindowTypeSourceModelSashVisibleFaceRule = {
+  top?: number;
+  left?: number;
+  right?: number;
+  bottom?: number;
+};
+
+export type WindowTypeSourceModelSashInsetOverlapRule = {
+  top?: number;
+  left?: number;
+  right?: number;
+  bottom?: number;
+  formula?: "frame_opening_offset" | "explicit_per_side";
+  notes?: string[];
+};
+
+export type WindowTypeSourceModelSashGeometryRules = {
+  visibleFaceMm?: WindowTypeSourceModelSashVisibleFaceRule;
+  insetMm?: WindowTypeSourceModelSashInsetOverlapRule;
+  overlapMm?: WindowTypeSourceModelSashInsetOverlapRule;
+};
+
+export type WindowTypeSourceModelBeadVisibleFaceRule = {
+  top?: number;
+  left?: number;
+  right?: number;
+  bottom?: number;
+};
+
+export type WindowTypeSourceModelBeadGeometryRules = {
+  visibleFaceMm?: WindowTypeSourceModelBeadVisibleFaceRule;
+  biteBehindBeadMm?: number;
+  notes?: string[];
+};
+
 export type WindowTypeSourceModelGlassOrderRule = {
   biteBehindBeadMm: number;
   widthDeltaMm: number;
@@ -71,6 +124,8 @@ export type WindowTypeSourceModelGlassOrderRule = {
 
 export type WindowTypeSourceModelGeometryRules = {
   visibleFrameMm: WindowTypeSourceModelVisibleFrameRule;
+  sashGeometryRules?: WindowTypeSourceModelSashGeometryRules;
+  beadGeometryRules?: WindowTypeSourceModelBeadGeometryRules;
   glassOrderRule: WindowTypeSourceModelGlassOrderRule;
 };
 
@@ -79,6 +134,8 @@ export type WindowTypeSourceModelFieldRule = {
   operationType: string;
   excludedOperationTypes?: string[];
   perimeterProfiles: WindowTypeSourceModelPerimeterProfiles;
+  sashProfiles?: WindowTypeSourceModelSashProfiles;
+  beadProfiles?: WindowTypeSourceModelBeadProfiles;
   interfaceProfiles?: WindowTypeSourceModelInterfaceProfiles;
   geometryRules: WindowTypeSourceModelGeometryRules;
 };
