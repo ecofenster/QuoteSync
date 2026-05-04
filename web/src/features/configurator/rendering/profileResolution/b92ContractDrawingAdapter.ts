@@ -1,6 +1,5 @@
 import type {
   DrawingDimension,
-  DrawingLabel,
   DrawingModel,
   DrawingRect,
   DrawingShape,
@@ -307,18 +306,6 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
       role: "b92_fixed_internal_visible_glass",
     }),
   ];
-  const labels: DrawingLabel[] = [
-    {
-      x: frame.x + visibleGlassMm.x * scale + 8,
-      y: frame.y + visibleGlassMm.y * scale + 16,
-      value: `Glass order note: ${glassOrderMm.width} x ${glassOrderMm.height}`,
-      fontSize: 9,
-      fill: "#3f3f46",
-      anchor: "start",
-      role: "b92_fixed_internal_glass_order_note",
-    },
-  ];
-
   return {
     width: widthMm,
     height: heightMm,
@@ -337,7 +324,7 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
     },
     annotations: {
       dimensions: buildDimensionAnnotations(frame, widthMm, heightMm),
-      labels,
+      labels: [],
       handles: [],
       markers: [],
     },
