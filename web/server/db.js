@@ -481,6 +481,422 @@ async function seedConfiguratorRenderProfiles(db) {
   }
 }
 
+async function seedB92FixedInternalCatalogSourceData(db) {
+  const glassOrderRules = JSON.stringify({
+    glass_order_bite_mm: 13,
+    glass_order_width_delta_mm: 26,
+    glass_order_height_delta_mm: 26,
+    glass_order_formula: 'visible_glass_plus_2x_bite',
+  });
+
+  const existingManufacturer = await db.get(
+    `
+      SELECT id
+      FROM configurator_manufacturers
+      WHERE code = ?
+        AND is_active = 1
+      ORDER BY is_active DESC, updated_at DESC
+      LIMIT 1
+    `,
+    ['B92']
+  );
+  const manufacturerId = existingManufacturer?.id || 'manufacturer-b92';
+  if (!existingManufacturer) {
+    await db.run(
+      `
+        INSERT INTO configurator_manufacturers (
+          id,
+          name,
+          code,
+          notes,
+          is_active,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+      `,
+      [
+        manufacturerId,
+        'B92',
+        'B92',
+        'Additive catalog authority seed dependency for B92 fixed internal source data.',
+      ]
+    );
+  }
+
+  const existingProduct = await db.get(
+    `
+      SELECT id
+      FROM configurator_products
+      WHERE code = ?
+        AND is_active = 1
+      ORDER BY is_active DESC, updated_at DESC
+      LIMIT 1
+    `,
+    ['B92']
+  );
+  const productId = existingProduct?.id || 'product-b92';
+  if (!existingProduct) {
+    await db.run(
+      `
+        INSERT INTO configurator_products (
+          id,
+          manufacturer_id,
+          name,
+          code,
+          product_family,
+          notes,
+          is_active,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+      `,
+      [
+        productId,
+        manufacturerId,
+        'B92',
+        'B92',
+        'windows',
+        'Additive catalog authority seed for B92 source-model data.',
+      ]
+    );
+  }
+
+  const existingWindowType = await db.get(
+    `
+      SELECT id
+      FROM configurator_window_types
+      WHERE product_id = ?
+        AND code = ?
+        AND operation_type = ?
+        AND view_logic = ?
+        AND layout_columns = ?
+        AND layout_rows = ?
+        AND is_active = 1
+      LIMIT 1
+    `,
+    [productId, 'B92-FIXED-INTERNAL-1X1', 'fixed', 'inside', 1, 1]
+  );
+  const windowTypeId = existingWindowType?.id || 'window-type-b92-fixed-internal-1x1';
+  if (!existingWindowType) {
+    await db.run(
+      `
+        INSERT INTO configurator_window_types (
+          id,
+          product_id,
+          name,
+          code,
+          opening_direction,
+          operation_type,
+          sliding_direction,
+          view_logic,
+          layout_columns,
+          layout_rows,
+          notes,
+          is_active,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+      `,
+      [
+        windowTypeId,
+        productId,
+        'B92 fixed internal 1x1',
+        'B92-FIXED-INTERNAL-1X1',
+        'fixed',
+        'fixed',
+        'none',
+        'inside',
+        1,
+        1,
+        'Additive catalog authority seed for B92 fixed internal 1x1.',
+      ]
+    );
+  }
+
+  const profileSeeds = [
+    {
+      id: 'profile-b92-1',
+      code: 'B92-1',
+      name: 'B92-1 head/top',
+      category: 'outer_frame',
+      orientation: ['head'],
+      notes: 'Authoritative B92 fixed internal top/head section profile reference.',
+    },
+    {
+      id: 'profile-b92-2',
+      code: 'B92-2',
+      name: 'B92-2 jamb',
+      category: 'outer_frame',
+      orientation: ['jamb_left', 'jamb_right'],
+      notes: 'Authoritative B92 fixed internal left/right jamb section profile reference.',
+    },
+    {
+      id: 'profile-b92-3',
+      code: 'B92-3',
+      name: 'B92-3 sill/bottom',
+      category: 'outer_frame',
+      orientation: ['bottom'],
+      notes: 'Authoritative B92 fixed internal sill/bottom section profile reference.',
+    },
+    {
+      id: 'profile-b92-6',
+      code: 'B92-6',
+      name: 'B92-6 fixed internal interface',
+      category: 'coupling',
+      orientation: ['coupling'],
+      notes: 'Authoritative B92 fixed internal interface section profile reference.',
+    },
+  ];
+
+  for (const profile of profileSeeds) {
+    const existingProfile = await db.get(
+      `
+        SELECT id
+        FROM configurator_section_profiles
+        WHERE code = ?
+          AND is_active = 1
+        LIMIT 1
+      `,
+      [profile.code]
+    );
+    if (existingProfile) continue;
+
+    await db.run(
+      `
+        INSERT INTO configurator_section_profiles (
+          id,
+          category,
+          family,
+          code,
+          name,
+          description,
+          orientation_applicability_json,
+          inside_outside_applicability,
+          operation_applicability_json,
+          visible_face_width_mm,
+          depth_mm,
+          inset_mm,
+          overlap_mm,
+          drawing_reference_ids_json,
+          notes,
+          is_active,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+      `,
+      [
+        profile.id,
+        profile.category,
+        'window',
+        profile.code,
+        profile.name,
+        profile.notes,
+        JSON.stringify(profile.orientation),
+        'inside',
+        JSON.stringify(['fixed']),
+        0,
+        0,
+        0,
+        0,
+        JSON.stringify([]),
+        profile.notes,
+      ]
+    );
+  }
+
+  const profileByCode = new Map(
+    (await db.all(
+      `
+        SELECT id, code
+        FROM configurator_section_profiles
+        WHERE code IN (?, ?, ?, ?)
+      `,
+      ['B92-1', 'B92-2', 'B92-3', 'B92-6']
+    )).map((profile) => [profile.code, profile.id])
+  );
+
+  const mappingSeeds = [
+    ['mapping-b92-fixed-internal-frame-head', 'frame_head', 'B92-1'],
+    ['mapping-b92-fixed-internal-jamb-left', 'frame_jamb_left', 'B92-2'],
+    ['mapping-b92-fixed-internal-jamb-right', 'frame_jamb_right', 'B92-2'],
+    ['mapping-b92-fixed-internal-frame-bottom', 'frame_bottom', 'B92-3'],
+    ['mapping-b92-fixed-internal-interface', 'fixed_internal_interface', 'B92-6'],
+  ];
+
+  for (const [id, mappingKey, profileCode] of mappingSeeds) {
+    const profileId = profileByCode.get(profileCode);
+    if (!profileId) continue;
+
+    const existingMapping = await db.get(
+      `
+        SELECT id
+        FROM configurator_window_type_profile_mappings
+        WHERE window_type_id = ?
+          AND mapping_key = ?
+          AND operation_type = ?
+          AND profile_id = ?
+          AND is_active = 1
+        LIMIT 1
+      `,
+      [windowTypeId, mappingKey, 'fixed', profileId]
+    );
+    if (existingMapping) continue;
+
+    await db.run(
+      `
+        INSERT INTO configurator_window_type_profile_mappings (
+          id,
+          product_id,
+          window_type_id,
+          profile_id,
+          mapping_key,
+          operation_type,
+          notes,
+          is_active,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+      `,
+      [
+        id,
+        productId,
+        windowTypeId,
+        profileId,
+        mappingKey,
+        'fixed',
+        'Additive catalog authority seed for B92 fixed internal 1x1.',
+      ]
+    );
+  }
+
+  const existingRenderProfile = await db.get(
+    `
+      SELECT id
+      FROM configurator_render_profiles
+      WHERE product_id = ?
+        AND window_type_id = ?
+        AND code = ?
+        AND operation_type = ?
+        AND view_logic = ?
+        AND frame_top_visible_mm = ?
+        AND frame_left_visible_mm = ?
+        AND frame_right_visible_mm = ?
+        AND frame_bottom_visible_mm = ?
+        AND is_active = 1
+      LIMIT 1
+    `,
+    [productId, windowTypeId, 'B92-FIXED-INTERNAL', 'fixed', 'inside', 78, 78, 78, 93]
+  );
+  if (!existingRenderProfile) {
+    await db.run(
+      `
+        INSERT INTO configurator_render_profiles (
+          id,
+          product_id,
+          window_type_id,
+          name,
+          code,
+          operation_type,
+          view_logic,
+          frame_top_visible_mm,
+          frame_left_visible_mm,
+          frame_right_visible_mm,
+          frame_bottom_visible_mm,
+          sash_top_visible_mm,
+          sash_left_visible_mm,
+          sash_right_visible_mm,
+          sash_bottom_visible_mm,
+          bead_top_visible_mm,
+          bead_left_visible_mm,
+          bead_right_visible_mm,
+          bead_bottom_visible_mm,
+          preview_width_mm,
+          preview_height_mm,
+          notes,
+          is_active,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+      `,
+      [
+        'render-profile-b92-fixed-internal',
+        productId,
+        windowTypeId,
+        'B92 fixed internal render profile',
+        'B92-FIXED-INTERNAL',
+        'fixed',
+        'inside',
+        78,
+        78,
+        78,
+        93,
+        1000,
+        1000,
+        'Additive catalog authority seed for B92 fixed internal visible frame rules.',
+      ]
+    );
+  }
+
+  const existingGlassOrderDrawing = await db.get(
+    `
+      SELECT id
+      FROM configurator_section_drawings
+      WHERE product_id = ?
+        AND window_type_id = ?
+        AND code = ?
+        AND geometry_rules_json = ?
+        AND is_active = 1
+      LIMIT 1
+    `,
+    [productId, windowTypeId, 'B92-FIXED-INTERNAL-GLASS-ORDER', glassOrderRules]
+  );
+  if (!existingGlassOrderDrawing) {
+    await db.run(
+      `
+        INSERT INTO configurator_section_drawings (
+          id,
+          product_id,
+          window_type_id,
+          title,
+          code,
+          represents,
+          orientation,
+          inside_outside_applicability,
+          section_ref_id,
+          profile_ref_id,
+          drawing_purpose,
+          source_dxf_path,
+          source_svg_path,
+          geometry_rules_json,
+          render_behaviour_json,
+          notes,
+          is_active,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+      `,
+      [
+        'section-drawing-b92-fixed-internal-glass-order',
+        productId,
+        windowTypeId,
+        'B92 fixed internal glass order rule',
+        'B92-FIXED-INTERNAL-GLASS-ORDER',
+        'glass_order_rule',
+        'inside',
+        'inside',
+        '',
+        '',
+        'glass_order_rule',
+        '',
+        '',
+        glassOrderRules,
+        JSON.stringify({}),
+        'Additive catalog authority seed for B92 fixed internal glass order rule.',
+      ]
+    );
+  }
+}
+
 export const dbPromise = openDatabaseWithRecovery(dbPath).then(async (db) => {
   console.log(`QuoteSync SQLite DB: ${dbPath}`);
   await db.exec('PRAGMA foreign_keys = ON');
@@ -1084,6 +1500,7 @@ export const dbPromise = openDatabaseWithRecovery(dbPath).then(async (db) => {
   await seedConfiguratorSectionProfiles(db);
   await seedConfiguratorProfileMappings(db);
   await seedConfiguratorRenderProfiles(db);
+  await seedB92FixedInternalCatalogSourceData(db);
 
   return db;
 });
