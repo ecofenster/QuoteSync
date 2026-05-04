@@ -117,7 +117,7 @@ function buildPlaceholderDesigns(
 }
 
 export default function AdminWindowTypesWorkspace(props: Props) {
-  void props;
+  const { bootstrap } = props;
   const [selectedCategory, setSelectedCategory] = useState<ConfiguratorProductCategory>("windows");
   const [selectedFieldCountMode, setSelectedFieldCountMode] = useState<ConfiguratorFieldCountMode>("1");
   const [selectedWindowTypeId, setSelectedWindowTypeId] = useState("");
@@ -190,6 +190,7 @@ export default function AdminWindowTypesWorkspace(props: Props) {
           categoryLabel={PRODUCT_CATEGORY_OPTIONS.find((option) => option.key === selectedCategory)?.label || "Category"}
           fieldCountLabel={WINDOW_FIELD_COUNT_OPTIONS.find((option) => option.key === selectedFieldCountMode)?.label || selectedFieldCountMode}
           selectedDesign={selectedDesign}
+          bootstrap={bootstrap}
         />
       </div>
     </div>

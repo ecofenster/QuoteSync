@@ -3,6 +3,12 @@ import QuoteSyncDrawingSvg from "../../configurator/rendering/QuoteSyncDrawingSv
 import { buildB92FixedInternalDrawingModelFromContract } from "../../configurator/rendering/profileResolution/b92ContractDrawingAdapter";
 import { b92FixedInternalWindowTypeSourceSeed } from "../../configurator/rendering/profileResolution/b92FixedInternalWindowTypeSource.seed";
 import { buildWindowTypeRenderModelFromSource } from "../../configurator/rendering/profileResolution/adminWindowTypeSourceAdapter";
+import {
+  buildWindowTypeSourceModelFromCatalog,
+  compareCatalogSourceModelToB92FixedSeed,
+  type CatalogSourceModelComparisonDifference,
+} from "../../configurator/rendering/profileResolution/catalogWindowTypeSourceAdapter";
+import type { ConfiguratorCatalogBootstrap } from "../configuratorCatalog.types";
 import type { WindowTypeSourceModel } from "./windowTypeSourceModel.types";
 import type { WindowTypeDesignListItem } from "./WindowTypeDesignList";
 import DivisionJunctionPanel from "./DivisionJunctionPanel";
@@ -13,6 +19,15 @@ type Props = {
   categoryLabel: string;
   fieldCountLabel: string;
   selectedDesign: WindowTypeDesignListItem | null;
+  bootstrap: ConfiguratorCatalogBootstrap;
+};
+
+type CatalogBridgePreviewReport = {
+  attempted: boolean;
+  buildSuccess: boolean;
+  comparisonPass: boolean | null;
+  differences: CatalogSourceModelComparisonDifference[];
+  error: string;
 };
 
 function resolveWindowTypeSourceModelForPreview(
@@ -24,8 +39,103 @@ function resolveWindowTypeSourceModelForPreview(
   return null;
 }
 
-function WindowTypeTechnicalPreview(props: { selectedDesign: WindowTypeDesignListItem | null }) {
-  const { selectedDesign } = props;
+function buildCatalogBridgePreviewReport(
+  selectedDesign: WindowTypeDesignListItem | null,
+  bootstrap: ConfiguratorCatalogBootstrap
+): CatalogBridgePreviewReport {
+  if (selectedDesign?.id !== "windows-1-fixed") {
+    return {
+      attempted: false,
+      buildSuccess: false,
+      comparisonPass: null,
+      differences: [],
+      error: "",
+    };
+  }
+
+  try {
+    const product = bootstrap.products.find((record) => record.code === "B92" && record.is_active !== false) ?? null;
+    if (!product) throw new Error("B92 product was not found in catalog bootstrap.");
+    const manufacturer = bootstrap.manufacturers.find((record) => record.id === product.manufacturer_id) ?? null;
+    const windowType =
+      bootstrap.windowTypes.find(
+        (record) =>
+          record.product_id === product.id &&
+          record.code === "B92-FIXED-INTERNAL-1X1" &&
+          record.operation_type === "fixed" &&
+          record.view_logic === "inside" &&
+          record.layout_columns === 1 &&
+          record.layout_rows === 1 &&
+          record.is_active !== false
+      ) ?? null;
+    if (!windowType) throw new Error("B92 fixed internal 1x1 window type was not found in catalog bootstrap.");
+    const renderProfile =
+      bootstrap.renderProfiles.find(
+        (record) =>
+          record.product_id === product.id &&
+          record.window_type_id === windowType.id &&
+          record.code === "B92-FIXED-INTERNAL" &&
+          record.operation_type === "fixed" &&
+          record.view_logic === "inside" &&
+          record.is_active !== false
+      ) ?? null;
+    if (!renderProfile) throw new Error("B92 fixed internal render profile was not found in catalog bootstrap.");
+
+    const sectionProfiles = bootstrap.sectionProfiles.filter(
+      (record) => ["B92-1", "B92-2", "B92-3", "B92-6"].includes(record.code) && record.is_active !== false
+    );
+    const profileMappings = bootstrap.profileMappings.filter(
+      (record) =>
+        record.product_id === product.id &&
+        record.window_type_id === windowType.id &&
+        record.operation_type === "fixed" &&
+        record.is_active !== false
+    );
+    const sectionDrawings = bootstrap.sectionDrawings.filter(
+      (record) =>
+        record.product_id === product.id &&
+        record.window_type_id === windowType.id &&
+        record.code === "B92-FIXED-INTERNAL-GLASS-ORDER" &&
+        record.is_active !== false
+    );
+
+    const sourceModel = buildWindowTypeSourceModelFromCatalog({
+      manufacturer,
+      product,
+      windowType,
+      renderProfile,
+      sectionProfiles,
+      profileMappings,
+      sectionDrawings,
+      layout: { columns: windowType.layout_columns ?? 0, rows: windowType.layout_rows ?? 0 },
+      view: "inside",
+    });
+    const comparison = compareCatalogSourceModelToB92FixedSeed(sourceModel);
+    return {
+      attempted: true,
+      buildSuccess: true,
+      comparisonPass: comparison.pass,
+      differences: comparison.differences,
+      error: "",
+    };
+  } catch (error) {
+    return {
+      attempted: true,
+      buildSuccess: false,
+      comparisonPass: false,
+      differences: [],
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function formatReportValue(value: unknown) {
+  if (typeof value === "string") return value;
+  return JSON.stringify(value);
+}
+
+function WindowTypeTechnicalPreview(props: { selectedDesign: WindowTypeDesignListItem | null; bootstrap: ConfiguratorCatalogBootstrap }) {
+  const { selectedDesign, bootstrap } = props;
   const sourceModel = resolveWindowTypeSourceModelForPreview(selectedDesign);
   const previewResult = useMemo(() => {
     if (!sourceModel) {
@@ -50,6 +160,10 @@ function WindowTypeTechnicalPreview(props: { selectedDesign: WindowTypeDesignLis
       };
     }
   }, [sourceModel]);
+  const catalogReport = useMemo(
+    () => buildCatalogBridgePreviewReport(selectedDesign, bootstrap),
+    [selectedDesign, bootstrap]
+  );
 
   return (
     <div className="admin-card ui-card" style={{ padding: 14, display: "grid", gap: 10 }}>
@@ -85,12 +199,31 @@ function WindowTypeTechnicalPreview(props: { selectedDesign: WindowTypeDesignLis
           <QuoteSyncDrawingSvg model={previewResult.model} />
         </div>
       ) : null}
+      {catalogReport.attempted ? (
+        <div className="admin-placeholder-box" style={{ margin: 0, display: "grid", gap: 4 }}>
+          <div>Catalog bridge: {catalogReport.buildSuccess ? "PASS" : "FAIL"}</div>
+          <div>Comparison: {catalogReport.comparisonPass ? "PASS" : "FAIL"}</div>
+          {catalogReport.error ? <div>Error: {catalogReport.error}</div> : null}
+          {catalogReport.differences.length === 0 ? (
+            <div>Differences: none</div>
+          ) : (
+            <div style={{ display: "grid", gap: 2 }}>
+              <div>Differences:</div>
+              {catalogReport.differences.map((difference) => (
+                <div key={difference.key}>
+                  {difference.key}: expected {formatReportValue(difference.expected)}, actual {formatReportValue(difference.actual)}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
 
 export default function WindowTypeEditor(props: Props) {
-  const { categoryLabel, fieldCountLabel, selectedDesign } = props;
+  const { categoryLabel, fieldCountLabel, selectedDesign, bootstrap } = props;
 
   return (
     <div style={{ display: "grid", gap: 12, alignContent: "start", minWidth: 0 }}>
@@ -104,7 +237,7 @@ export default function WindowTypeEditor(props: Props) {
           Scaffold only. Source-model panels are mounted here, but no Window Type persistence or migration is wired in this pass.
         </div>
       </div>
-      <WindowTypeTechnicalPreview selectedDesign={selectedDesign} />
+      <WindowTypeTechnicalPreview selectedDesign={selectedDesign} bootstrap={bootstrap} />
       <FieldDefinitionPanel selectedDesign={selectedDesign} />
       <DivisionJunctionPanel selectedDesign={selectedDesign} />
       <SectionMappingPanel selectedDesign={selectedDesign} />
