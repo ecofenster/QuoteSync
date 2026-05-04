@@ -61,6 +61,8 @@ export type ConfiguratorWindowTypeRecord = {
   operation_type: string;
   sliding_direction: string;
   view_logic: string;
+  layout_columns?: number | null;
+  layout_rows?: number | null;
   product_category?: ConfiguratorProductCategory | string | null;
   layout_mode?: "single" | "linear_horizontal" | "linear_vertical" | "grid" | "freehand" | string | null;
   field_count_mode?: ConfiguratorFieldCountMode | string | null;
@@ -157,6 +159,7 @@ export type ConfiguratorProfileMappingKey =
   | "frame_jamb_left"
   | "frame_jamb_right"
   | "frame_bottom"
+  | "fixed_internal_interface"
   | "sash_head"
   | "sash_jamb_left"
   | "sash_jamb_right"
@@ -211,6 +214,10 @@ export type ConfiguratorSectionGeometryRuleSet = {
   handle_axis_offset_mm?: number;
   hinge_pivot_offset_mm?: number;
   meeting_gap_mm?: number;
+  glass_order_bite_mm?: number;
+  glass_order_width_delta_mm?: number;
+  glass_order_height_delta_mm?: number;
+  glass_order_formula?: string;
 };
 
 export type ConfiguratorTrickleVentEaValue = "2200" | "4400" | "6600";

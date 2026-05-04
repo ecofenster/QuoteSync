@@ -56,6 +56,7 @@ const MAPPING_KEY_OPTIONS: ConfiguratorProfileMappingKey[] = [
   "frame_jamb_left",
   "frame_jamb_right",
   "frame_bottom",
+  "fixed_internal_interface",
   "sash_head",
   "sash_jamb_left",
   "sash_jamb_right",

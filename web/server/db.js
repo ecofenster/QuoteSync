@@ -695,6 +695,8 @@ export const dbPromise = openDatabaseWithRecovery(dbPath).then(async (db) => {
         operation_type TEXT NOT NULL DEFAULT 'fixed',
         sliding_direction TEXT NOT NULL DEFAULT 'none',
         view_logic TEXT NOT NULL DEFAULT 'both',
+        layout_columns INTEGER NOT NULL DEFAULT 1,
+        layout_rows INTEGER NOT NULL DEFAULT 1,
         notes TEXT NOT NULL DEFAULT '',
         is_active INTEGER NOT NULL DEFAULT 1,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -836,6 +838,8 @@ export const dbPromise = openDatabaseWithRecovery(dbPath).then(async (db) => {
   );
 
   await ensureColumn(db, 'configurator_render_profiles', 'external_cladding_inset_mm', 'REAL');
+  await ensureColumn(db, 'configurator_window_types', 'layout_columns', 'INTEGER NOT NULL DEFAULT 1');
+  await ensureColumn(db, 'configurator_window_types', 'layout_rows', 'INTEGER NOT NULL DEFAULT 1');
   await ensureColumn(db, 'configurator_render_profiles', 'trickle_vent_enabled', 'INTEGER NOT NULL DEFAULT 0');
   await ensureColumn(db, 'configurator_render_profiles', 'trickle_vent_ea_value', "TEXT NOT NULL DEFAULT ''");
   await ensureColumn(db, 'configurator_render_profiles', 'trickle_vent_head_visible_mm', 'REAL');

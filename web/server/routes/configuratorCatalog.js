@@ -19,8 +19,8 @@ const ENTITY_CONFIG = {
   },
   windowTypes: {
     table: 'configurator_window_types',
-    columns: ['id', 'product_id', 'name', 'code', 'opening_direction', 'operation_type', 'sliding_direction', 'view_logic', 'notes', 'is_active', 'created_at', 'updated_at'],
-    mutableColumns: ['product_id', 'name', 'code', 'opening_direction', 'operation_type', 'sliding_direction', 'view_logic', 'notes', 'is_active'],
+    columns: ['id', 'product_id', 'name', 'code', 'opening_direction', 'operation_type', 'sliding_direction', 'view_logic', 'layout_columns', 'layout_rows', 'notes', 'is_active', 'created_at', 'updated_at'],
+    mutableColumns: ['product_id', 'name', 'code', 'opening_direction', 'operation_type', 'sliding_direction', 'view_logic', 'layout_columns', 'layout_rows', 'notes', 'is_active'],
     orderBy: 'updated_at DESC, name ASC',
   },
   sectionProfiles: {
@@ -113,6 +113,11 @@ function safeString(value) {
 function safeNullableString(value) {
   const next = safeString(value);
   return next || null;
+}
+
+function positiveInteger(value, fallback = 1) {
+  const next = Number(value);
+  return Number.isFinite(next) && next > 0 ? Math.trunc(next) : fallback;
 }
 
 function safeJsonText(value) {
@@ -210,6 +215,8 @@ function buildValues(entityKey, body, isCreate) {
       operation_type: safeString(body.operation_type) || 'fixed',
       sliding_direction: safeString(body.sliding_direction) || 'none',
       view_logic: safeString(body.view_logic) || 'both',
+      layout_columns: positiveInteger(body.layout_columns ?? 1),
+      layout_rows: positiveInteger(body.layout_rows ?? 1),
       notes: safeString(body.notes),
       is_active: normalizeBoolean(body.is_active ?? true),
     };
