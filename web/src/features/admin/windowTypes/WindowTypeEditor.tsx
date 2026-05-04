@@ -3,6 +3,7 @@ import QuoteSyncDrawingSvg from "../../configurator/rendering/QuoteSyncDrawingSv
 import { buildB92FixedInternalDrawingModelFromContract } from "../../configurator/rendering/profileResolution/b92ContractDrawingAdapter";
 import { b92FixedInternalWindowTypeSourceSeed } from "../../configurator/rendering/profileResolution/b92FixedInternalWindowTypeSource.seed";
 import { buildWindowTypeRenderModelFromSource } from "../../configurator/rendering/profileResolution/adminWindowTypeSourceAdapter";
+import type { WindowTypeSourceModel } from "./windowTypeSourceModel.types";
 import type { WindowTypeDesignListItem } from "./WindowTypeDesignList";
 import DivisionJunctionPanel from "./DivisionJunctionPanel";
 import FieldDefinitionPanel from "./FieldDefinitionPanel";
@@ -14,10 +15,27 @@ type Props = {
   selectedDesign: WindowTypeDesignListItem | null;
 };
 
-function B92FixedInternalTechnicalPreview() {
+function resolveWindowTypeSourceModelForPreview(
+  selectedDesign: WindowTypeDesignListItem | null
+): WindowTypeSourceModel | null {
+  if (selectedDesign?.id === "windows-1-fixed") {
+    return b92FixedInternalWindowTypeSourceSeed;
+  }
+  return null;
+}
+
+function WindowTypeTechnicalPreview(props: { selectedDesign: WindowTypeDesignListItem | null }) {
+  const { selectedDesign } = props;
+  const sourceModel = resolveWindowTypeSourceModelForPreview(selectedDesign);
   const previewResult = useMemo(() => {
+    if (!sourceModel) {
+      return {
+        model: null,
+        error: "",
+      };
+    }
     try {
-      const contract = buildWindowTypeRenderModelFromSource(b92FixedInternalWindowTypeSourceSeed, {
+      const contract = buildWindowTypeRenderModelFromSource(sourceModel, {
         widthMm: 1000,
         heightMm: 1000,
       });
@@ -31,17 +49,25 @@ function B92FixedInternalTechnicalPreview() {
         error: error instanceof Error ? error.message : String(error),
       };
     }
-  }, []);
+  }, [sourceModel]);
 
   return (
     <div className="admin-card ui-card" style={{ padding: 14, display: "grid", gap: 10 }}>
       <div>
-        <div className="admin-group-title">Technical Preview — B92 Fixed Internal 1000 x 1000</div>
-        <div className="admin-body-copy">
-          Dev-only source-model chain: B92, inside view, 1x1, fixed, no sash, no multi-field.
+        <div className="admin-group-title">
+          {sourceModel ? "Technical Preview — B92 Fixed Internal 1000 x 1000" : "Technical Preview"}
         </div>
+        {sourceModel ? (
+          <div className="admin-body-copy">
+            Dev-only source-model chain: B92, inside view, 1x1, fixed, no sash, no multi-field.
+          </div>
+        ) : null}
       </div>
-      {previewResult.error ? (
+      {!sourceModel ? (
+        <div className="admin-placeholder-box" style={{ margin: 0 }}>
+          Preview not available for this design yet.
+        </div>
+      ) : previewResult.error ? (
         <div className="admin-placeholder-box" style={{ margin: 0 }}>
           Preview unavailable: {previewResult.error}
         </div>
@@ -78,7 +104,7 @@ export default function WindowTypeEditor(props: Props) {
           Scaffold only. Source-model panels are mounted here, but no Window Type persistence or migration is wired in this pass.
         </div>
       </div>
-      <B92FixedInternalTechnicalPreview />
+      <WindowTypeTechnicalPreview selectedDesign={selectedDesign} />
       <FieldDefinitionPanel selectedDesign={selectedDesign} />
       <DivisionJunctionPanel selectedDesign={selectedDesign} />
       <SectionMappingPanel selectedDesign={selectedDesign} />
