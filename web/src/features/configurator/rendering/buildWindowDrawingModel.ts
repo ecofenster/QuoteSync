@@ -933,6 +933,23 @@ export function buildWindowDrawingModel(pos: PosDraft): DrawingModel {
         actual: serializeDrawingModelForB92FixedInternalParity(b92ContractDrawingModel),
         toleranceMm: 0,
       });
+      if (
+        pos.windowConfiguration?.dev?.b92ContractDrawingReturn === true &&
+        b92FixedInternalParityResult.pass === true
+      ) {
+        return {
+          ...b92ContractDrawingModel,
+          metadata: {
+            ...b92ContractDrawingModel.metadata,
+            devReports: {
+              ...b92ContractDrawingModel.metadata.devReports,
+              b92FixedInternalContractValidation: b92FixedInternalContractValidationReport,
+              b92FixedInternalParityResult,
+              b92ContractDrawingUsed: true,
+            },
+          },
+        };
+      }
     } catch (error) {
       b92FixedInternalParityResult = {
         pass: false,
