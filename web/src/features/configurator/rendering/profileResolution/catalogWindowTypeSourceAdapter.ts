@@ -13,6 +13,7 @@ import type {
   WindowTypeSourceModelProfileRef,
 } from "../../../admin/windowTypes/windowTypeSourceModel.types";
 import { b92FixedInternalWindowTypeSourceSeed } from "./b92FixedInternalWindowTypeSource.seed";
+import { b92FixedSashInternalWindowTypeSourceSeed } from "./b92FixedSashInternalWindowTypeSource.seed";
 
 export type CatalogWindowTypeSourceAdapterInput = {
   manufacturer?: ConfiguratorManufacturerRecord | null;
@@ -42,7 +43,11 @@ type RequiredMappingKey =
   | "frame_head"
   | "frame_jamb_left"
   | "frame_jamb_right"
-  | "frame_bottom";
+  | "frame_bottom"
+  | "sash_head"
+  | "sash_jamb_left"
+  | "sash_jamb_right"
+  | "sash_bottom";
 
 const REQUIRED_B92_PERIMETER = {
   top: "B92-1",
@@ -56,6 +61,41 @@ const REQUIRED_VISIBLE_FRAME = {
   left: 78,
   right: 78,
   bottom: 93,
+} as const;
+
+const REQUIRED_B92_FIXED_SASH_PROFILES = {
+  top: "B92-7",
+  left: "B92-9",
+  right: "B92-10",
+  bottom: "B92-8",
+} as const;
+
+const REQUIRED_FIXED_SASH_VISIBLE_FRAME = {
+  top: 37.5,
+  left: 37.5,
+  right: 37.5,
+  bottom: 52.5,
+} as const;
+
+const REQUIRED_FIXED_SASH_SASH_VISIBLE_FACE = {
+  top: 57,
+  left: 57,
+  right: 57,
+  bottom: 57,
+} as const;
+
+const REQUIRED_FIXED_SASH_ZERO_SIDE_RULE = {
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+} as const;
+
+const REQUIRED_FIXED_SASH_BEAD_VISIBLE_FACE = {
+  top: 21,
+  left: 21,
+  right: 21,
+  bottom: 21,
 } as const;
 
 const REQUIRED_GLASS_ORDER: WindowTypeSourceModelGlassOrderRule = {
@@ -90,6 +130,34 @@ function assertFiniteNumber(value: unknown, expected: number, label: string) {
   if (!Number.isFinite(next)) fail(`${label} is required.`);
   if (next !== expected) fail(`${label} must be ${expected}mm; received ${next}mm.`);
   return next;
+}
+
+function requiredVisibleFrameRule(input: {
+  renderProfile: ConfiguratorRenderProfileRecord;
+  expected: { top: number; left: number; right: number; bottom: number };
+}) {
+  return {
+    top: assertFiniteNumber(input.renderProfile.frame_top_visible_mm, input.expected.top, "visible frame top"),
+    left: assertFiniteNumber(input.renderProfile.frame_left_visible_mm, input.expected.left, "visible frame left"),
+    right: assertFiniteNumber(input.renderProfile.frame_right_visible_mm, input.expected.right, "visible frame right"),
+    bottom: assertFiniteNumber(input.renderProfile.frame_bottom_visible_mm, input.expected.bottom, "visible frame bottom"),
+  };
+}
+
+function requiredRenderProfileSideRule(input: {
+  top: unknown;
+  left: unknown;
+  right: unknown;
+  bottom: unknown;
+  expected: { top: number; left: number; right: number; bottom: number };
+  label: string;
+}) {
+  return {
+    top: assertFiniteNumber(input.top, input.expected.top, `${input.label} top`),
+    left: assertFiniteNumber(input.left, input.expected.left, `${input.label} left`),
+    right: assertFiniteNumber(input.right, input.expected.right, `${input.label} right`),
+    bottom: assertFiniteNumber(input.bottom, input.expected.bottom, `${input.label} bottom`),
+  };
 }
 
 function findBestMapping(input: {
@@ -269,29 +337,109 @@ function assertRequiredProfileMappings(input: CatalogWindowTypeSourceAdapterInpu
   };
 }
 
-export function buildWindowTypeSourceModelFromCatalog(input: CatalogWindowTypeSourceAdapterInput): WindowTypeSourceModel {
-  requireActive(input.product, "product");
-  requireActive(input.windowType, "windowType");
-  requireActive(input.renderProfile, "renderProfile");
+function assertRequiredFixedSashProfileMappings(input: CatalogWindowTypeSourceAdapterInput) {
+  const profilesById = new Map(input.sectionProfiles.filter((profile) => profile.is_active !== false).map((profile) => [profile.id, profile]));
+  const scope = {
+    mappings: input.profileMappings,
+    profilesById,
+    operationType: "fixed_sash",
+    manufacturerId: input.manufacturer?.id ?? null,
+    productId: input.product.id,
+    windowTypeId: input.windowType.id,
+  };
+  const mapping = (key: RequiredMappingKey) =>
+    findBestMapping({
+      mappings: input.profileMappings,
+      key,
+      operationType: "fixed_sash",
+      manufacturerId: input.manufacturer?.id ?? null,
+      productId: input.product.id,
+      windowTypeId: input.windowType.id,
+    });
 
-  if (input.product.code !== "B92") fail(`product.code must be B92; received ${input.product.code || "(blank)"}.`);
-  const view = normalizedView(input.view);
-  if (view !== "inside") fail("only inside/internal view is supported.");
-  if (input.layout.columns !== 1 || input.layout.rows !== 1) fail("only 1x1 layout is supported.");
+  return {
+    perimeterProfiles: {
+      top: profileRefForMapping({
+        ...scope,
+        mapping: mapping("frame_head"),
+        expectedCode: REQUIRED_B92_PERIMETER.top,
+        role: "head",
+        label: "top/head",
+        required: true,
+      }),
+      left: profileRefForMapping({
+        ...scope,
+        mapping: mapping("frame_jamb_left"),
+        expectedCode: REQUIRED_B92_PERIMETER.left,
+        role: "left_jamb",
+        label: "left jamb",
+        required: true,
+      }),
+      right: profileRefForMapping({
+        ...scope,
+        mapping: mapping("frame_jamb_right"),
+        expectedCode: REQUIRED_B92_PERIMETER.right,
+        role: "right_jamb",
+        label: "right jamb",
+        required: true,
+        mirrored: true,
+      }),
+      bottom: profileRefForMapping({
+        ...scope,
+        mapping: mapping("frame_bottom"),
+        expectedCode: REQUIRED_B92_PERIMETER.bottom,
+        role: "sill",
+        label: "bottom/sill",
+        required: true,
+      }),
+    },
+    sashProfiles: {
+      top: profileRefForMapping({
+        ...scope,
+        mapping: mapping("sash_head"),
+        expectedCode: REQUIRED_B92_FIXED_SASH_PROFILES.top,
+        role: "sash_head",
+        label: "sash top/head",
+        required: true,
+      }),
+      left: profileRefForMapping({
+        ...scope,
+        mapping: mapping("sash_jamb_left"),
+        expectedCode: REQUIRED_B92_FIXED_SASH_PROFILES.left,
+        role: "sash_left_jamb",
+        label: "sash left jamb",
+        required: true,
+      }),
+      right: profileRefForMapping({
+        ...scope,
+        mapping: mapping("sash_jamb_right"),
+        expectedCode: REQUIRED_B92_FIXED_SASH_PROFILES.right,
+        role: "sash_right_jamb",
+        label: "sash right jamb",
+        required: true,
+      }),
+      bottom: profileRefForMapping({
+        ...scope,
+        mapping: mapping("sash_bottom"),
+        expectedCode: REQUIRED_B92_FIXED_SASH_PROFILES.bottom,
+        role: "sash_bottom",
+        label: "sash bottom",
+        required: true,
+      }),
+    },
+  };
+}
+
+function buildB92FixedInternalSourceModelFromCatalog(input: CatalogWindowTypeSourceAdapterInput): WindowTypeSourceModel {
   if (normalized(input.windowType.operation_type) !== "fixed") fail("only fixed window type operation is supported.");
   if (normalized(input.renderProfile.operation_type) !== "fixed") fail("only fixed render profile operation is supported.");
-  if (normalized(input.windowType.operation_type).includes("fixed_sash") || normalized(input.windowType.operation_type).includes("fixed sash")) {
-    fail("fixed sash is not supported.");
-  }
   if (normalized(input.renderProfile.view_logic) !== "inside") fail("renderProfile.view_logic must be inside.");
 
   const { perimeterProfiles, interfaceProfile } = assertRequiredProfileMappings(input);
-  const visibleFrameMm = {
-    top: assertFiniteNumber(input.renderProfile.frame_top_visible_mm, REQUIRED_VISIBLE_FRAME.top, "visible frame top"),
-    left: assertFiniteNumber(input.renderProfile.frame_left_visible_mm, REQUIRED_VISIBLE_FRAME.left, "visible frame left"),
-    right: assertFiniteNumber(input.renderProfile.frame_right_visible_mm, REQUIRED_VISIBLE_FRAME.right, "visible frame right"),
-    bottom: assertFiniteNumber(input.renderProfile.frame_bottom_visible_mm, REQUIRED_VISIBLE_FRAME.bottom, "visible frame bottom"),
-  };
+  const visibleFrameMm = requiredVisibleFrameRule({
+    renderProfile: input.renderProfile,
+    expected: REQUIRED_VISIBLE_FRAME,
+  });
   const glassOrderRule = findGlassOrderRule(input.sectionDrawings);
 
   return {
@@ -347,6 +495,112 @@ export function buildWindowTypeSourceModelFromCatalog(input: CatalogWindowTypeSo
   };
 }
 
+function buildB92FixedSashInternalSourceModelFromCatalog(input: CatalogWindowTypeSourceAdapterInput): WindowTypeSourceModel {
+  if (normalized(input.windowType.operation_type) !== "fixed_sash") fail("fixed_sash window type operation is required.");
+  if (normalized(input.renderProfile.operation_type) !== "fixed_sash") fail("fixed_sash render profile operation is required.");
+  if (normalized(input.renderProfile.view_logic) !== "inside") fail("renderProfile.view_logic must be inside.");
+
+  const { perimeterProfiles, sashProfiles } = assertRequiredFixedSashProfileMappings(input);
+  const visibleFrameMm = requiredVisibleFrameRule({
+    renderProfile: input.renderProfile,
+    expected: REQUIRED_FIXED_SASH_VISIBLE_FRAME,
+  });
+  const sashVisibleFaceMm = requiredRenderProfileSideRule({
+    top: input.renderProfile.sash_top_visible_mm,
+    left: input.renderProfile.sash_left_visible_mm,
+    right: input.renderProfile.sash_right_visible_mm,
+    bottom: input.renderProfile.sash_bottom_visible_mm,
+    expected: REQUIRED_FIXED_SASH_SASH_VISIBLE_FACE,
+    label: "sash visible face",
+  });
+  const beadVisibleFaceMm = requiredRenderProfileSideRule({
+    top: input.renderProfile.bead_top_visible_mm,
+    left: input.renderProfile.bead_left_visible_mm,
+    right: input.renderProfile.bead_right_visible_mm,
+    bottom: input.renderProfile.bead_bottom_visible_mm,
+    expected: REQUIRED_FIXED_SASH_BEAD_VISIBLE_FACE,
+    label: "bead visible face",
+  });
+  const glassOrderRule = findGlassOrderRule(input.sectionDrawings);
+  if (glassOrderRule.biteBehindBeadMm !== 13) fail("fixed sash bead biteBehindBeadMm must be 13mm.");
+
+  return {
+    id: `catalog:${input.windowType.id}:inside:1x1`,
+    manufacturerId: input.manufacturer?.id ?? null,
+    productId: input.product.id,
+    windowTypeId: input.windowType.id,
+    systemCode: "B92",
+    view: "inside",
+    referenceView: "external",
+    layout: {
+      columns: 1,
+      rows: 1,
+    },
+    fieldRules: [
+      {
+        fieldSelector: {
+          row: 0,
+          column: 0,
+          fieldKey: "0,0",
+        },
+        operationType: "fixed_sash",
+        perimeterProfiles,
+        sashProfiles,
+        geometryRules: {
+          visibleFrameMm,
+          sashGeometryRules: {
+            visibleFaceMm: sashVisibleFaceMm,
+            insetMm: {
+              ...REQUIRED_FIXED_SASH_ZERO_SIDE_RULE,
+              formula: "explicit_per_side",
+            },
+            overlapMm: {
+              ...REQUIRED_FIXED_SASH_ZERO_SIDE_RULE,
+              formula: "explicit_per_side",
+            },
+          },
+          beadGeometryRules: {
+            visibleFaceMm: beadVisibleFaceMm,
+            biteBehindBeadMm: glassOrderRule.biteBehindBeadMm,
+          },
+          glassOrderRule,
+        },
+      },
+    ],
+    constraints: {
+      allowFixedSash: true,
+      allowMultiField: false,
+      allowOutsideView: false,
+    },
+    status: "approved",
+    provenance: {
+      source: "admin_catalog",
+      sourceId: `catalog:${input.product.id}:${input.windowType.id}:${input.renderProfile.id}`,
+      version: "catalog-source-bridge-v1",
+      notes: [
+        "Generated by read-only Catalog to WindowTypeSourceModel bridge.",
+        "B92 fixed sash internal 1x1 only; no fallback or inferred generic geometry is accepted.",
+      ],
+    },
+  };
+}
+
+export function buildWindowTypeSourceModelFromCatalog(input: CatalogWindowTypeSourceAdapterInput): WindowTypeSourceModel {
+  requireActive(input.product, "product");
+  requireActive(input.windowType, "windowType");
+  requireActive(input.renderProfile, "renderProfile");
+
+  if (input.product.code !== "B92") fail(`product.code must be B92; received ${input.product.code || "(blank)"}.`);
+  const view = normalizedView(input.view);
+  if (view !== "inside") fail("only inside/internal view is supported.");
+  if (input.layout.columns !== 1 || input.layout.rows !== 1) fail("only 1x1 layout is supported.");
+
+  const operationType = normalized(input.windowType.operation_type);
+  if (operationType === "fixed_sash") return buildB92FixedSashInternalSourceModelFromCatalog(input);
+  if (operationType === "fixed") return buildB92FixedInternalSourceModelFromCatalog(input);
+  fail(`only fixed and fixed_sash window type operations are supported; received ${input.windowType.operation_type || "(blank)"}.`);
+}
+
 function addDifference(
   differences: CatalogSourceModelComparisonDifference[],
   key: string,
@@ -360,6 +614,30 @@ function addDifference(
 
 function firstField(model: WindowTypeSourceModel) {
   return model.fieldRules[0] ?? null;
+}
+
+function addSideRuleDifferences(
+  differences: CatalogSourceModelComparisonDifference[],
+  key: string,
+  expected: { top?: number; left?: number; right?: number; bottom?: number } | undefined,
+  actual: { top?: number; left?: number; right?: number; bottom?: number } | undefined
+) {
+  addDifference(differences, `${key}.top`, expected?.top ?? null, actual?.top ?? null);
+  addDifference(differences, `${key}.left`, expected?.left ?? null, actual?.left ?? null);
+  addDifference(differences, `${key}.right`, expected?.right ?? null, actual?.right ?? null);
+  addDifference(differences, `${key}.bottom`, expected?.bottom ?? null, actual?.bottom ?? null);
+}
+
+function addGlassOrderRuleDifferences(
+  differences: CatalogSourceModelComparisonDifference[],
+  key: string,
+  expected: WindowTypeSourceModelGlassOrderRule,
+  actual: WindowTypeSourceModelGlassOrderRule
+) {
+  addDifference(differences, `${key}.biteBehindBeadMm`, expected.biteBehindBeadMm, actual.biteBehindBeadMm);
+  addDifference(differences, `${key}.widthDeltaMm`, expected.widthDeltaMm, actual.widthDeltaMm);
+  addDifference(differences, `${key}.heightDeltaMm`, expected.heightDeltaMm, actual.heightDeltaMm);
+  addDifference(differences, `${key}.formula`, expected.formula, actual.formula);
 }
 
 export function compareCatalogSourceModelToB92FixedSeed(
@@ -440,6 +718,128 @@ export function compareCatalogSourceModelToB92FixedSeed(
     "glassOrderRule.formula",
     expectedField.geometryRules.glassOrderRule.formula,
     actualField.geometryRules.glassOrderRule.formula
+  );
+  addDifference(differences, "constraints.allowFixedSash", expected.constraints.allowFixedSash, actual.constraints.allowFixedSash);
+  addDifference(differences, "constraints.allowMultiField", expected.constraints.allowMultiField, actual.constraints.allowMultiField);
+  addDifference(differences, "constraints.allowOutsideView", expected.constraints.allowOutsideView, actual.constraints.allowOutsideView);
+
+  return {
+    pass: differences.length === 0,
+    differences,
+  };
+}
+
+export function compareCatalogSourceModelToB92FixedSashSeed(
+  actual: WindowTypeSourceModel
+): CatalogSourceModelComparisonResult {
+  const expected = b92FixedSashInternalWindowTypeSourceSeed;
+  const differences: CatalogSourceModelComparisonDifference[] = [];
+  const expectedField = firstField(expected);
+  const actualField = firstField(actual);
+
+  addDifference(differences, "systemCode", expected.systemCode, actual.systemCode);
+  addDifference(differences, "view", expected.view, actual.view);
+  addDifference(differences, "referenceView", expected.referenceView, actual.referenceView);
+  addDifference(differences, "layout.columns", expected.layout.columns, actual.layout.columns);
+  addDifference(differences, "layout.rows", expected.layout.rows, actual.layout.rows);
+  addDifference(differences, "fieldRules.length", expected.fieldRules.length, actual.fieldRules.length);
+
+  if (!expectedField || !actualField) {
+    addDifference(differences, "fieldRules[0]", "present", actualField ? "present" : "missing");
+    return { pass: differences.length === 0, differences };
+  }
+
+  addDifference(differences, "field.operationType", expectedField.operationType, actualField.operationType);
+  addDifference(
+    differences,
+    "field.perimeterProfiles.top.profileCode",
+    expectedField.perimeterProfiles.top.profileCode,
+    actualField.perimeterProfiles.top.profileCode
+  );
+  addDifference(
+    differences,
+    "field.perimeterProfiles.left.profileCode",
+    expectedField.perimeterProfiles.left.profileCode,
+    actualField.perimeterProfiles.left.profileCode
+  );
+  addDifference(
+    differences,
+    "field.perimeterProfiles.right.profileCode",
+    expectedField.perimeterProfiles.right.profileCode,
+    actualField.perimeterProfiles.right.profileCode
+  );
+  addDifference(
+    differences,
+    "field.perimeterProfiles.bottom.profileCode",
+    expectedField.perimeterProfiles.bottom.profileCode,
+    actualField.perimeterProfiles.bottom.profileCode
+  );
+  addDifference(
+    differences,
+    "field.sashProfiles.top.profileCode",
+    expectedField.sashProfiles?.top?.profileCode ?? null,
+    actualField.sashProfiles?.top?.profileCode ?? null
+  );
+  addDifference(
+    differences,
+    "field.sashProfiles.left.profileCode",
+    expectedField.sashProfiles?.left?.profileCode ?? null,
+    actualField.sashProfiles?.left?.profileCode ?? null
+  );
+  addDifference(
+    differences,
+    "field.sashProfiles.right.profileCode",
+    expectedField.sashProfiles?.right?.profileCode ?? null,
+    actualField.sashProfiles?.right?.profileCode ?? null
+  );
+  addDifference(
+    differences,
+    "field.sashProfiles.bottom.profileCode",
+    expectedField.sashProfiles?.bottom?.profileCode ?? null,
+    actualField.sashProfiles?.bottom?.profileCode ?? null
+  );
+
+  addSideRuleDifferences(
+    differences,
+    "visibleFrameMm",
+    expectedField.geometryRules.visibleFrameMm,
+    actualField.geometryRules.visibleFrameMm
+  );
+  addSideRuleDifferences(
+    differences,
+    "sashGeometryRules.visibleFaceMm",
+    expectedField.geometryRules.sashGeometryRules?.visibleFaceMm,
+    actualField.geometryRules.sashGeometryRules?.visibleFaceMm
+  );
+  addSideRuleDifferences(
+    differences,
+    "sashGeometryRules.insetMm",
+    expectedField.geometryRules.sashGeometryRules?.insetMm,
+    actualField.geometryRules.sashGeometryRules?.insetMm
+  );
+  addSideRuleDifferences(
+    differences,
+    "sashGeometryRules.overlapMm",
+    expectedField.geometryRules.sashGeometryRules?.overlapMm,
+    actualField.geometryRules.sashGeometryRules?.overlapMm
+  );
+  addSideRuleDifferences(
+    differences,
+    "beadGeometryRules.visibleFaceMm",
+    expectedField.geometryRules.beadGeometryRules?.visibleFaceMm,
+    actualField.geometryRules.beadGeometryRules?.visibleFaceMm
+  );
+  addDifference(
+    differences,
+    "beadGeometryRules.biteBehindBeadMm",
+    expectedField.geometryRules.beadGeometryRules?.biteBehindBeadMm ?? null,
+    actualField.geometryRules.beadGeometryRules?.biteBehindBeadMm ?? null
+  );
+  addGlassOrderRuleDifferences(
+    differences,
+    "glassOrderRule",
+    expectedField.geometryRules.glassOrderRule,
+    actualField.geometryRules.glassOrderRule
   );
   addDifference(differences, "constraints.allowFixedSash", expected.constraints.allowFixedSash, actual.constraints.allowFixedSash);
   addDifference(differences, "constraints.allowMultiField", expected.constraints.allowMultiField, actual.constraints.allowMultiField);
