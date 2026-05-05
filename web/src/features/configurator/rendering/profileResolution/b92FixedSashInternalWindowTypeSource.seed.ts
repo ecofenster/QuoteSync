@@ -21,7 +21,9 @@ type BlockedFixedSashSourceModel = Omit<WindowTypeSourceModel, "fieldRules" | "s
 // Draft only. Do not use this seed for rendering, catalog authority, or Admin preview binding.
 // B92 fixed sash internal uses the exact T&T visual stack, but has no opening
 // operation or hardware; the sash is permanently fixed in place with hidden fixings.
-// Glass order and bite remain blocked until separately confirmed.
+// B92 glass sits behind the glazing bead by 13mm on all sides; glass order
+// adds 26mm width and 26mm height. Seed remains draft/blocked until fixed sash
+// contract validation and drawing adapter support are implemented.
 export const b92FixedSashInternalWindowTypeSourceSeed = {
   id: "b92-fixed-sash-1x1-internal-draft",
   manufacturerId: null,
@@ -137,10 +139,18 @@ export const b92FixedSashInternalWindowTypeSourceSeed = {
             right: 21,
             bottom: 21,
           },
+          biteBehindBeadMm: 13,
+          notes: ["B92 glass sits behind glazing bead by 13mm on all sides."],
+        },
+        glassOrderRule: {
+          biteBehindBeadMm: 13,
+          widthDeltaMm: 26,
+          heightDeltaMm: 26,
+          formula: "visible_glass_plus_2x_bite",
         },
         measurementStatus: "blocked",
         measurementTodo:
-          "Glass order and bite require separate confirmation before this draft can become authoritative.",
+          "Fixed sash remains blocked until contract validation and drawing adapter support are implemented.",
       },
     },
   ],
@@ -151,7 +161,7 @@ export const b92FixedSashInternalWindowTypeSourceSeed = {
     blockingIssues: [
       {
         key: "fixed_sash.measurements",
-        reason: "Fixed sash glass order and bite require separate confirmation before rendering use.",
+        reason: "Fixed sash contract validation and drawing adapter support are required before rendering use.",
         severity: "blocking",
       },
     ],
@@ -166,9 +176,10 @@ export const b92FixedSashInternalWindowTypeSourceSeed = {
       "Do not use for rendering.",
       "Fixed sash uses the exact Tilt & Turn internal visual stack.",
       "No opening operation or hardware; sash is permanently fixed with hidden fixings.",
+      "B92 glass sits behind glazing bead by 13mm on all sides.",
+      "Glass order adds 26mm width and 26mm height.",
       "Confirmed profile basis: sash B92-7, B92-8, B92-9, B92-10.",
-      "Glass order and bite remain blocked until separately confirmed.",
-      "Awaiting full confirmation before catalog, contract, drawing, or Admin preview integration.",
+      "Fixed sash remains draft/blocked until contract validation, drawing adapter, catalog, and Admin preview integration are implemented.",
     ],
   },
 } as const satisfies BlockedFixedSashSourceModel;
