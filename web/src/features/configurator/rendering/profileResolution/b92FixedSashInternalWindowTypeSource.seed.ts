@@ -19,7 +19,9 @@ type BlockedFixedSashSourceModel = Omit<WindowTypeSourceModel, "fieldRules" | "s
 };
 
 // Draft only. Do not use this seed for rendering, catalog authority, or Admin preview binding.
-// Fixed sash geometry is not authoritative until PDF/catalog measurements confirm frame, sash, bead, and glass order rules.
+// B92 fixed sash internal uses the exact T&T visual stack, but has no opening
+// operation or hardware; the sash is permanently fixed in place with hidden fixings.
+// Glass order and bite remain blocked until separately confirmed.
 export const b92FixedSashInternalWindowTypeSourceSeed = {
   id: "b92-fixed-sash-1x1-internal-draft",
   manufacturerId: null,
@@ -93,9 +95,52 @@ export const b92FixedSashInternalWindowTypeSourceSeed = {
         },
       },
       geometryRules: {
+        visibleFrameMm: {
+          top: 37.5,
+          left: 37.5,
+          right: 37.5,
+          bottom: 52.5,
+        },
+        ventVisibleFrameMm: {
+          top: 59.5,
+          left: 37.5,
+          right: 37.5,
+          bottom: 52.5,
+          notes: "Trickle vent variant follows the existing T&T internal top visible frame rule.",
+        },
+        sashGeometryRules: {
+          visibleFaceMm: {
+            top: 57,
+            left: 57,
+            right: 57,
+            bottom: 57,
+          },
+          insetMm: {
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            formula: "explicit_per_side",
+          },
+          overlapMm: {
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            formula: "explicit_per_side",
+          },
+        },
+        beadGeometryRules: {
+          visibleFaceMm: {
+            top: 21,
+            left: 21,
+            right: 21,
+            bottom: 21,
+          },
+        },
         measurementStatus: "blocked",
         measurementTodo:
-          "Fixed sash geometry requires PDF/catalog confirmation for frame, sash, bead, and glass order.",
+          "Glass order and bite require separate confirmation before this draft can become authoritative.",
       },
     },
   ],
@@ -106,7 +151,7 @@ export const b92FixedSashInternalWindowTypeSourceSeed = {
     blockingIssues: [
       {
         key: "fixed_sash.measurements",
-        reason: "Fixed sash geometry requires PDF/catalog confirmation for frame, sash, bead, and glass order.",
+        reason: "Fixed sash glass order and bite require separate confirmation before rendering use.",
         severity: "blocking",
       },
     ],
@@ -119,8 +164,11 @@ export const b92FixedSashInternalWindowTypeSourceSeed = {
     notes: [
       "Draft only; not authoritative.",
       "Do not use for rendering.",
+      "Fixed sash uses the exact Tilt & Turn internal visual stack.",
+      "No opening operation or hardware; sash is permanently fixed with hidden fixings.",
       "Confirmed profile basis: sash B92-7, B92-8, B92-9, B92-10.",
-      "Awaiting measurement confirmation before catalog, contract, drawing, or Admin preview integration.",
+      "Glass order and bite remain blocked until separately confirmed.",
+      "Awaiting full confirmation before catalog, contract, drawing, or Admin preview integration.",
     ],
   },
 } as const satisfies BlockedFixedSashSourceModel;
