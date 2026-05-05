@@ -22,6 +22,12 @@ export type WindowTypeSourceModelFieldSelector = {
   fieldKey?: string;
 };
 
+export type WindowTypeSourceModelOperationType =
+  | "fixed"
+  | "fixed_sash"
+  | "tilt_turn"
+  | "turn_only";
+
 export type WindowTypeSourceModelProfileRole =
   | "head"
   | "left_jamb"
@@ -131,8 +137,8 @@ export type WindowTypeSourceModelGeometryRules = {
 
 export type WindowTypeSourceModelFieldRule = {
   fieldSelector: WindowTypeSourceModelFieldSelector;
-  operationType: string;
-  excludedOperationTypes?: string[];
+  operationType: WindowTypeSourceModelOperationType | string;
+  excludedOperationTypes?: Array<WindowTypeSourceModelOperationType | string>;
   perimeterProfiles: WindowTypeSourceModelPerimeterProfiles;
   sashProfiles?: WindowTypeSourceModelSashProfiles;
   beadProfiles?: WindowTypeSourceModelBeadProfiles;
@@ -140,10 +146,17 @@ export type WindowTypeSourceModelFieldRule = {
   geometryRules: WindowTypeSourceModelGeometryRules;
 };
 
+export type WindowTypeSourceModelBlockingIssue = {
+  key: string;
+  reason: string;
+  severity: "blocking";
+};
+
 export type WindowTypeSourceModelConstraints = {
   allowFixedSash: boolean;
   allowMultiField: boolean;
   allowOutsideView: boolean;
+  blockingIssues?: WindowTypeSourceModelBlockingIssue[];
 };
 
 export type WindowTypeSourceModel = {

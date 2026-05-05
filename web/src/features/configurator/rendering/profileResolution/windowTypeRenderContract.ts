@@ -49,11 +49,25 @@ export type WindowTypeRenderGlass = {
   note?: string;
 };
 
+export type WindowTypeRenderSashGeometry = {
+  visibleFaceMm?: Partial<Record<"top" | "bottom" | "left" | "right", number>>;
+  insetMm?: Partial<Record<"top" | "bottom" | "left" | "right", number>>;
+  overlapMm?: Partial<Record<"top" | "bottom" | "left" | "right", number>>;
+  beadVisibleFaceMm?: Partial<Record<"top" | "bottom" | "left" | "right", number>>;
+  glassOrderRule?: {
+    biteBehindBeadMm: number;
+    widthDeltaMm: number;
+    heightDeltaMm: number;
+    formula: "visible_glass_plus_2x_bite";
+  };
+};
+
 export type WindowTypeRenderSash = {
-  openingType: Extract<B92FieldType, "tilt_turn" | "turn_only">;
+  openingType: Extract<B92FieldType, "fixed_sash" | "tilt_turn" | "turn_only">;
   hingeSide?: "left" | "right" | null;
   handleSide?: "left" | "right" | null;
   profiles?: Partial<Record<"top" | "bottom" | "left" | "right", WindowTypeRenderProfileRef>>;
+  geometry?: WindowTypeRenderSashGeometry;
 };
 
 export type WindowTypeRenderField = {
