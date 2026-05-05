@@ -30,26 +30,29 @@ type CatalogBridgePreviewReport = {
   error: string;
 };
 
-function resolveWindowTypeSourceModelForPreview(
-  selectedDesign: WindowTypeDesignListItem | null
-): WindowTypeSourceModel | null {
-  if (selectedDesign?.id === "windows-1-fixed") {
-    return b92FixedInternalWindowTypeSourceSeed;
-  }
-  return null;
-}
+type PreviewSourceResult = {
+  sourceModel: WindowTypeSourceModel | null;
+  sourceLabel: "Catalog" | "Seed fallback" | "";
+  catalogReport: CatalogBridgePreviewReport;
+};
 
-function buildCatalogBridgePreviewReport(
+function resolvePreviewSourceModel(
   selectedDesign: WindowTypeDesignListItem | null,
   bootstrap: ConfiguratorCatalogBootstrap
-): CatalogBridgePreviewReport {
+): PreviewSourceResult {
+  const skippedReport = {
+    attempted: false,
+    buildSuccess: false,
+    comparisonPass: null,
+    differences: [],
+    error: "",
+  };
+
   if (selectedDesign?.id !== "windows-1-fixed") {
     return {
-      attempted: false,
-      buildSuccess: false,
-      comparisonPass: null,
-      differences: [],
-      error: "",
+      sourceModel: null,
+      sourceLabel: "",
+      catalogReport: skippedReport,
     };
   }
 
@@ -111,20 +114,37 @@ function buildCatalogBridgePreviewReport(
       view: "inside",
     });
     const comparison = compareCatalogSourceModelToB92FixedSeed(sourceModel);
-    return {
+    const catalogReport = {
       attempted: true,
       buildSuccess: true,
       comparisonPass: comparison.pass,
       differences: comparison.differences,
       error: "",
     };
+    if (!comparison.pass) {
+      return {
+        sourceModel: b92FixedInternalWindowTypeSourceSeed,
+        sourceLabel: "Seed fallback",
+        catalogReport,
+      };
+    }
+
+    return {
+      sourceModel,
+      sourceLabel: "Catalog",
+      catalogReport,
+    };
   } catch (error) {
     return {
-      attempted: true,
-      buildSuccess: false,
-      comparisonPass: false,
-      differences: [],
-      error: error instanceof Error ? error.message : String(error),
+      sourceModel: b92FixedInternalWindowTypeSourceSeed,
+      sourceLabel: "Seed fallback",
+      catalogReport: {
+        attempted: true,
+        buildSuccess: false,
+        comparisonPass: false,
+        differences: [],
+        error: error instanceof Error ? error.message : String(error),
+      },
     };
   }
 }
@@ -136,7 +156,11 @@ function formatReportValue(value: unknown) {
 
 function WindowTypeTechnicalPreview(props: { selectedDesign: WindowTypeDesignListItem | null; bootstrap: ConfiguratorCatalogBootstrap }) {
   const { selectedDesign, bootstrap } = props;
-  const sourceModel = resolveWindowTypeSourceModelForPreview(selectedDesign);
+  const previewSource = useMemo(
+    () => resolvePreviewSourceModel(selectedDesign, bootstrap),
+    [selectedDesign, bootstrap]
+  );
+  const { sourceModel, sourceLabel, catalogReport } = previewSource;
   const previewResult = useMemo(() => {
     if (!sourceModel) {
       return {
@@ -160,10 +184,6 @@ function WindowTypeTechnicalPreview(props: { selectedDesign: WindowTypeDesignLis
       };
     }
   }, [sourceModel]);
-  const catalogReport = useMemo(
-    () => buildCatalogBridgePreviewReport(selectedDesign, bootstrap),
-    [selectedDesign, bootstrap]
-  );
 
   return (
     <div className="admin-card ui-card" style={{ padding: 14, display: "grid", gap: 10 }}>
@@ -201,6 +221,7 @@ function WindowTypeTechnicalPreview(props: { selectedDesign: WindowTypeDesignLis
       ) : null}
       {catalogReport.attempted ? (
         <div className="admin-placeholder-box" style={{ margin: 0, display: "grid", gap: 4 }}>
+          <div>Preview source: {sourceLabel}</div>
           <div>Catalog bridge: {catalogReport.buildSuccess ? "PASS" : "FAIL"}</div>
           <div>Comparison: {catalogReport.comparisonPass ? "PASS" : "FAIL"}</div>
           {catalogReport.error ? <div>Error: {catalogReport.error}</div> : null}
