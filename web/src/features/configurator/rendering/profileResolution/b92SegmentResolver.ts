@@ -135,6 +135,7 @@ function resolveSillSegment(
     profileId: rule.profileId,
     status: rule.status,
     ruleId: rule.id,
+    segment,
     note: rule.notes?.join(" "),
   });
   return {
@@ -173,6 +174,7 @@ function resolveOuterEdgeSegment(
     profileId: rule.profileId,
     status: rule.status,
     ruleId: rule.id,
+    segment,
     note: rule.notes?.join(" "),
   });
   return {

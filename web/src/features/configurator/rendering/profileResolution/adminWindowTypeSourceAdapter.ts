@@ -1,15 +1,30 @@
 import type { WindowTypeSourceModel } from "../../../admin/windowTypes/windowTypeSourceModel.types";
-import type { B92ProfileId } from "./b92ProfileTypes";
+import type { B92JoinCondition, B92ProfileId } from "./b92ProfileTypes";
+import { resolveB92ProfileSegmentsFromSource } from "./b92SegmentResolver";
+import type {
+  B92HorizontalTransomSegment,
+  B92ResolvedFieldOperation,
+  B92ResolvedProfileAssignment,
+  B92SegmentResolutionResult,
+  B92VerticalJunctionSegment,
+} from "./b92SegmentResolver.types";
 import type {
   WindowTypeRenderModel,
   WindowTypeRenderPerimeter,
   WindowTypeRenderProfileRef,
   WindowTypeRenderFieldOperation,
+  WindowTypeRenderJunction,
 } from "./windowTypeRenderContract";
 
 type RuntimeDimensionsMm = {
   widthMm: number;
   heightMm: number;
+};
+
+type B92SegmentResolverDevSource = WindowTypeSourceModel & {
+  dev?: {
+    b92UseSegmentResolver?: boolean | null;
+  };
 };
 
 const B92_FIXED_INTERNAL_DESIGN_RULE =
@@ -60,6 +75,172 @@ function resolvedProfile(profileId: B92ProfileId, note?: string): WindowTypeRend
 
 function sourceFieldOperation(operation: string | undefined): WindowTypeRenderFieldOperation | string | undefined {
   return operation;
+}
+
+function shouldUseB92SegmentResolver(source: WindowTypeSourceModel): source is B92SegmentResolverDevSource {
+  return (source as B92SegmentResolverDevSource).dev?.b92UseSegmentResolver === true;
+}
+
+function isRenderContractProfileId(profileId: string): profileId is B92ProfileId {
+  return (
+    profileId === "B92-1" ||
+    profileId === "B92-1/78V" ||
+    profileId === "B92-2" ||
+    profileId === "B92-3" ||
+    profileId === "B92-4/100V" ||
+    profileId === "B92-6" ||
+    profileId === "B92-7" ||
+    profileId === "B92-7/100" ||
+    profileId === "B92-7/120" ||
+    profileId === "B92-7/100V" ||
+    profileId === "B92-8" ||
+    profileId === "B92-8A" ||
+    profileId === "B92-8B" ||
+    profileId === "B92-8C" ||
+    profileId === "B92-8D" ||
+    profileId === "B92-8E" ||
+    profileId === "B92-8F" ||
+    profileId === "B92-8G" ||
+    profileId === "B92-9" ||
+    profileId === "B92-10" ||
+    profileId === "B92-11" ||
+    profileId === "B92-12" ||
+    profileId === "B92-13" ||
+    profileId === "B92-14" ||
+    profileId === "B92-15" ||
+    profileId === "B92-16" ||
+    profileId === "B92-17" ||
+    profileId === "B92-18" ||
+    profileId === "B92-19" ||
+    profileId === "B92-20" ||
+    profileId === "B92-21" ||
+    profileId === "B92-22" ||
+    profileId === "B92-23" ||
+    profileId === "B92-24"
+  );
+}
+
+function profileRefFromSegmentAssignment(assignment: B92ResolvedProfileAssignment): WindowTypeRenderProfileRef | null {
+  if (!isRenderContractProfileId(assignment.profileId)) return null;
+  return {
+    profileId: assignment.profileId,
+    source: assignment.status === "confirmed" ? "resolved" : "candidate_required",
+    note: assignment.note,
+  };
+}
+
+function operationFamilyForJoin(operation: B92ResolvedFieldOperation): "fixed" | "sash" {
+  return operation === "fixed" ? "fixed" : "sash";
+}
+
+function joinConditionForOperations(
+  first: B92ResolvedFieldOperation,
+  second: B92ResolvedFieldOperation,
+  flying: boolean
+): B92JoinCondition {
+  if (flying) return "flying_mullion";
+  const firstFamily = operationFamilyForJoin(first);
+  const secondFamily = operationFamilyForJoin(second);
+  if (firstFamily === "fixed" && secondFamily === "fixed") return "fixed_to_fixed";
+  if (firstFamily === "fixed" && secondFamily === "sash") return "fixed_to_tilt_turn";
+  if (firstFamily === "sash" && secondFamily === "fixed") return "tilt_turn_to_fixed";
+  return "tilt_turn_to_tilt_turn";
+}
+
+function verticalJunctionFromAssignment(assignment: B92ResolvedProfileAssignment): WindowTypeRenderJunction | null {
+  if (assignment.segment?.kind !== "vertical_junction") return null;
+  const segment: B92VerticalJunctionSegment = assignment.segment;
+  const profile = profileRefFromSegmentAssignment(assignment);
+  if (!profile) return null;
+  return {
+    id: assignment.segmentId,
+    axis: "vertical",
+    condition: joinConditionForOperations(segment.leftOperation, segment.rightOperation, segment.junctionType === "flying"),
+    betweenFieldIds: [segment.leftField.id, segment.rightField.id],
+    profile,
+    ownerFieldId: segment.ownerFieldKey ?? null,
+  };
+}
+
+function horizontalJunctionFromAssignment(assignment: B92ResolvedProfileAssignment): WindowTypeRenderJunction | null {
+  if (assignment.segment?.kind !== "horizontal_transom") return null;
+  const segment: B92HorizontalTransomSegment = assignment.segment;
+  const profile = profileRefFromSegmentAssignment(assignment);
+  if (!profile) return null;
+  return {
+    id: assignment.segmentId,
+    axis: "horizontal",
+    condition: joinConditionForOperations(segment.topOperation, segment.bottomOperation, false),
+    betweenFieldIds: [segment.topField.id, segment.bottomField.id],
+    profile,
+  };
+}
+
+function outerEdgeDifferences(contract: WindowTypeRenderModel, segmentResult: B92SegmentResolutionResult) {
+  return segmentResult.outerEdgeAssignments
+    .map((assignment) => {
+      if (assignment.segment?.kind !== "outer_edge") return null;
+      const field = contract.fields.find((item) => item.id === assignment.segment?.field.id);
+      if (!field) {
+        return {
+          segmentId: assignment.segmentId,
+          edge: assignment.segment.edge,
+          contractProfileId: null,
+          resolverProfileId: assignment.profileId,
+          reason: "field not found in render contract",
+        };
+      }
+      const contractProfileId = field.perimeter[assignment.segment.edge]?.profileId ?? null;
+      if (contractProfileId === assignment.profileId) return null;
+      return {
+        segmentId: assignment.segmentId,
+        edge: assignment.segment.edge,
+        contractProfileId,
+        resolverProfileId: assignment.profileId,
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => !!item);
+}
+
+function applyB92SegmentResolverToContract(
+  source: WindowTypeSourceModel,
+  contract: WindowTypeRenderModel
+): WindowTypeRenderModel {
+  if (!shouldUseB92SegmentResolver(source)) return contract;
+
+  const segmentResult = resolveB92ProfileSegmentsFromSource(source);
+  const appliedVertical = segmentResult.verticalJunctionAssignments
+    .map(verticalJunctionFromAssignment)
+    .filter((item): item is WindowTypeRenderJunction => !!item);
+  const appliedHorizontal = segmentResult.horizontalTransomAssignments
+    .map(horizontalJunctionFromAssignment)
+    .filter((item): item is WindowTypeRenderJunction => !!item);
+  const outerEdgesReadOnly = outerEdgeDifferences(contract, segmentResult);
+
+  if (segmentResult.issues.length > 0) {
+    console.warn("B92 Resolver Issues", segmentResult.issues);
+  }
+  if (segmentResult.sillAssignments.length > 0) {
+    console.warn(
+      "B92 Resolver segmented sill assignments are read-only; existing bottom frame remains unchanged.",
+      segmentResult.sillAssignments
+    );
+  }
+
+  console.group("B92 Resolver Integration");
+  console.log({
+    appliedVertical,
+    appliedHorizontal,
+    outerEdgesReadOnly,
+    unresolved: segmentResult.issues,
+  });
+  console.groupEnd();
+
+  return {
+    ...contract,
+    verticalJunctions: appliedVertical,
+    horizontalJunctions: appliedHorizontal,
+  };
 }
 
 function buildPerimeter(source: WindowTypeSourceModel): WindowTypeRenderPerimeter {
@@ -222,7 +403,7 @@ function buildB92FixedInternalRenderModelFromSource(
 
   const fieldId = fieldRule.fieldSelector.fieldKey ?? "fixed-1";
 
-  return {
+  const contract: WindowTypeRenderModel = {
     meta: {
       system: "B92",
       referenceView: "external",
@@ -256,6 +437,8 @@ function buildB92FixedInternalRenderModelFromSource(
     thresholds: [],
     constraints: [],
   };
+
+  return applyB92SegmentResolverToContract(source, contract);
 }
 
 function buildB92FixedSashInternalRenderModelFromSource(
@@ -271,7 +454,7 @@ function buildB92FixedSashInternalRenderModelFromSource(
   const fieldId = fieldRule.fieldSelector.fieldKey ?? "fixed-sash-1";
   const { sashGeometryRules, beadGeometryRules, glassOrderRule } = fieldRule.geometryRules;
 
-  return {
+  const contract: WindowTypeRenderModel = {
     meta: {
       system: "B92",
       referenceView: "external",
@@ -324,6 +507,8 @@ function buildB92FixedSashInternalRenderModelFromSource(
     thresholds: [],
     constraints: [],
   };
+
+  return applyB92SegmentResolverToContract(source, contract);
 }
 
 export function buildWindowTypeRenderModelFromSource(
