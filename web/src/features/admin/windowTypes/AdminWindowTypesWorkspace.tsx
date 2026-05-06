@@ -4,7 +4,10 @@ import type {
   ConfiguratorFieldCountMode,
   ConfiguratorProductCategory,
 } from "../configuratorCatalog.types";
-import WindowTypeDesignList, { type WindowTypeDesignListItem } from "./WindowTypeDesignList";
+import WindowTypeDesignList, {
+  type WindowTypeDesignListItem,
+  type WindowTypeDesignLayout,
+} from "./WindowTypeDesignList";
 import WindowTypeEditor from "./WindowTypeEditor";
 
 type Props = {
@@ -43,9 +46,28 @@ const WINDOW_MATERIAL_GROUPS = [
   { key: "steel", label: "Steel" },
 ] as const;
 
+function buildWindowTypeDesignLayout(fieldsX: number, fieldsY: number): WindowTypeDesignLayout {
+  const fields = Array.from({ length: fieldsY }, (_, row) =>
+    Array.from({ length: fieldsX }, (_, column) => ({
+      row,
+      column,
+      key: `${column}:${row}`,
+    }))
+  ).flat();
+
+  return { fieldsX, fieldsY, fields };
+}
+
 function buildMaterialGroupedWindowDesigns(
   fieldCountMode: Extract<ConfiguratorFieldCountMode, "1" | "2" | "3" | "4" | "6">,
-  entries: Array<{ key: string; label: string; description: string; timberUpvcOnly?: boolean }>
+  entries: Array<{
+    key: string;
+    label: string;
+    description: string;
+    fieldsX: number;
+    fieldsY: number;
+    timberUpvcOnly?: boolean;
+  }>
 ): WindowTypeDesignListItem[] {
   return WINDOW_MATERIAL_GROUPS.flatMap((group) =>
     entries
@@ -55,6 +77,7 @@ function buildMaterialGroupedWindowDesigns(
         groupLabel: group.label,
         label: entry.label,
         description: entry.description,
+        layout: buildWindowTypeDesignLayout(entry.fieldsX, entry.fieldsY),
       }))
   );
 }
@@ -69,16 +92,22 @@ function buildPlaceholderDesigns(
         key: "inward-opening",
         label: "1 Field - Inward Opening",
         description: "Single inward-opening field family. Field operation is selected from the preview context menu.",
+        fieldsX: 1,
+        fieldsY: 1,
       },
       {
         key: "outward-opening",
         label: "1 Field - Outward Opening",
         description: "Single outward-opening field family. Detailed operations will be selected per field.",
+        fieldsX: 1,
+        fieldsY: 1,
       },
       {
         key: "sash-case",
         label: "Sash & Case",
         description: "Single sash and case family placeholder.",
+        fieldsX: 1,
+        fieldsY: 1,
         timberUpvcOnly: true,
       },
     ]);
@@ -89,11 +118,15 @@ function buildPlaceholderDesigns(
         key: "horizontal",
         label: "2 Field - Horizontal",
         description: "Two-field horizontal window family. Field operations are selected per field.",
+        fieldsX: 2,
+        fieldsY: 1,
       },
       {
         key: "vertical",
         label: "2 Field - Vertical",
         description: "Two-field vertical window family. Field operations are selected per field.",
+        fieldsX: 1,
+        fieldsY: 2,
       },
     ]);
   }
@@ -103,11 +136,15 @@ function buildPlaceholderDesigns(
         key: "horizontal",
         label: "3 Field - Horizontal",
         description: "Three-field horizontal window family. Field operations are selected per field.",
+        fieldsX: 3,
+        fieldsY: 1,
       },
       {
         key: "vertical",
         label: "3 Field - Vertical",
         description: "Three-field vertical window family. Field operations are selected per field.",
+        fieldsX: 1,
+        fieldsY: 3,
       },
     ]);
   }
@@ -117,16 +154,22 @@ function buildPlaceholderDesigns(
         key: "horizontal",
         label: "4 Field - Horizontal",
         description: "Four-field horizontal window family. Field operations are selected per field.",
+        fieldsX: 4,
+        fieldsY: 1,
       },
       {
         key: "vertical",
         label: "4 Field - Vertical",
         description: "Four-field vertical window family. Field operations are selected per field.",
+        fieldsX: 1,
+        fieldsY: 4,
       },
       {
         key: "2x2-grid",
         label: "4 Field - 2x2 Grid",
         description: "Four-field 2x2 grid window family. Field operations are selected per field.",
+        fieldsX: 2,
+        fieldsY: 2,
       },
     ]);
   }
@@ -136,11 +179,15 @@ function buildPlaceholderDesigns(
         key: "3x2-grid",
         label: "6 Field - 3x2 Grid",
         description: "Six-field 3x2 grid window family. Field operations are selected per field.",
+        fieldsX: 3,
+        fieldsY: 2,
       },
       {
         key: "2x3-grid",
         label: "6 Field - 2x3 Grid",
         description: "Six-field 2x3 grid window family. Field operations are selected per field.",
+        fieldsX: 2,
+        fieldsY: 3,
       },
     ]);
   }

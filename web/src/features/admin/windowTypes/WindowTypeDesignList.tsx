@@ -1,10 +1,23 @@
 import React from "react";
 
+export type WindowTypeDesignLayoutField = {
+  row: number;
+  column: number;
+  key: string;
+};
+
+export type WindowTypeDesignLayout = {
+  fieldsX: number;
+  fieldsY: number;
+  fields: WindowTypeDesignLayoutField[];
+};
+
 export type WindowTypeDesignListItem = {
   id: string;
   label: string;
   description: string;
   groupLabel?: string;
+  layout?: WindowTypeDesignLayout;
 };
 
 type Props = {
