@@ -198,4 +198,9 @@ export type WindowTypeSourceModel = {
   constraints: WindowTypeSourceModelConstraints;
   status: WindowTypeSourceModelStatus;
   provenance: WindowTypeSourceModelProvenance;
+  dev?: {
+    b92SegmentResolverValidation?: boolean | null;
+    b92UseSegmentResolver?: boolean | null;
+    b92RenderSegmentedSillOverlay?: boolean | null;
+  };
 };

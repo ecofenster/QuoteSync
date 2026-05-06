@@ -24,6 +24,7 @@ type RuntimeDimensionsMm = {
 type B92SegmentResolverDevSource = WindowTypeSourceModel & {
   dev?: {
     b92UseSegmentResolver?: boolean | null;
+    b92RenderSegmentedSillOverlay?: boolean | null;
   };
 };
 
@@ -268,6 +269,13 @@ function applyB92SegmentResolverToContract(
 
   return {
     ...contract,
+    meta: {
+      ...contract.meta,
+      dev: {
+        ...contract.meta.dev,
+        b92RenderSegmentedSillOverlay: source.dev?.b92RenderSegmentedSillOverlay === true,
+      },
+    },
     verticalJunctions: appliedVertical,
     horizontalJunctions: appliedHorizontal,
     outerEdgeSegments,

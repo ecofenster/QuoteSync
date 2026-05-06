@@ -229,6 +229,71 @@ function buildDimensionAnnotations(
   ];
 }
 
+function shouldRenderSegmentedSillOverlay(contract: WindowTypeRenderModel) {
+  return contract.meta.dev?.b92RenderSegmentedSillOverlay === true;
+}
+
+function buildSegmentedSillOverlayShapes(
+  contract: WindowTypeRenderModel,
+  frame: { x: number; y: number; width: number; height: number },
+  scale: number
+): DrawingShape[] {
+  if (!shouldRenderSegmentedSillOverlay(contract)) return [];
+  if (!contract.sillSegments || contract.sillSegments.length === 0) return [];
+
+  const fieldsByColumn = new Map(contract.fields.map((field) => [field.column, field]));
+  const columns = Array.from(new Set(contract.fields.map((field) => field.column))).sort((a, b) => a - b);
+  const columnWidthsMm = new Map<number, number>();
+  let totalWidthMm = 0;
+
+  for (const column of columns) {
+    const field = fieldsByColumn.get(column);
+    if (!field) {
+      console.warn("B92 segmented sill overlay skipped: missing field bounds for column.", { column });
+      return [];
+    }
+    columnWidthsMm.set(column, field.dimensionsMm.width);
+    totalWidthMm += field.dimensionsMm.width;
+  }
+
+  if (totalWidthMm <= 0 || Math.abs(totalWidthMm - contract.overall.widthMm) > 0.01) {
+    console.warn("B92 segmented sill overlay skipped: field widths do not match overall width.", {
+      totalFieldWidthMm: totalWidthMm,
+      overallWidthMm: contract.overall.widthMm,
+    });
+    return [];
+  }
+
+  let xCursor = frame.x;
+  const columnStarts = new Map<number, number>();
+  for (const column of columns) {
+    columnStarts.set(column, xCursor);
+    xCursor += (columnWidthsMm.get(column) ?? 0) * scale;
+  }
+
+  return contract.sillSegments
+    .map((segment) => {
+      const x = columnStarts.get(segment.column);
+      const widthMm = columnWidthsMm.get(segment.column);
+      if (x === undefined || widthMm === undefined) {
+        console.warn("B92 segmented sill overlay skipped: sill segment has no matching column bounds.", segment);
+        return null;
+      }
+
+      return rect({
+        x,
+        y: frame.y + frame.height - B92_FIXED_INTERNAL_FRAME_MM.bottom * scale,
+        width: widthMm * scale,
+        height: B92_FIXED_INTERNAL_FRAME_MM.bottom * scale,
+        stroke: "#111",
+        strokeWidth: 1.3,
+        fill: "rgba(244, 244, 245, 0.72)",
+        role: `sill_segment_${segment.profile.profileId}`,
+      });
+    })
+    .filter((shape): shape is DrawingRect => !!shape);
+}
+
 export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTypeRenderModel): DrawingModel {
   const field = assertB92FixedInternalContract(contract);
   const widthMm = contract.overall.widthMm;
@@ -294,6 +359,8 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
       role: "b92_fixed_internal_frame_bottom",
     }),
   ];
+  const segmentedSillOverlayShapes = buildSegmentedSillOverlayShapes(contract, frame, scale);
+  frameShapes.push(...segmentedSillOverlayShapes);
   const glassShapes: DrawingShape[] = [
     rect({
       x: frame.x + visibleGlassMm.x * scale,
@@ -348,6 +415,10 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
           visibleFrameMm: B92_FIXED_INTERNAL_FRAME_MM,
           visibleGlassMm,
           glassOrderNoteMm: glassOrderMm,
+          segmentedSillOverlay: {
+            enabled: shouldRenderSegmentedSillOverlay(contract),
+            shapeCount: segmentedSillOverlayShapes.length,
+          },
           note: "Isolated B92 fixed internal contract drawing adapter; pilot geometry is not used as authority.",
         },
       },

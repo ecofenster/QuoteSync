@@ -21,6 +21,9 @@ export type WindowTypeRenderMeta = {
   source: "resolver_contract";
   designRule: string;
   notes?: string[];
+  dev?: {
+    b92RenderSegmentedSillOverlay?: boolean | null;
+  };
 };
 
 export type WindowTypeRenderOverall = {
