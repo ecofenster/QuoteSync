@@ -36,113 +36,113 @@ const WINDOW_FIELD_COUNT_OPTIONS: Array<{ key: ConfiguratorFieldCountMode; label
   { key: "freehand", label: "Freehand" },
 ];
 
+const WINDOW_MATERIAL_GROUPS = [
+  { key: "timber", label: "Timber / Timber Alu" },
+  { key: "upvc", label: "uPVC / uPVC Alu" },
+  { key: "aluminium", label: "Aluminium" },
+  { key: "steel", label: "Steel" },
+] as const;
+
+function buildMaterialGroupedWindowDesigns(
+  fieldCountMode: Extract<ConfiguratorFieldCountMode, "1" | "2" | "3" | "4" | "6">,
+  entries: Array<{ key: string; label: string; description: string; timberUpvcOnly?: boolean }>
+): WindowTypeDesignListItem[] {
+  return WINDOW_MATERIAL_GROUPS.flatMap((group) =>
+    entries
+      .filter((entry) => !entry.timberUpvcOnly || group.key === "timber" || group.key === "upvc")
+      .map((entry) => ({
+        id: `windows-${fieldCountMode}-${group.key}-${entry.key}`,
+        groupLabel: group.label,
+        label: entry.label,
+        description: entry.description,
+      }))
+  );
+}
+
 function buildPlaceholderDesigns(
   category: ConfiguratorProductCategory,
   fieldCountMode: ConfiguratorFieldCountMode
 ): WindowTypeDesignListItem[] {
   if (category === "windows" && fieldCountMode === "1") {
-    return [
+    return buildMaterialGroupedWindowDesigns("1", [
       {
-        id: "windows-1-timber-inward-opening",
-        groupLabel: "Timber / Timber Alu",
+        key: "inward-opening",
         label: "1 Field - Inward Opening",
         description: "Single inward-opening field family. Field operation is selected from the preview context menu.",
       },
       {
-        id: "windows-1-timber-outward-opening",
-        groupLabel: "Timber / Timber Alu",
+        key: "outward-opening",
         label: "1 Field - Outward Opening",
         description: "Single outward-opening field family. Detailed operations will be selected per field.",
       },
       {
-        id: "windows-1-timber-sash-case",
-        groupLabel: "Timber / Timber Alu",
+        key: "sash-case",
         label: "Sash & Case",
         description: "Single sash and case family placeholder.",
+        timberUpvcOnly: true,
       },
-      {
-        id: "windows-1-upvc-inward-opening",
-        groupLabel: "uPVC / uPVC Alu",
-        label: "1 Field - Inward Opening",
-        description: "Single inward-opening field family. Field operation is selected from the preview context menu.",
-      },
-      {
-        id: "windows-1-upvc-outward-opening",
-        groupLabel: "uPVC / uPVC Alu",
-        label: "1 Field - Outward Opening",
-        description: "Single outward-opening field family. Detailed operations will be selected per field.",
-      },
-      {
-        id: "windows-1-upvc-sash-case",
-        groupLabel: "uPVC / uPVC Alu",
-        label: "Sash & Case",
-        description: "Single sash and case family placeholder.",
-      },
-      {
-        id: "windows-1-aluminium-inward-opening",
-        groupLabel: "Aluminium",
-        label: "1 Field - Inward Opening",
-        description: "Single inward-opening field family. Field operation is selected from the preview context menu.",
-      },
-      {
-        id: "windows-1-aluminium-outward-opening",
-        groupLabel: "Aluminium",
-        label: "1 Field - Outward Opening",
-        description: "Single outward-opening field family. Detailed operations will be selected per field.",
-      },
-      {
-        id: "windows-1-steel-inward-opening",
-        groupLabel: "Steel",
-        label: "1 Field - Inward Opening",
-        description: "Single inward-opening field family. Field operation is selected from the preview context menu.",
-      },
-      {
-        id: "windows-1-steel-outward-opening",
-        groupLabel: "Steel",
-        label: "1 Field - Outward Opening",
-        description: "Single outward-opening field family. Detailed operations will be selected per field.",
-      },
-    ];
+    ]);
   }
   if (category === "windows" && fieldCountMode === "2") {
-    return [
-      { id: "windows-2-fixed-fixed-static", label: "Pilot Profile: Fixed / Fixed", description: "Static fixed/fixed mullion, B92-14." },
+    return buildMaterialGroupedWindowDesigns("2", [
       {
-        id: "windows-2-fixed-tiltturn-handle-centre",
-        label: "Pilot Profile: Fixed / T&T Handle Centre",
-        description: "Mixed fixed/T&T vertical, handle at centre, B92-12.",
+        key: "horizontal",
+        label: "2 Field - Horizontal",
+        description: "Two-field horizontal window family. Field operations are selected per field.",
       },
       {
-        id: "windows-2-fixed-tiltturn-hinge-centre",
-        label: "Pilot Profile: Fixed / T&T Hinge Centre",
-        description: "Mixed fixed/T&T vertical, hinge at centre, B78-13.",
+        key: "vertical",
+        label: "2 Field - Vertical",
+        description: "Two-field vertical window family. Field operations are selected per field.",
+      },
+    ]);
+  }
+  if (category === "windows" && fieldCountMode === "3") {
+    return buildMaterialGroupedWindowDesigns("3", [
+      {
+        key: "horizontal",
+        label: "3 Field - Horizontal",
+        description: "Three-field horizontal window family. Field operations are selected per field.",
       },
       {
-        id: "windows-2-tiltturn-tiltturn-static",
-        label: "Pilot Profile: T&T / T&T Static",
-        description: "Static T&T/T&T mullion, B92-15.",
+        key: "vertical",
+        label: "3 Field - Vertical",
+        description: "Three-field vertical window family. Field operations are selected per field.",
+      },
+    ]);
+  }
+  if (category === "windows" && fieldCountMode === "4") {
+    return buildMaterialGroupedWindowDesigns("4", [
+      {
+        key: "horizontal",
+        label: "4 Field - Horizontal",
+        description: "Four-field horizontal window family. Field operations are selected per field.",
       },
       {
-        id: "windows-2-slave-master-flying",
-        label: "Pilot Profile: Slave / Master Flying Mullion",
-        description: "Flying mullion, B92-18.",
+        key: "vertical",
+        label: "4 Field - Vertical",
+        description: "Four-field vertical window family. Field operations are selected per field.",
       },
       {
-        id: "windows-2-fixed-over-fixed-vertical",
-        label: "Pilot Profile: Fixed over Fixed",
-        description: "Vertical stack with fixed/fixed transom, B92-23.",
+        key: "2x2-grid",
+        label: "4 Field - 2x2 Grid",
+        description: "Four-field 2x2 grid window family. Field operations are selected per field.",
+      },
+    ]);
+  }
+  if (category === "windows" && fieldCountMode === "6") {
+    return buildMaterialGroupedWindowDesigns("6", [
+      {
+        key: "3x2-grid",
+        label: "6 Field - 3x2 Grid",
+        description: "Six-field 3x2 grid window family. Field operations are selected per field.",
       },
       {
-        id: "windows-2-fixed-over-tiltturn-vertical",
-        label: "Pilot Profile: Fixed over T&T",
-        description: "Vertical stack with fixed over T&T transom, B92-21.",
+        key: "2x3-grid",
+        label: "6 Field - 2x3 Grid",
+        description: "Six-field 2x3 grid window family. Field operations are selected per field.",
       },
-      {
-        id: "windows-2-tiltturn-over-fixed-vertical",
-        label: "Pilot Profile: T&T over Fixed",
-        description: "Vertical stack with T&T over fixed transom, B92-20.",
-      },
-    ];
+    ]);
   }
   if (category === "windows" && fieldCountMode === "grid") {
     return [
