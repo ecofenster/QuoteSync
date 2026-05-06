@@ -17,6 +17,14 @@ const VIEW_BOX_WIDTH = 520;
 const VIEW_BOX_HEIGHT = 520;
 const VIEW_BOX_PAD = 56;
 
+// B92 internal datum note:
+// For Tilt & Turn / Fixed Sash top, left, and right, 57mm is the true structural
+// frame reference line. The adapter uses 37.5mm because that is the visible frame
+// after sash overlay; 19.5mm is hidden behind the sash. Bottom visible frame
+// differs by rebate: Fixed no-sash bottom visible is 72mm, while Tilt & Turn /
+// Fixed Sash bottom visible is 52.5mm. This drawing adapter intentionally uses
+// visible dimensions only. Do not refactor to hidden/structural geometry unless
+// explicitly approved.
 const B92_FIXED_SASH_INTERNAL_FRAME_MM = {
   top: 37.5,
   left: 37.5,

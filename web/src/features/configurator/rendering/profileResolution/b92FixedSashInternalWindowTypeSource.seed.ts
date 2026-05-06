@@ -23,6 +23,12 @@ type ValidatedFixedSashSourceModel = Omit<WindowTypeSourceModel, "fieldRules" | 
 // operation or hardware; the sash is permanently fixed in place with hidden fixings.
 // B92 glass sits behind the glazing bead by 13mm on all sides; glass order
 // adds 26mm width and 26mm height. Fixed sash geometry validated via catalog and adapter comparison.
+// Datum note: for Tilt & Turn / Fixed Sash top, left, and right, 57mm is the true
+// structural frame reference line, 37.5mm is the visible frame after sash overlay,
+// and 19.5mm is hidden behind the sash. Bottom visible frame differs by rebate:
+// Fixed no-sash bottom visible is 72mm, while Tilt & Turn / Fixed Sash bottom
+// visible is 52.5mm. Current rendering intentionally uses visible dimensions only;
+// do not refactor to hidden/structural geometry unless explicitly approved.
 export const b92FixedSashInternalWindowTypeSourceSeed = {
   id: "b92-fixed-sash-1x1-internal-draft",
   manufacturerId: null,
@@ -172,6 +178,9 @@ export const b92FixedSashInternalWindowTypeSourceSeed = {
       "B92 glass sits behind glazing bead by 13mm on all sides.",
       "Glass order adds 26mm width and 26mm height.",
       "Confirmed profile basis: sash B92-7, B92-8, B92-9, B92-10.",
+      "Datum note: top/left/right use 57mm structural frame reference, 37.5mm visible frame after sash overlay, and 19.5mm hidden behind the sash.",
+      "Bottom differs by rebate: Fixed no-sash bottom visible is 72mm; Tilt & Turn / Fixed Sash bottom visible is 52.5mm.",
+      "Current renderer intentionally uses visible dimensions only; hidden/structural geometry must not be introduced without explicit approval.",
       "Fixed sash remains unwired until Admin preview integration is explicitly approved.",
     ],
   },
