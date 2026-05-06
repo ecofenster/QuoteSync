@@ -25,6 +25,7 @@ export default function DrawingViewport(props: DrawingViewportProps) {
     model,
     selectedCellKey,
     onSelectCell,
+    onCellContextMenu,
     onRemoveVerticalJunction,
     onRemoveHorizontalJunction,
     minHeight = 320,
@@ -237,6 +238,7 @@ export default function DrawingViewport(props: DrawingViewportProps) {
             model={model}
             selectedCellKey={tool === "pan" || tool === "measure" ? "" : selectedCellKey}
             onSelectCell={tool === "pan" || tool === "measure" ? undefined : onSelectCell}
+            onCellContextMenu={tool === "pan" || tool === "measure" ? undefined : onCellContextMenu}
             onRemoveVerticalJunction={tool === "pan" || tool === "measure" ? undefined : onRemoveVerticalJunction}
             onRemoveHorizontalJunction={tool === "pan" || tool === "measure" ? undefined : onRemoveHorizontalJunction}
           />

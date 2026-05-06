@@ -13,6 +13,10 @@ export type DrawingViewportTool = "select" | "pan" | "measure";
 export type DrawingViewportInteractionProps = {
   selectedCellKey?: string;
   onSelectCell?: (cell: { col: number; row: number }) => void;
+  onCellContextMenu?: (
+    cell: { col: number; row: number; key: string },
+    event: React.MouseEvent<SVGRectElement>
+  ) => void;
   onRemoveVerticalJunction?: (index: number) => void;
   onRemoveHorizontalJunction?: (index: number) => void;
 };

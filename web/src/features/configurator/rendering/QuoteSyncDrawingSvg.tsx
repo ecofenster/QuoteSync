@@ -63,12 +63,16 @@ type Props = {
   model: DrawingModel;
   selectedCellKey?: string;
   onSelectCell?: (cell: { col: number; row: number }) => void;
+  onCellContextMenu?: (
+    cell: { col: number; row: number; key: string },
+    event: React.MouseEvent<SVGRectElement>
+  ) => void;
   onRemoveVerticalJunction?: (index: number) => void;
   onRemoveHorizontalJunction?: (index: number) => void;
 };
 
 export default function QuoteSyncDrawingSvg(props: Props) {
-  const { model, selectedCellKey, onSelectCell, onRemoveVerticalJunction, onRemoveHorizontalJunction } = props;
+  const { model, selectedCellKey, onSelectCell, onCellContextMenu, onRemoveVerticalJunction, onRemoveHorizontalJunction } = props;
 
   return (
     <svg viewBox={`0 0 ${model.viewBox.width} ${model.viewBox.height}`} width="100%" height="100%" style={{ display: "block" }}>
@@ -144,6 +148,11 @@ export default function QuoteSyncDrawingSvg(props: Props) {
               fill="transparent"
               style={{ cursor: onSelectCell ? "pointer" : "default" }}
               onClick={() => onSelectCell?.({ col, row })}
+              onContextMenu={(event) => {
+                if (!onCellContextMenu) return;
+                event.preventDefault();
+                onCellContextMenu({ col, row, key: cell.key }, event);
+              }}
             />
             {isSelected ? (
               <rect
