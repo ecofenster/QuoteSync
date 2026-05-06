@@ -215,6 +215,34 @@ function applyB92SegmentResolverToContract(
   const appliedHorizontal = segmentResult.horizontalTransomAssignments
     .map(horizontalJunctionFromAssignment)
     .filter((item): item is WindowTypeRenderJunction => !!item);
+  const outerEdgeSegments = segmentResult.outerEdgeAssignments
+    .map((assignment) => {
+      if (assignment.segment?.kind !== "outer_edge") return null;
+      return {
+        edge: assignment.segment.edge,
+        segmentIndex: assignment.segment.segmentIndex,
+        row: assignment.segment.row,
+        column: assignment.segment.column,
+        fieldId: assignment.segment.field.id,
+        profile: {
+          profileId: assignment.profileId,
+        },
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => !!item);
+  const sillSegments = segmentResult.sillAssignments
+    .map((assignment) => {
+      if (assignment.segment?.kind !== "outer_edge") return null;
+      return {
+        column: assignment.segment.column,
+        segmentIndex: assignment.segment.segmentIndex,
+        fieldId: assignment.segment.field.id,
+        profile: {
+          profileId: assignment.profileId,
+        },
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => !!item);
   const outerEdgesReadOnly = outerEdgeDifferences(contract, segmentResult);
 
   if (segmentResult.issues.length > 0) {
@@ -231,6 +259,8 @@ function applyB92SegmentResolverToContract(
   console.log({
     appliedVertical,
     appliedHorizontal,
+    outerEdgeSegments,
+    sillSegments,
     outerEdgesReadOnly,
     unresolved: segmentResult.issues,
   });
@@ -240,6 +270,8 @@ function applyB92SegmentResolverToContract(
     ...contract,
     verticalJunctions: appliedVertical,
     horizontalJunctions: appliedHorizontal,
+    outerEdgeSegments,
+    sillSegments,
   };
 }
 
