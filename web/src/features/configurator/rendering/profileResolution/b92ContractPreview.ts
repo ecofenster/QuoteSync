@@ -107,7 +107,16 @@ function logB92SegmentResolverValidation(
   console.log({
     outerEdges: segmentResult.outerEdgeAssignments,
     sills: segmentResult.sillAssignments,
-    vertical: segmentResult.verticalJunctionAssignments,
+    vertical: segmentResult.verticalJunctionAssignments.map((assignment) => ({
+      ...assignment,
+      hingeInfo:
+        assignment.segment?.kind === "vertical_junction"
+          ? {
+              left: assignment.segment.leftField.hingeSide,
+              right: assignment.segment.rightField.hingeSide,
+            }
+          : null,
+    })),
     horizontal: segmentResult.horizontalTransomAssignments.map((assignment) => ({
       ...assignment,
       rowContext:

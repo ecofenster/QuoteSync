@@ -221,7 +221,10 @@ function verticalOverrideCondition(segment: B92VerticalJunctionSegment): B92Vert
     if (segment.leftField.hingeSide === "right" && segment.rightField.hingeSide === "left") {
       return "hinges_at_meeting";
     }
-    if (segment.leftOperation === segment.rightOperation) {
+    if (
+      (segment.leftField.hingeSide === "left" && segment.rightField.hingeSide === "left") ||
+      (segment.leftField.hingeSide === "right" && segment.rightField.hingeSide === "right")
+    ) {
       return "same_handing";
     }
   }
@@ -252,6 +255,7 @@ function resolveVerticalJunctionSegment(
     profileId: rule.profileId,
     status: rule.status,
     ruleId: rule.id,
+    segment,
     note: rule.notes?.join(" "),
   });
   return {
