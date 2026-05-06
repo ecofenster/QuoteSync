@@ -42,7 +42,7 @@ type CatalogBridgePreviewReport = {
 
 type PreviewSourceResult = {
   sourceModel: WindowTypeSourceModel | null;
-  sourceLabel: "Catalog" | "Seed fallback" | "Fixed Sash (catalog-validated)" | "Tilt & Turn (operation default)" | "";
+  sourceLabel: "Catalog" | "Seed fallback" | "";
   previewTitle: string;
   previewDescription: string;
   catalogReport: CatalogBridgePreviewReport;
@@ -72,36 +72,7 @@ function resolvePreviewSourceModel(
     error: "",
   };
 
-  if (selectedDesign?.id === "windows-1-fixed-sash") {
-    return {
-      sourceModel: b92FixedSashInternalWindowTypeSourceSeed,
-      sourceLabel: "Fixed Sash (catalog-validated)",
-      previewTitle: "Technical Preview — B92 Fixed Sash Internal 1000 x 1000",
-      previewDescription: "Dev-only source-model chain: B92, inside view, 1x1, fixed sash, no opening hardware, no multi-field.",
-      catalogReport: skippedReport,
-    };
-  }
-
-  if (selectedDesign?.id === "windows-1-tilt-turn") {
-    return {
-      sourceModel: updateSourceFieldOperation({
-        source: b92FixedSashInternalWindowTypeSourceSeed,
-        field: {
-          row: 0,
-          column: 0,
-          key: "0,0",
-        },
-        operation: "tt_left",
-      }),
-      sourceLabel: "Tilt & Turn (operation default)",
-      previewTitle: "Technical Preview — B92 Tilt & Turn Internal 1000 x 1000",
-      previewDescription:
-        "Dev-only source-model chain: B92, inside view, 1x1, Tilt & Turn, default operation tt_left, operation selectable per field.",
-      catalogReport: skippedReport,
-    };
-  }
-
-  if (selectedDesign?.id !== "windows-1-fixed") {
+  if (selectedDesign?.id !== "windows-1-inward-opening") {
     return {
       sourceModel: null,
       sourceLabel: "",
@@ -180,7 +151,7 @@ function resolvePreviewSourceModel(
       return {
         sourceModel: b92FixedInternalWindowTypeSourceSeed,
         sourceLabel: "Seed fallback",
-        previewTitle: "Technical Preview — B92 Fixed Internal 1000 x 1000",
+        previewTitle: "Technical Preview — B92 1 Field Inward Opening 1000 x 1000",
         previewDescription: "Dev-only source-model chain: B92, inside view, 1x1, fixed, no sash, no multi-field.",
         catalogReport,
       };
@@ -189,7 +160,7 @@ function resolvePreviewSourceModel(
     return {
       sourceModel,
       sourceLabel: "Catalog",
-      previewTitle: "Technical Preview — B92 Fixed Internal 1000 x 1000",
+      previewTitle: "Technical Preview — B92 1 Field Inward Opening 1000 x 1000",
       previewDescription: "Dev-only source-model chain: B92, inside view, 1x1, fixed, no sash, no multi-field.",
       catalogReport,
     };
@@ -197,7 +168,7 @@ function resolvePreviewSourceModel(
     return {
       sourceModel: b92FixedInternalWindowTypeSourceSeed,
       sourceLabel: "Seed fallback",
-      previewTitle: "Technical Preview — B92 Fixed Internal 1000 x 1000",
+      previewTitle: "Technical Preview — B92 1 Field Inward Opening 1000 x 1000",
       previewDescription: "Dev-only source-model chain: B92, inside view, 1x1, fixed, no sash, no multi-field.",
       catalogReport: {
         attempted: true,

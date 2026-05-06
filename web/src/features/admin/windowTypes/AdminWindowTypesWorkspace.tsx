@@ -42,11 +42,17 @@ function buildPlaceholderDesigns(
 ): WindowTypeDesignListItem[] {
   if (category === "windows" && fieldCountMode === "1") {
     return [
-      { id: "windows-1-fixed", label: "Fixed", description: "Single fixed light placeholder." },
-      { id: "windows-1-fixed-sash", label: "Fixed Sash", description: "Single fixed sash placeholder." },
-      { id: "windows-1-tilt-turn-left", label: "Tilt & Turn Left", description: "Single inward opening, hinge left." },
-      { id: "windows-1-tilt-turn-right", label: "Tilt & Turn Right", description: "Single inward opening, hinge right." },
-      { id: "windows-1-sash-case", label: "Sash & Case", description: "Placeholder design option for future support." },
+      {
+        id: "windows-1-inward-opening",
+        label: "1 Field - Inward Opening",
+        description: "Single inward-opening field family. Field operation is selected from the preview context menu.",
+      },
+      {
+        id: "windows-1-outward-opening",
+        label: "1 Field - Outward Opening",
+        description: "Single outward-opening field family. Detailed operations will be selected per field.",
+      },
+      { id: "windows-1-sash-case", label: "Sash & Case", description: "Single sash and case family placeholder." },
     ];
   }
   if (category === "windows" && fieldCountMode === "2") {
