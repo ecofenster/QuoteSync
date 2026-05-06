@@ -3,8 +3,10 @@ import { compareAdminSourceContractToResolverContract } from "./adminSourceContr
 import { b92FixedInternalWindowTypeSourceSeed } from "./b92FixedInternalWindowTypeSource.seed";
 import { resolveB92Profiles } from "./b92ProfileResolver";
 import type { B92ResolverInput } from "./b92ProfileTypes";
+import { resolveB92ProfileSegmentsFromSource } from "./b92SegmentResolver";
 import { buildB92WindowTypeRenderModel } from "./b92WindowTypeRenderAdapter";
 import type { WindowTypeRenderGlass, WindowTypeRenderModel } from "./windowTypeRenderContract";
+import type { WindowTypeSourceModel } from "../../../admin/windowTypes/windowTypeSourceModel.types";
 
 export type BuildB92FixedSingleFieldContractPreviewInput = {
   widthMm: number;
@@ -18,6 +20,7 @@ export type BuildB92FixedSingleFieldContractPreviewInput = {
   dev?: {
     useAdminSourceModel?: boolean | null;
     useAdminSourceModelReturn?: boolean | null;
+    b92SegmentResolverValidation?: boolean | null;
   };
 };
 
@@ -33,9 +36,23 @@ function buildAdminSourceComparison(input: {
   heightMm: number;
   resolverContract: WindowTypeRenderModel;
   allowReturn: boolean;
+  enableSegmentResolverValidation: boolean;
 }): { contract: WindowTypeRenderModel | null; notes: string[]; canReturn: boolean } {
   try {
-    const adminSourceContract = buildWindowTypeRenderModelFromSource(b92FixedInternalWindowTypeSourceSeed, {
+    const sourceModel = {
+      ...b92FixedInternalWindowTypeSourceSeed,
+      dev: {
+        b92SegmentResolverValidation: input.enableSegmentResolverValidation,
+      },
+    } satisfies WindowTypeSourceModel & {
+      dev?: {
+        b92SegmentResolverValidation?: boolean | null;
+      };
+    };
+
+    logB92SegmentResolverValidation(sourceModel);
+
+    const adminSourceContract = buildWindowTypeRenderModelFromSource(sourceModel, {
       widthMm: input.widthMm,
       heightMm: input.heightMm,
     });
@@ -74,6 +91,27 @@ function buildAdminSourceComparison(input: {
       ],
     };
   }
+}
+
+function logB92SegmentResolverValidation(
+  sourceModel: WindowTypeSourceModel & {
+    dev?: {
+      b92SegmentResolverValidation?: boolean | null;
+    };
+  }
+): void {
+  if (sourceModel.dev?.b92SegmentResolverValidation !== true) return;
+
+  const segmentResult = resolveB92ProfileSegmentsFromSource(sourceModel);
+  console.group("B92 Segment Resolver");
+  console.log({
+    outerEdges: segmentResult.outerEdgeAssignments,
+    sills: segmentResult.sillAssignments,
+    vertical: segmentResult.verticalJunctionAssignments,
+    horizontal: segmentResult.horizontalTransomAssignments,
+    issues: segmentResult.issues,
+  });
+  console.groupEnd();
 }
 
 export function buildB92FixedSingleFieldContractPreview(
@@ -138,6 +176,7 @@ export function buildB92FixedSingleFieldContractPreview(
       heightMm,
       resolverContract,
       allowReturn: input.dev.useAdminSourceModelReturn === true,
+      enableSegmentResolverValidation: input.dev.b92SegmentResolverValidation === true,
     });
 
     if (adminSourceComparison.canReturn && adminSourceComparison.contract) {

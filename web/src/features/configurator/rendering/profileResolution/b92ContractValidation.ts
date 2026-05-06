@@ -19,6 +19,7 @@ export type B92FixedInternalContractValidationInput = {
   devFlagEnabled?: boolean | null;
   useAdminSourceModel?: boolean | null;
   useAdminSourceModelReturn?: boolean | null;
+  b92SegmentResolverValidation?: boolean | null;
   fieldId?: string;
   glassValidationDimensionsMm?: {
     width: number;
@@ -93,6 +94,7 @@ export function validateB92FixedInternalContractPreview(
     dev: {
       useAdminSourceModel: input.useAdminSourceModel,
       useAdminSourceModelReturn: input.useAdminSourceModelReturn,
+      b92SegmentResolverValidation: input.b92SegmentResolverValidation,
     },
   });
   const comparison = compareB92FixedSingleFieldContract({
