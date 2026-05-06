@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import QuoteSyncDrawingSvg from "../../configurator/rendering/QuoteSyncDrawingSvg";
 import { buildB92FixedInternalDrawingModelFromContract } from "../../configurator/rendering/profileResolution/b92ContractDrawingAdapter";
 import { b92FixedInternalWindowTypeSourceSeed } from "../../configurator/rendering/profileResolution/b92FixedInternalWindowTypeSource.seed";
@@ -14,7 +14,9 @@ import type { ConfiguratorCatalogBootstrap } from "../configuratorCatalog.types"
 import type { WindowTypeSourceModel } from "./windowTypeSourceModel.types";
 import type { WindowTypeDesignListItem } from "./WindowTypeDesignList";
 import DivisionJunctionPanel from "./DivisionJunctionPanel";
+import FieldOperationContextMenu, { type FieldOperationContextMenuField } from "./FieldOperationContextMenu";
 import FieldDefinitionPanel from "./FieldDefinitionPanel";
+import { FIELD_OPERATION_MENU_GROUPS } from "./fieldOperationOptions";
 import SectionMappingPanel from "./SectionMappingPanel";
 
 type Props = {
@@ -38,6 +40,13 @@ type PreviewSourceResult = {
   previewTitle: string;
   previewDescription: string;
   catalogReport: CatalogBridgePreviewReport;
+};
+
+type FieldOperationMenuState = {
+  open: boolean;
+  x: number;
+  y: number;
+  field: FieldOperationContextMenuField | null;
 };
 
 function resolvePreviewSourceModel(
@@ -178,11 +187,31 @@ function formatReportValue(value: unknown) {
 
 function WindowTypeTechnicalPreview(props: { selectedDesign: WindowTypeDesignListItem | null; bootstrap: ConfiguratorCatalogBootstrap }) {
   const { selectedDesign, bootstrap } = props;
+  const [operationMenu, setOperationMenu] = useState<FieldOperationMenuState>({
+    open: false,
+    x: 0,
+    y: 0,
+    field: null,
+  });
   const previewSource = useMemo(
     () => resolvePreviewSourceModel(selectedDesign, bootstrap),
     [selectedDesign, bootstrap]
   );
   const { sourceModel, sourceLabel, previewTitle, previewDescription, catalogReport } = previewSource;
+  const closeOperationMenu = useCallback(() => {
+    setOperationMenu((current) => ({ ...current, open: false }));
+  }, []);
+  const handleCellContextMenu = useCallback(
+    (field: FieldOperationContextMenuField, event: React.MouseEvent<SVGRectElement>) => {
+      setOperationMenu({
+        open: true,
+        x: event.clientX,
+        y: event.clientY,
+        field,
+      });
+    },
+    []
+  );
   const previewResult = useMemo(() => {
     if (!sourceModel) {
       return {
@@ -238,7 +267,7 @@ function WindowTypeTechnicalPreview(props: { selectedDesign: WindowTypeDesignLis
             alignItems: "stretch",
           }}
         >
-          <QuoteSyncDrawingSvg model={previewResult.model} />
+          <QuoteSyncDrawingSvg model={previewResult.model} onCellContextMenu={handleCellContextMenu} />
         </div>
       ) : null}
       {sourceModel && !catalogReport.attempted ? (
@@ -266,6 +295,17 @@ function WindowTypeTechnicalPreview(props: { selectedDesign: WindowTypeDesignLis
           )}
         </div>
       ) : null}
+      <FieldOperationContextMenu
+        open={operationMenu.open}
+        x={operationMenu.x}
+        y={operationMenu.y}
+        field={operationMenu.field}
+        availableOperations={FIELD_OPERATION_MENU_GROUPS}
+        onSelectOperation={(operation) => {
+          console.log("Selected operation:", operation, operationMenu.field);
+        }}
+        onClose={closeOperationMenu}
+      />
     </div>
   );
 }
