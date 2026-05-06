@@ -157,6 +157,26 @@ export type WindowTypeRenderThreshold = {
   note?: string;
 };
 
+export type WindowTypeRenderOuterEdgeSegment = {
+  edge: "top" | "bottom" | "left" | "right";
+  segmentIndex: number;
+  row?: number;
+  column?: number;
+  fieldId: string;
+  profile: {
+    profileId: string;
+  };
+};
+
+export type WindowTypeRenderSillSegment = {
+  column: number;
+  segmentIndex: number;
+  fieldId: string;
+  profile: {
+    profileId: string;
+  };
+};
+
 export type WindowTypeRenderConstraint = {
   sourceId: string;
   constraint:
@@ -172,6 +192,8 @@ export type WindowTypeRenderModel = {
   fields: WindowTypeRenderField[];
   verticalJunctions: WindowTypeRenderJunction[];
   horizontalJunctions: WindowTypeRenderJunction[];
+  outerEdgeSegments?: WindowTypeRenderOuterEdgeSegment[];
+  sillSegments?: WindowTypeRenderSillSegment[];
   couplings: WindowTypeRenderCoupling[];
   corners: WindowTypeRenderCorner[];
   thresholds: WindowTypeRenderThreshold[];
