@@ -4,6 +4,7 @@ import type {
   WindowTypeRenderModel,
   WindowTypeRenderPerimeter,
   WindowTypeRenderProfileRef,
+  WindowTypeRenderFieldOperation,
 } from "./windowTypeRenderContract";
 
 type RuntimeDimensionsMm = {
@@ -55,6 +56,10 @@ function resolvedProfile(profileId: B92ProfileId, note?: string): WindowTypeRend
     source: "resolved",
     note,
   };
+}
+
+function sourceFieldOperation(operation: string | undefined): WindowTypeRenderFieldOperation | string | undefined {
+  return operation;
 }
 
 function buildPerimeter(source: WindowTypeSourceModel): WindowTypeRenderPerimeter {
@@ -236,6 +241,7 @@ function buildB92FixedInternalRenderModelFromSource(
         row: fieldRule.fieldSelector.row,
         column: fieldRule.fieldSelector.column,
         type: "fixed",
+        operation: sourceFieldOperation(fieldRule.operation),
         dimensionsMm: {
           width: dimensions.widthMm,
           height: dimensions.heightMm,
@@ -284,6 +290,7 @@ function buildB92FixedSashInternalRenderModelFromSource(
         row: fieldRule.fieldSelector.row,
         column: fieldRule.fieldSelector.column,
         type: "fixed_sash",
+        operation: sourceFieldOperation(fieldRule.operation ?? "fixed_sash"),
         dimensionsMm: {
           width: dimensions.widthMm,
           height: dimensions.heightMm,
@@ -291,6 +298,7 @@ function buildB92FixedSashInternalRenderModelFromSource(
         perimeter: buildPerimeter(source),
         sash: {
           openingType: "fixed_sash",
+          operation: sourceFieldOperation(fieldRule.operation ?? "fixed_sash"),
           hingeSide: null,
           handleSide: null,
           profiles: {

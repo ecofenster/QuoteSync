@@ -26,7 +26,32 @@ export type WindowTypeSourceModelOperationType =
   | "fixed"
   | "fixed_sash"
   | "tilt_turn"
-  | "turn_only";
+  | "turn_only"
+  | "tilt_only"
+  | "outward_opening"
+  | "door"
+  | "sliding"
+  | "lift_slide";
+
+export type WindowTypeSourceModelFieldOperation =
+  | "fixed"
+  | "fixed_sash"
+  | "tt_left"
+  | "tt_right"
+  | "turn_left"
+  | "turn_right"
+  | "tilt_only"
+  | "top_hung"
+  | "reversible"
+  | "pivot"
+  | "inward_opening_left"
+  | "inward_opening_right"
+  | "outward_opening_left"
+  | "outward_opening_right"
+  | "slide_left"
+  | "slide_right"
+  | "lift_slide_left"
+  | "lift_slide_right";
 
 export type WindowTypeSourceModelProfileRole =
   | "head"
@@ -138,6 +163,7 @@ export type WindowTypeSourceModelGeometryRules = {
 export type WindowTypeSourceModelFieldRule = {
   fieldSelector: WindowTypeSourceModelFieldSelector;
   operationType: WindowTypeSourceModelOperationType | string;
+  operation?: WindowTypeSourceModelFieldOperation | string;
   excludedOperationTypes?: Array<WindowTypeSourceModelOperationType | string>;
   perimeterProfiles: WindowTypeSourceModelPerimeterProfiles;
   sashProfiles?: WindowTypeSourceModelSashProfiles;

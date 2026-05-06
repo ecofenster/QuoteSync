@@ -49,6 +49,26 @@ export type WindowTypeRenderGlass = {
   note?: string;
 };
 
+export type WindowTypeRenderFieldOperation =
+  | "fixed"
+  | "fixed_sash"
+  | "tt_left"
+  | "tt_right"
+  | "turn_left"
+  | "turn_right"
+  | "tilt_only"
+  | "top_hung"
+  | "reversible"
+  | "pivot"
+  | "inward_opening_left"
+  | "inward_opening_right"
+  | "outward_opening_left"
+  | "outward_opening_right"
+  | "slide_left"
+  | "slide_right"
+  | "lift_slide_left"
+  | "lift_slide_right";
+
 export type WindowTypeRenderSashGeometry = {
   visibleFaceMm?: Partial<Record<"top" | "bottom" | "left" | "right", number>>;
   insetMm?: Partial<Record<"top" | "bottom" | "left" | "right", number>>;
@@ -64,6 +84,7 @@ export type WindowTypeRenderSashGeometry = {
 
 export type WindowTypeRenderSash = {
   openingType: Extract<B92FieldType, "fixed_sash" | "tilt_turn" | "turn_only">;
+  operation?: WindowTypeRenderFieldOperation | string;
   hingeSide?: "left" | "right" | null;
   handleSide?: "left" | "right" | null;
   profiles?: Partial<Record<"top" | "bottom" | "left" | "right", WindowTypeRenderProfileRef>>;
@@ -75,6 +96,7 @@ export type WindowTypeRenderField = {
   row: number;
   column: number;
   type: B92FieldType;
+  operation?: WindowTypeRenderFieldOperation | string;
   /**
    * Field dimensions must come from Window Type layout geometry.
    * They cannot be derived from resolveB92Profiles() output alone.
