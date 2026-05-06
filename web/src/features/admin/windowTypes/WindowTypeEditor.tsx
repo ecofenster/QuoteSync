@@ -16,7 +16,7 @@ import type { WindowTypeDesignListItem } from "./WindowTypeDesignList";
 import DivisionJunctionPanel from "./DivisionJunctionPanel";
 import FieldOperationContextMenu, { type FieldOperationContextMenuField } from "./FieldOperationContextMenu";
 import FieldDefinitionPanel from "./FieldDefinitionPanel";
-import { FIELD_OPERATION_MENU_GROUPS } from "./fieldOperationOptions";
+import { getFieldOperationOptionsForContext, resolveFieldOperationMenuContext } from "./fieldOperationOptions";
 import SectionMappingPanel from "./SectionMappingPanel";
 
 type Props = {
@@ -185,8 +185,12 @@ function formatReportValue(value: unknown) {
   return JSON.stringify(value);
 }
 
-function WindowTypeTechnicalPreview(props: { selectedDesign: WindowTypeDesignListItem | null; bootstrap: ConfiguratorCatalogBootstrap }) {
-  const { selectedDesign, bootstrap } = props;
+function WindowTypeTechnicalPreview(props: {
+  categoryLabel: string;
+  selectedDesign: WindowTypeDesignListItem | null;
+  bootstrap: ConfiguratorCatalogBootstrap;
+}) {
+  const { categoryLabel, selectedDesign, bootstrap } = props;
   const [operationMenu, setOperationMenu] = useState<FieldOperationMenuState>({
     open: false,
     x: 0,
@@ -198,6 +202,14 @@ function WindowTypeTechnicalPreview(props: { selectedDesign: WindowTypeDesignLis
     [selectedDesign, bootstrap]
   );
   const { sourceModel, sourceLabel, previewTitle, previewDescription, catalogReport } = previewSource;
+  const operationMenuContext = useMemo(
+    () => resolveFieldOperationMenuContext({ categoryLabel, selectedDesign }),
+    [categoryLabel, selectedDesign]
+  );
+  const availableOperations = useMemo(
+    () => getFieldOperationOptionsForContext(operationMenuContext),
+    [operationMenuContext]
+  );
   const closeOperationMenu = useCallback(() => {
     setOperationMenu((current) => ({ ...current, open: false }));
   }, []);
@@ -300,7 +312,7 @@ function WindowTypeTechnicalPreview(props: { selectedDesign: WindowTypeDesignLis
         x={operationMenu.x}
         y={operationMenu.y}
         field={operationMenu.field}
-        availableOperations={FIELD_OPERATION_MENU_GROUPS}
+        availableOperations={availableOperations}
         onSelectOperation={(operation) => {
           console.log("Selected operation:", operation, operationMenu.field);
         }}
@@ -325,7 +337,7 @@ export default function WindowTypeEditor(props: Props) {
           Scaffold only. Source-model panels are mounted here, but no Window Type persistence or migration is wired in this pass.
         </div>
       </div>
-      <WindowTypeTechnicalPreview selectedDesign={selectedDesign} bootstrap={bootstrap} />
+      <WindowTypeTechnicalPreview categoryLabel={categoryLabel} selectedDesign={selectedDesign} bootstrap={bootstrap} />
       <FieldDefinitionPanel selectedDesign={selectedDesign} />
       <DivisionJunctionPanel selectedDesign={selectedDesign} />
       <SectionMappingPanel selectedDesign={selectedDesign} />

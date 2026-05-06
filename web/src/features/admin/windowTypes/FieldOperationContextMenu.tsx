@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import type { WindowTypeSourceModelFieldOperation } from "./windowTypeSourceModel.types";
-import type { FieldOperationMenuGroup } from "./fieldOperationOptions";
+import type { FieldOperationMenuOption } from "./fieldOperationOptions";
 
 export type FieldOperationContextMenuField = {
   row: number;
@@ -13,7 +14,7 @@ type Props = {
   x: number;
   y: number;
   field: FieldOperationContextMenuField | null;
-  availableOperations: FieldOperationMenuGroup[];
+  availableOperations: FieldOperationMenuOption[];
   onSelectOperation: (operation: WindowTypeSourceModelFieldOperation) => void;
   onClose: () => void;
 };
@@ -42,16 +43,16 @@ export default function FieldOperationContextMenu(props: Props) {
     };
   }, [onClose, open]);
 
-  if (!open || !field) return null;
+  if (!open || !field || typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <div
       ref={menuRef}
       className="admin-card ui-card"
       style={{
         position: "fixed",
-        left: x,
         top: y,
+        left: x,
         zIndex: 1000,
         minWidth: 230,
         maxWidth: 280,
@@ -69,39 +70,27 @@ export default function FieldOperationContextMenu(props: Props) {
           Field {field.key} · row {field.row}, column {field.column}
         </div>
       </div>
-      {availableOperations.map((group) => (
-        <div key={group.id} style={{ display: "grid", gap: 5 }}>
-          <div className="admin-setting-label" style={{ opacity: group.disabled ? 0.58 : 1 }}>
-            {group.label}
-          </div>
-          <div style={{ display: "grid", gap: 4 }}>
-            {group.options.map((option) => {
-              const disabled = group.disabled || option.disabled;
-              return (
-                <button
-                  key={`${group.id}-${option.operation}-${option.label}`}
-                  type="button"
-                  className="admin-nav-button"
-                  disabled={disabled}
-                  role="menuitem"
-                  onClick={() => {
-                    if (disabled) return;
-                    onSelectOperation(option.operation);
-                    onClose();
-                  }}
-                  style={{
-                    justifyContent: "flex-start",
-                    opacity: disabled ? 0.5 : 1,
-                    cursor: disabled ? "not-allowed" : "pointer",
-                  }}
-                >
-                  <span className="admin-nav-button-label">{option.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ))}
-    </div>
+      <div style={{ display: "grid", gap: 4 }}>
+        {availableOperations.map((option) => (
+          <button
+            key={`${option.operation}-${option.label}`}
+            type="button"
+            className="admin-nav-button"
+            role="menuitem"
+            onClick={() => {
+              onSelectOperation(option.operation);
+              onClose();
+            }}
+            style={{
+              justifyContent: "flex-start",
+              cursor: "pointer",
+            }}
+          >
+            <span className="admin-nav-button-label">{option.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>,
+    document.body
   );
 }
