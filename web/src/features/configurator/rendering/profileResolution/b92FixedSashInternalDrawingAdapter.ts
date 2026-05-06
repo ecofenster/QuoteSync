@@ -1,6 +1,7 @@
 import type {
   DrawingDimension,
   DrawingModel,
+  DrawingPolygon,
   DrawingRect,
   DrawingShape,
 } from "../drawingModel";
@@ -221,6 +222,13 @@ function rect(input: Omit<DrawingRect, "kind">): DrawingRect {
   };
 }
 
+function polygon(input: Omit<DrawingPolygon, "kind">): DrawingPolygon {
+  return {
+    kind: "polygon",
+    ...input,
+  };
+}
+
 function buildDimensionAnnotations(
   frame: { x: number; y: number; width: number; height: number },
   widthMm: number,
@@ -398,6 +406,70 @@ export function buildB92FixedSashInternalDrawingModelFromContract(contract: Wind
     }),
   ];
 
+  const beadOuterSvg = {
+    left: frame.x + beadOuterMm.x * scale,
+    top: frame.y + beadOuterMm.y * scale,
+    right: frame.x + (beadOuterMm.x + beadOuterMm.width) * scale,
+    bottom: frame.y + (beadOuterMm.y + beadOuterMm.height) * scale,
+  };
+  const visibleGlassSvg = {
+    left: frame.x + visibleGlassMm.x * scale,
+    top: frame.y + visibleGlassMm.y * scale,
+    right: frame.x + (visibleGlassMm.x + visibleGlassMm.width) * scale,
+    bottom: frame.y + (visibleGlassMm.y + visibleGlassMm.height) * scale,
+  };
+
+  const beadShapes: DrawingShape[] = [
+    polygon({
+      points: [
+        { x: beadOuterSvg.left, y: beadOuterSvg.top },
+        { x: beadOuterSvg.right, y: beadOuterSvg.top },
+        { x: visibleGlassSvg.right, y: visibleGlassSvg.top },
+        { x: visibleGlassSvg.left, y: visibleGlassSvg.top },
+      ],
+      stroke: "#111",
+      strokeWidth: 1,
+      fill: "#f4f4f5",
+      role: "b92_fixed_sash_internal_glazing_bead_top_mitred",
+    }),
+    polygon({
+      points: [
+        { x: beadOuterSvg.right, y: beadOuterSvg.top },
+        { x: beadOuterSvg.right, y: beadOuterSvg.bottom },
+        { x: visibleGlassSvg.right, y: visibleGlassSvg.bottom },
+        { x: visibleGlassSvg.right, y: visibleGlassSvg.top },
+      ],
+      stroke: "#111",
+      strokeWidth: 1,
+      fill: "#f4f4f5",
+      role: "b92_fixed_sash_internal_glazing_bead_right_mitred",
+    }),
+    polygon({
+      points: [
+        { x: beadOuterSvg.right, y: beadOuterSvg.bottom },
+        { x: beadOuterSvg.left, y: beadOuterSvg.bottom },
+        { x: visibleGlassSvg.left, y: visibleGlassSvg.bottom },
+        { x: visibleGlassSvg.right, y: visibleGlassSvg.bottom },
+      ],
+      stroke: "#111",
+      strokeWidth: 1,
+      fill: "#f4f4f5",
+      role: "b92_fixed_sash_internal_glazing_bead_bottom_mitred",
+    }),
+    polygon({
+      points: [
+        { x: beadOuterSvg.left, y: beadOuterSvg.bottom },
+        { x: beadOuterSvg.left, y: beadOuterSvg.top },
+        { x: visibleGlassSvg.left, y: visibleGlassSvg.top },
+        { x: visibleGlassSvg.left, y: visibleGlassSvg.bottom },
+      ],
+      stroke: "#111",
+      strokeWidth: 1,
+      fill: "#f4f4f5",
+      role: "b92_fixed_sash_internal_glazing_bead_left_mitred",
+    }),
+  ];
+
   const sashShapes: DrawingShape[] = [
     rect({
       x: frame.x + sashOuterMm.x * scale,
@@ -409,16 +481,7 @@ export function buildB92FixedSashInternalDrawingModelFromContract(contract: Wind
       fill: "#f4f4f5",
       role: "b92_fixed_sash_internal_sash_outer",
     }),
-    rect({
-      x: frame.x + beadOuterMm.x * scale,
-      y: frame.y + beadOuterMm.y * scale,
-      width: beadOuterMm.width * scale,
-      height: beadOuterMm.height * scale,
-      stroke: "#111",
-      strokeWidth: 1,
-      fill: "#f4f4f5",
-      role: "b92_fixed_sash_internal_glazing_bead_outer",
-    }),
+    ...beadShapes,
   ];
 
   const glassShapes: DrawingShape[] = [
