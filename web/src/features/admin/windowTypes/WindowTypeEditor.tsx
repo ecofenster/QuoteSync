@@ -2,6 +2,8 @@ import React, { useMemo } from "react";
 import QuoteSyncDrawingSvg from "../../configurator/rendering/QuoteSyncDrawingSvg";
 import { buildB92FixedInternalDrawingModelFromContract } from "../../configurator/rendering/profileResolution/b92ContractDrawingAdapter";
 import { b92FixedInternalWindowTypeSourceSeed } from "../../configurator/rendering/profileResolution/b92FixedInternalWindowTypeSource.seed";
+import { buildB92FixedSashInternalDrawingModelFromContract } from "../../configurator/rendering/profileResolution/b92FixedSashInternalDrawingAdapter";
+import { b92FixedSashInternalWindowTypeSourceSeed } from "../../configurator/rendering/profileResolution/b92FixedSashInternalWindowTypeSource.seed";
 import { buildWindowTypeRenderModelFromSource } from "../../configurator/rendering/profileResolution/adminWindowTypeSourceAdapter";
 import {
   buildWindowTypeSourceModelFromCatalog,
@@ -32,7 +34,9 @@ type CatalogBridgePreviewReport = {
 
 type PreviewSourceResult = {
   sourceModel: WindowTypeSourceModel | null;
-  sourceLabel: "Catalog" | "Seed fallback" | "";
+  sourceLabel: "Catalog" | "Seed fallback" | "Fixed Sash (catalog-validated)" | "";
+  previewTitle: string;
+  previewDescription: string;
   catalogReport: CatalogBridgePreviewReport;
 };
 
@@ -48,10 +52,22 @@ function resolvePreviewSourceModel(
     error: "",
   };
 
+  if (selectedDesign?.id === "windows-1-fixed-sash") {
+    return {
+      sourceModel: b92FixedSashInternalWindowTypeSourceSeed,
+      sourceLabel: "Fixed Sash (catalog-validated)",
+      previewTitle: "Technical Preview — B92 Fixed Sash Internal 1000 x 1000",
+      previewDescription: "Dev-only source-model chain: B92, inside view, 1x1, fixed sash, no opening hardware, no multi-field.",
+      catalogReport: skippedReport,
+    };
+  }
+
   if (selectedDesign?.id !== "windows-1-fixed") {
     return {
       sourceModel: null,
       sourceLabel: "",
+      previewTitle: "Technical Preview",
+      previewDescription: "",
       catalogReport: skippedReport,
     };
   }
@@ -125,6 +141,8 @@ function resolvePreviewSourceModel(
       return {
         sourceModel: b92FixedInternalWindowTypeSourceSeed,
         sourceLabel: "Seed fallback",
+        previewTitle: "Technical Preview — B92 Fixed Internal 1000 x 1000",
+        previewDescription: "Dev-only source-model chain: B92, inside view, 1x1, fixed, no sash, no multi-field.",
         catalogReport,
       };
     }
@@ -132,12 +150,16 @@ function resolvePreviewSourceModel(
     return {
       sourceModel,
       sourceLabel: "Catalog",
+      previewTitle: "Technical Preview — B92 Fixed Internal 1000 x 1000",
+      previewDescription: "Dev-only source-model chain: B92, inside view, 1x1, fixed, no sash, no multi-field.",
       catalogReport,
     };
   } catch (error) {
     return {
       sourceModel: b92FixedInternalWindowTypeSourceSeed,
       sourceLabel: "Seed fallback",
+      previewTitle: "Technical Preview — B92 Fixed Internal 1000 x 1000",
+      previewDescription: "Dev-only source-model chain: B92, inside view, 1x1, fixed, no sash, no multi-field.",
       catalogReport: {
         attempted: true,
         buildSuccess: false,
@@ -160,7 +182,7 @@ function WindowTypeTechnicalPreview(props: { selectedDesign: WindowTypeDesignLis
     () => resolvePreviewSourceModel(selectedDesign, bootstrap),
     [selectedDesign, bootstrap]
   );
-  const { sourceModel, sourceLabel, catalogReport } = previewSource;
+  const { sourceModel, sourceLabel, previewTitle, previewDescription, catalogReport } = previewSource;
   const previewResult = useMemo(() => {
     if (!sourceModel) {
       return {
@@ -173,8 +195,12 @@ function WindowTypeTechnicalPreview(props: { selectedDesign: WindowTypeDesignLis
         widthMm: 1000,
         heightMm: 1000,
       });
+      const fieldType = contract.fields[0]?.type;
       return {
-        model: buildB92FixedInternalDrawingModelFromContract(contract),
+        model:
+          fieldType === "fixed_sash"
+            ? buildB92FixedSashInternalDrawingModelFromContract(contract)
+            : buildB92FixedInternalDrawingModelFromContract(contract),
         error: "",
       };
     } catch (error) {
@@ -189,13 +215,9 @@ function WindowTypeTechnicalPreview(props: { selectedDesign: WindowTypeDesignLis
     <div className="admin-card ui-card" style={{ padding: 14, display: "grid", gap: 10 }}>
       <div>
         <div className="admin-group-title">
-          {sourceModel ? "Technical Preview — B92 Fixed Internal 1000 x 1000" : "Technical Preview"}
+          {previewTitle}
         </div>
-        {sourceModel ? (
-          <div className="admin-body-copy">
-            Dev-only source-model chain: B92, inside view, 1x1, fixed, no sash, no multi-field.
-          </div>
-        ) : null}
+        {previewDescription ? <div className="admin-body-copy">{previewDescription}</div> : null}
       </div>
       {!sourceModel ? (
         <div className="admin-placeholder-box" style={{ margin: 0 }}>
@@ -217,6 +239,11 @@ function WindowTypeTechnicalPreview(props: { selectedDesign: WindowTypeDesignLis
           }}
         >
           <QuoteSyncDrawingSvg model={previewResult.model} />
+        </div>
+      ) : null}
+      {sourceModel && !catalogReport.attempted ? (
+        <div className="admin-placeholder-box" style={{ margin: 0 }}>
+          Preview source: {sourceLabel}
         </div>
       ) : null}
       {catalogReport.attempted ? (
