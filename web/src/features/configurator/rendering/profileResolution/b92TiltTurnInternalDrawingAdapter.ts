@@ -35,7 +35,10 @@ const REQUIRED_B92_TILT_TURN_SASH_PROFILES = {
 
 type Side = "top" | "left" | "right" | "bottom";
 type Bounds = { left: number; top: number; right: number; bottom: number };
-type TiltTurnFieldOperation = Extract<WindowTypeRenderFieldOperation, "tt_left" | "tt_right">;
+type TiltTurnFieldOperation = Extract<
+  WindowTypeRenderFieldOperation,
+  "tt_left" | "tt_right" | "turn_left" | "turn_right" | "tilt_only"
+>;
 
 function assertCondition(condition: boolean, message: string): asserts condition {
   if (!condition) throw new Error(`Invalid B92 tilt & turn internal drawing contract: ${message}`);
@@ -94,8 +97,12 @@ function resolveTiltTurnOperation(field: WindowTypeRenderField, sash: WindowType
   const operation = field.operation ?? sash.operation;
   if (operation !== undefined) {
     assertCondition(
-      operation === "tt_left" || operation === "tt_right",
-      `field.operation must be tt_left or tt_right for this adapter; received ${operation}.`
+      operation === "tt_left" ||
+        operation === "tt_right" ||
+        operation === "turn_left" ||
+        operation === "turn_right" ||
+        operation === "tilt_only",
+      `field.operation must be tt_left, tt_right, turn_left, turn_right, or tilt_only for this adapter; received ${operation}.`
     );
     return operation;
   }
@@ -105,7 +112,8 @@ function resolveTiltTurnOperation(field: WindowTypeRenderField, sash: WindowType
 }
 
 function expectedSidesForOperation(operation: TiltTurnFieldOperation) {
-  return operation === "tt_right"
+  if (operation === "tilt_only") return { hingeSide: null, handleSide: null };
+  return operation === "tt_right" || operation === "turn_right"
     ? { hingeSide: "right" as const, handleSide: "left" as const }
     : { hingeSide: "left" as const, handleSide: "right" as const };
 }
@@ -116,8 +124,10 @@ function assertSash(field: WindowTypeRenderField): { sash: WindowTypeRenderSash;
   assertCondition(sash.openingType === "tilt_turn", "sash.openingType must be tilt_turn.");
   const operation = resolveTiltTurnOperation(field, sash);
   const expectedSides = expectedSidesForOperation(operation);
-  assertCondition(sash.hingeSide === expectedSides.hingeSide, `${operation} requires ${expectedSides.hingeSide} hinge side.`);
-  assertCondition(sash.handleSide === expectedSides.handleSide, `${operation} requires ${expectedSides.handleSide} handle side.`);
+  if (operation !== "tilt_only") {
+    assertCondition(sash.hingeSide === expectedSides.hingeSide, `${operation} requires ${expectedSides.hingeSide} hinge side.`);
+    assertCondition(sash.handleSide === expectedSides.handleSide, `${operation} requires ${expectedSides.handleSide} handle side.`);
+  }
 
   assertResolvedProfileRef("top sash", sash.profiles?.top, REQUIRED_B92_TILT_TURN_SASH_PROFILES.top);
   assertResolvedProfileRef("left sash", sash.profiles?.left, REQUIRED_B92_TILT_TURN_SASH_PROFILES.left);
@@ -281,10 +291,19 @@ function dashedLine(input: Omit<DrawingLine, "kind" | "dashed" | "stroke" | "str
 }
 
 function buildTiltTurnOpeningLines(bead: Bounds, operation: TiltTurnFieldOperation): DrawingLine[] {
-  const isRightHung = operation === "tt_right";
+  const isRightHung = operation === "tt_right" || operation === "turn_right";
   const hingeX = isRightHung ? bead.right : bead.left;
   const handleX = isRightHung ? bead.left : bead.right;
-  const rolePrefix = isRightHung ? "tilt_turn_right" : "tilt_turn";
+  const rolePrefix =
+    operation === "turn_left"
+      ? "turn_left"
+      : operation === "turn_right"
+        ? "turn_right"
+        : operation === "tilt_only"
+          ? "tilt_only"
+          : isRightHung
+            ? "tilt_turn_right"
+            : "tilt_turn";
   const centerHandle = {
     x: handleX,
     y: (bead.top + bead.bottom) / 2,
@@ -294,7 +313,7 @@ function buildTiltTurnOpeningLines(bead: Bounds, operation: TiltTurnFieldOperati
     y: bead.top,
   };
 
-  return [
+  const sideOpeningTriangle = [
     dashedLine({
       x1: hingeX,
       y1: bead.top,
@@ -309,6 +328,9 @@ function buildTiltTurnOpeningLines(bead: Bounds, operation: TiltTurnFieldOperati
       y2: centerHandle.y,
       role: `${rolePrefix}_opening_bottom_hinge_to_handle_center`,
     }),
+  ];
+
+  const topTiltTriangle = [
     dashedLine({
       x1: hingeX,
       y1: bead.bottom,
@@ -324,6 +346,10 @@ function buildTiltTurnOpeningLines(bead: Bounds, operation: TiltTurnFieldOperati
       role: `${rolePrefix}_opening_top_center_to_bottom_handle`,
     }),
   ];
+
+  if (operation === "turn_left" || operation === "turn_right") return sideOpeningTriangle;
+  if (operation === "tilt_only") return topTiltTriangle;
+  return [...sideOpeningTriangle, ...topTiltTriangle];
 }
 
 export function buildB92TiltTurnInternalDrawingModelFromContract(contract: WindowTypeRenderModel): DrawingModel {
@@ -335,17 +361,33 @@ export function buildB92TiltTurnInternalDrawingModelFromContract(contract: Windo
   const bead = beadOuterBounds(baseModel);
   const openingLines = buildTiltTurnOpeningLines(bead, operation);
   const scale = frameOuter.width / baseModel.width;
-  const handleSide = operation === "tt_right" ? "left" : "right";
-  const handle: DrawingHandle = {
-    x: handleSide === "right" ? sashOuter.x + sashOuter.width - 57 * scale * 0.55 : sashOuter.x + 57 * scale * 0.55,
-    y: sashOuter.y + sashOuter.height / 2,
-    size: 10,
-    role: "handle",
-  };
+  const handleSide = operation === "tt_right" || operation === "turn_right" ? "left" : operation === "tilt_only" ? null : "right";
+  const handle: DrawingHandle | null =
+    handleSide === null
+      ? null
+      : {
+          x:
+            handleSide === "right"
+              ? sashOuter.x + sashOuter.width - 57 * scale * 0.55
+              : sashOuter.x + 57 * scale * 0.55,
+          y: sashOuter.y + sashOuter.height / 2,
+          size: 10,
+          role: "handle",
+        };
+  const labelValue =
+    operation === "tt_right"
+      ? "Tilt & Turn Right"
+      : operation === "turn_left"
+        ? "Turn Left"
+        : operation === "turn_right"
+          ? "Turn Right"
+          : operation === "tilt_only"
+            ? "Tilt Only"
+            : "Tilt & Turn Left";
   const label: DrawingLabel = {
     x: glass.x + 8,
     y: glass.y + 16,
-    value: operation === "tt_right" ? "Tilt & Turn Right" : "Tilt & Turn Left",
+    value: labelValue,
     fontSize: 9,
     fill: "#3f3f46",
     anchor: "start",
@@ -383,7 +425,7 @@ export function buildB92TiltTurnInternalDrawingModelFromContract(contract: Windo
     annotations: {
       ...baseModel.annotations,
       labels: [...baseModel.annotations.labels, label],
-      handles: [...baseModel.annotations.handles, handle],
+      handles: handle ? [...baseModel.annotations.handles, handle] : baseModel.annotations.handles,
       markers: [...baseModel.annotations.markers, correctedMarker],
     },
     metadata: {
@@ -397,7 +439,12 @@ export function buildB92TiltTurnInternalDrawingModelFromContract(contract: Windo
           baseAdapter: "buildB92FixedSashInternalDrawingModelFromContract",
           openingType: "tilt_turn",
           operation,
-          hingeSide: operation === "tt_right" ? "right" : "left",
+          hingeSide:
+            operation === "tt_right" || operation === "turn_right"
+              ? "right"
+              : operation === "tilt_only"
+                ? null
+                : "left",
           handleSide,
           openingLineAnchor: "beadOuter",
           beadOuterSvg: bead,

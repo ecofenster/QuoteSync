@@ -1,9 +1,10 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import QuoteSyncDrawingSvg from "../../configurator/rendering/QuoteSyncDrawingSvg";
 import { buildB92FixedInternalDrawingModelFromContract } from "../../configurator/rendering/profileResolution/b92ContractDrawingAdapter";
 import { b92FixedInternalWindowTypeSourceSeed } from "../../configurator/rendering/profileResolution/b92FixedInternalWindowTypeSource.seed";
 import { buildB92FixedSashInternalDrawingModelFromContract } from "../../configurator/rendering/profileResolution/b92FixedSashInternalDrawingAdapter";
 import { b92FixedSashInternalWindowTypeSourceSeed } from "../../configurator/rendering/profileResolution/b92FixedSashInternalWindowTypeSource.seed";
+import { buildB92TiltTurnInternalDrawingModelFromContract } from "../../configurator/rendering/profileResolution/b92TiltTurnInternalDrawingAdapter";
 import { buildWindowTypeRenderModelFromSource } from "../../configurator/rendering/profileResolution/adminWindowTypeSourceAdapter";
 import {
   buildWindowTypeSourceModelFromCatalog,
@@ -11,7 +12,12 @@ import {
   type CatalogSourceModelComparisonDifference,
 } from "../../configurator/rendering/profileResolution/catalogWindowTypeSourceAdapter";
 import type { ConfiguratorCatalogBootstrap } from "../configuratorCatalog.types";
-import type { WindowTypeSourceModel } from "./windowTypeSourceModel.types";
+import type {
+  WindowTypeSourceModel,
+  WindowTypeSourceModelFieldOperation,
+  WindowTypeSourceModelFieldRule,
+  WindowTypeSourceModelOperationType,
+} from "./windowTypeSourceModel.types";
 import type { WindowTypeDesignListItem } from "./WindowTypeDesignList";
 import DivisionJunctionPanel from "./DivisionJunctionPanel";
 import FieldOperationContextMenu, { type FieldOperationContextMenuField } from "./FieldOperationContextMenu";
@@ -36,7 +42,7 @@ type CatalogBridgePreviewReport = {
 
 type PreviewSourceResult = {
   sourceModel: WindowTypeSourceModel | null;
-  sourceLabel: "Catalog" | "Seed fallback" | "Fixed Sash (catalog-validated)" | "";
+  sourceLabel: "Catalog" | "Seed fallback" | "Fixed Sash (catalog-validated)" | "Tilt & Turn (operation default)" | "";
   previewTitle: string;
   previewDescription: string;
   catalogReport: CatalogBridgePreviewReport;
@@ -47,6 +53,11 @@ type FieldOperationMenuState = {
   x: number;
   y: number;
   field: FieldOperationContextMenuField | null;
+};
+
+type RuntimeDimensionsMm = {
+  widthMm: number;
+  heightMm: number;
 };
 
 function resolvePreviewSourceModel(
@@ -67,6 +78,25 @@ function resolvePreviewSourceModel(
       sourceLabel: "Fixed Sash (catalog-validated)",
       previewTitle: "Technical Preview — B92 Fixed Sash Internal 1000 x 1000",
       previewDescription: "Dev-only source-model chain: B92, inside view, 1x1, fixed sash, no opening hardware, no multi-field.",
+      catalogReport: skippedReport,
+    };
+  }
+
+  if (selectedDesign?.id === "windows-1-tilt-turn") {
+    return {
+      sourceModel: updateSourceFieldOperation({
+        source: b92FixedSashInternalWindowTypeSourceSeed,
+        field: {
+          row: 0,
+          column: 0,
+          key: "0,0",
+        },
+        operation: "tt_left",
+      }),
+      sourceLabel: "Tilt & Turn (operation default)",
+      previewTitle: "Technical Preview — B92 Tilt & Turn Internal 1000 x 1000",
+      previewDescription:
+        "Dev-only source-model chain: B92, inside view, 1x1, Tilt & Turn, default operation tt_left, operation selectable per field.",
       catalogReport: skippedReport,
     };
   }
@@ -185,6 +215,157 @@ function formatReportValue(value: unknown) {
   return JSON.stringify(value);
 }
 
+function cloneSourceModel(source: WindowTypeSourceModel): WindowTypeSourceModel {
+  return JSON.parse(JSON.stringify(source)) as WindowTypeSourceModel;
+}
+
+function operationTypeForOperation(operation: WindowTypeSourceModelFieldOperation): WindowTypeSourceModelOperationType {
+  if (operation === "fixed") return "fixed";
+  if (operation === "fixed_sash") return "fixed_sash";
+  if (operation === "turn_left" || operation === "turn_right") return "turn_only";
+  return "tilt_turn";
+}
+
+function templateFieldRuleForOperation(operation: WindowTypeSourceModelFieldOperation): WindowTypeSourceModelFieldRule {
+  const template =
+    operation === "fixed"
+      ? b92FixedInternalWindowTypeSourceSeed.fieldRules[0]
+      : b92FixedSashInternalWindowTypeSourceSeed.fieldRules[0];
+  return JSON.parse(JSON.stringify(template)) as WindowTypeSourceModelFieldRule;
+}
+
+function updateSourceFieldOperation(input: {
+  source: WindowTypeSourceModel;
+  field: FieldOperationContextMenuField;
+  operation: WindowTypeSourceModelFieldOperation;
+}): WindowTypeSourceModel {
+  const { source, field, operation } = input;
+  const next = cloneSourceModel(source);
+  const operationType = operationTypeForOperation(operation);
+  let updated = false;
+
+  next.fieldRules = next.fieldRules.map((fieldRule) => {
+    if (fieldRule.fieldSelector.row !== field.row || fieldRule.fieldSelector.column !== field.column) return fieldRule;
+    updated = true;
+    const template = templateFieldRuleForOperation(operation);
+    return {
+      ...template,
+      fieldSelector: {
+        ...template.fieldSelector,
+        row: field.row,
+        column: field.column,
+        fieldKey: field.key,
+      },
+      operationType,
+      operation,
+    };
+  });
+
+  if (!updated && next.layout.columns === 1 && next.layout.rows === 1 && next.fieldRules.length === 0) {
+    const template = templateFieldRuleForOperation(operation);
+    next.fieldRules = [
+      {
+        ...template,
+        fieldSelector: {
+          ...template.fieldSelector,
+          row: 0,
+          column: 0,
+          fieldKey: "0,0",
+        },
+        operationType,
+        operation,
+      },
+    ];
+  }
+
+  return next;
+}
+
+function resolvedProfile(profileId: "B92-1" | "B92-2" | "B92-3" | "B92-7" | "B92-8" | "B92-9" | "B92-10") {
+  return {
+    profileId,
+    source: "resolved" as const,
+  };
+}
+
+function buildB92TiltTurnPreviewContractFromSource(
+  source: WindowTypeSourceModel,
+  dimensions: RuntimeDimensionsMm
+) {
+  const fieldRule = source.fieldRules[0];
+  if (
+    !fieldRule ||
+    (fieldRule.operation !== "tt_left" &&
+      fieldRule.operation !== "tt_right" &&
+      fieldRule.operation !== "turn_left" &&
+      fieldRule.operation !== "turn_right" &&
+      fieldRule.operation !== "tilt_only")
+  ) {
+    throw new Error("Tilt & Turn preview requires tt_left, tt_right, turn_left, turn_right, or tilt_only field operation.");
+  }
+  const operation = fieldRule.operation;
+  const hingeSide = operation === "tt_right" || operation === "turn_right" ? "right" : operation === "tilt_only" ? null : "left";
+  const handleSide = operation === "tt_right" || operation === "turn_right" ? "left" : operation === "tilt_only" ? null : "right";
+
+  return {
+    meta: {
+      system: "B92" as const,
+      referenceView: "external" as const,
+      validationMode: "external_refs_internal_validation" as const,
+      source: "resolver_contract" as const,
+      designRule: "Admin Window Type preview supplies B92 Tilt & Turn operation from fieldRule.operation.",
+    },
+    overall: {
+      widthMm: dimensions.widthMm,
+      heightMm: dimensions.heightMm,
+    },
+    fields: [
+      {
+        id: fieldRule.fieldSelector.fieldKey ?? "0,0",
+        row: fieldRule.fieldSelector.row,
+        column: fieldRule.fieldSelector.column,
+        type: "tilt_turn" as const,
+        operation,
+        dimensionsMm: {
+          width: dimensions.widthMm,
+          height: dimensions.heightMm,
+        },
+        perimeter: {
+          top: resolvedProfile("B92-1"),
+          left: resolvedProfile("B92-2"),
+          right: resolvedProfile("B92-2"),
+          bottom: resolvedProfile("B92-3"),
+        },
+        sash: {
+          openingType: "tilt_turn" as const,
+          operation,
+          hingeSide,
+          handleSide,
+          profiles: {
+            top: resolvedProfile("B92-7"),
+            left: resolvedProfile("B92-9"),
+            right: resolvedProfile("B92-10"),
+            bottom: resolvedProfile("B92-8"),
+          },
+          geometry: {
+            visibleFaceMm: fieldRule.geometryRules.sashGeometryRules?.visibleFaceMm,
+            insetMm: fieldRule.geometryRules.sashGeometryRules?.insetMm,
+            overlapMm: fieldRule.geometryRules.sashGeometryRules?.overlapMm,
+            beadVisibleFaceMm: fieldRule.geometryRules.beadGeometryRules?.visibleFaceMm,
+            glassOrderRule: fieldRule.geometryRules.glassOrderRule,
+          },
+        },
+      },
+    ],
+    verticalJunctions: [],
+    horizontalJunctions: [],
+    couplings: [],
+    corners: [],
+    thresholds: [],
+    constraints: [],
+  };
+}
+
 function WindowTypeTechnicalPreview(props: {
   categoryLabel: string;
   selectedDesign: WindowTypeDesignListItem | null;
@@ -202,6 +383,17 @@ function WindowTypeTechnicalPreview(props: {
     [selectedDesign, bootstrap]
   );
   const { sourceModel, sourceLabel, previewTitle, previewDescription, catalogReport } = previewSource;
+  const [editableSourceModel, setEditableSourceModel] = useState<WindowTypeSourceModel | null>(() =>
+    sourceModel ? cloneSourceModel(sourceModel) : null
+  );
+  const selectedDesignId = selectedDesign?.id ?? "";
+
+  useEffect(() => {
+    setEditableSourceModel(sourceModel ? cloneSourceModel(sourceModel) : null);
+    setOperationMenu((current) => ({ ...current, open: false }));
+  }, [selectedDesignId]);
+
+  const activeSourceModel = editableSourceModel ?? sourceModel;
   const operationMenuContext = useMemo(
     () => resolveFieldOperationMenuContext({ categoryLabel, selectedDesign }),
     [categoryLabel, selectedDesign]
@@ -214,28 +406,45 @@ function WindowTypeTechnicalPreview(props: {
     setOperationMenu((current) => ({ ...current, open: false }));
   }, []);
   const handleCellContextMenu = useCallback(
-    (field: FieldOperationContextMenuField, event: React.MouseEvent<SVGRectElement>) => {
+    (field: { col: number; row: number; key: string }, event: React.MouseEvent<SVGRectElement>) => {
       setOperationMenu({
         open: true,
         x: event.clientX,
         y: event.clientY,
-        field,
+        field: {
+          row: field.row,
+          column: field.col,
+          key: field.key,
+        },
       });
     },
     []
   );
   const previewResult = useMemo(() => {
-    if (!sourceModel) {
+    if (!activeSourceModel) {
       return {
         model: null,
         error: "",
       };
     }
     try {
-      const contract = buildWindowTypeRenderModelFromSource(sourceModel, {
-        widthMm: 1000,
-        heightMm: 1000,
-      });
+      const dimensions = { widthMm: 1000, heightMm: 1000 };
+      const operation = activeSourceModel.fieldRules[0]?.operation ?? activeSourceModel.fieldRules[0]?.operationType;
+      if (
+        operation === "tt_left" ||
+        operation === "tt_right" ||
+        operation === "turn_left" ||
+        operation === "turn_right" ||
+        operation === "tilt_only"
+      ) {
+        const tiltTurnContract = buildB92TiltTurnPreviewContractFromSource(activeSourceModel, dimensions);
+        return {
+          model: buildB92TiltTurnInternalDrawingModelFromContract(tiltTurnContract),
+          error: "",
+        };
+      }
+
+      const contract = buildWindowTypeRenderModelFromSource(activeSourceModel, dimensions);
       const fieldType = contract.fields[0]?.type;
       return {
         model:
@@ -250,7 +459,7 @@ function WindowTypeTechnicalPreview(props: {
         error: error instanceof Error ? error.message : String(error),
       };
     }
-  }, [sourceModel]);
+  }, [activeSourceModel]);
 
   return (
     <div className="admin-card ui-card" style={{ padding: 14, display: "grid", gap: 10 }}>
@@ -260,7 +469,7 @@ function WindowTypeTechnicalPreview(props: {
         </div>
         {previewDescription ? <div className="admin-body-copy">{previewDescription}</div> : null}
       </div>
-      {!sourceModel ? (
+      {!activeSourceModel ? (
         <div className="admin-placeholder-box" style={{ margin: 0 }}>
           Preview not available for this design yet.
         </div>
@@ -282,7 +491,7 @@ function WindowTypeTechnicalPreview(props: {
           <QuoteSyncDrawingSvg model={previewResult.model} onCellContextMenu={handleCellContextMenu} />
         </div>
       ) : null}
-      {sourceModel && !catalogReport.attempted ? (
+      {activeSourceModel && !catalogReport.attempted ? (
         <div className="admin-placeholder-box" style={{ margin: 0 }}>
           Preview source: {sourceLabel}
         </div>
@@ -314,6 +523,15 @@ function WindowTypeTechnicalPreview(props: {
         field={operationMenu.field}
         availableOperations={availableOperations}
         onSelectOperation={(operation) => {
+          if (!operationMenu.field) return;
+          setEditableSourceModel((current) => {
+            if (!current) return current;
+            return updateSourceFieldOperation({
+              source: current,
+              field: operationMenu.field,
+              operation,
+            });
+          });
           console.log("Selected operation:", operation, operationMenu.field);
         }}
         onClose={closeOperationMenu}
