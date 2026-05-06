@@ -1,5 +1,6 @@
 import type {
   DrawingDimension,
+  DrawingLine,
   DrawingModel,
   DrawingPolygon,
   DrawingRect,
@@ -222,6 +223,13 @@ function rect(input: Omit<DrawingRect, "kind">): DrawingRect {
   };
 }
 
+function line(input: Omit<DrawingLine, "kind">): DrawingLine {
+  return {
+    kind: "line",
+    ...input,
+  };
+}
+
 function polygon(input: Omit<DrawingPolygon, "kind">): DrawingPolygon {
   return {
     kind: "polygon",
@@ -368,41 +376,11 @@ export function buildB92FixedSashInternalDrawingModelFromContract(contract: Wind
       x: frame.x,
       y: frame.y,
       width: frame.width,
-      height: B92_FIXED_SASH_INTERNAL_FRAME_MM.top * scale,
+      height: frame.height,
       stroke: "#111",
-      strokeWidth: 1.2,
+      strokeWidth: 1.6,
       fill: "#f4f4f5",
-      role: "b92_fixed_sash_internal_frame_top",
-    }),
-    rect({
-      x: frame.x,
-      y: frame.y + B92_FIXED_SASH_INTERNAL_FRAME_MM.top * scale,
-      width: B92_FIXED_SASH_INTERNAL_FRAME_MM.left * scale,
-      height: sashOuterMm.height * scale,
-      stroke: "#111",
-      strokeWidth: 1.2,
-      fill: "#f4f4f5",
-      role: "b92_fixed_sash_internal_frame_left",
-    }),
-    rect({
-      x: frame.x + frame.width - B92_FIXED_SASH_INTERNAL_FRAME_MM.right * scale,
-      y: frame.y + B92_FIXED_SASH_INTERNAL_FRAME_MM.top * scale,
-      width: B92_FIXED_SASH_INTERNAL_FRAME_MM.right * scale,
-      height: sashOuterMm.height * scale,
-      stroke: "#111",
-      strokeWidth: 1.2,
-      fill: "#f4f4f5",
-      role: "b92_fixed_sash_internal_frame_right",
-    }),
-    rect({
-      x: frame.x,
-      y: frame.y + frame.height - B92_FIXED_SASH_INTERNAL_FRAME_MM.bottom * scale,
-      width: frame.width,
-      height: B92_FIXED_SASH_INTERNAL_FRAME_MM.bottom * scale,
-      stroke: "#111",
-      strokeWidth: 1.2,
-      fill: "#f4f4f5",
-      role: "b92_fixed_sash_internal_frame_bottom",
+      role: "frame_outer",
     }),
   ];
 
@@ -417,6 +395,16 @@ export function buildB92FixedSashInternalDrawingModelFromContract(contract: Wind
     top: frame.y + visibleGlassMm.y * scale,
     right: frame.x + (visibleGlassMm.x + visibleGlassMm.width) * scale,
     bottom: frame.y + (visibleGlassMm.y + visibleGlassMm.height) * scale,
+  };
+  const sashOuterSvg = {
+    left: frame.x + sashOuterMm.x * scale,
+    top: frame.y + sashOuterMm.y * scale,
+    right: frame.x + (sashOuterMm.x + sashOuterMm.width) * scale,
+    bottom: frame.y + (sashOuterMm.y + sashOuterMm.height) * scale,
+  };
+  const joinDetailSvg = {
+    topY: frame.y + 63 * scale,
+    bottomY: frame.y + frame.height - 63 * scale,
   };
 
   const beadShapes: DrawingShape[] = [
@@ -470,6 +458,81 @@ export function buildB92FixedSashInternalDrawingModelFromContract(contract: Wind
     }),
   ];
 
+  const joinDetailShapes: DrawingShape[] = [
+    line({
+      x1: frame.x,
+      y1: joinDetailSvg.topY,
+      x2: sashOuterSvg.left,
+      y2: joinDetailSvg.topY,
+      stroke: "#111",
+      strokeWidth: 1,
+      role: "frame_sash_join_top_left",
+    }),
+    line({
+      x1: sashOuterSvg.right,
+      y1: joinDetailSvg.topY,
+      x2: frame.x + frame.width,
+      y2: joinDetailSvg.topY,
+      stroke: "#111",
+      strokeWidth: 1,
+      role: "frame_sash_join_top_right",
+    }),
+    line({
+      x1: frame.x,
+      y1: joinDetailSvg.bottomY,
+      x2: sashOuterSvg.left,
+      y2: joinDetailSvg.bottomY,
+      stroke: "#111",
+      strokeWidth: 1,
+      role: "frame_sash_join_bottom_left",
+    }),
+    line({
+      x1: sashOuterSvg.right,
+      y1: joinDetailSvg.bottomY,
+      x2: frame.x + frame.width,
+      y2: joinDetailSvg.bottomY,
+      stroke: "#111",
+      strokeWidth: 1,
+      role: "frame_sash_join_bottom_right",
+    }),
+    line({
+      x1: beadOuterSvg.left,
+      y1: sashOuterSvg.top,
+      x2: beadOuterSvg.left,
+      y2: beadOuterSvg.top,
+      stroke: "#111",
+      strokeWidth: 1,
+      role: "sash_join_top_left",
+    }),
+    line({
+      x1: beadOuterSvg.right,
+      y1: sashOuterSvg.top,
+      x2: beadOuterSvg.right,
+      y2: beadOuterSvg.top,
+      stroke: "#111",
+      strokeWidth: 1,
+      role: "sash_join_top_right",
+    }),
+    line({
+      x1: beadOuterSvg.left,
+      y1: beadOuterSvg.bottom,
+      x2: beadOuterSvg.left,
+      y2: sashOuterSvg.bottom,
+      stroke: "#111",
+      strokeWidth: 1,
+      role: "sash_join_bottom_left",
+    }),
+    line({
+      x1: beadOuterSvg.right,
+      y1: beadOuterSvg.bottom,
+      x2: beadOuterSvg.right,
+      y2: sashOuterSvg.bottom,
+      stroke: "#111",
+      strokeWidth: 1,
+      role: "sash_join_bottom_right",
+    }),
+  ];
+
   const sashShapes: DrawingShape[] = [
     rect({
       x: frame.x + sashOuterMm.x * scale,
@@ -482,6 +545,7 @@ export function buildB92FixedSashInternalDrawingModelFromContract(contract: Wind
       role: "b92_fixed_sash_internal_sash_outer",
     }),
     ...beadShapes,
+    ...joinDetailShapes,
   ];
 
   const glassShapes: DrawingShape[] = [
@@ -547,6 +611,10 @@ export function buildB92FixedSashInternalDrawingModelFromContract(contract: Wind
           beadVisibleFaceMm: B92_FIXED_SASH_INTERNAL_BEAD_MM,
           visibleGlassMm,
           glassOrderMm,
+          joinDetailMm: {
+            topY: 63,
+            bottomY: heightMm - 63,
+          },
           note: "Isolated B92 fixed sash internal contract drawing adapter; no opening hardware, pilot geometry, or renderer wiring is used.",
         },
       },
