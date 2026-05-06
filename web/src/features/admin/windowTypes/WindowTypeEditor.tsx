@@ -72,7 +72,7 @@ function resolvePreviewSourceModel(
     error: "",
   };
 
-  if (selectedDesign?.id !== "windows-1-inward-opening") {
+  if (selectedDesign?.id !== "windows-1-timber-inward-opening") {
     return {
       sourceModel: null,
       sourceLabel: "",

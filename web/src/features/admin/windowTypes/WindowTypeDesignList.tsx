@@ -4,6 +4,7 @@ export type WindowTypeDesignListItem = {
   id: string;
   label: string;
   description: string;
+  groupLabel?: string;
 };
 
 type Props = {
@@ -29,19 +30,24 @@ export default function WindowTypeDesignList(props: Props) {
         </button>
       </div>
       <div style={{ display: "grid", gap: 8 }}>
-        {designs.map((design) => (
-          <button
-            key={design.id}
-            type="button"
-            onClick={() => onSelectDesign(design.id)}
-            className={selectedDesignId === design.id ? "admin-nav-button admin-nav-button--active" : "admin-nav-button"}
-          >
-            <span className="admin-nav-button-label">{design.label}</span>
-            <span className={selectedDesignId === design.id ? "admin-nav-button-desc admin-nav-button-desc--active" : "admin-nav-button-desc"}>
-              {design.description}
-            </span>
-          </button>
-        ))}
+        {designs.map((design, index) => {
+          const showGroupLabel = design.groupLabel && design.groupLabel !== designs[index - 1]?.groupLabel;
+          return (
+            <React.Fragment key={design.id}>
+              {showGroupLabel ? <div className="admin-setting-label">{design.groupLabel}</div> : null}
+              <button
+                type="button"
+                onClick={() => onSelectDesign(design.id)}
+                className={selectedDesignId === design.id ? "admin-nav-button admin-nav-button--active" : "admin-nav-button"}
+              >
+                <span className="admin-nav-button-label">{design.label}</span>
+                <span className={selectedDesignId === design.id ? "admin-nav-button-desc admin-nav-button-desc--active" : "admin-nav-button-desc"}>
+                  {design.description}
+                </span>
+              </button>
+            </React.Fragment>
+          );
+        })}
       </div>
     </div>
   );

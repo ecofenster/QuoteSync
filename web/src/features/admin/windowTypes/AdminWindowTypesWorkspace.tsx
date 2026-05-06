@@ -43,16 +43,65 @@ function buildPlaceholderDesigns(
   if (category === "windows" && fieldCountMode === "1") {
     return [
       {
-        id: "windows-1-inward-opening",
+        id: "windows-1-timber-inward-opening",
+        groupLabel: "Timber / Timber Alu",
         label: "1 Field - Inward Opening",
         description: "Single inward-opening field family. Field operation is selected from the preview context menu.",
       },
       {
-        id: "windows-1-outward-opening",
+        id: "windows-1-timber-outward-opening",
+        groupLabel: "Timber / Timber Alu",
         label: "1 Field - Outward Opening",
         description: "Single outward-opening field family. Detailed operations will be selected per field.",
       },
-      { id: "windows-1-sash-case", label: "Sash & Case", description: "Single sash and case family placeholder." },
+      {
+        id: "windows-1-timber-sash-case",
+        groupLabel: "Timber / Timber Alu",
+        label: "Sash & Case",
+        description: "Single sash and case family placeholder.",
+      },
+      {
+        id: "windows-1-upvc-inward-opening",
+        groupLabel: "uPVC / uPVC Alu",
+        label: "1 Field - Inward Opening",
+        description: "Single inward-opening field family. Field operation is selected from the preview context menu.",
+      },
+      {
+        id: "windows-1-upvc-outward-opening",
+        groupLabel: "uPVC / uPVC Alu",
+        label: "1 Field - Outward Opening",
+        description: "Single outward-opening field family. Detailed operations will be selected per field.",
+      },
+      {
+        id: "windows-1-upvc-sash-case",
+        groupLabel: "uPVC / uPVC Alu",
+        label: "Sash & Case",
+        description: "Single sash and case family placeholder.",
+      },
+      {
+        id: "windows-1-aluminium-inward-opening",
+        groupLabel: "Aluminium",
+        label: "1 Field - Inward Opening",
+        description: "Single inward-opening field family. Field operation is selected from the preview context menu.",
+      },
+      {
+        id: "windows-1-aluminium-outward-opening",
+        groupLabel: "Aluminium",
+        label: "1 Field - Outward Opening",
+        description: "Single outward-opening field family. Detailed operations will be selected per field.",
+      },
+      {
+        id: "windows-1-steel-inward-opening",
+        groupLabel: "Steel",
+        label: "1 Field - Inward Opening",
+        description: "Single inward-opening field family. Field operation is selected from the preview context menu.",
+      },
+      {
+        id: "windows-1-steel-outward-opening",
+        groupLabel: "Steel",
+        label: "1 Field - Outward Opening",
+        description: "Single outward-opening field family. Detailed operations will be selected per field.",
+      },
     ];
   }
   if (category === "windows" && fieldCountMode === "2") {
