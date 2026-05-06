@@ -4,26 +4,25 @@ import type {
   WindowTypeSourceModelGeometryRules,
 } from "../../../admin/windowTypes/windowTypeSourceModel.types";
 
-type BlockedFixedSashGeometryRules = Partial<WindowTypeSourceModelGeometryRules> & {
-  measurementStatus: "blocked";
+type ValidatedFixedSashGeometryRules = Partial<WindowTypeSourceModelGeometryRules> & {
+  measurementStatus: "validated";
   measurementTodo: string;
 };
 
-type BlockedFixedSashFieldRule = Omit<WindowTypeSourceModelFieldRule, "geometryRules"> & {
-  geometryRules: BlockedFixedSashGeometryRules;
+type ValidatedFixedSashFieldRule = Omit<WindowTypeSourceModelFieldRule, "geometryRules"> & {
+  geometryRules: ValidatedFixedSashGeometryRules;
 };
 
-type BlockedFixedSashSourceModel = Omit<WindowTypeSourceModel, "fieldRules" | "status"> & {
-  status: "draft";
-  fieldRules: BlockedFixedSashFieldRule[];
+type ValidatedFixedSashSourceModel = Omit<WindowTypeSourceModel, "fieldRules" | "status"> & {
+  status: "approved";
+  fieldRules: ValidatedFixedSashFieldRule[];
 };
 
-// Draft only. Do not use this seed for rendering, catalog authority, or Admin preview binding.
+// Approved source seed. Do not use this seed for rendering, catalog authority, or Admin preview binding.
 // B92 fixed sash internal uses the exact T&T visual stack, but has no opening
 // operation or hardware; the sash is permanently fixed in place with hidden fixings.
 // B92 glass sits behind the glazing bead by 13mm on all sides; glass order
-// adds 26mm width and 26mm height. Seed remains draft/blocked until fixed sash
-// contract validation and drawing adapter support are implemented.
+// adds 26mm width and 26mm height. Fixed sash geometry validated via catalog and adapter comparison.
 export const b92FixedSashInternalWindowTypeSourceSeed = {
   id: "b92-fixed-sash-1x1-internal-draft",
   manufacturerId: null,
@@ -148,9 +147,9 @@ export const b92FixedSashInternalWindowTypeSourceSeed = {
           heightDeltaMm: 26,
           formula: "visible_glass_plus_2x_bite",
         },
-        measurementStatus: "blocked",
+        measurementStatus: "validated",
         measurementTodo:
-          "Fixed sash remains blocked until contract validation and drawing adapter support are implemented.",
+          "Fixed sash geometry validated via catalog and adapter comparison.",
       },
     },
   ],
@@ -158,28 +157,22 @@ export const b92FixedSashInternalWindowTypeSourceSeed = {
     allowFixedSash: true,
     allowMultiField: false,
     allowOutsideView: false,
-    blockingIssues: [
-      {
-        key: "fixed_sash.measurements",
-        reason: "Fixed sash contract validation and drawing adapter support are required before rendering use.",
-        severity: "blocking",
-      },
-    ],
+    blockingIssues: [],
   },
-  status: "draft",
+  status: "approved",
   provenance: {
     source: "admin_seed",
     sourceId: "b92-fixed-sash-internal-draft",
     version: "fixed-sash-profile-basis-draft",
     notes: [
-      "Draft only; not authoritative.",
+      "Fixed sash geometry validated via catalog and adapter comparison.",
       "Do not use for rendering.",
       "Fixed sash uses the exact Tilt & Turn internal visual stack.",
       "No opening operation or hardware; sash is permanently fixed with hidden fixings.",
       "B92 glass sits behind glazing bead by 13mm on all sides.",
       "Glass order adds 26mm width and 26mm height.",
       "Confirmed profile basis: sash B92-7, B92-8, B92-9, B92-10.",
-      "Fixed sash remains draft/blocked until contract validation, drawing adapter, catalog, and Admin preview integration are implemented.",
+      "Fixed sash remains unwired until Admin preview integration is explicitly approved.",
     ],
   },
-} as const satisfies BlockedFixedSashSourceModel;
+} as const satisfies ValidatedFixedSashSourceModel;
