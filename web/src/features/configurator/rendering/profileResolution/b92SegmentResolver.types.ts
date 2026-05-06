@@ -98,6 +98,15 @@ export type B92HorizontalTransomSegment = {
   bottomField: B92NormalizedField;
   topOperation: B92ResolvedFieldOperation;
   bottomOperation: B92ResolvedFieldOperation;
+  rowContext: {
+    rowIndex: number;
+    totalColumns: number;
+    operations: B92ResolvedFieldOperation[];
+    operationFamilies: B92OperationFamily[];
+    hasMixedOperations: boolean;
+    allFixed: boolean;
+    allSash: boolean;
+  };
 };
 
 export type B92CouplingCornerSegment = {
@@ -123,6 +132,11 @@ export type B92ResolvedProfileAssignment = {
   status: B92ProfileRuleStatus;
   source: "rule_register" | "explicit_override";
   ruleId?: string;
+  segment?:
+    | B92OuterEdgeSegment
+    | B92VerticalJunctionSegment
+    | B92HorizontalTransomSegment
+    | B92CouplingCornerSegment;
   note?: string;
 };
 

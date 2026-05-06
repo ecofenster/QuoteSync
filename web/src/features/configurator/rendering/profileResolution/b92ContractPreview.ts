@@ -108,7 +108,13 @@ function logB92SegmentResolverValidation(
     outerEdges: segmentResult.outerEdgeAssignments,
     sills: segmentResult.sillAssignments,
     vertical: segmentResult.verticalJunctionAssignments,
-    horizontal: segmentResult.horizontalTransomAssignments,
+    horizontal: segmentResult.horizontalTransomAssignments.map((assignment) => ({
+      ...assignment,
+      rowContext:
+        assignment.segment?.kind === "horizontal_transom"
+          ? assignment.segment.rowContext
+          : null,
+    })),
     issues: segmentResult.issues,
   });
   console.groupEnd();

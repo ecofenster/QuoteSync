@@ -1,7 +1,9 @@
 import type {
   B92HorizontalTransomSegment,
   B92NormalizedField,
+  B92OperationFamily,
   B92OuterEdgeSegment,
+  B92ResolvedFieldOperation,
   B92VerticalJunctionSegment,
 } from "./b92SegmentResolver.types";
 
@@ -69,6 +71,23 @@ function requireField(grid: GridDimensions, row: number, column: number): B92Nor
     fail(`missing field at row ${row}, column ${column}.`);
   }
   return field;
+}
+
+function buildRowContext(grid: GridDimensions, rowIndex: number): B92HorizontalTransomSegment["rowContext"] {
+  const rowFields = Array.from({ length: grid.columns }, (_, column) => requireField(grid, rowIndex, column));
+  const operations = rowFields.map((field): B92ResolvedFieldOperation => field.operation);
+  const operationFamilies = rowFields.map((field): B92OperationFamily => field.operationFamily);
+  const uniqueOperations = new Set(operations);
+
+  return {
+    rowIndex,
+    totalColumns: grid.columns,
+    operations,
+    operationFamilies,
+    hasMixedOperations: uniqueOperations.size > 1,
+    allFixed: operationFamilies.every((family) => family === "fixed"),
+    allSash: operationFamilies.every((family) => family !== "fixed"),
+  };
 }
 
 export function buildB92OuterEdgeSegments(fields: B92NormalizedField[]): B92OuterEdgeSegment[] {
@@ -170,6 +189,7 @@ export function buildB92HorizontalTransomSegments(fields: B92NormalizedField[]):
     for (let row = 0; row < grid.maxRow; row += 1) {
       const topField = requireField(grid, row, column);
       const bottomField = requireField(grid, row + 1, column);
+      const rowContext = buildRowContext(grid, topField.row);
       segments.push({
         id: `horizontal-row-${row + 1}-col-${column}`,
         kind: "horizontal_transom",
@@ -181,6 +201,7 @@ export function buildB92HorizontalTransomSegments(fields: B92NormalizedField[]):
         bottomField,
         topOperation: topField.operation,
         bottomOperation: bottomField.operation,
+        rowContext,
       });
     }
   }

@@ -56,6 +56,7 @@ function makeAssignment(input: {
   status: B92ResolvedProfileAssignment["status"];
   source?: B92ResolvedProfileAssignment["source"];
   ruleId?: string;
+  segment?: B92ResolvedProfileAssignment["segment"];
   note?: string;
 }): B92ResolvedProfileAssignment {
   return {
@@ -66,6 +67,7 @@ function makeAssignment(input: {
     status: input.status,
     source: input.source ?? "rule_register",
     ruleId: input.ruleId,
+    segment: input.segment,
     note: input.note,
   };
 }
@@ -259,6 +261,13 @@ function resolveVerticalJunctionSegment(
 }
 
 function findHorizontalRule(segment: B92HorizontalTransomSegment) {
+  if (segment.rowContext.totalColumns >= 3 && segment.rowContext.hasMixedOperations) {
+    const mixedRowRule = B92_PROFILE_RULE_REGISTER.horizontalTransomRules.find(
+      (rule: B92HorizontalTransomRule) => rule.profileId === "B92-24"
+    );
+    if (mixedRowRule) return mixedRowRule;
+  }
+
   const matches = B92_PROFILE_RULE_REGISTER.horizontalTransomRules.filter((rule: B92HorizontalTransomRule) => {
     return (
       operationMatchesRule(rule.upperOperation, segment.topOperation) &&
@@ -291,6 +300,7 @@ function resolveHorizontalTransomSegment(
     profileId: rule.profileId,
     status: rule.status,
     ruleId: rule.id,
+    segment,
     note: rule.notes?.join(" "),
   });
   return {
