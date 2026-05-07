@@ -67,6 +67,13 @@ export type B92SashDatumGeometry = {
 export type B92FieldDatumGeometry = {
   frame: B92FrameDatumGeometry;
   sash?: B92SashDatumGeometry;
+  /**
+   * Confirmed for fixed no-sash and sash fields where a daylight opening can be
+   * resolved:
+   * - glass order bite behind bead: 13mm
+   * - glass order delta: +26mm width and height
+   */
+  glassOrderRule?: B92SashDatumGeometry["glassOrderRule"];
 };
 
 export type B92MeetingSide = "left" | "right";
@@ -77,7 +84,20 @@ export type B92MeetingDatumGeometry = {
   axis: "vertical";
   ownerFieldId?: string | null;
   passiveFieldId?: string | null;
+  /**
+   * Confirmed where documented:
+   * - B92-18 flying mullion gap: 5mm
+   */
   meetingGapMm?: B92DatumMm;
+  /**
+   * Confirmed where documented:
+   * - B92-15 internally visible distance between sashes: 19mm
+   * - B92-16 internally visible frame between sashes: 49mm
+   */
+  internalVisibleBetweenSashesMm?: B92DatumMm;
+  profileWidthMm?: B92DatumMm;
+  profileDepthMm?: B92DatumMm;
+  externalCladWidthMm?: B92DatumMm;
   daylightReductionMm?: {
     leftField?: B92PerEdgeMm;
     rightField?: B92PerEdgeMm;

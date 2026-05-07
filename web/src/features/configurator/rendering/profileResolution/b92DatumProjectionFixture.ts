@@ -108,20 +108,51 @@ function fieldChain(
 }
 
 function fixedNoSashRegions(fieldId: string, chainId: string): B92ProjectedDrawableRegion[] {
-  const bottomVisible = B92_INTERNAL_FIXED_NO_SASH_DATUM_GEOMETRY.frame.visibleFaceMm.bottom;
-  if (!bottomVisible) return [];
-
-  return [
-    region({
-      id: `${fieldId}:fixed-visible-frame-bottom`,
+  const visibleFrame = B92_INTERNAL_FIXED_NO_SASH_DATUM_GEOMETRY.frame.visibleFaceMm;
+  const regions = B92_EDGES.flatMap((edge) => {
+    const visibleFace = visibleFrame[edge];
+    if (!visibleFace) return [];
+    return region({
+      id: `${fieldId}:fixed-visible-frame-${edge}`,
       category: "visible_frame_face",
       visibility: "visible",
       fieldId,
-      edge: "bottom",
+      edge,
       datumChainId: chainId,
-      note: `Confirmed fixed no-sash visible bottom frame datum: ${bottomVisible.valueMm}mm.`,
-    }),
-  ];
+      note: `Confirmed fixed no-sash visible ${edge} frame datum: ${visibleFace.valueMm}mm.`,
+    });
+  });
+
+  regions.push(
+    region({
+      id: `${fieldId}:daylight-opening`,
+      category: "daylight_opening",
+      visibility: "visible",
+      fieldId,
+      datumChainId: chainId,
+      note: "Fixed no-sash daylight opening can be projected from four confirmed visible frame faces.",
+    })
+  );
+
+  const glassOrderRule = B92_INTERNAL_FIXED_NO_SASH_DATUM_GEOMETRY.glassOrderRule;
+  if (glassOrderRule) {
+    regions.push({
+      id: `${fieldId}:glass-order`,
+      category: "glass_order",
+      visibility: "order_only",
+      fieldId,
+      datumChainId: chainId,
+      status: "resolved",
+      orderExpansionMm: {
+        widthDeltaMm: glassOrderRule.widthDeltaMm,
+        heightDeltaMm: glassOrderRule.heightDeltaMm,
+        biteBehindBeadMm: glassOrderRule.biteBehindBeadMm,
+      },
+      note: "Confirmed fixed no-sash glass order expansion: daylight opening +26mm width/height, 13mm bite behind bead each side.",
+    } satisfies B92ProjectedGlassOrderGeometry);
+  }
+
+  return regions;
 }
 
 function sashFieldRegions(fieldId: string, chainId: string): B92ProjectedDrawableRegion[] {
@@ -246,7 +277,7 @@ function fixedNoSashFixtureUnresolved(fieldId: string): B92ProjectionUnresolvedI
       id: `${fieldId}:fixed-top-side-frame-datum-unresolved`,
       reason: "missing_datum_authority",
       fieldId,
-      note: "Fixed no-sash top/left/right visible frame datum is not confirmed; only bottom visible frame datum is confirmed.",
+      note: "Fixed no-sash structural frame datum is not confirmed; visible frame faces are confirmed.",
     },
     {
       id: `${fieldId}:meeting-ownership-unresolved`,

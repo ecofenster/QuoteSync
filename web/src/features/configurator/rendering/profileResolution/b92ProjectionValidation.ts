@@ -94,9 +94,6 @@ function validateRequiredUnresolved(result: B92ProjectionEngineResult): B92Proje
   const hasSashRegions = result.projectedRegions.some(
     (region) => region.category === "visible_sash_body" || region.category === "bead"
   );
-  const hasOnlyFixedNoSashFrameRegions =
-    result.projectedRegions.length > 0 &&
-    result.projectedRegions.every((region) => region.category === "visible_frame_face");
 
   if (hasSashRegions && !text.includes("bottom sash overlay/rebate")) {
     issues.push(
@@ -105,16 +102,6 @@ function validateRequiredUnresolved(result: B92ProjectionEngineResult): B92Proje
         severity: "error",
         code: "missing_unresolved_reason",
         note: "Bottom sash overlay/rebate relationship must remain explicitly unresolved.",
-      })
-    );
-  }
-  if (hasOnlyFixedNoSashFrameRegions && !text.includes("fixed no-sash top/left/right visible frame datum")) {
-    issues.push(
-      issue({
-        id: "b92-projection:missing-fixed-no-sash-top-side-unresolved",
-        severity: "error",
-        code: "missing_unresolved_reason",
-        note: "Fixed no-sash top/left/right visible frame datum must remain explicitly unresolved.",
       })
     );
   }
@@ -249,7 +236,7 @@ export function validateB92ProjectionFixture(fixture: StaticFixtureKey): B92Proj
 
   const expectedCategories: B92ProjectedDrawableRegionCategory[] =
     fixture === "fixed_no_sash"
-      ? ["visible_frame_face"]
+      ? ["visible_frame_face", "daylight_opening", "glass_order"]
       : [
           "structural_frame_datum",
           "visible_frame_face",
@@ -263,7 +250,7 @@ export function validateB92ProjectionFixture(fixture: StaticFixtureKey): B92Proj
   const baseReport = validateB92ProjectionEngineResult(`b92-static-fixture:${fixture}`, result, expectedCategories);
   const resolvedCategoryIssues =
     fixture === "fixed_no_sash"
-      ? validateResolvedCategories(result, ["visible_frame_face"])
+      ? validateResolvedCategories(result, ["visible_frame_face", "daylight_opening", "glass_order"])
       : validateResolvedCategories(result, [
           "structural_frame_datum",
           "visible_frame_face",

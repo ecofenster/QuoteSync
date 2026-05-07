@@ -31,9 +31,18 @@ export const B92_INTERNAL_FIXED_NO_SASH_DATUM_GEOMETRY: B92FieldDatumGeometry = 
   frame: {
     structuralFaceMm: {},
     visibleFaceMm: {
+      top: confirmedMm(37.5, "Fixed no-sash top/head visible frame datum from B92 profile matrix."),
+      left: confirmedMm(37.5, "Fixed no-sash left visible frame datum from B92 profile matrix."),
+      right: confirmedMm(37.5, "Fixed no-sash right visible frame datum from B92 profile matrix."),
       bottom: confirmedMm(72, "Fixed no-sash frame visible bottom."),
     },
     hiddenBehindSashMm: {},
+  },
+  glassOrderRule: {
+    biteBehindBeadMm: confirmedMm(13, "Glass order bite behind bead each side."),
+    widthDeltaMm: confirmedMm(26, "Glass order width = daylight opening + 26mm."),
+    heightDeltaMm: confirmedMm(26, "Glass order height = daylight opening + 26mm."),
+    formula: "visible_glass_plus_2x_bite",
   },
 };
 
@@ -110,12 +119,24 @@ const meetingFixture = (
   profileId: B92InternalMeetingProfileId,
   side: B92MeetingSide,
   note: string,
-  sequenceMm?: B92DatumMm[]
+  options?: {
+    meetingGapMm?: B92DatumMm;
+    internalVisibleBetweenSashesMm?: B92DatumMm;
+    profileWidthMm?: B92DatumMm;
+    profileDepthMm?: B92DatumMm;
+    externalCladWidthMm?: B92DatumMm;
+    sequenceMm?: B92DatumMm[];
+  }
 ): B92MeetingDatumGeometry => ({
   profileId,
   side,
   axis: "vertical",
-  sequenceMm,
+  meetingGapMm: options?.meetingGapMm,
+  internalVisibleBetweenSashesMm: options?.internalVisibleBetweenSashesMm,
+  profileWidthMm: options?.profileWidthMm,
+  profileDepthMm: options?.profileDepthMm,
+  externalCladWidthMm: options?.externalCladWidthMm,
+  sequenceMm: options?.sequenceMm,
   note,
 });
 
@@ -138,26 +159,48 @@ export const B92_INTERNAL_MEETING_DATUM_GEOMETRY_REGISTER: Record<
     left: meetingFixture(
       "B92-15",
       "left",
-      "Default T&T/T&T static centre mullion. TODO: meeting measurements unknown; do not infer daylight or overlap geometry.",
-      B92_MEETING_SEQUENCE_21_27_5_57_21
+      "Default T&T/T&T static centre mullion. Confirmed source note: 19mm internally visible between sashes and 92x100 timber profile. TODO: detailed meeting ownership unknown; do not infer daylight or overlap geometry.",
+      {
+        internalVisibleBetweenSashesMm: confirmedMm(19, "B92-15 internally visible distance between sashes."),
+        profileWidthMm: confirmedMm(100, "B92-15 timber profile width."),
+        profileDepthMm: confirmedMm(92, "B92-15 timber profile depth."),
+        sequenceMm: B92_MEETING_SEQUENCE_21_27_5_57_21,
+      }
     ),
     right: meetingFixture(
       "B92-15",
       "right",
-      "Default T&T/T&T static centre mullion. TODO: meeting measurements unknown; do not infer daylight or overlap geometry.",
-      B92_MEETING_SEQUENCE_21_27_5_57_21
+      "Default T&T/T&T static centre mullion. Confirmed source note: 19mm internally visible between sashes and 92x100 timber profile. TODO: detailed meeting ownership unknown; do not infer daylight or overlap geometry.",
+      {
+        internalVisibleBetweenSashesMm: confirmedMm(19, "B92-15 internally visible distance between sashes."),
+        profileWidthMm: confirmedMm(100, "B92-15 timber profile width."),
+        profileDepthMm: confirmedMm(92, "B92-15 timber profile depth."),
+        sequenceMm: B92_MEETING_SEQUENCE_21_27_5_57_21,
+      }
     ),
   },
   "B92-16": {
     left: meetingFixture(
       "B92-16",
       "left",
-      "Candidate hinges-at-meeting geometry. TODO: all measurements unknown; do not infer geometry.",
+      "Candidate hinges-at-meeting geometry. Confirmed source note: 92x130 timber profile, 49mm internally visible between sashes, 136mm with aluminium cladding. TODO: ownership/daylight geometry unknown; do not infer projection.",
+      {
+        internalVisibleBetweenSashesMm: confirmedMm(49, "B92-16 internally visible frame between sashes."),
+        profileWidthMm: confirmedMm(130, "B92-16 timber profile width."),
+        profileDepthMm: confirmedMm(92, "B92-16 timber profile depth."),
+        externalCladWidthMm: confirmedMm(136, "B92-16 external width with aluminium cladding."),
+      }
     ),
     right: meetingFixture(
       "B92-16",
       "right",
-      "Candidate hinges-at-meeting geometry. TODO: all measurements unknown; do not infer geometry.",
+      "Candidate hinges-at-meeting geometry. Confirmed source note: 92x130 timber profile, 49mm internally visible between sashes, 136mm with aluminium cladding. TODO: ownership/daylight geometry unknown; do not infer projection.",
+      {
+        internalVisibleBetweenSashesMm: confirmedMm(49, "B92-16 internally visible frame between sashes."),
+        profileWidthMm: confirmedMm(130, "B92-16 timber profile width."),
+        profileDepthMm: confirmedMm(92, "B92-16 timber profile depth."),
+        externalCladWidthMm: confirmedMm(136, "B92-16 external width with aluminium cladding."),
+      }
     ),
   },
   "B92-17": {
@@ -176,12 +219,18 @@ export const B92_INTERNAL_MEETING_DATUM_GEOMETRY_REGISTER: Record<
     left: meetingFixture(
       "B92-18",
       "left",
-      "Flying mullion. TODO: owner/passive geometry unknown; do not infer sash ownership geometry.",
+      "Flying mullion. Confirmed source note: 5mm gap and no static mullion post. TODO: owner/passive geometry unknown; do not infer sash ownership geometry.",
+      {
+        meetingGapMm: confirmedMm(5, "B92-18 flying mullion gap."),
+      }
     ),
     right: meetingFixture(
       "B92-18",
       "right",
-      "Flying mullion. TODO: owner/passive geometry unknown; do not infer sash ownership geometry.",
+      "Flying mullion. Confirmed source note: 5mm gap and no static mullion post. TODO: owner/passive geometry unknown; do not infer sash ownership geometry.",
+      {
+        meetingGapMm: confirmedMm(5, "B92-18 flying mullion gap."),
+      }
     ),
   },
 };

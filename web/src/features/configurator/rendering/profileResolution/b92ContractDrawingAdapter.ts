@@ -454,7 +454,7 @@ function buildB92DatumProjectionDiagnostics(contract: WindowTypeRenderModel) {
             "daylight_opening",
             "glass_order",
           ]
-        : ["visible_frame_face"];
+        : ["visible_frame_face", "daylight_opening", "glass_order"];
 
       return {
         fieldId: field.id,
