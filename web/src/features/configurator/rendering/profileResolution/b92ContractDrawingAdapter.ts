@@ -34,6 +34,7 @@ import {
 } from "./b92ProjectionValidation";
 import { buildB92ProjectionRendererLikeDiagnosticModel } from "./b92ProjectionRendererLikeAdapter";
 import { buildB92FixedNoSashProjectionPilotDrawingModel } from "./b92FixedNoSashProjectionDrawingPilot";
+import { withB92FixedNoSashProjectionParityDiagnostics } from "./b92FixedNoSashProjectionParity";
 import type { B92ProjectedDrawableRegionCategory } from "./b92DatumProjection.types";
 
 const VIEW_BOX_WIDTH = 520;
@@ -821,7 +822,9 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
       height: row.height,
     };
   });
-  return {
+  return withB92FixedNoSashProjectionParityDiagnostics({
+    contract,
+    model: {
     width: widthMm,
     height: heightMm,
     viewBox: { width: VIEW_BOX_WIDTH, height: VIEW_BOX_HEIGHT },
@@ -892,5 +895,6 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
       verticalJunctions: [],
       horizontalJunctions: [],
     },
-  };
+    },
+  });
 }
