@@ -16,6 +16,14 @@ import type {
   WindowTypeRenderProfileRef,
 } from "./windowTypeRenderContract";
 import { B92_PROFILE_RULE_REGISTER } from "./b92ProfileRuleRegister";
+import {
+  createB92FixedNoSashDatumProjectionFixture,
+  createB92SashFieldDatumProjectionFixture,
+} from "./b92DatumProjectionFixture";
+import { formatB92ProjectionDebugReport, serializeB92ProjectionEngineResult } from "./b92ProjectionDebug";
+import { projectB92DatumProjectionPlan } from "./b92ProjectionEngine";
+import { validateB92ProjectionEngineResult } from "./b92ProjectionValidation";
+import type { B92ProjectedDrawableRegionCategory } from "./b92DatumProjection.types";
 
 const VIEW_BOX_WIDTH = 520;
 const VIEW_BOX_HEIGHT = 520;
@@ -414,6 +422,56 @@ function buildFieldHandle(
   };
 }
 
+function buildB92DatumProjectionDiagnostics(contract: WindowTypeRenderModel) {
+  return {
+    integration: "adapter_metadata_only",
+    rendererIntegration: false,
+    visualGeometryChanged: false,
+    note:
+      "Read-only B92 datum projection diagnostics. Projection output is metadata only and must not replace renderer geometry.",
+    fields: contract.fields.map((field) => {
+      const plan = isSashBasedField(field)
+        ? createB92SashFieldDatumProjectionFixture(field.id)
+        : createB92FixedNoSashDatumProjectionFixture(field.id);
+      const projected = projectB92DatumProjectionPlan({
+        plan,
+        fieldBoundsById: {
+          [field.id]: {
+            x: 0,
+            y: 0,
+            width: field.dimensionsMm.width,
+            height: field.dimensionsMm.height,
+          },
+        },
+      });
+      const expectedCategories: B92ProjectedDrawableRegionCategory[] = isSashBasedField(field)
+        ? [
+            "structural_frame_datum",
+            "visible_frame_face",
+            "hidden_frame_rebate",
+            "visible_sash_body",
+            "bead",
+            "daylight_opening",
+            "glass_order",
+          ]
+        : ["visible_frame_face"];
+
+      return {
+        fieldId: field.id,
+        fieldType: field.type,
+        serializedProjection: serializeB92ProjectionEngineResult(projected),
+        validation: validateB92ProjectionEngineResult(
+          `b92-adapter-projection:${field.id}`,
+          projected,
+          expectedCategories
+        ),
+        debugReport: formatB92ProjectionDebugReport(projected),
+        unresolvedReasons: projected.unresolved,
+      };
+    }),
+  };
+}
+
 export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTypeRenderModel): DrawingModel {
   const field = assertB92FixedInternalContract(contract);
   const widthMm = contract.overall.widthMm;
@@ -766,6 +824,7 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
           },
           note: "Isolated B92 fixed internal contract drawing adapter; pilot geometry is not used as authority.",
         },
+        b92DatumProjectionDiagnostics: buildB92DatumProjectionDiagnostics(contract),
       },
     },
     interaction: {
