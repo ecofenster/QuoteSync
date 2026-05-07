@@ -353,6 +353,131 @@ function unresolvedSashOrOpeningRegion(region: B92ProjectedDrawableRegion): {
   };
 }
 
+function regionForEdge(
+  regions: B92ProjectedDrawableRegion[],
+  category: B92ProjectedDrawableRegion["category"],
+  edge: B92Edge,
+  fieldId?: string
+): B92ProjectedDrawableRegion | null {
+  return (
+    regions.find(
+      (region) =>
+        region.category === category &&
+        region.edge === edge &&
+        region.status === "resolved" &&
+        !!region.boundsMm &&
+        (!fieldId || region.fieldId === fieldId)
+    ) ?? null
+  );
+}
+
+function innerBoundsFromEdgeRegions(input: {
+  top: B92ProjectedDrawableRegion;
+  bottom: B92ProjectedDrawableRegion;
+  left: B92ProjectedDrawableRegion;
+  right: B92ProjectedDrawableRegion;
+}): B92ProjectionBoundsMm | null {
+  const top = input.top.boundsMm;
+  const bottom = input.bottom.boundsMm;
+  const left = input.left.boundsMm;
+  const right = input.right.boundsMm;
+  if (!top || !bottom || !left || !right) return null;
+
+  const x = left.x + left.width;
+  const y = top.y + top.height;
+  const width = right.x - x;
+  const height = bottom.y - y;
+  if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return null;
+  return { x, y, width, height };
+}
+
+function projectDaylightOpeningFromResolvedEdges(
+  region: B92ProjectedDrawableRegion,
+  projectedRegions: B92ProjectedDrawableRegion[]
+): { region: B92ProjectedDrawableRegion; unresolved?: B92ProjectionUnresolvedItem } {
+  const fieldId = region.fieldId;
+  const beadEdges = {
+    top: regionForEdge(projectedRegions, "bead", "top", fieldId),
+    bottom: regionForEdge(projectedRegions, "bead", "bottom", fieldId),
+    left: regionForEdge(projectedRegions, "bead", "left", fieldId),
+    right: regionForEdge(projectedRegions, "bead", "right", fieldId),
+  };
+  const visibleFrameEdges = {
+    top: regionForEdge(projectedRegions, "visible_frame_face", "top", fieldId),
+    bottom: regionForEdge(projectedRegions, "visible_frame_face", "bottom", fieldId),
+    left: regionForEdge(projectedRegions, "visible_frame_face", "left", fieldId),
+    right: regionForEdge(projectedRegions, "visible_frame_face", "right", fieldId),
+  };
+  const daylightBounds =
+    beadEdges.top && beadEdges.bottom && beadEdges.left && beadEdges.right
+      ? innerBoundsFromEdgeRegions({
+          top: beadEdges.top,
+          bottom: beadEdges.bottom,
+          left: beadEdges.left,
+          right: beadEdges.right,
+        })
+      : visibleFrameEdges.top && visibleFrameEdges.bottom && visibleFrameEdges.left && visibleFrameEdges.right
+        ? innerBoundsFromEdgeRegions({
+            top: visibleFrameEdges.top,
+            bottom: visibleFrameEdges.bottom,
+            left: visibleFrameEdges.left,
+            right: visibleFrameEdges.right,
+          })
+        : null;
+
+  if (!daylightBounds) {
+    return unresolvedSashOrOpeningRegion(region);
+  }
+
+  return {
+    region: {
+      ...region,
+      boundsMm: daylightBounds,
+      status: "resolved",
+      note: `${region.note ?? ""} Projected from four resolved enclosing edge regions; no missing bottom or meeting geometry inferred.`.trim(),
+    },
+  };
+}
+
+function projectGlassOrderFromDaylight(
+  region: B92ProjectedGlassOrderGeometry,
+  projectedRegions: B92ProjectedDrawableRegion[]
+): { region: B92ProjectedDrawableRegion; unresolved?: B92ProjectionUnresolvedItem } {
+  const daylight = projectedRegions.find(
+    (item) =>
+      item.category === "daylight_opening" &&
+      item.fieldId === region.fieldId &&
+      item.status === "resolved" &&
+      !!item.boundsMm
+  );
+  const orderExpansion = region.orderExpansionMm;
+
+  if (!daylight?.boundsMm || !orderExpansion) {
+    return unresolvedSashOrOpeningRegion(region);
+  }
+
+  const widthDeltaMm = confirmedValue(orderExpansion.widthDeltaMm);
+  const heightDeltaMm = confirmedValue(orderExpansion.heightDeltaMm);
+  const biteBehindBeadMm = confirmedValue(orderExpansion.biteBehindBeadMm);
+  if (widthDeltaMm === null || heightDeltaMm === null || biteBehindBeadMm === null) {
+    return unresolvedSashOrOpeningRegion(region);
+  }
+
+  return {
+    region: {
+      ...region,
+      boundsMm: {
+        x: daylight.boundsMm.x - biteBehindBeadMm,
+        y: daylight.boundsMm.y - biteBehindBeadMm,
+        width: daylight.boundsMm.width + widthDeltaMm,
+        height: daylight.boundsMm.height + heightDeltaMm,
+      },
+      status: "resolved",
+      note: `${region.note ?? ""} Projected from daylight opening using confirmed glass order expansion.`.trim(),
+    },
+  };
+}
+
 function projectRegion(
   region: B92ProjectedDrawableRegion,
   chains: B92ProjectionDatumChain[],
@@ -442,15 +567,39 @@ export function projectB92DatumProjectionPlan(input: B92ProjectionEngineInput): 
     if (result.unresolved) unresolvedItems.push(result.unresolved);
     return result.region;
   });
+  const projectionUnresolvedIds = new Set<string>();
+  const projectedRegionsWithOpenings = projectedRegions.map((region, index, regions) => {
+    if (region.category !== "daylight_opening") return region;
+    const result = projectDaylightOpeningFromResolvedEdges(region, regions);
+    if (result.unresolved) {
+      projectionUnresolvedIds.add(result.unresolved.id);
+      unresolvedItems.push(result.unresolved);
+    }
+    return result.region;
+  });
+  const projectedRegionsWithGlassOrder = projectedRegionsWithOpenings.map((region, index, regions) => {
+    if (region.category !== "glass_order") return region;
+    const result = projectGlassOrderFromDaylight(region as B92ProjectedGlassOrderGeometry, regions);
+    if (result.unresolved) {
+      projectionUnresolvedIds.add(result.unresolved.id);
+      unresolvedItems.push(result.unresolved);
+    }
+    return result.region;
+  });
 
-  const unresolvedResult = dedupeUnresolved(unresolvedItems);
+  const unresolvedResult = dedupeUnresolved(unresolvedItems).filter((item) => {
+    if (!projectionUnresolvedIds.has(item.id)) return true;
+    const regionId = item.id.replace(":projection-unresolved", "");
+    const matchingRegion = projectedRegionsWithGlassOrder.find((region) => region.id === regionId);
+    return matchingRegion?.status !== "resolved";
+  });
   return {
     plan: {
       ...plan,
-      regions: projectedRegions,
+      regions: projectedRegionsWithGlassOrder,
       unresolved: unresolvedResult,
     },
-    projectedRegions,
+    projectedRegions: projectedRegionsWithGlassOrder,
     unresolved: unresolvedResult,
   };
 }
