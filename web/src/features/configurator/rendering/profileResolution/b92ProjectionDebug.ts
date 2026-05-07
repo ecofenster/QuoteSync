@@ -1,4 +1,14 @@
 import type { B92ProjectionEngineResult } from "./b92ProjectionEngine";
+import {
+  B92_INTERNAL_SECTION_DATUM_AUTHORITY_REGISTER,
+  listB92InternalSectionDatumAuthorities,
+} from "./b92DatumGeometryRegister";
+import type {
+  B92DatumChainProjectionStatus,
+  B92InternalSectionDatumAuthority,
+  B92InternalSectionDatumProfileId,
+  B92InternalSectionDatumRole,
+} from "./b92DatumGeometry.types";
 import type {
   B92ProjectedDrawableRegion,
   B92ProjectedDrawableRegionCategory,
@@ -46,6 +56,40 @@ export type B92ProjectedRegionBoundsComparison = {
   note?: string;
 };
 
+export type B92SectionAuthorityStackDiagnosticStatus = "complete" | "partial" | "unresolved" | "conflict";
+
+export type B92SectionAuthorityStackSegmentDiagnostic = {
+  index: number;
+  valueMm: number;
+  status: B92InternalSectionDatumAuthority["sectionStatus"];
+  note?: string;
+};
+
+export type B92SectionAuthorityProjectionDiagnostic = {
+  profileId: B92InternalSectionDatumProfileId;
+  role: B92InternalSectionDatumRole;
+  sectionStatus: B92InternalSectionDatumAuthority["sectionStatus"];
+  projectionStatus: B92DatumChainProjectionStatus;
+  stackStatus: B92SectionAuthorityStackDiagnosticStatus;
+  stackMm: B92SectionAuthorityStackSegmentDiagnostic[];
+  registeredTotalMm: number | null;
+  computedTotalMm: number | null;
+  totalMatches: boolean | null;
+  confirmedRules: string[];
+  unresolvedRequirements: string[];
+  conflictNotes: string[];
+  note?: string;
+};
+
+export type B92SectionAuthorityProjectionDiagnosticSummary = {
+  total: number;
+  byRole: Partial<Record<B92InternalSectionDatumRole, number>>;
+  byProjectionStatus: Partial<Record<B92DatumChainProjectionStatus, number>>;
+  byStackStatus: Partial<Record<B92SectionAuthorityStackDiagnosticStatus, number>>;
+  stackTotalsChecked: number;
+  stackTotalMismatches: number;
+};
+
 function emptyCategoryCounts(): Partial<Record<B92ProjectedDrawableRegionCategory, number>> {
   return {};
 }
@@ -56,6 +100,31 @@ function emptyStatusCounts(): Partial<Record<B92ProjectionResolutionStatus, numb
 
 function increment<T extends string>(counts: Partial<Record<T, number>>, key: T): void {
   counts[key] = (counts[key] ?? 0) + 1;
+}
+
+function sumMm(values: readonly B92SectionAuthorityStackSegmentDiagnostic[]): number | null {
+  if (values.length === 0) return null;
+  const total = values.reduce((sum, value) => sum + value.valueMm, 0);
+  return Number.isFinite(total) ? total : null;
+}
+
+function totalsMatch(registeredTotalMm: number | null, computedTotalMm: number | null): boolean | null {
+  if (registeredTotalMm === null || computedTotalMm === null) return null;
+  return Math.abs(registeredTotalMm - computedTotalMm) < 0.0001;
+}
+
+function sectionStackStatus(input: {
+  authority: B92InternalSectionDatumAuthority;
+  computedTotalMm: number | null;
+  registeredTotalMm: number | null;
+  totalMatches: boolean | null;
+}): B92SectionAuthorityStackDiagnosticStatus {
+  if (input.authority.conflictNotes && input.authority.conflictNotes.length > 0) return "conflict";
+  if (input.totalMatches === false) return "conflict";
+  if (input.authority.stackMm && input.authority.stackMm.length > 0 && input.totalMatches === true) return "complete";
+  if (input.authority.stackMm && input.authority.stackMm.length > 0 && input.computedTotalMm !== null) return "partial";
+  if (input.authority.confirmedRules.length > 0 || input.authority.unresolvedRequirements.length > 0) return "partial";
+  return "unresolved";
 }
 
 function cloneBounds(bounds: B92ProjectionBoundsMm | undefined): B92ProjectionBoundsMm | null {
@@ -163,6 +232,77 @@ export function serializeB92ProjectionEngineResult(
   };
 }
 
+export function buildB92SectionAuthorityProjectionDiagnostic(
+  authority: B92InternalSectionDatumAuthority
+): B92SectionAuthorityProjectionDiagnostic {
+  const stackMm = (authority.stackMm ?? []).map((segment, index) => ({
+    index,
+    valueMm: segment.valueMm,
+    status: segment.status,
+    note: segment.note,
+  }));
+  const registeredTotalMm = authority.totalMm?.valueMm ?? null;
+  const computedTotalMm = sumMm(stackMm);
+  const totalMatches = totalsMatch(registeredTotalMm, computedTotalMm);
+
+  return {
+    profileId: authority.profileId,
+    role: authority.role,
+    sectionStatus: authority.sectionStatus,
+    projectionStatus: authority.projectionStatus,
+    stackStatus: sectionStackStatus({ authority, computedTotalMm, registeredTotalMm, totalMatches }),
+    stackMm,
+    registeredTotalMm,
+    computedTotalMm,
+    totalMatches,
+    confirmedRules: [...authority.confirmedRules],
+    unresolvedRequirements: [...authority.unresolvedRequirements],
+    conflictNotes: authority.conflictNotes ? [...authority.conflictNotes] : [],
+    note: authority.note,
+  };
+}
+
+export function buildB92InternalSectionAuthorityProjectionDiagnostics(input?: {
+  role?: B92InternalSectionDatumRole | B92InternalSectionDatumRole[];
+  projectionStatus?: B92DatumChainProjectionStatus | B92DatumChainProjectionStatus[];
+}): B92SectionAuthorityProjectionDiagnostic[] {
+  return listB92InternalSectionDatumAuthorities(input).map(buildB92SectionAuthorityProjectionDiagnostic);
+}
+
+export function getB92InternalSectionAuthorityProjectionDiagnostic(
+  profileId: B92InternalSectionDatumProfileId
+): B92SectionAuthorityProjectionDiagnostic {
+  return buildB92SectionAuthorityProjectionDiagnostic(B92_INTERNAL_SECTION_DATUM_AUTHORITY_REGISTER[profileId]);
+}
+
+export function summarizeB92SectionAuthorityProjectionDiagnostics(
+  diagnostics: readonly B92SectionAuthorityProjectionDiagnostic[] =
+    buildB92InternalSectionAuthorityProjectionDiagnostics()
+): B92SectionAuthorityProjectionDiagnosticSummary {
+  const byRole: Partial<Record<B92InternalSectionDatumRole, number>> = {};
+  const byProjectionStatus: Partial<Record<B92DatumChainProjectionStatus, number>> = {};
+  const byStackStatus: Partial<Record<B92SectionAuthorityStackDiagnosticStatus, number>> = {};
+  let stackTotalsChecked = 0;
+  let stackTotalMismatches = 0;
+
+  for (const diagnostic of diagnostics) {
+    increment(byRole, diagnostic.role);
+    increment(byProjectionStatus, diagnostic.projectionStatus);
+    increment(byStackStatus, diagnostic.stackStatus);
+    if (diagnostic.totalMatches !== null) stackTotalsChecked += 1;
+    if (diagnostic.totalMatches === false) stackTotalMismatches += 1;
+  }
+
+  return {
+    total: diagnostics.length,
+    byRole,
+    byProjectionStatus,
+    byStackStatus,
+    stackTotalsChecked,
+    stackTotalMismatches,
+  };
+}
+
 export function compareB92ProjectedRegionBounds(
   expected: B92ProjectedDrawableRegion,
   actual: B92ProjectedDrawableRegion,
@@ -206,6 +346,32 @@ export function formatB92ProjectionDebugReport(result: B92ProjectionEngineResult
 
   for (const summary of serialized.unresolvedReasons) {
     lines.push(`unresolved.${summary.reason}: ${summary.count}`);
+  }
+
+  return lines.join("\n");
+}
+
+export function formatB92SectionAuthorityProjectionDebugReport(
+  diagnostics: readonly B92SectionAuthorityProjectionDiagnostic[] =
+    buildB92InternalSectionAuthorityProjectionDiagnostics()
+): string {
+  const summary = summarizeB92SectionAuthorityProjectionDiagnostics(diagnostics);
+  const lines = [
+    "B92 Section Authority Projection Diagnostics",
+    "diagnosticOnly: true",
+    "drawableGeometry: false",
+    `sections: ${summary.total}`,
+    `byRole: ${JSON.stringify(summary.byRole)}`,
+    `byProjectionStatus: ${JSON.stringify(summary.byProjectionStatus)}`,
+    `byStackStatus: ${JSON.stringify(summary.byStackStatus)}`,
+    `stackTotalsChecked: ${summary.stackTotalsChecked}`,
+    `stackTotalMismatches: ${summary.stackTotalMismatches}`,
+  ];
+
+  for (const diagnostic of diagnostics) {
+    lines.push(
+      `${diagnostic.profileId}: role=${diagnostic.role}, stack=${diagnostic.stackStatus}, projection=${diagnostic.projectionStatus}, total=${diagnostic.computedTotalMm ?? "n/a"}/${diagnostic.registeredTotalMm ?? "n/a"}`
+    );
   }
 
   return lines.join("\n");

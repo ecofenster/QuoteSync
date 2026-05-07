@@ -20,9 +20,18 @@ import {
   createB92FixedNoSashDatumProjectionFixture,
   createB92SashFieldDatumProjectionFixture,
 } from "./b92DatumProjectionFixture";
-import { formatB92ProjectionDebugReport, serializeB92ProjectionEngineResult } from "./b92ProjectionDebug";
+import {
+  buildB92InternalSectionAuthorityProjectionDiagnostics,
+  formatB92ProjectionDebugReport,
+  formatB92SectionAuthorityProjectionDebugReport,
+  serializeB92ProjectionEngineResult,
+  summarizeB92SectionAuthorityProjectionDiagnostics,
+} from "./b92ProjectionDebug";
 import { projectB92DatumProjectionPlan } from "./b92ProjectionEngine";
-import { validateB92ProjectionEngineResult } from "./b92ProjectionValidation";
+import {
+  validateB92ProjectionEngineResult,
+  validateB92SectionAuthorityProjectionDiagnostics,
+} from "./b92ProjectionValidation";
 import type { B92ProjectedDrawableRegionCategory } from "./b92DatumProjection.types";
 
 const VIEW_BOX_WIDTH = 520;
@@ -423,12 +432,21 @@ function buildFieldHandle(
 }
 
 function buildB92DatumProjectionDiagnostics(contract: WindowTypeRenderModel) {
+  const sectionAuthorityProjection = buildB92InternalSectionAuthorityProjectionDiagnostics();
   return {
     integration: "adapter_metadata_only",
     rendererIntegration: false,
     visualGeometryChanged: false,
     note:
       "Read-only B92 datum projection diagnostics. Projection output is metadata only and must not replace renderer geometry.",
+    sectionAuthorityProjection: {
+      diagnosticOnly: true,
+      drawableGeometry: false,
+      diagnostics: sectionAuthorityProjection,
+      summary: summarizeB92SectionAuthorityProjectionDiagnostics(sectionAuthorityProjection),
+      validation: validateB92SectionAuthorityProjectionDiagnostics(sectionAuthorityProjection),
+      debugReport: formatB92SectionAuthorityProjectionDebugReport(sectionAuthorityProjection),
+    },
     fields: contract.fields.map((field) => {
       const plan = isSashBasedField(field)
         ? createB92SashFieldDatumProjectionFixture(field.id)

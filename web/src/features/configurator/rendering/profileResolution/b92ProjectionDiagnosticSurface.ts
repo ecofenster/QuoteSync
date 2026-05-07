@@ -23,6 +23,19 @@ export type B92DatumProjectionDiagnosticSurface = {
   integration: string | null;
   rendererIntegration: boolean | null;
   visualGeometryChanged: boolean | null;
+  sectionAuthorityProjection: {
+    diagnosticOnly: boolean | null;
+    drawableGeometry: boolean | null;
+    sectionCount: number;
+    stackTotalsChecked: number | null;
+    stackTotalMismatches: number | null;
+    validationSummary: {
+      id: string | null;
+      valid: boolean | null;
+      issueCount: number;
+    };
+    debugReport: string | null;
+  } | null;
   fieldCount: number;
   fields: B92DatumProjectionDiagnosticFieldSurface[];
   note?: string;
@@ -33,6 +46,7 @@ type B92DatumProjectionDiagnosticsMetadata = {
   rendererIntegration?: unknown;
   visualGeometryChanged?: unknown;
   note?: unknown;
+  sectionAuthorityProjection?: unknown;
   fields?: unknown;
 };
 
@@ -74,6 +88,27 @@ function fieldSurface(value: unknown): B92DatumProjectionDiagnosticFieldSurface 
   };
 }
 
+function numberOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function sectionAuthoritySurface(
+  value: unknown
+): B92DatumProjectionDiagnosticSurface["sectionAuthorityProjection"] {
+  if (!isRecord(value)) return null;
+  const summary = isRecord(value.summary) ? value.summary : {};
+  const diagnostics = Array.isArray(value.diagnostics) ? value.diagnostics : [];
+  return {
+    diagnosticOnly: booleanOrNull(value.diagnosticOnly),
+    drawableGeometry: booleanOrNull(value.drawableGeometry),
+    sectionCount: diagnostics.length,
+    stackTotalsChecked: numberOrNull(summary.stackTotalsChecked),
+    stackTotalMismatches: numberOrNull(summary.stackTotalMismatches),
+    validationSummary: validationSummary(value.validation),
+    debugReport: stringOrNull(value.debugReport),
+  };
+}
+
 function diagnosticsFromDevReports(devReports: unknown): B92DatumProjectionDiagnosticsMetadata | null {
   if (!isRecord(devReports)) return null;
   const diagnostics = devReports.b92DatumProjectionDiagnostics;
@@ -95,6 +130,7 @@ export function extractB92DatumProjectionDiagnostics(input: {
       integration: null,
       rendererIntegration: null,
       visualGeometryChanged: null,
+      sectionAuthorityProjection: null,
       fieldCount: 0,
       fields: [],
     };
@@ -111,6 +147,7 @@ export function extractB92DatumProjectionDiagnostics(input: {
     integration: stringOrNull(diagnostics.integration),
     rendererIntegration: booleanOrNull(diagnostics.rendererIntegration),
     visualGeometryChanged: booleanOrNull(diagnostics.visualGeometryChanged),
+    sectionAuthorityProjection: sectionAuthoritySurface(diagnostics.sectionAuthorityProjection),
     fieldCount: fields.length,
     fields,
     note: stringOrNull(diagnostics.note) ?? undefined,
@@ -128,8 +165,20 @@ export function formatB92DatumProjectionDiagnosticsSummary(
     `integration: ${surface.integration ?? "unknown"}`,
     `rendererIntegration: ${String(surface.rendererIntegration)}`,
     `visualGeometryChanged: ${String(surface.visualGeometryChanged)}`,
+    `sectionAuthorityProjection: ${surface.sectionAuthorityProjection ? "present" : "missing"}`,
     `fieldCount: ${surface.fieldCount}`,
   ];
+
+  if (surface.sectionAuthorityProjection) {
+    lines.push(
+      `sectionAuthority.sections: ${surface.sectionAuthorityProjection.sectionCount}`,
+      `sectionAuthority.stackTotalsChecked: ${String(surface.sectionAuthorityProjection.stackTotalsChecked)}`,
+      `sectionAuthority.stackTotalMismatches: ${String(surface.sectionAuthorityProjection.stackTotalMismatches)}`,
+      `sectionAuthority.valid: ${String(surface.sectionAuthorityProjection.validationSummary.valid)}`,
+      `sectionAuthority.issues: ${surface.sectionAuthorityProjection.validationSummary.issueCount}`
+    );
+    if (surface.sectionAuthorityProjection.debugReport) lines.push(surface.sectionAuthorityProjection.debugReport);
+  }
 
   for (const field of surface.fields) {
     lines.push(

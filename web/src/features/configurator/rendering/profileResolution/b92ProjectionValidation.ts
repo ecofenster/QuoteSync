@@ -13,7 +13,14 @@ import {
   projectB92DatumProjectionPlan,
   type B92ProjectionEngineResult,
 } from "./b92ProjectionEngine";
-import { summarizeB92ProjectionRegions } from "./b92ProjectionDebug";
+import {
+  buildB92InternalSectionAuthorityProjectionDiagnostics,
+  summarizeB92SectionAuthorityProjectionDiagnostics,
+  summarizeB92ProjectionRegions,
+  type B92SectionAuthorityProjectionDiagnostic,
+  type B92SectionAuthorityProjectionDiagnosticSummary,
+} from "./b92ProjectionDebug";
+import type { B92InternalSectionDatumProfileId } from "./b92DatumGeometry.types";
 
 export type B92ProjectionValidationSeverity = "error" | "warning" | "info";
 
@@ -27,6 +34,8 @@ export type B92ProjectionValidationIssue = {
     | "missing_unresolved_reason"
     | "meeting_geometry_projected"
     | "glass_order_mismatch"
+    | "section_stack_total_mismatch"
+    | "section_stack_missing"
     | "fixture_projection_failed";
   regionId?: string;
   note: string;
@@ -39,11 +48,40 @@ export type B92ProjectionValidationReport = {
   summary: ReturnType<typeof summarizeB92ProjectionRegions>;
 };
 
+export type B92SectionAuthorityProjectionValidationReport = {
+  id: string;
+  valid: boolean;
+  issues: B92ProjectionValidationIssue[];
+  summary: B92SectionAuthorityProjectionDiagnosticSummary;
+  diagnostics: B92SectionAuthorityProjectionDiagnostic[];
+};
+
 type StaticFixtureKey = "fixed_no_sash" | "sash_field";
 
 const STATIC_FIXTURE_BOUNDS: Record<StaticFixtureKey, B92ProjectionBoundsMm> = {
   fixed_no_sash: { x: 0, y: 0, width: 1000, height: 1000 },
   sash_field: { x: 0, y: 0, width: 1000, height: 1000 },
+};
+
+const EXPECTED_B92_SECTION_STACK_TOTALS_MM: Record<B92InternalSectionDatumProfileId, number | null> = {
+  "B92-5": null,
+  "B92-8": null,
+  "B92-8A": null,
+  "B92-8B": null,
+  "B92-8C": null,
+  "B92-8D": null,
+  "B92-8E": null,
+  "B92-8F": null,
+  "B92-15": 175,
+  "B92-16": 205,
+  "B92-17": 175,
+  "B92-18": 131,
+  "B92-19": 130.5,
+  "B92-20": 78,
+  "B92-21": 115.5,
+  "B92-22": 186,
+  "B92-23": 130,
+  "B92-24": 78,
 };
 
 function issue(input: B92ProjectionValidationIssue): B92ProjectionValidationIssue {
@@ -269,4 +307,56 @@ export function validateB92ProjectionFixture(fixture: StaticFixtureKey): B92Proj
 
 export function validateB92StaticProjectionFixtures(): B92ProjectionValidationReport[] {
   return [validateB92ProjectionFixture("fixed_no_sash"), validateB92ProjectionFixture("sash_field")];
+}
+
+export function validateB92SectionAuthorityProjectionDiagnostics(
+  diagnostics: B92SectionAuthorityProjectionDiagnostic[] = buildB92InternalSectionAuthorityProjectionDiagnostics()
+): B92SectionAuthorityProjectionValidationReport {
+  const issues: B92ProjectionValidationIssue[] = [];
+  const byProfile = new Map(diagnostics.map((diagnostic) => [diagnostic.profileId, diagnostic]));
+
+  for (const [profileId, expectedTotalMm] of Object.entries(EXPECTED_B92_SECTION_STACK_TOTALS_MM) as [
+    B92InternalSectionDatumProfileId,
+    number | null,
+  ][]) {
+    const diagnostic = byProfile.get(profileId);
+    if (!diagnostic) {
+      issues.push(
+        issue({
+          id: `b92-section-authority:${profileId}:missing`,
+          severity: "error",
+          code: "section_stack_missing",
+          note: `Expected B92 section authority diagnostic is missing for ${profileId}.`,
+        })
+      );
+      continue;
+    }
+
+    if (expectedTotalMm === null) continue;
+
+    if (
+      diagnostic.registeredTotalMm !== expectedTotalMm ||
+      diagnostic.computedTotalMm !== expectedTotalMm ||
+      diagnostic.totalMatches !== true
+    ) {
+      issues.push(
+        issue({
+          id: `b92-section-authority:${profileId}:stack-total-mismatch`,
+          severity: "error",
+          code: "section_stack_total_mismatch",
+          note: `Expected ${profileId} stack total ${expectedTotalMm}mm, got registered=${String(
+            diagnostic.registeredTotalMm
+          )}, computed=${String(diagnostic.computedTotalMm)}.`,
+        })
+      );
+    }
+  }
+
+  return {
+    id: "b92-section-authority-projection-diagnostics",
+    valid: issues.every((item) => item.severity !== "error"),
+    issues,
+    summary: summarizeB92SectionAuthorityProjectionDiagnostics(diagnostics),
+    diagnostics,
+  };
 }

@@ -52,8 +52,8 @@ export const B92_DATUM_ACQUISITION_AUDIT: B92DatumAcquisitionAuditItem[] = [
       "places the bottom sash body without assuming uniform 19.5mm overlay",
       "separates visible sill face from the concealed bottom rebate zone",
     ],
-    sourceNote: "Current datum fixtures intentionally do not populate bottom sash overlay/rebate authority.",
-    todoNote: "Acquire measured B92 bottom sash/frame section relationship before renderer migration.",
+    sourceNote: "Current datum fixtures intentionally do not populate bottom sash overlay/rebate authority. Supplied section authority confirms the B92-8 through B92-8F sill family, with B92-8 as the standard T&T sill and B92-8B as rebate-inside-only, but those labels do not define the sash overlay/rebate datum relationship.",
+    todoNote: "Acquire measured B92 bottom sash/frame section relationship before renderer migration; do not derive it from sill variant labels alone.",
   },
   {
     id: "b92-bottom-sash-face-placement",
@@ -68,7 +68,7 @@ export const B92_DATUM_ACQUISITION_AUDIT: B92DatumAcquisitionAuditItem[] = [
     affectedFutureRendererBehaviour: [
       "draws the bottom sash face from explicit datum placement rather than mirrored top/side logic",
     ],
-    sourceNote: "57mm sash face/depth is confirmed, but bottom placement is not confirmed.",
+    sourceNote: "57mm sash face/depth is confirmed and B92-8 through B92-8F are confirmed bottom sash-field sill section authorities, but bottom sash face placement relative to the sill datum is not confirmed.",
     todoNote: "Acquire bottom sash placement section before resolving bottom sash body bounds.",
   },
   {
@@ -85,7 +85,7 @@ export const B92_DATUM_ACQUISITION_AUDIT: B92DatumAcquisitionAuditItem[] = [
       "closes sash-field daylight rectangles only after bottom bead placement is known",
       "prevents deriving glass order from an incomplete daylight opening",
     ],
-    sourceNote: "21mm bead/glass offset is confirmed, but bottom bead placement depends on unresolved bottom sash placement.",
+    sourceNote: "21mm bead/glass offset is confirmed on all edges, but bottom bead placement depends on unresolved bottom sash placement.",
     todoNote: "Acquire bottom bead section datum tied to the confirmed bottom sash relationship.",
   },
   {
@@ -153,8 +153,8 @@ export const B92_DATUM_ACQUISITION_AUDIT: B92DatumAcquisitionAuditItem[] = [
       "draws default T&T/T&T static centre condition without borrowing outer-frame logic",
       "allocates daylight and sash regions on each side of the meeting profile",
     ],
-    sourceNote: "B92-15 exists as a default static meeting profile placeholder; committed profileRefs note confirms a 19mm sash gap, but detailed measurements are not authoritative.",
-    todoNote: "Acquire measured B92-15 centre mullion section and ownership rules.",
+    sourceNote: "B92-15 has confirmed supplied section authority: internal stack 21 / 57 / 19 / 57 / 21, total 175mm, with 19mm internally visible between sashes. Ownership, edge closure, and stack semantics are still not field-projection authority.",
+    todoNote: "Acquire B92-15 ownership, sash termination, and daylight closure rules before projecting meeting geometry.",
   },
   {
     id: "b92-16-hinges-at-meeting-measurements",
@@ -170,13 +170,13 @@ export const B92_DATUM_ACQUISITION_AUDIT: B92DatumAcquisitionAuditItem[] = [
       "projects hinge-side meeting geometry without inferring from B92-15",
       "preserves ownership differences between adjacent sashes",
     ],
-    sourceNote: "B92-16 has confirmed matrix notes for 92x130 timber profile, 49mm internally visible between sashes, and 136mm external aluminium-clad width; side ownership and daylight closure remain unconfirmed.",
+    sourceNote: "B92-16 has confirmed supplied section authority: internal stack 21 / 57 / 49 / 57 / 21, total 205mm, 92x130 timber profile, 49mm internally visible between sashes, and 136mm external aluminium-clad width; side ownership and daylight closure remain unconfirmed.",
     todoNote: "Acquire hinges-at-meeting section dimensions and ownership semantics.",
   },
   {
     id: "b92-17-same-handing-measurements",
     category: "meeting_profile",
-    status: "missing",
+    status: "partial",
     requiredMeasurements: [
       "B92-17 same-handing structural width",
       "B92-17 visible face widths by side",
@@ -188,8 +188,8 @@ export const B92_DATUM_ACQUISITION_AUDIT: B92DatumAcquisitionAuditItem[] = [
       "projects same-handing meeting conditions from explicit profile authority",
       "keeps handle/hinge ownership from being guessed by operation labels",
     ],
-    sourceNote: "B92-17 is currently candidate/unknown in the datum register.",
-    todoNote: "Acquire same-handing meeting section dimensions and ownership semantics.",
+    sourceNote: "B92-17 has confirmed supplied section authority: same-handing internal stack 21 / 57 / 19 / 78, total 175mm. Ownership, side closure, and operation semantics remain unconfirmed.",
+    todoNote: "Acquire same-handing ownership, sash termination, and daylight closure rules before projecting meeting geometry.",
   },
   {
     id: "b92-18-flying-mullion-owner-passive-measurements",
@@ -207,15 +207,15 @@ export const B92_DATUM_ACQUISITION_AUDIT: B92DatumAcquisitionAuditItem[] = [
       "projects flying mullion geometry with explicit owner/passive roles",
       "prevents treating both meeting sides as symmetric static mullion geometry",
     ],
-    sourceNote: "B92-18 is identified as flying mullion; committed profileRefs note confirms a 5mm gap and no static mullion post, but owner/passive measurements are not confirmed.",
+    sourceNote: "B92-18 has confirmed supplied section authority: flying mullion stack 21 / 27 / 5 / 57 / 21, total 131mm, 5mm gap, and no static mullion post. Owner/passive measurements are not confirmed.",
     todoNote: "Acquire active/passive flying mullion section data and ownership rules.",
   },
   {
     id: "b92-horizontal-transom-datum-requirements",
     category: "horizontal_transom",
-    status: "missing",
+    status: "partial",
     requiredMeasurements: [
-      "horizontal transom structural datum",
+      "horizontal transom structural datum beyond confirmed 92x78 profile family dimensions",
       "horizontal transom visible face widths above and below",
       "hidden/rebate relationships for adjacent top and bottom fields",
       "daylight closure rules across transom-separated fields",
@@ -225,13 +225,13 @@ export const B92_DATUM_ACQUISITION_AUDIT: B92DatumAcquisitionAuditItem[] = [
       "projects stacked fields without reusing vertical meeting assumptions",
       "supports different datum chains above and below horizontal members",
     ],
-    sourceNote: "Current projection fixtures are internal single-field only and do not define transom datum authority.",
+    sourceNote: "B92-19 through B92-24 have confirmed supplied horizontal/transom section authority with explicit stacks: B92-19 21/57/31.5/21, B92-20 21/36/21, B92-21 21/16.5/57/21, B92-22 21/57/30/57/21, B92-23 21/51/37/21, B92-24 21/22/14/21. Projection datum splits above/below the transom are not confirmed.",
     todoNote: "Acquire horizontal transom section and field ownership rules.",
   },
   {
     id: "b92-segmented-sill-datum-requirements",
     category: "segmented_sill",
-    status: "missing",
+    status: "partial",
     requiredMeasurements: [
       "segmented sill visible datum by segment",
       "segment transition rules at mullions/meetings",
@@ -243,7 +243,7 @@ export const B92_DATUM_ACQUISITION_AUDIT: B92DatumAcquisitionAuditItem[] = [
       "draws bottom frame/sill geometry per segment rather than as one uniform bottom band",
       "supports mixed fixed and sash bottom conditions in multi-field windows",
     ],
-    sourceNote: "Current datum fixtures distinguish fixed bottom 72mm and sash sill 52.5mm, but not segmented sill transitions.",
+    sourceNote: "Current datum fixtures distinguish fixed bottom 72mm and sash sill 52.5mm. Supplied section authority confirms B92-5 as a fixed-field sill/equalising section and B92-8 through B92-8F as sash-field sill sections, but segment transition datum and mixed bottom rebate relationships are not confirmed.",
     todoNote: "Acquire segmented sill transition rules before multi-field bottom projection.",
   },
   {

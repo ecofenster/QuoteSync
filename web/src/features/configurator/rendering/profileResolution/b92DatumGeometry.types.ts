@@ -1,5 +1,7 @@
 export type B92DatumStatus = "confirmed" | "candidate";
 
+export type B92DatumChainProjectionStatus = "complete" | "partial" | "unresolved" | "conflict";
+
 export type B92DatumMm = {
   valueMm: number;
   status: B92DatumStatus;
@@ -78,9 +80,54 @@ export type B92FieldDatumGeometry = {
 
 export type B92MeetingSide = "left" | "right";
 
+export type B92InternalSillDatumProfileId =
+  | "B92-5"
+  | "B92-8"
+  | "B92-8A"
+  | "B92-8B"
+  | "B92-8C"
+  | "B92-8D"
+  | "B92-8E"
+  | "B92-8F";
+
+export type B92InternalMeetingDatumProfileId = "B92-15" | "B92-16" | "B92-17" | "B92-18";
+
+export type B92InternalTransomDatumProfileId =
+  | "B92-19"
+  | "B92-20"
+  | "B92-21"
+  | "B92-22"
+  | "B92-23"
+  | "B92-24";
+
+export type B92InternalSectionDatumProfileId =
+  | B92InternalSillDatumProfileId
+  | B92InternalMeetingDatumProfileId
+  | B92InternalTransomDatumProfileId;
+
+export type B92InternalSectionDatumRole = "sill" | "meeting_profile" | "horizontal_transom";
+
+export type B92InternalSectionDatumAuthority = {
+  profileId: B92InternalSectionDatumProfileId;
+  role: B92InternalSectionDatumRole;
+  /**
+   * Section authority only. A confirmed section can still have partial
+   * projection status when ownership, bottom placement, or field-edge closure
+   * remains unresolved.
+   */
+  sectionStatus: B92DatumStatus;
+  projectionStatus: B92DatumChainProjectionStatus;
+  stackMm?: B92DatumMm[];
+  totalMm?: B92DatumMm;
+  confirmedRules: string[];
+  unresolvedRequirements: string[];
+  conflictNotes?: string[];
+  note?: string;
+};
+
 export type B92MeetingDatumGeometry = {
   side: B92MeetingSide;
-  profileId: "B92-15" | "B92-16" | "B92-17" | "B92-18";
+  profileId: B92InternalMeetingDatumProfileId;
   axis: "vertical";
   ownerFieldId?: string | null;
   passiveFieldId?: string | null;
@@ -103,10 +150,15 @@ export type B92MeetingDatumGeometry = {
     rightField?: B92PerEdgeMm;
   };
   /**
-   * Candidate:
-   * - meeting sequence 21 / 27 / 5 / 57 / 21
-   * - B92-16 geometry
-   * - B92-17 geometry
+   * Confirmed section stacks:
+   * - B92-15: 21 / 57 / 19 / 57 / 21
+   * - B92-16: 21 / 57 / 49 / 57 / 21
+   * - B92-17: 21 / 57 / 19 / 78
+   * - B92-18: 21 / 27 / 5 / 57 / 21
+   *
+   * Still unresolved:
+   * - stack semantics as projected field bounds
+   * - meeting ownership and sash termination
    * - B92-18 owner/passive geometry
    */
   sequenceMm?: B92DatumMm[];
