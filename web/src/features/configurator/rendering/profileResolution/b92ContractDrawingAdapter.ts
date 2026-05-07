@@ -32,6 +32,7 @@ import {
   validateB92ProjectionEngineResult,
   validateB92SectionAuthorityProjectionDiagnostics,
 } from "./b92ProjectionValidation";
+import { buildB92ProjectionRendererLikeDiagnosticModel } from "./b92ProjectionRendererLikeAdapter";
 import type { B92ProjectedDrawableRegionCategory } from "./b92DatumProjection.types";
 
 const VIEW_BOX_WIDTH = 520;
@@ -433,6 +434,40 @@ function buildFieldHandle(
 
 function buildB92DatumProjectionDiagnostics(contract: WindowTypeRenderModel) {
   const sectionAuthorityProjection = buildB92InternalSectionAuthorityProjectionDiagnostics();
+  const fieldProjectionDiagnostics = contract.fields.map((field) => {
+    const plan = isSashBasedField(field)
+      ? createB92SashFieldDatumProjectionFixture(field.id)
+      : createB92FixedNoSashDatumProjectionFixture(field.id);
+    const projected = projectB92DatumProjectionPlan({
+      plan,
+      fieldBoundsById: {
+        [field.id]: {
+          x: 0,
+          y: 0,
+          width: field.dimensionsMm.width,
+          height: field.dimensionsMm.height,
+        },
+      },
+    });
+    const expectedCategories: B92ProjectedDrawableRegionCategory[] = isSashBasedField(field)
+      ? [
+          "structural_frame_datum",
+          "visible_frame_face",
+          "hidden_frame_rebate",
+          "visible_sash_body",
+          "bead",
+          "daylight_opening",
+          "glass_order",
+        ]
+      : ["visible_frame_face", "daylight_opening", "glass_order"];
+
+    return {
+      field,
+      projected,
+      expectedCategories,
+    };
+  });
+
   return {
     integration: "adapter_metadata_only",
     rendererIntegration: false,
@@ -447,33 +482,15 @@ function buildB92DatumProjectionDiagnostics(contract: WindowTypeRenderModel) {
       validation: validateB92SectionAuthorityProjectionDiagnostics(sectionAuthorityProjection),
       debugReport: formatB92SectionAuthorityProjectionDebugReport(sectionAuthorityProjection),
     },
-    fields: contract.fields.map((field) => {
-      const plan = isSashBasedField(field)
-        ? createB92SashFieldDatumProjectionFixture(field.id)
-        : createB92FixedNoSashDatumProjectionFixture(field.id);
-      const projected = projectB92DatumProjectionPlan({
-        plan,
-        fieldBoundsById: {
-          [field.id]: {
-            x: 0,
-            y: 0,
-            width: field.dimensionsMm.width,
-            height: field.dimensionsMm.height,
-          },
-        },
-      });
-      const expectedCategories: B92ProjectedDrawableRegionCategory[] = isSashBasedField(field)
-        ? [
-            "structural_frame_datum",
-            "visible_frame_face",
-            "hidden_frame_rebate",
-            "visible_sash_body",
-            "bead",
-            "daylight_opening",
-            "glass_order",
-          ]
-        : ["visible_frame_face", "daylight_opening", "glass_order"];
-
+    rendererLikeDiagnosticModel: buildB92ProjectionRendererLikeDiagnosticModel({
+      fields: fieldProjectionDiagnostics.map(({ field, projected }) => ({
+        fieldId: field.id,
+        fieldType: field.type,
+        projection: projected,
+      })),
+      sectionAuthorityProjection,
+    }),
+    fields: fieldProjectionDiagnostics.map(({ field, projected, expectedCategories }) => {
       return {
         fieldId: field.id,
         fieldType: field.type,
