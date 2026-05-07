@@ -33,6 +33,7 @@ import {
   validateB92SectionAuthorityProjectionDiagnostics,
 } from "./b92ProjectionValidation";
 import { buildB92ProjectionRendererLikeDiagnosticModel } from "./b92ProjectionRendererLikeAdapter";
+import { buildB92FixedNoSashProjectionPilotDrawingModel } from "./b92FixedNoSashProjectionDrawingPilot";
 import type { B92ProjectedDrawableRegionCategory } from "./b92DatumProjection.types";
 
 const VIEW_BOX_WIDTH = 520;
@@ -511,6 +512,20 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
   const field = assertB92FixedInternalContract(contract);
   const widthMm = contract.overall.widthMm;
   const heightMm = contract.overall.heightMm;
+  const fixedNoSashProjectionPilot = buildB92FixedNoSashProjectionPilotDrawingModel(contract);
+
+  if (fixedNoSashProjectionPilot.model) {
+    return {
+      ...fixedNoSashProjectionPilot.model,
+      metadata: {
+        ...fixedNoSashProjectionPilot.model.metadata,
+        devReports: {
+          ...fixedNoSashProjectionPilot.model.metadata.devReports,
+          b92DatumProjectionDiagnostics: buildB92DatumProjectionDiagnostics(contract),
+        },
+      },
+    };
+  }
 
   const columnIndexes = Array.from(new Set(contract.fields.map((item) => item.column))).sort((a, b) => a - b);
   const rowIndexes = Array.from(new Set(contract.fields.map((item) => item.row))).sort((a, b) => a - b);
@@ -857,6 +872,16 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
             enabled: shouldUseSashOverlapGeometry(contract),
             overlapMm: shouldUseSashOverlapGeometry(contract) ? B92_SASH_OVERLAP_MM : 0,
           },
+          ...(fixedNoSashProjectionPilot.eligibility.enabled
+            ? {
+                fixedNoSashProjectionPilot: {
+                  enabled: fixedNoSashProjectionPilot.eligibility.enabled,
+                  eligible: fixedNoSashProjectionPilot.eligibility.eligible,
+                  fallbackToExistingRenderer: true,
+                  reasons: fixedNoSashProjectionPilot.eligibility.reasons,
+                },
+              }
+            : {}),
           note: "Isolated B92 fixed internal contract drawing adapter; pilot geometry is not used as authority.",
         },
         b92DatumProjectionDiagnostics: buildB92DatumProjectionDiagnostics(contract),
