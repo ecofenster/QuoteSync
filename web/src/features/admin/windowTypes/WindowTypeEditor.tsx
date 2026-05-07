@@ -349,6 +349,7 @@ function WindowTypeTechnicalPreview(props: {
     y: 0,
     field: null,
   });
+  const [useDatumFixedNoSashRenderer, setUseDatumFixedNoSashRenderer] = useState(false);
   const previewSource = useMemo(
     () => resolvePreviewSourceModel(selectedDesign, bootstrap),
     [selectedDesign, bootstrap]
@@ -362,6 +363,7 @@ function WindowTypeTechnicalPreview(props: {
   useEffect(() => {
     setEditableSourceModel(sourceModel ? cloneSourceModel(sourceModel) : null);
     setOperationMenu((current) => ({ ...current, open: false }));
+    setUseDatumFixedNoSashRenderer(false);
   }, [selectedDesignId]);
 
   const activeSourceModel = editableSourceModel ?? sourceModel;
@@ -421,7 +423,21 @@ function WindowTypeTechnicalPreview(props: {
         model:
           fieldType === "fixed_sash"
             ? buildB92FixedSashInternalDrawingModelFromContract(contract)
-            : buildB92FixedInternalDrawingModelFromContract(contract),
+            : buildB92FixedInternalDrawingModelFromContract(
+                useDatumFixedNoSashRenderer
+                  ? {
+                      ...contract,
+                      meta: {
+                        ...contract.meta,
+                        dev: {
+                          ...contract.meta.dev,
+                          b92UseDatumFixedNoSashRenderer: true,
+                          b92ProjectionFixedNoSashParityDiagnostics: true,
+                        },
+                      },
+                    }
+                  : contract
+              ),
         error: "",
       };
     } catch (error) {
@@ -430,7 +446,7 @@ function WindowTypeTechnicalPreview(props: {
         error: error instanceof Error ? error.message : String(error),
       };
     }
-  }, [activeSourceModel]);
+  }, [activeSourceModel, useDatumFixedNoSashRenderer]);
 
   return (
     <div className="admin-card ui-card" style={{ padding: 14, display: "grid", gap: 10 }}>
@@ -440,6 +456,21 @@ function WindowTypeTechnicalPreview(props: {
         </div>
         {previewDescription ? <div className="admin-body-copy">{previewDescription}</div> : null}
       </div>
+      {activeSourceModel ? (
+        <label
+          className="admin-body-copy"
+          style={{ display: "inline-flex", alignItems: "center", gap: 8, width: "fit-content" }}
+        >
+          <input
+            type="checkbox"
+            checked={useDatumFixedNoSashRenderer}
+            onChange={(event) => {
+              setUseDatumFixedNoSashRenderer(event.currentTarget.checked);
+            }}
+          />
+          Use datum fixed no-sash renderer pilot
+        </label>
+      ) : null}
       {!activeSourceModel ? (
         <div className="admin-placeholder-box" style={{ margin: 0 }}>
           Preview not available for this design yet.
