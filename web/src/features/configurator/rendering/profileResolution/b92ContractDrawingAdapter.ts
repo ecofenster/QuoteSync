@@ -48,6 +48,13 @@ const B92_FIXED_INTERNAL_FRAME_MM = {
   bottom: 93,
 };
 
+const B92_FIXED_NO_SASH_DATUM_RENDERER_FRAME_MM = {
+  top: 37.5,
+  left: 37.5,
+  right: 37.5,
+  bottom: 72,
+};
+
 const REQUIRED_B92_FIXED_INTERNAL_PROFILES = {
   top: "B92-1",
   left: "B92-2",
@@ -58,6 +65,18 @@ const REQUIRED_B92_FIXED_INTERNAL_PROFILES = {
 const B92_SASH_FACE_MM = 57;
 const B92_BEAD_FACE_MM = 21;
 const B92_SASH_OVERLAP_MM = 19.5;
+
+type B92DatumFixedNoSashRendererPromotionDevFlags = WindowTypeRenderModel["meta"]["dev"] & {
+  b92UseDatumFixedNoSashRenderer?: boolean | null;
+  b92UseProjectionFixedNoSashDrawingPilot?: boolean | null;
+};
+
+type B92DatumFixedNoSashRendererPromotionResult = {
+  enabled: boolean;
+  eligible: boolean;
+  reasons: string[];
+  model: DrawingModel | null;
+};
 
 function assertCondition(condition: boolean, message: string): asserts condition {
   if (!condition) throw new Error(`Invalid B92 fixed internal drawing contract: ${message}`);
@@ -434,6 +453,110 @@ function buildFieldHandle(
   };
 }
 
+function datumFixedNoSashRendererPromotionEnabled(contract: WindowTypeRenderModel): boolean {
+  const dev = contract.meta.dev as B92DatumFixedNoSashRendererPromotionDevFlags | undefined;
+  return dev?.b92UseDatumFixedNoSashRenderer === true;
+}
+
+function buildB92DatumFixedNoSashRendererPromotion(
+  contract: WindowTypeRenderModel
+): B92DatumFixedNoSashRendererPromotionResult {
+  const enabled = datumFixedNoSashRendererPromotionEnabled(contract);
+  if (!enabled) {
+    return {
+      enabled,
+      eligible: false,
+      reasons: ["datum renderer promotion flag is off"],
+      model: null,
+    };
+  }
+
+  const promotedContract: WindowTypeRenderModel = {
+    ...contract,
+    meta: {
+      ...contract.meta,
+      dev: {
+        ...contract.meta.dev,
+        b92UseProjectionFixedNoSashDrawingPilot: true,
+      } as WindowTypeRenderModel["meta"]["dev"],
+    },
+  };
+  const pilot = buildB92FixedNoSashProjectionPilotDrawingModel(promotedContract);
+
+  return {
+    enabled,
+    eligible: pilot.eligibility.eligible,
+    reasons: pilot.eligibility.reasons,
+    model: pilot.model,
+  };
+}
+
+function buildB92DatumFixedNoSashRendererPromotionReport(input: {
+  promotion: B92DatumFixedNoSashRendererPromotionResult;
+  usedAsDrawingModel: boolean;
+  fallbackToExistingRenderer: boolean;
+  promotedModel?: DrawingModel | null;
+}) {
+  const pilotReport =
+    input.promotedModel?.metadata.devReports?.b92FixedNoSashProjectionDrawingPilot ?? null;
+
+  return {
+    flag: "contract.meta.dev.b92UseDatumFixedNoSashRenderer",
+    enabled: input.promotion.enabled,
+    eligible: input.promotion.eligible,
+    usedAsDrawingModel: input.usedAsDrawingModel,
+    fallbackToExistingRenderer: input.fallbackToExistingRenderer,
+    rendererAuthority: input.usedAsDrawingModel ? "confirmed_b92_fixed_no_sash_datum_projection" : "legacy_b92_fixed_internal_adapter",
+    scope: "B92 internal 1-field fixed no-sash only",
+    eligibilityChecks: [
+      "system B92",
+      "internal validation drawing path",
+      "exactly 1 field",
+      "fixed field",
+      "no sash metadata",
+      "no vertical junctions",
+      "no horizontal junctions",
+      "no couplings",
+      "no corners",
+      "no thresholds",
+      "finite positive overall dimensions",
+    ],
+    reasons: input.promotion.reasons,
+    confirmedVisibleFrameMm: B92_FIXED_NO_SASH_DATUM_RENDERER_FRAME_MM,
+    legacyVisibleFrameMm: B92_FIXED_INTERNAL_FRAME_MM,
+    pilotProjectionReport: pilotReport,
+    note: input.usedAsDrawingModel
+      ? "Explicit dev-gated datum renderer promotion used confirmed fixed no-sash datum projection as drawing output."
+      : "Datum renderer promotion was not used; existing legacy B92 fixed internal adapter output remains authoritative.",
+  };
+}
+
+function withB92DatumFixedNoSashRendererPromotionReport(input: {
+  model: DrawingModel;
+  promotion: B92DatumFixedNoSashRendererPromotionResult;
+  usedAsDrawingModel: boolean;
+  fallbackToExistingRenderer: boolean;
+  promotedModel?: DrawingModel | null;
+}): DrawingModel {
+  if (!input.promotion.enabled) return input.model;
+
+  return {
+    ...input.model,
+    metadata: {
+      ...input.model.metadata,
+      devReports: {
+        ...input.model.metadata.devReports,
+        b92DatumFixedNoSashRendererPromotion: buildB92DatumFixedNoSashRendererPromotionReport({
+          promotion: input.promotion,
+          usedAsDrawingModel: input.usedAsDrawingModel,
+          fallbackToExistingRenderer: input.fallbackToExistingRenderer,
+          promotedModel: input.promotedModel,
+        }),
+      },
+    },
+  };
+}
+
 function buildB92DatumProjectionDiagnostics(contract: WindowTypeRenderModel) {
   const sectionAuthorityProjection = buildB92InternalSectionAuthorityProjectionDiagnostics();
   const fieldProjectionDiagnostics = contract.fields.map((field) => {
@@ -513,9 +636,10 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
   const field = assertB92FixedInternalContract(contract);
   const widthMm = contract.overall.widthMm;
   const heightMm = contract.overall.heightMm;
+  const datumRendererPromotion = buildB92DatumFixedNoSashRendererPromotion(contract);
   const fixedNoSashProjectionPilot = buildB92FixedNoSashProjectionPilotDrawingModel(contract);
 
-  if (fixedNoSashProjectionPilot.model) {
+  if (fixedNoSashProjectionPilot.model && !datumRendererPromotion.enabled) {
     return {
       ...fixedNoSashProjectionPilot.model,
       metadata: {
@@ -822,79 +946,112 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
       height: row.height,
     };
   });
-  return withB92FixedNoSashProjectionParityDiagnostics({
+  const legacyModelWithDiagnostics = withB92FixedNoSashProjectionParityDiagnostics({
     contract,
     model: {
-    width: widthMm,
-    height: heightMm,
-    viewBox: { width: VIEW_BOX_WIDTH, height: VIEW_BOX_HEIGHT },
-    elements: [
-      { id: "frame", role: "frame", shapes: frameShapes },
-      { id: "sash", role: "sash", shapes: sashShapes },
-      { id: "glass", role: "glass", shapes: glassShapes },
-      { id: "junctions", role: "junctions", shapes: junctionShapes },
-    ],
-    geometry: {
-      frame: frameShapes,
-      sash: sashShapes,
-      glass: glassShapes,
-      junctions: junctionShapes,
-    },
-    annotations: {
-      dimensions: buildDimensionAnnotations(frame, widthMm, heightMm),
-      labels,
-      handles,
-      markers,
-    },
-    metadata: {
-      systemType: "window",
-      openingDirection: "inward",
-      operationType: "fixed",
-      sectionReferences: [
-        REQUIRED_B92_FIXED_INTERNAL_PROFILES.top,
-        REQUIRED_B92_FIXED_INTERNAL_PROFILES.left,
-        REQUIRED_B92_FIXED_INTERNAL_PROFILES.bottom,
+      width: widthMm,
+      height: heightMm,
+      viewBox: { width: VIEW_BOX_WIDTH, height: VIEW_BOX_HEIGHT },
+      elements: [
+        { id: "frame", role: "frame", shapes: frameShapes },
+        { id: "sash", role: "sash", shapes: sashShapes },
+        { id: "glass", role: "glass", shapes: glassShapes },
+        { id: "junctions", role: "junctions", shapes: junctionShapes },
       ],
-      referenceInputs: [],
-      renderSource: "native_drawing_model",
-      layerHints: ["frame", "glass", "dimensions", "annotations"],
-      devReports: {
-        b92FixedInternalContractDrawingAdapter: {
-          fieldId: field.id,
-          validationMode: contract.meta.validationMode,
-          requiredProfiles: REQUIRED_B92_FIXED_INTERNAL_PROFILES,
-          visibleFrameMm: B92_FIXED_INTERNAL_FRAME_MM,
-          visibleGlassMm: primaryVisibleGlassMm,
-          glassOrderNoteMm: glassOrderMm,
-          fieldCount: contract.fields.length,
-          segmentedSillOverlay: {
-            enabled: shouldRenderSegmentedSillOverlay(contract),
-            shapeCount: segmentedSillOverlayShapes.length,
+      geometry: {
+        frame: frameShapes,
+        sash: sashShapes,
+        glass: glassShapes,
+        junctions: junctionShapes,
+      },
+      annotations: {
+        dimensions: buildDimensionAnnotations(frame, widthMm, heightMm),
+        labels,
+        handles,
+        markers,
+      },
+      metadata: {
+        systemType: "window",
+        openingDirection: "inward",
+        operationType: "fixed",
+        sectionReferences: [
+          REQUIRED_B92_FIXED_INTERNAL_PROFILES.top,
+          REQUIRED_B92_FIXED_INTERNAL_PROFILES.left,
+          REQUIRED_B92_FIXED_INTERNAL_PROFILES.bottom,
+        ],
+        referenceInputs: [],
+        renderSource: "native_drawing_model",
+        layerHints: ["frame", "glass", "dimensions", "annotations"],
+        devReports: {
+          b92FixedInternalContractDrawingAdapter: {
+            fieldId: field.id,
+            validationMode: contract.meta.validationMode,
+            requiredProfiles: REQUIRED_B92_FIXED_INTERNAL_PROFILES,
+            visibleFrameMm: B92_FIXED_INTERNAL_FRAME_MM,
+            visibleGlassMm: primaryVisibleGlassMm,
+            glassOrderNoteMm: glassOrderMm,
+            fieldCount: contract.fields.length,
+            segmentedSillOverlay: {
+              enabled: shouldRenderSegmentedSillOverlay(contract),
+              shapeCount: segmentedSillOverlayShapes.length,
+            },
+            sashOverlapGeometry: {
+              enabled: shouldUseSashOverlapGeometry(contract),
+              overlapMm: shouldUseSashOverlapGeometry(contract) ? B92_SASH_OVERLAP_MM : 0,
+            },
+            ...(fixedNoSashProjectionPilot.eligibility.enabled
+              ? {
+                  fixedNoSashProjectionPilot: {
+                    enabled: fixedNoSashProjectionPilot.eligibility.enabled,
+                    eligible: fixedNoSashProjectionPilot.eligibility.eligible,
+                    fallbackToExistingRenderer: true,
+                    reasons: fixedNoSashProjectionPilot.eligibility.reasons,
+                  },
+                }
+              : {}),
+            note: "Isolated B92 fixed internal contract drawing adapter; pilot geometry is not used as authority.",
           },
-          sashOverlapGeometry: {
-            enabled: shouldUseSashOverlapGeometry(contract),
-            overlapMm: shouldUseSashOverlapGeometry(contract) ? B92_SASH_OVERLAP_MM : 0,
-          },
-          ...(fixedNoSashProjectionPilot.eligibility.enabled
-            ? {
-                fixedNoSashProjectionPilot: {
-                  enabled: fixedNoSashProjectionPilot.eligibility.enabled,
-                  eligible: fixedNoSashProjectionPilot.eligibility.eligible,
-                  fallbackToExistingRenderer: true,
-                  reasons: fixedNoSashProjectionPilot.eligibility.reasons,
-                },
-              }
-            : {}),
-          note: "Isolated B92 fixed internal contract drawing adapter; pilot geometry is not used as authority.",
+          b92DatumProjectionDiagnostics: buildB92DatumProjectionDiagnostics(contract),
         },
-        b92DatumProjectionDiagnostics: buildB92DatumProjectionDiagnostics(contract),
+      },
+      interaction: {
+        cells: interactionCells,
+        verticalJunctions: [],
+        horizontalJunctions: [],
       },
     },
-    interaction: {
-      cells: interactionCells,
-      verticalJunctions: [],
-      horizontalJunctions: [],
-    },
-    },
+  });
+
+  if (datumRendererPromotion.model) {
+    return {
+      ...datumRendererPromotion.model,
+      metadata: {
+        ...datumRendererPromotion.model.metadata,
+        devReports: {
+          ...datumRendererPromotion.model.metadata.devReports,
+          b92DatumProjectionDiagnostics: buildB92DatumProjectionDiagnostics(contract),
+          ...(legacyModelWithDiagnostics.metadata.devReports?.b92FixedNoSashProjectionParity
+            ? {
+                b92FixedNoSashProjectionParity:
+                  legacyModelWithDiagnostics.metadata.devReports.b92FixedNoSashProjectionParity,
+              }
+            : {}),
+          b92DatumFixedNoSashRendererPromotion: buildB92DatumFixedNoSashRendererPromotionReport({
+            promotion: datumRendererPromotion,
+            usedAsDrawingModel: true,
+            fallbackToExistingRenderer: false,
+            promotedModel: datumRendererPromotion.model,
+          }),
+        },
+      },
+    };
+  }
+
+  return withB92DatumFixedNoSashRendererPromotionReport({
+    model: legacyModelWithDiagnostics,
+    promotion: datumRendererPromotion,
+    usedAsDrawingModel: false,
+    fallbackToExistingRenderer: true,
+    promotedModel: null,
   });
 }
