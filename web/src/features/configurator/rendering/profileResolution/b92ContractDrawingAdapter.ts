@@ -1,5 +1,9 @@
 import type {
   DrawingDimension,
+  DrawingHandle,
+  DrawingLabel,
+  DrawingLine,
+  DrawingMarker,
   DrawingModel,
   DrawingRect,
   DrawingShape,
@@ -11,6 +15,7 @@ import type {
   WindowTypeRenderPerimeter,
   WindowTypeRenderProfileRef,
 } from "./windowTypeRenderContract";
+import { B92_PROFILE_RULE_REGISTER } from "./b92ProfileRuleRegister";
 
 const VIEW_BOX_WIDTH = 520;
 const VIEW_BOX_HEIGHT = 520;
@@ -29,6 +34,10 @@ const REQUIRED_B92_FIXED_INTERNAL_PROFILES = {
   right: "B92-2",
   bottom: "B92-3",
 } as const;
+
+const B92_SASH_FACE_MM = 57;
+const B92_BEAD_FACE_MM = 21;
+const B92_SASH_OVERLAP_MM = 19.5;
 
 function assertCondition(condition: boolean, message: string): asserts condition {
   if (!condition) throw new Error(`Invalid B92 fixed internal drawing contract: ${message}`);
@@ -74,33 +83,33 @@ function assertB92FixedInternalContract(contract: WindowTypeRenderModel): Window
     contract.meta.validationMode === "external_refs_internal_validation",
     "contract.meta.validationMode must be external_refs_internal_validation."
   );
-  assertCondition(contract.fields.length === 1, "exactly one field is required.");
-  assertCondition(contract.verticalJunctions.length === 0, "vertical junctions are not supported.");
-  assertCondition(contract.horizontalJunctions.length === 0, "horizontal junctions are not supported.");
+  assertCondition(contract.fields.length >= 1, "at least one field is required.");
   assertCondition(contract.couplings.length === 0, "couplings are not supported.");
   assertCondition(contract.corners.length === 0, "corners are not supported.");
   assertCondition(contract.thresholds.length === 0, "thresholds are not supported.");
 
-  const field = contract.fields[0];
-  assertCondition(field !== undefined, "single field is missing.");
-  assertCondition(field.type === "fixed", "field type must be fixed.");
-  assertCondition(field.row === 0 && field.column === 0, "field must be positioned at row 0, column 0.");
-  assertCondition(field.sash === undefined, "fixed sash metadata is not allowed.");
-
   assertFinitePositiveMm(contract.overall.widthMm, "overall.widthMm");
   assertFinitePositiveMm(contract.overall.heightMm, "overall.heightMm");
-  assertFinitePositiveMm(field.dimensionsMm.width, "field.dimensionsMm.width");
-  assertFinitePositiveMm(field.dimensionsMm.height, "field.dimensionsMm.height");
-  assertCondition(field.dimensionsMm.width === contract.overall.widthMm, "field width must match overall width.");
-  assertCondition(field.dimensionsMm.height === contract.overall.heightMm, "field height must match overall height.");
 
-  assertResolvedProfileRef("top", field.perimeter.top, REQUIRED_B92_FIXED_INTERNAL_PROFILES.top);
-  assertResolvedProfileRef("left", field.perimeter.left, REQUIRED_B92_FIXED_INTERNAL_PROFILES.left);
-  assertResolvedProfileRef("right", field.perimeter.right, REQUIRED_B92_FIXED_INTERNAL_PROFILES.right);
-  assertResolvedProfileRef("bottom", field.perimeter.bottom, REQUIRED_B92_FIXED_INTERNAL_PROFILES.bottom);
-  assertNoBlockingUnresolvedConstraints(contract, field);
+  for (const field of contract.fields) {
+    assertCondition(
+      field.type === "fixed" || field.type === "fixed_sash" || field.type === "tilt_turn" || field.type === "turn_only",
+      "fields must be fixed, fixed_sash, tilt_turn, or turn_only."
+    );
+    if (field.type !== "fixed") {
+      assertCondition(!!field.sash, "sash metadata is required for sash-based field operations.");
+    }
+    assertFinitePositiveMm(field.dimensionsMm.width, "field.dimensionsMm.width");
+    assertFinitePositiveMm(field.dimensionsMm.height, "field.dimensionsMm.height");
 
-  return field;
+    assertResolvedProfileRef("top", field.perimeter.top, REQUIRED_B92_FIXED_INTERNAL_PROFILES.top);
+    assertResolvedProfileRef("left", field.perimeter.left, REQUIRED_B92_FIXED_INTERNAL_PROFILES.left);
+    assertResolvedProfileRef("right", field.perimeter.right, REQUIRED_B92_FIXED_INTERNAL_PROFILES.right);
+    assertResolvedProfileRef("bottom", field.perimeter.bottom, REQUIRED_B92_FIXED_INTERNAL_PROFILES.bottom);
+    assertNoBlockingUnresolvedConstraints(contract, field);
+  }
+
+  return contract.fields[0];
 }
 
 function getFrameRect(widthMm: number, heightMm: number) {
@@ -129,6 +138,32 @@ function rect(input: Omit<DrawingRect, "kind">): DrawingRect {
     kind: "rect",
     ...input,
   };
+}
+
+function line(input: Omit<DrawingLine, "kind">): DrawingLine {
+  return {
+    kind: "line",
+    ...input,
+  };
+}
+
+function dashedLine(input: Omit<DrawingLine, "kind" | "dashed" | "stroke" | "strokeWidth">): DrawingLine {
+  return line({
+    dashed: true,
+    stroke: "#111",
+    strokeWidth: 1.1,
+    ...input,
+  });
+}
+
+function profileVisibleDimensionMm(profileId: string): number {
+  const profile = B92_PROFILE_RULE_REGISTER.profiles[profileId as keyof typeof B92_PROFILE_RULE_REGISTER.profiles];
+  const dimension = profile?.dimensions?.visibleFaceMm?.left ?? profile?.dimensions?.depthMm;
+  assertCondition(
+    Number.isFinite(dimension) && Number(dimension) > 0,
+    `profile ${profileId} must define an authoritative visible/depth dimension.`
+  );
+  return Number(dimension);
 }
 
 function buildDimensionAnnotations(
@@ -233,6 +268,10 @@ function shouldRenderSegmentedSillOverlay(contract: WindowTypeRenderModel) {
   return contract.meta.dev?.b92RenderSegmentedSillOverlay === true;
 }
 
+function shouldUseSashOverlapGeometry(contract: WindowTypeRenderModel) {
+  return contract.meta.dev?.b92UseSashOverlapGeometry === true;
+}
+
 function buildSegmentedSillOverlayShapes(
   contract: WindowTypeRenderModel,
   frame: { x: number; y: number; width: number; height: number },
@@ -294,26 +333,154 @@ function buildSegmentedSillOverlayShapes(
     .filter((shape): shape is DrawingRect => !!shape);
 }
 
+function isSashBasedField(field: WindowTypeRenderField) {
+  return field.type === "fixed_sash" || field.type === "tilt_turn" || field.type === "turn_only";
+}
+
+function fieldOperationLabel(field: WindowTypeRenderField) {
+  if (field.operation === "tt_right") return "Tilt & Turn Right";
+  if (field.operation === "tt_left") return "Tilt & Turn Left";
+  if (field.operation === "turn_left") return "Turn Left";
+  if (field.operation === "turn_right") return "Turn Right";
+  if (field.operation === "tilt_only") return "Tilt Only";
+  if (field.operation === "fixed_sash" || field.type === "fixed_sash") return "Fixed Sash";
+  return "Fixed";
+}
+
+function buildFieldOpeningLines(
+  field: WindowTypeRenderField,
+  glassBounds: { x: number; y: number; width: number; height: number }
+): DrawingLine[] {
+  const operation = field.operation ?? field.sash?.operation;
+  const left = glassBounds.x;
+  const right = glassBounds.x + glassBounds.width;
+  const top = glassBounds.y;
+  const bottom = glassBounds.y + glassBounds.height;
+  const centerY = top + glassBounds.height / 2;
+  const topCenterX = left + glassBounds.width / 2;
+
+  if (operation === "tt_left") {
+    return [
+      dashedLine({ x1: left, y1: top, x2: right, y2: centerY, role: "tt_left_opening_top" }),
+      dashedLine({ x1: left, y1: bottom, x2: right, y2: centerY, role: "tt_left_opening_bottom" }),
+      dashedLine({ x1: left, y1: bottom, x2: topCenterX, y2: top, role: "tt_left_tilt_left" }),
+      dashedLine({ x1: topCenterX, y1: top, x2: right, y2: bottom, role: "tt_left_tilt_right" }),
+    ];
+  }
+  if (operation === "tt_right") {
+    return [
+      dashedLine({ x1: right, y1: top, x2: left, y2: centerY, role: "tt_right_opening_top" }),
+      dashedLine({ x1: right, y1: bottom, x2: left, y2: centerY, role: "tt_right_opening_bottom" }),
+      dashedLine({ x1: right, y1: bottom, x2: topCenterX, y2: top, role: "tt_right_tilt_right" }),
+      dashedLine({ x1: topCenterX, y1: top, x2: left, y2: bottom, role: "tt_right_tilt_left" }),
+    ];
+  }
+  if (operation === "turn_left") {
+    return [
+      dashedLine({ x1: left, y1: top, x2: right, y2: centerY, role: "turn_left_opening_top" }),
+      dashedLine({ x1: left, y1: bottom, x2: right, y2: centerY, role: "turn_left_opening_bottom" }),
+    ];
+  }
+  if (operation === "turn_right") {
+    return [
+      dashedLine({ x1: right, y1: top, x2: left, y2: centerY, role: "turn_right_opening_top" }),
+      dashedLine({ x1: right, y1: bottom, x2: left, y2: centerY, role: "turn_right_opening_bottom" }),
+    ];
+  }
+  if (operation === "tilt_only") {
+    return [
+      dashedLine({ x1: left, y1: bottom, x2: topCenterX, y2: top, role: "tilt_only_left" }),
+      dashedLine({ x1: topCenterX, y1: top, x2: right, y2: bottom, role: "tilt_only_right" }),
+    ];
+  }
+  return [];
+}
+
+function buildFieldHandle(
+  field: WindowTypeRenderField,
+  sashBounds: { x: number; y: number; width: number; height: number },
+  scale: number
+): DrawingHandle | null {
+  const operation = field.operation ?? field.sash?.operation;
+  if (operation === "fixed" || operation === "fixed_sash" || operation === "tilt_only" || field.type === "fixed_sash") {
+    return null;
+  }
+  const handleSide = operation === "tt_right" || operation === "turn_right" ? "left" : "right";
+  return {
+    x: handleSide === "left" ? sashBounds.x + B92_SASH_FACE_MM * scale * 0.55 : sashBounds.x + sashBounds.width - B92_SASH_FACE_MM * scale * 0.55,
+    y: sashBounds.y + sashBounds.height / 2,
+    size: 10,
+    role: "handle",
+  };
+}
+
 export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTypeRenderModel): DrawingModel {
   const field = assertB92FixedInternalContract(contract);
   const widthMm = contract.overall.widthMm;
   const heightMm = contract.overall.heightMm;
 
-  const visibleGlassMm = {
-    x: B92_FIXED_INTERNAL_FRAME_MM.left,
-    y: B92_FIXED_INTERNAL_FRAME_MM.top,
-    width: widthMm - B92_FIXED_INTERNAL_FRAME_MM.left - B92_FIXED_INTERNAL_FRAME_MM.right,
-    height: heightMm - B92_FIXED_INTERNAL_FRAME_MM.top - B92_FIXED_INTERNAL_FRAME_MM.bottom,
-  };
+  const columnIndexes = Array.from(new Set(contract.fields.map((item) => item.column))).sort((a, b) => a - b);
+  const rowIndexes = Array.from(new Set(contract.fields.map((item) => item.row))).sort((a, b) => a - b);
+  const columnWidthsMm = columnIndexes.map((column) => {
+    const fieldInColumn = contract.fields.find((item) => item.column === column);
+    assertCondition(!!fieldInColumn, `column ${column} is missing a field.`);
+    return fieldInColumn.dimensionsMm.width;
+  });
+  const rowHeightsMm = rowIndexes.map((row) => {
+    const fieldInRow = contract.fields.find((item) => item.row === row);
+    assertCondition(!!fieldInRow, `row ${row} is missing a field.`);
+    return fieldInRow.dimensionsMm.height;
+  });
+  const fieldById = new Map(contract.fields.map((item) => [item.id, item]));
+  const verticalJunctionsByColumn = Array.from(
+    contract.verticalJunctions
+      .reduce((map, junction) => {
+        const leftField = fieldById.get(junction.betweenFieldIds[0]);
+        if (leftField && !map.has(leftField.column)) map.set(leftField.column, junction);
+        return map;
+      }, new Map<number, typeof contract.verticalJunctions[number]>())
+      .entries()
+  ).sort(([a], [b]) => a - b);
+  const horizontalJunctionsByRow = Array.from(
+    contract.horizontalJunctions
+      .reduce((map, junction) => {
+        const topField = fieldById.get(junction.betweenFieldIds[0]);
+        if (topField && !map.has(topField.row)) map.set(topField.row, junction);
+        return map;
+      }, new Map<number, typeof contract.horizontalJunctions[number]>())
+      .entries()
+  ).sort(([a], [b]) => a - b);
+  const verticalJunctionWidthsMm = verticalJunctionsByColumn.map(([, junction]) =>
+    profileVisibleDimensionMm(String(junction.profile.profileId))
+  );
+  const horizontalJunctionHeightsMm = horizontalJunctionsByRow.map(([, junction]) =>
+    profileVisibleDimensionMm(String(junction.profile.profileId))
+  );
+  const clearWidthMm =
+    widthMm -
+    B92_FIXED_INTERNAL_FRAME_MM.left -
+    B92_FIXED_INTERNAL_FRAME_MM.right -
+    verticalJunctionWidthsMm.reduce((total, value) => total + value, 0);
+  const clearHeightMm =
+    heightMm -
+    B92_FIXED_INTERNAL_FRAME_MM.top -
+    B92_FIXED_INTERNAL_FRAME_MM.bottom -
+    horizontalJunctionHeightsMm.reduce((total, value) => total + value, 0);
   assertCondition(
-    visibleGlassMm.width > 0 && visibleGlassMm.height > 0,
+    clearWidthMm > 0 && clearHeightMm > 0,
     "visible frame faces leave no visible glass area."
   );
 
-  const glassOrderMm = {
-    width: visibleGlassMm.width + 26,
-    height: visibleGlassMm.height + 26,
-  };
+  const totalColumnWidthMm = columnWidthsMm.reduce((total, value) => total + value, 0);
+  const totalRowHeightMm = rowHeightsMm.reduce((total, value) => total + value, 0);
+  const normalizedColumnWidthsMm = columnWidthsMm.map((value, index) => {
+    if (index < columnWidthsMm.length - 1) return (value / totalColumnWidthMm) * clearWidthMm;
+    return clearWidthMm - columnWidthsMm.slice(0, -1).reduce((total, current) => total + (current / totalColumnWidthMm) * clearWidthMm, 0);
+  });
+  const normalizedRowHeightsMm = rowHeightsMm.map((value, index) => {
+    if (index < rowHeightsMm.length - 1) return (value / totalRowHeightMm) * clearHeightMm;
+    return clearHeightMm - rowHeightsMm.slice(0, -1).reduce((total, current) => total + (current / totalRowHeightMm) * clearHeightMm, 0);
+  });
   const frame = getFrameRect(widthMm, heightMm);
   const scale = frame.scale;
 
@@ -332,7 +499,7 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
       x: frame.x,
       y: frame.y + B92_FIXED_INTERNAL_FRAME_MM.top * scale,
       width: B92_FIXED_INTERNAL_FRAME_MM.left * scale,
-      height: visibleGlassMm.height * scale,
+      height: (heightMm - B92_FIXED_INTERNAL_FRAME_MM.top - B92_FIXED_INTERNAL_FRAME_MM.bottom) * scale,
       stroke: "#111",
       strokeWidth: 1.2,
       fill: "#f4f4f5",
@@ -342,7 +509,7 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
       x: frame.x + frame.width - B92_FIXED_INTERNAL_FRAME_MM.right * scale,
       y: frame.y + B92_FIXED_INTERNAL_FRAME_MM.top * scale,
       width: B92_FIXED_INTERNAL_FRAME_MM.right * scale,
-      height: visibleGlassMm.height * scale,
+      height: (heightMm - B92_FIXED_INTERNAL_FRAME_MM.top - B92_FIXED_INTERNAL_FRAME_MM.bottom) * scale,
       stroke: "#111",
       strokeWidth: 1.2,
       fill: "#f4f4f5",
@@ -361,39 +528,212 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
   ];
   const segmentedSillOverlayShapes = buildSegmentedSillOverlayShapes(contract, frame, scale);
   frameShapes.push(...segmentedSillOverlayShapes);
-  const glassShapes: DrawingShape[] = [
-    rect({
-      x: frame.x + visibleGlassMm.x * scale,
-      y: frame.y + visibleGlassMm.y * scale,
-      width: visibleGlassMm.width * scale,
-      height: visibleGlassMm.height * scale,
-      stroke: "#111",
-      strokeWidth: 1,
-      fill: "#b9d7f3",
-      role: "b92_fixed_internal_visible_glass",
-    }),
-  ];
+
+  const columnBounds = new Map<number, { x: number; width: number }>();
+  let xCursor = frame.x + B92_FIXED_INTERNAL_FRAME_MM.left * scale;
+  for (let index = 0; index < columnIndexes.length; index += 1) {
+    const width = normalizedColumnWidthsMm[index] * scale;
+    columnBounds.set(columnIndexes[index], { x: xCursor, width });
+    xCursor += width;
+    if (index < verticalJunctionWidthsMm.length) xCursor += verticalJunctionWidthsMm[index] * scale;
+  }
+
+  const rowBounds = new Map<number, { y: number; height: number }>();
+  let yCursor = frame.y + B92_FIXED_INTERNAL_FRAME_MM.top * scale;
+  for (let index = 0; index < rowIndexes.length; index += 1) {
+    const height = normalizedRowHeightsMm[index] * scale;
+    rowBounds.set(rowIndexes[index], { y: yCursor, height });
+    yCursor += height;
+    if (index < horizontalJunctionHeightsMm.length) yCursor += horizontalJunctionHeightsMm[index] * scale;
+  }
+
+  const junctionShapes: DrawingShape[] = [];
+  xCursor = frame.x + B92_FIXED_INTERNAL_FRAME_MM.left * scale + normalizedColumnWidthsMm[0] * scale;
+  for (let index = 0; index < verticalJunctionWidthsMm.length; index += 1) {
+    const width = verticalJunctionWidthsMm[index] * scale;
+    junctionShapes.push(
+      rect({
+        x: xCursor,
+        y: frame.y + B92_FIXED_INTERNAL_FRAME_MM.top * scale,
+        width,
+        height: (heightMm - B92_FIXED_INTERNAL_FRAME_MM.top - B92_FIXED_INTERNAL_FRAME_MM.bottom) * scale,
+        stroke: "#111",
+        strokeWidth: 1,
+        fill: "#f4f4f5",
+        role: `vertical_junction_${verticalJunctionsByColumn[index]?.[1].profile.profileId ?? "unknown"}`,
+      })
+    );
+    xCursor += width + (normalizedColumnWidthsMm[index + 1] ?? 0) * scale;
+  }
+
+  yCursor = frame.y + B92_FIXED_INTERNAL_FRAME_MM.top * scale + normalizedRowHeightsMm[0] * scale;
+  for (let index = 0; index < horizontalJunctionHeightsMm.length; index += 1) {
+    const height = horizontalJunctionHeightsMm[index] * scale;
+    junctionShapes.push(
+      rect({
+        x: frame.x + B92_FIXED_INTERNAL_FRAME_MM.left * scale,
+        y: yCursor,
+        width: clearWidthMm * scale,
+        height,
+        stroke: "#111",
+        strokeWidth: 1,
+        fill: "#f4f4f5",
+        role: `horizontal_junction_${horizontalJunctionsByRow[index]?.[1].profile.profileId ?? "unknown"}`,
+      })
+    );
+    yCursor += height + (normalizedRowHeightsMm[index + 1] ?? 0) * scale;
+  }
+
+  const sashShapes: DrawingShape[] = [];
+  const glassShapes: DrawingShape[] = [];
+  const labels: DrawingLabel[] = [];
+  const handles: DrawingHandle[] = [];
+  const markers: DrawingMarker[] = [];
+
+  contract.fields.forEach((item, index) => {
+    const column = columnBounds.get(item.column);
+    const row = rowBounds.get(item.row);
+    assertCondition(!!column && !!row, `missing drawing bounds for field ${item.id}.`);
+
+    if (isSashBasedField(item)) {
+      const sashOverlap = shouldUseSashOverlapGeometry(contract) ? B92_SASH_OVERLAP_MM * scale : 0;
+      const sashBounds = {
+        x: column.x - sashOverlap,
+        y: row.y - sashOverlap,
+        width: column.width + sashOverlap * 2,
+        height: row.height + sashOverlap * 2,
+      };
+      const glassBounds = {
+        x: sashBounds.x + (B92_SASH_FACE_MM + B92_BEAD_FACE_MM) * scale,
+        y: sashBounds.y + (B92_SASH_FACE_MM + B92_BEAD_FACE_MM) * scale,
+        width: sashBounds.width - (B92_SASH_FACE_MM + B92_BEAD_FACE_MM) * 2 * scale,
+        height: sashBounds.height - (B92_SASH_FACE_MM + B92_BEAD_FACE_MM) * 2 * scale,
+      };
+      assertCondition(glassBounds.width > 0 && glassBounds.height > 0, `sash field ${item.id} leaves no visible glass area.`);
+
+      sashShapes.push(
+        rect({
+          x: sashBounds.x,
+          y: sashBounds.y,
+          width: sashBounds.width,
+          height: sashBounds.height,
+          stroke: "#111",
+          strokeWidth: 1.1,
+          fill: "#f4f4f5",
+          role: `b92_field_sash_${item.id}`,
+        }),
+        rect({
+          x: sashBounds.x + B92_SASH_FACE_MM * scale,
+          y: sashBounds.y + B92_SASH_FACE_MM * scale,
+          width: sashBounds.width - B92_SASH_FACE_MM * 2 * scale,
+          height: sashBounds.height - B92_SASH_FACE_MM * 2 * scale,
+          stroke: "#111",
+          strokeWidth: 1,
+          fill: "#f4f4f5",
+          role: `b92_field_bead_${item.id}`,
+        })
+      );
+
+      glassShapes.push(
+        rect({
+          x: glassBounds.x,
+          y: glassBounds.y,
+          width: glassBounds.width,
+          height: glassBounds.height,
+          stroke: "#111",
+          strokeWidth: 1,
+          fill: "#b9d7f3",
+          role: `b92_fixed_internal_visible_glass_${item.id}`,
+        }),
+        ...buildFieldOpeningLines(item, glassBounds)
+      );
+      const handle = buildFieldHandle(item, sashBounds, scale);
+      if (handle) handles.push(handle);
+      labels.push({
+        x: glassBounds.x + 8,
+        y: glassBounds.y + 16,
+        value: fieldOperationLabel(item),
+        fontSize: 9,
+        fill: "#3f3f46",
+        anchor: "start",
+        role: "field_label",
+      });
+    } else {
+      glassShapes.push(
+        rect({
+          x: column.x,
+          y: row.y,
+          width: column.width,
+          height: row.height,
+          stroke: "#111",
+          strokeWidth: 1,
+          fill: "#b9d7f3",
+          role: `b92_fixed_internal_visible_glass_${item.id}`,
+        })
+      );
+      labels.push({
+        x: column.x + 8,
+        y: row.y + 16,
+        value: "Fixed",
+        fontSize: 9,
+        fill: "#3f3f46",
+        anchor: "start",
+        role: "field_label",
+      });
+    }
+
+    markers.push({
+      x: column.x + column.width / 2,
+      y: row.y + row.height / 2,
+      radius: 16,
+      value: String(index + 1),
+      role: "field_marker",
+    });
+  });
+
+  const primaryVisibleGlassMm = {
+    x: B92_FIXED_INTERNAL_FRAME_MM.left,
+    y: B92_FIXED_INTERNAL_FRAME_MM.top,
+    width: clearWidthMm,
+    height: clearHeightMm,
+  };
+  const glassOrderMm = {
+    width: clearWidthMm + 26,
+    height: clearHeightMm + 26,
+  };
+  const interactionCells = contract.fields.map((item) => {
+    const column = columnBounds.get(item.column);
+    const row = rowBounds.get(item.row);
+    assertCondition(!!column && !!row, `missing interaction bounds for field ${item.id}.`);
+    return {
+      key: item.id,
+      x: column.x,
+      y: row.y,
+      width: column.width,
+      height: row.height,
+    };
+  });
   return {
     width: widthMm,
     height: heightMm,
     viewBox: { width: VIEW_BOX_WIDTH, height: VIEW_BOX_HEIGHT },
     elements: [
       { id: "frame", role: "frame", shapes: frameShapes },
-      { id: "sash", role: "sash", shapes: [] },
+      { id: "sash", role: "sash", shapes: sashShapes },
       { id: "glass", role: "glass", shapes: glassShapes },
-      { id: "junctions", role: "junctions", shapes: [] },
+      { id: "junctions", role: "junctions", shapes: junctionShapes },
     ],
     geometry: {
       frame: frameShapes,
-      sash: [],
+      sash: sashShapes,
       glass: glassShapes,
-      junctions: [],
+      junctions: junctionShapes,
     },
     annotations: {
       dimensions: buildDimensionAnnotations(frame, widthMm, heightMm),
-      labels: [],
-      handles: [],
-      markers: [],
+      labels,
+      handles,
+      markers,
     },
     metadata: {
       systemType: "window",
@@ -413,26 +753,23 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
           validationMode: contract.meta.validationMode,
           requiredProfiles: REQUIRED_B92_FIXED_INTERNAL_PROFILES,
           visibleFrameMm: B92_FIXED_INTERNAL_FRAME_MM,
-          visibleGlassMm,
+          visibleGlassMm: primaryVisibleGlassMm,
           glassOrderNoteMm: glassOrderMm,
+          fieldCount: contract.fields.length,
           segmentedSillOverlay: {
             enabled: shouldRenderSegmentedSillOverlay(contract),
             shapeCount: segmentedSillOverlayShapes.length,
+          },
+          sashOverlapGeometry: {
+            enabled: shouldUseSashOverlapGeometry(contract),
+            overlapMm: shouldUseSashOverlapGeometry(contract) ? B92_SASH_OVERLAP_MM : 0,
           },
           note: "Isolated B92 fixed internal contract drawing adapter; pilot geometry is not used as authority.",
         },
       },
     },
     interaction: {
-      cells: [
-        {
-          key: "0,0",
-          x: frame.x,
-          y: frame.y,
-          width: frame.width,
-          height: frame.height,
-        },
-      ],
+      cells: interactionCells,
       verticalJunctions: [],
       horizontalJunctions: [],
     },
