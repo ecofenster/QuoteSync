@@ -91,7 +91,7 @@ export const B92_DATUM_ACQUISITION_AUDIT: B92DatumAcquisitionAuditItem[] = [
   {
     id: "b92-fixed-no-sash-top-left-right-visible-frame",
     category: "fixed_no_sash",
-    status: "missing",
+    status: "partial",
     requiredMeasurements: [
       "fixed no-sash top visible frame datum",
       "fixed no-sash left visible frame datum",

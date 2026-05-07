@@ -91,14 +91,30 @@ function hasUnresolvedReason(result: B92ProjectionEngineResult, reason: B92Proje
 function validateRequiredUnresolved(result: B92ProjectionEngineResult): B92ProjectionValidationIssue[] {
   const issues: B92ProjectionValidationIssue[] = [];
   const text = unresolvedText(result);
+  const hasSashRegions = result.projectedRegions.some(
+    (region) => region.category === "visible_sash_body" || region.category === "bead"
+  );
+  const hasOnlyFixedNoSashFrameRegions =
+    result.projectedRegions.length > 0 &&
+    result.projectedRegions.every((region) => region.category === "visible_frame_face");
 
-  if (!text.includes("bottom sash overlay/rebate")) {
+  if (hasSashRegions && !text.includes("bottom sash overlay/rebate")) {
     issues.push(
       issue({
         id: "b92-projection:missing-bottom-sash-unresolved",
         severity: "error",
         code: "missing_unresolved_reason",
         note: "Bottom sash overlay/rebate relationship must remain explicitly unresolved.",
+      })
+    );
+  }
+  if (hasOnlyFixedNoSashFrameRegions && !text.includes("fixed no-sash top/left/right visible frame datum")) {
+    issues.push(
+      issue({
+        id: "b92-projection:missing-fixed-no-sash-top-side-unresolved",
+        severity: "error",
+        code: "missing_unresolved_reason",
+        note: "Fixed no-sash top/left/right visible frame datum must remain explicitly unresolved.",
       })
     );
   }

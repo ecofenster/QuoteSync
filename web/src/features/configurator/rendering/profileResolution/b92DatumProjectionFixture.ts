@@ -240,7 +240,36 @@ function fieldSteps(datumGeometry: B92FieldDatumGeometry): B92ProjectionDatumSte
   );
 }
 
-function staticFixtureUnresolved(fieldId: string): B92ProjectionUnresolvedItem[] {
+function fixedNoSashFixtureUnresolved(fieldId: string): B92ProjectionUnresolvedItem[] {
+  return [
+    {
+      id: `${fieldId}:fixed-top-side-frame-datum-unresolved`,
+      reason: "missing_datum_authority",
+      fieldId,
+      note: "Fixed no-sash top/left/right visible frame datum is not confirmed; only bottom visible frame datum is confirmed.",
+    },
+    {
+      id: `${fieldId}:meeting-ownership-unresolved`,
+      reason: "unknown_meeting_geometry",
+      fieldId,
+      note: "Meeting ownership geometry is out of scope for single-field static projection and remains unresolved.",
+    },
+    {
+      id: `${fieldId}:meeting-profile-detail-unresolved`,
+      reason: "unknown_meeting_geometry",
+      fieldId,
+      note: "B92-15 / B92-16 / B92-17 / B92-18 detailed measurements remain unresolved.",
+    },
+    {
+      id: `${fieldId}:external-view-unresolved`,
+      reason: "unsupported_view_divergence",
+      fieldId,
+      note: "External-view projection is not modelled in this internal static fixture.",
+    },
+  ];
+}
+
+function sashFieldFixtureUnresolved(fieldId: string): B92ProjectionUnresolvedItem[] {
   return [
     {
       id: `${fieldId}:bottom-sash-overlay-unresolved`,
@@ -282,7 +311,7 @@ export function createB92FixedNoSashDatumProjectionFixture(
     fieldChains: [fieldChain(chainId, fieldId, "internal", datumGeometry, steps)],
     meetingChains: [],
     regions: fixedNoSashRegions(fieldId, chainId),
-    unresolved: staticFixtureUnresolved(fieldId),
+    unresolved: fixedNoSashFixtureUnresolved(fieldId),
     note: "Fixed no-sash static internal datum projection fixture; non-rendering.",
   };
 }
@@ -299,7 +328,7 @@ export function createB92SashFieldDatumProjectionFixture(
     fieldChains: [fieldChain(chainId, fieldId, "internal", datumGeometry, steps)],
     meetingChains: [],
     regions: sashFieldRegions(fieldId, chainId),
-    unresolved: staticFixtureUnresolved(fieldId),
+    unresolved: sashFieldFixtureUnresolved(fieldId),
     note: "Sash-field static internal datum projection fixture for T&T / Turn / Tilt / Fixed Sash confirmed datum assumptions; non-rendering.",
   };
 }
