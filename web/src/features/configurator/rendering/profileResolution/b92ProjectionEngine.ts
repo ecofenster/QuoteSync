@@ -2,6 +2,7 @@ import type { B92DatumMm, B92Edge } from "./b92DatumGeometry.types";
 import type {
   B92DatumProjectionPlan,
   B92ProjectedDrawableRegion,
+  B92ProjectedGlassOrderGeometry,
   B92ProjectionBoundsMm,
   B92ProjectionDatumChain,
   B92ProjectionUnresolvedItem,
@@ -41,6 +42,34 @@ function edgeBand(bounds: B92ProjectionBoundsMm, edge: B92Edge, valueMm: number)
     return { x: bounds.x, y: bounds.y, width: valueMm, height: bounds.height };
   }
   return { x: bounds.x + bounds.width - valueMm, y: bounds.y, width: valueMm, height: bounds.height };
+}
+
+function offsetEdgeBand(
+  bounds: B92ProjectionBoundsMm,
+  edge: B92Edge,
+  offsetMm: number,
+  valueMm: number
+): B92ProjectionBoundsMm {
+  if (edge === "top") {
+    return { x: bounds.x, y: bounds.y + offsetMm, width: bounds.width, height: valueMm };
+  }
+  if (edge === "bottom") {
+    return {
+      x: bounds.x,
+      y: bounds.y + bounds.height - offsetMm - valueMm,
+      width: bounds.width,
+      height: valueMm,
+    };
+  }
+  if (edge === "left") {
+    return { x: bounds.x + offsetMm, y: bounds.y, width: valueMm, height: bounds.height };
+  }
+  return {
+    x: bounds.x + bounds.width - offsetMm - valueMm,
+    y: bounds.y,
+    width: valueMm,
+    height: bounds.height,
+  };
 }
 
 function hiddenBandAfterVisible(
@@ -181,6 +210,125 @@ function projectHiddenRebateRegion(
   };
 }
 
+function projectSashFaceRegion(
+  region: B92ProjectedDrawableRegion,
+  chain: B92ProjectionDatumChain,
+  fieldBounds: B92ProjectionBoundsMm
+): { region: B92ProjectedDrawableRegion; unresolved?: B92ProjectionUnresolvedItem } {
+  const edge = region.edge;
+  if (!edge) {
+    return {
+      region: { ...region, status: "unresolved" },
+      unresolved: unresolved({
+        id: `${region.id}:missing-edge`,
+        reason: "missing_datum_authority",
+        fieldId: region.fieldId,
+        note: "Sash face projection region is missing edge authority.",
+      }),
+    };
+  }
+  if (edge === "bottom") {
+    return {
+      region: { ...region, status: "unresolved" },
+      unresolved: unresolved({
+        id: `${region.id}:bottom-placement-unresolved`,
+        reason: "missing_datum_authority",
+        fieldId: region.fieldId,
+        edge,
+        note: "Bottom sash face placement depends on the unconfirmed bottom sash overlay/rebate relationship.",
+      }),
+    };
+  }
+
+  const authority = chain.edgeAuthorities[edge];
+  const visibleFaceMm = confirmedValue(authority?.visibleFaceMm);
+  const hiddenBehindSashMm = confirmedValue(authority?.hiddenBehindSashMm);
+  const sashFaceStep = chain.steps.find((step) => step.kind === "sash_face" && step.edge === edge);
+  const sashFaceMm = confirmedValue(sashFaceStep?.valueMm);
+
+  if (visibleFaceMm === null || hiddenBehindSashMm === null || sashFaceMm === null) {
+    return {
+      region: { ...region, status: "unresolved" },
+      unresolved: unresolved({
+        id: `${region.id}:missing-confirmed-sash-datum`,
+        reason: "missing_datum_authority",
+        fieldId: region.fieldId,
+        edge,
+        note: "Sash face projection requires confirmed visible frame, hidden/rebate, and sash face datum values.",
+      }),
+    };
+  }
+
+  return {
+    region: {
+      ...region,
+      boundsMm: offsetEdgeBand(fieldBounds, edge, visibleFaceMm, sashFaceMm),
+      status: "resolved",
+      note: `${region.note ?? ""} Projected from confirmed top/side visible frame datum plus 57mm sash face; no uniform overlap assumed.`.trim(),
+    },
+  };
+}
+
+function projectBeadRegion(
+  region: B92ProjectedDrawableRegion,
+  chain: B92ProjectionDatumChain,
+  fieldBounds: B92ProjectionBoundsMm
+): { region: B92ProjectedDrawableRegion; unresolved?: B92ProjectionUnresolvedItem } {
+  const edge = region.edge;
+  if (!edge) {
+    return {
+      region: { ...region, status: "unresolved" },
+      unresolved: unresolved({
+        id: `${region.id}:missing-edge`,
+        reason: "missing_datum_authority",
+        fieldId: region.fieldId,
+        note: "Bead projection region is missing edge authority.",
+      }),
+    };
+  }
+  if (edge === "bottom") {
+    return {
+      region: { ...region, status: "unresolved" },
+      unresolved: unresolved({
+        id: `${region.id}:bottom-placement-unresolved`,
+        reason: "missing_datum_authority",
+        fieldId: region.fieldId,
+        edge,
+        note: "Bottom bead placement depends on the unconfirmed bottom sash overlay/rebate relationship.",
+      }),
+    };
+  }
+
+  const authority = chain.edgeAuthorities[edge];
+  const visibleFaceMm = confirmedValue(authority?.visibleFaceMm);
+  const hiddenBehindSashMm = confirmedValue(authority?.hiddenBehindSashMm);
+  const sashFaceStep = chain.steps.find((step) => step.kind === "sash_face" && step.edge === edge);
+  const sashFaceMm = confirmedValue(sashFaceStep?.valueMm);
+  const beadFaceMm = confirmedValue(authority?.beadFaceMm);
+
+  if (visibleFaceMm === null || hiddenBehindSashMm === null || sashFaceMm === null || beadFaceMm === null) {
+    return {
+      region: { ...region, status: "unresolved" },
+      unresolved: unresolved({
+        id: `${region.id}:missing-confirmed-bead-datum`,
+        reason: "missing_datum_authority",
+        fieldId: region.fieldId,
+        edge,
+        note: "Bead projection requires confirmed visible frame, hidden/rebate, sash face, and bead datum values.",
+      }),
+    };
+  }
+
+  return {
+    region: {
+      ...region,
+      boundsMm: offsetEdgeBand(fieldBounds, edge, visibleFaceMm + sashFaceMm, beadFaceMm),
+      status: "resolved",
+      note: `${region.note ?? ""} Projected from confirmed sash face plus 21mm bead/glass offset; no bottom relationship inferred.`.trim(),
+    },
+  };
+}
+
 function unresolvedSashOrOpeningRegion(region: B92ProjectedDrawableRegion): {
   region: B92ProjectedDrawableRegion;
   unresolved: B92ProjectionUnresolvedItem;
@@ -198,9 +346,9 @@ function unresolvedSashOrOpeningRegion(region: B92ProjectedDrawableRegion): {
       fieldId: region.fieldId,
       edge: region.edge,
       note:
-        region.category === "visible_sash_body" || region.category === "bead"
-          ? "Sash/bead bounds require explicit per-edge sash placement; uniform overlap must not be inferred."
-          : "Daylight/glass-order bounds require future sash, bead, and daylight projection authority.",
+        region.category === "daylight_opening" || region.category === "glass_order"
+          ? "Daylight/glass-order bounds require bottom sash overlay/rebate authority before a full rectangle can be projected."
+          : "Sash/bead bounds require explicit per-edge sash placement; uniform overlap must not be inferred.",
     }),
   };
 }
@@ -233,12 +381,13 @@ function projectRegion(
   if (region.category === "hidden_frame_rebate") {
     return projectHiddenRebateRegion(region, chain, fieldBounds);
   }
-  if (
-    region.category === "visible_sash_body" ||
-    region.category === "bead" ||
-    region.category === "daylight_opening" ||
-    region.category === "glass_order"
-  ) {
+  if (region.category === "visible_sash_body") {
+    return projectSashFaceRegion(region, chain, fieldBounds);
+  }
+  if (region.category === "bead") {
+    return projectBeadRegion(region, chain, fieldBounds);
+  }
+  if (region.category === "daylight_opening" || region.category === "glass_order") {
     return unresolvedSashOrOpeningRegion(region);
   }
 
@@ -316,11 +465,31 @@ export function assertProjectedRegionBounds(region: B92ProjectedDrawableRegion):
   }
 }
 
+export function assertGlassOrderExpansion(
+  daylight: B92ProjectedDrawableRegion,
+  glassOrder: B92ProjectedGlassOrderGeometry
+): void {
+  if (!daylight.boundsMm || !glassOrder.boundsMm) {
+    throw new Error("Glass order expansion assertion requires projected daylight and glass order bounds.");
+  }
+  const widthDelta = glassOrder.boundsMm.width - daylight.boundsMm.width;
+  const heightDelta = glassOrder.boundsMm.height - daylight.boundsMm.height;
+  if (widthDelta !== 26 || heightDelta !== 26) {
+    throw new Error("B92 glass order bounds must be 26mm wider and 26mm taller than daylight opening.");
+  }
+  if (glassOrder.orderExpansionMm?.biteBehindBeadMm.valueMm !== 13) {
+    throw new Error("B92 glass order bite behind bead must remain 13mm each side.");
+  }
+}
+
 export function assertProjectionCompleteness(result: B92ProjectionEngineResult): void {
   for (const region of result.projectedRegions) {
     if (region.status === "resolved") assertProjectedRegionBounds(region);
   }
   if (result.projectedRegions.some((region) => region.category === "meeting_ownership" && region.status === "resolved")) {
     throw new Error("B92 projection engine skeleton must not resolve meeting ownership geometry.");
+  }
+  if (result.projectedRegions.some((region) => region.category === "meeting_profile" && region.status === "resolved")) {
+    throw new Error("B92 projection engine skeleton must not resolve detailed meeting profile geometry.");
   }
 }
