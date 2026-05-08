@@ -14,11 +14,13 @@ type Props = {
   bootstrap: ConfiguratorCatalogBootstrap;
 };
 
-const PRODUCT_CATEGORY_OPTIONS: Array<{ key: ConfiguratorProductCategory; label: string }> = [
+type ConfiguratorLandingCategoryKey = ConfiguratorProductCategory | "entrance_doors";
+
+const PRODUCT_CATEGORY_OPTIONS: Array<{ key: ConfiguratorLandingCategoryKey; label: string }> = [
   { key: "windows", label: "Windows" },
   { key: "side_balcony_doors", label: "Side/Balcony Doors" },
-  { key: "lift_slide", label: "Lift & Slide" },
-  { key: "sliding", label: "Sliding" },
+  { key: "entrance_doors", label: "Entrance Doors" },
+  { key: "lift_slide", label: "Lift and Slide" },
   { key: "curtain_wall", label: "Curtain Wall" },
   { key: "rooflights", label: "Rooflights" },
   { key: "internal_doors", label: "Internal Doors" },
@@ -27,6 +29,8 @@ const PRODUCT_CATEGORY_OPTIONS: Array<{ key: ConfiguratorProductCategory; label:
   { key: "blinds", label: "Blinds" },
   { key: "shutters", label: "Shutters" },
 ];
+
+const WORKSPACE_CATEGORY_OPTIONS = PRODUCT_CATEGORY_OPTIONS;
 
 const WINDOW_FIELD_COUNT_OPTIONS: Array<{ key: ConfiguratorFieldCountMode; label: string }> = [
   { key: "1", label: "1" },
@@ -218,15 +222,176 @@ function buildPlaceholderDesigns(
   ];
 }
 
+function categoryLabel(category: ConfiguratorLandingCategoryKey) {
+  return PRODUCT_CATEGORY_OPTIONS.find((option) => option.key === category)?.label || "Category";
+}
+
+function fieldCountLabel(fieldCountMode: ConfiguratorFieldCountMode) {
+  return WINDOW_FIELD_COUNT_OPTIONS.find((option) => option.key === fieldCountMode)?.label || fieldCountMode;
+}
+
+function selectedOperationLabel(selectedDesign: WindowTypeDesignListItem | null) {
+  const label = selectedDesign?.label ?? "Fixed";
+  if (label.toLowerCase().includes("tilt")) return "Tilt & Turn";
+  if (label.toLowerCase().includes("fixed sash")) return "Fixed Sash";
+  return "Fixed";
+}
+
+function ConfiguratorLanding(props: { onOpenCategory: (category: ConfiguratorLandingCategoryKey) => void }) {
+  return (
+    <div style={{ display: "grid", gap: 16 }}>
+      <div className="admin-card ui-card" style={{ padding: 20, display: "grid", gap: 8 }}>
+        <div className="admin-page-title">Configurator</div>
+        <div className="admin-body-copy" style={{ maxWidth: 900 }}>
+          Select a product category to open the render workspace. Current live technical rendering remains wired for Windows; other categories are staged as workspace placeholders.
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+          gap: 12,
+        }}
+      >
+        {PRODUCT_CATEGORY_OPTIONS.map((category) => (
+          <button
+            key={category.key}
+            type="button"
+            onClick={() => props.onOpenCategory(category.key)}
+            className="admin-card ui-card"
+            style={{
+              padding: 18,
+              minHeight: 112,
+              display: "grid",
+              gap: 8,
+              textAlign: "left",
+              cursor: "pointer",
+              border: "1px solid var(--color-border)",
+              background: "var(--color-surface)",
+              color: "var(--color-text-primary)",
+            }}
+          >
+            <span className="admin-group-title">{category.label}</span>
+            <span className="admin-body-copy">
+              {category.key === "windows" ? "Open render workspace" : "Render workspace coming later"}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function WorkspaceShell(props: {
+  activeCategory: ConfiguratorLandingCategoryKey;
+  selectedFieldCountMode: ConfiguratorFieldCountMode;
+  selectedDesign: WindowTypeDesignListItem | null;
+  onBack: () => void;
+  onSelectCategory: (category: ConfiguratorLandingCategoryKey) => void;
+  onSelectFieldCount: (fieldCount: ConfiguratorFieldCountMode) => void;
+  children: React.ReactNode;
+}) {
+  const category = categoryLabel(props.activeCategory);
+  const layout = props.activeCategory === "windows" ? `${fieldCountLabel(props.selectedFieldCountMode)} Field` : "Workspace";
+  const operation = props.activeCategory === "windows" ? selectedOperationLabel(props.selectedDesign) : "Placeholder";
+
+  return (
+    <div style={{ display: "grid", gap: 12 }}>
+      <div className="admin-card ui-card" style={{ padding: 14, display: "grid", gap: 10 }}>
+        <div className="admin-body-copy">Configurator &gt; Render &gt; {category} &gt; {layout} &gt; {operation}</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", justifyContent: "space-between" }}>
+          <div className="admin-page-title">{category} Render Workspace</div>
+          <button type="button" className="admin-nav-button" onClick={props.onBack}>
+            <span className="admin-nav-button-label">Back to Configurator</span>
+          </button>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <span className="admin-nav-button admin-nav-button--active">
+            <span className="admin-nav-button-label">Product: {category}</span>
+          </span>
+          <span className="admin-nav-button">
+            <span className="admin-nav-button-label">Layout: {layout}</span>
+          </span>
+          <span className="admin-nav-button">
+            <span className="admin-nav-button-label">Type: {operation}</span>
+          </span>
+          <span className="admin-nav-button" style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+            <span className="admin-nav-button-label">View:</span>
+            <span className="admin-nav-button-label">Internal</span>
+            <span className="admin-nav-button-desc">External later</span>
+          </span>
+          <span className="admin-nav-button">
+            <span className="admin-nav-button-label">Tools: Preview</span>
+          </span>
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "260px minmax(520px, 1fr) 280px",
+          gap: 12,
+          alignItems: "start",
+        }}
+      >
+        <aside className="admin-card ui-card" style={{ padding: 14, display: "grid", gap: 14, alignContent: "start", position: "sticky", top: 16 }}>
+          <button type="button" className="admin-nav-button" onClick={props.onBack}>
+            <span className="admin-nav-button-label">Back to Configurator</span>
+          </button>
+          <div style={{ display: "grid", gap: 8 }}>
+            <div className="admin-setting-label">Category</div>
+            {WORKSPACE_CATEGORY_OPTIONS.map((option) => (
+              <button
+                key={option.key}
+                type="button"
+                onClick={() => props.onSelectCategory(option.key)}
+                className={props.activeCategory === option.key ? "admin-nav-button admin-nav-button--active" : "admin-nav-button"}
+              >
+                <span className="admin-nav-button-label">{option.label}</span>
+              </button>
+            ))}
+          </div>
+          {props.activeCategory === "windows" ? (
+            <div style={{ display: "grid", gap: 8 }}>
+              <div className="admin-setting-label">Layout</div>
+              {WINDOW_FIELD_COUNT_OPTIONS.map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => props.onSelectFieldCount(option.key)}
+                  className={props.selectedFieldCountMode === option.key ? "admin-nav-button admin-nav-button--active" : "admin-nav-button"}
+                >
+                  <span className="admin-nav-button-label">{option.label}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </aside>
+
+        <main style={{ minWidth: 0 }}>{props.children}</main>
+
+        <aside className="admin-card ui-card" style={{ padding: 14, display: "grid", gap: 10, alignContent: "start", position: "sticky", top: 16 }}>
+          <div className="admin-group-title">Details</div>
+          <div className="admin-body-copy">Measurements, profiles, and render diagnostics are shown in the existing preview/editor panels.</div>
+          <div className="admin-placeholder-box" style={{ margin: 0 }}>
+            Right panel scaffold only. No render engine, SVG, DB, or right-click logic is changed.
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminWindowTypesWorkspace(props: Props) {
   const { bootstrap } = props;
-  const [selectedCategory, setSelectedCategory] = useState<ConfiguratorProductCategory>("windows");
+  const [activeCategory, setActiveCategory] = useState<ConfiguratorLandingCategoryKey | null>(null);
   const [selectedFieldCountMode, setSelectedFieldCountMode] = useState<ConfiguratorFieldCountMode>("1");
   const [selectedWindowTypeId, setSelectedWindowTypeId] = useState("");
 
   const designOptions = useMemo(
-    () => buildPlaceholderDesigns(selectedCategory, selectedFieldCountMode),
-    [selectedCategory, selectedFieldCountMode]
+    () => buildPlaceholderDesigns("windows", selectedFieldCountMode),
+    [selectedFieldCountMode]
   );
 
   React.useEffect(() => {
@@ -236,65 +401,53 @@ export default function AdminWindowTypesWorkspace(props: Props) {
   const selectedDesign =
     designOptions.find((design) => design.id === selectedWindowTypeId) ?? designOptions[0] ?? null;
 
+  if (!activeCategory) {
+    return <ConfiguratorLanding onOpenCategory={setActiveCategory} />;
+  }
+
   return (
-    <div style={{ display: "grid", gap: 10 }}>
-      <div className="admin-card ui-card" style={{ padding: 12, display: "grid", gap: 10 }}>
-        <div className="admin-page-title">Window Types</div>
-        <div style={{ display: "grid", gap: 8 }}>
-          <div className="admin-setting-label">Product category</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {PRODUCT_CATEGORY_OPTIONS.map((option) => (
-              <button
-                key={option.key}
-                type="button"
-                onClick={() => setSelectedCategory(option.key)}
-                className={selectedCategory === option.key ? "admin-nav-button admin-nav-button--active" : "admin-nav-button"}
-              >
-                <span className="admin-nav-button-label">{option.label}</span>
-              </button>
-            ))}
+    <WorkspaceShell
+      activeCategory={activeCategory}
+      selectedFieldCountMode={selectedFieldCountMode}
+      selectedDesign={selectedDesign}
+      onBack={() => setActiveCategory(null)}
+      onSelectCategory={setActiveCategory}
+      onSelectFieldCount={setSelectedFieldCountMode}
+    >
+      {activeCategory === "windows" ? (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "300px minmax(420px, 1fr)",
+            gap: 12,
+            alignItems: "start",
+          }}
+        >
+          <WindowTypeDesignList
+            categoryLabel="Windows"
+            fieldCountLabel={fieldCountLabel(selectedFieldCountMode)}
+            designs={designOptions}
+            selectedDesignId={selectedWindowTypeId}
+            onSelectDesign={setSelectedWindowTypeId}
+          />
+          <WindowTypeEditor
+            categoryLabel="Windows"
+            fieldCountLabel={fieldCountLabel(selectedFieldCountMode)}
+            selectedDesign={selectedDesign}
+            bootstrap={bootstrap}
+          />
+        </div>
+      ) : (
+        <div className="admin-card ui-card" style={{ padding: 20, minHeight: 520, display: "grid", gap: 10, alignContent: "start" }}>
+          <div className="admin-page-title">{categoryLabel(activeCategory)} render workspace coming later</div>
+          <div className="admin-body-copy">
+            This category opens the render workspace shell now, but no category-specific renderer or source model is wired in this layout-only pass.
+          </div>
+          <div className="admin-placeholder-box" style={{ margin: 0 }}>
+            Placeholder only. Existing Windows editor/render behaviour is preserved separately.
           </div>
         </div>
-
-        <div style={{ display: "grid", gap: 8 }}>
-          <div className="admin-setting-label">Field count / layout</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {WINDOW_FIELD_COUNT_OPTIONS.map((option) => (
-              <button
-                key={option.key}
-                type="button"
-                onClick={() => setSelectedFieldCountMode(option.key)}
-                className={selectedFieldCountMode === option.key ? "admin-nav-button admin-nav-button--active" : "admin-nav-button"}
-              >
-                <span className="admin-nav-button-label">{option.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "320px minmax(420px, 1fr)",
-          gap: 12,
-          alignItems: "start",
-        }}
-      >
-        <WindowTypeDesignList
-          categoryLabel={PRODUCT_CATEGORY_OPTIONS.find((option) => option.key === selectedCategory)?.label || "Category"}
-          fieldCountLabel={WINDOW_FIELD_COUNT_OPTIONS.find((option) => option.key === selectedFieldCountMode)?.label || selectedFieldCountMode}
-          designs={designOptions}
-          selectedDesignId={selectedWindowTypeId}
-          onSelectDesign={setSelectedWindowTypeId}
-        />
-        <WindowTypeEditor
-          categoryLabel={PRODUCT_CATEGORY_OPTIONS.find((option) => option.key === selectedCategory)?.label || "Category"}
-          fieldCountLabel={WINDOW_FIELD_COUNT_OPTIONS.find((option) => option.key === selectedFieldCountMode)?.label || selectedFieldCountMode}
-          selectedDesign={selectedDesign}
-          bootstrap={bootstrap}
-        />
-      </div>
-    </div>
+      )}
+    </WorkspaceShell>
   );
 }

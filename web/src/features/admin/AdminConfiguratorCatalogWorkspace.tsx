@@ -29,6 +29,7 @@ import {
   buildThreeFieldFixedStaticMullionLayoutDefinition,
   buildTwoFieldFixedStaticMullionLayoutDefinition,
 } from "../configurator/configuratorSchema.helpers";
+import AdminWindowTypesWorkspace from "./windowTypes/AdminWindowTypesWorkspace";
 
 type AdminConfiguratorTopTab = "manufacturers" | "windowTypes" | "configuratorRender";
 type ProductGroupKey =
@@ -1935,7 +1936,7 @@ function ConfiguratorRenderPanel(props: {
 
 export default function AdminConfiguratorCatalogWorkspace() {
   const [bootstrap, setBootstrap] = useState<ConfiguratorCatalogBootstrap>(defaultBootstrap);
-  const [activeTab, setActiveTab] = useState<AdminConfiguratorTopTab>("manufacturers");
+  const [activeTab, setActiveTab] = useState<AdminConfiguratorTopTab>("windowTypes");
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -2005,7 +2006,7 @@ export default function AdminConfiguratorCatalogWorkspace() {
         activeTab === "manufacturers" ? (
           <ManufacturersPanel bootstrap={bootstrap} setBootstrap={setBootstrap} />
         ) : activeTab === "windowTypes" ? (
-          <WindowTypesPanel bootstrap={bootstrap} setBootstrap={setBootstrap} />
+          <AdminWindowTypesWorkspace bootstrap={bootstrap} />
         ) : (
           <ConfiguratorRenderPanel bootstrap={bootstrap} setBootstrap={setBootstrap} />
         )
