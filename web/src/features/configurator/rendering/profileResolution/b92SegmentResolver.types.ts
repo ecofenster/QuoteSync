@@ -34,6 +34,7 @@ export type B92NormalizedField = {
 export type B92DivisionRule = {
   axis: "vertical" | "horizontal";
   index: number;
+  row?: number | null;
   type: "static" | "flying";
   ownerFieldKey?: string | null;
   status?: B92ProfileRuleStatus;

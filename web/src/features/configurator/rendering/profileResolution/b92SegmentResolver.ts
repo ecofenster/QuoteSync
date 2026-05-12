@@ -239,8 +239,37 @@ function verticalOverrideCondition(segment: B92VerticalJunctionSegment): B92Vert
 }
 
 function resolveVerticalJunctionSegment(
-  segment: B92VerticalJunctionSegment
+  segment: B92VerticalJunctionSegment,
+  view: WindowTypeSourceModel["view"]
 ): { assignment: B92ResolvedProfileAssignment | null; issues: B92SegmentResolutionIssue[] } {
+  if (segment.junctionType === "flying" && !segment.ownerFieldKey) {
+    return {
+      assignment: null,
+      issues: [
+        {
+          id: `${segment.id}:missing-flying-owner`,
+          segmentId: segment.id,
+          severity: "blocking",
+          code: "missing_division_owner",
+          message: "vertical_junction: flying mullion metadata requires ownerFieldKey.",
+        },
+      ],
+    };
+  }
+
+  if (segment.junctionType === "flying" && view === "outside") {
+    return {
+      assignment: null,
+      issues: [
+        unresolvedIssue({
+          segmentId: segment.id,
+          segmentKind: "vertical_junction",
+          message: "external flying mullion profile is unresolved because outside B92-18 evidence is not confirmed.",
+        }),
+      ],
+    };
+  }
+
   const overrideCondition = verticalOverrideCondition(segment);
   const rule = findMirroredVerticalRule(segment, overrideCondition) ?? findMirroredVerticalRule(segment);
   if (!rule) {
@@ -330,6 +359,7 @@ function resolverInputFromSource(source: WindowTypeSourceModel): B92SegmentResol
       rows: source.layout.rows,
     },
     fields: normalizeB92FieldGrid(source),
+    divisions: source.dev?.b92SegmentResolverDivisions?.map((division) => ({ ...division })),
   };
 }
 
@@ -414,7 +444,7 @@ function diagnosticJunctionRegistryIssues(input: {
 export function resolveB92ProfileSegmentsFromSource(source: WindowTypeSourceModel): B92SegmentResolutionResult {
   const input = resolverInputFromSource(source);
   const outerEdgeSegments = buildB92OuterEdgeSegments(input.fields);
-  const verticalJunctionSegments = buildB92VerticalJunctionSegments(input.fields);
+  const verticalJunctionSegments = buildB92VerticalJunctionSegments(input.fields, input.divisions);
   const horizontalTransomSegments = buildB92HorizontalTransomSegments(input.fields);
 
   const outerEdgeAssignments: B92ResolvedProfileAssignment[] = [];
@@ -438,7 +468,7 @@ export function resolveB92ProfileSegmentsFromSource(source: WindowTypeSourceMode
   }
 
   for (const segment of verticalJunctionSegments) {
-    const result = resolveVerticalJunctionSegment(segment);
+    const result = resolveVerticalJunctionSegment(segment, source.view);
     if (result.assignment) verticalJunctionAssignments.push(result.assignment);
     issues.push(...result.issues);
   }

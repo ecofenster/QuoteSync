@@ -1,4 +1,5 @@
 import type {
+  B92DivisionRule,
   B92HorizontalTransomSegment,
   B92NormalizedField,
   B92OperationFamily,
@@ -153,7 +154,24 @@ export function buildB92OuterEdgeSegments(fields: B92NormalizedField[]): B92Oute
   return segments;
 }
 
-export function buildB92VerticalJunctionSegments(fields: B92NormalizedField[]): B92VerticalJunctionSegment[] {
+function findVerticalDivision(input: {
+  divisions: readonly B92DivisionRule[];
+  row: number;
+  index: number;
+}): B92DivisionRule | null {
+  return (
+    input.divisions.find((division) => {
+      if (division.axis !== "vertical") return false;
+      if (division.index !== input.index) return false;
+      return division.row === undefined || division.row === null || division.row === input.row;
+    }) ?? null
+  );
+}
+
+export function buildB92VerticalJunctionSegments(
+  fields: B92NormalizedField[],
+  divisions: readonly B92DivisionRule[] = []
+): B92VerticalJunctionSegment[] {
   const grid = getGridDimensions(fields);
   const segments: B92VerticalJunctionSegment[] = [];
 
@@ -161,19 +179,25 @@ export function buildB92VerticalJunctionSegments(fields: B92NormalizedField[]): 
     for (let column = 0; column < grid.maxColumn; column += 1) {
       const leftField = requireField(grid, row, column);
       const rightField = requireField(grid, row, column + 1);
+      const junctionIndex = column + 1;
+      const division = findVerticalDivision({
+        divisions,
+        row,
+        index: junctionIndex,
+      });
       segments.push({
-        id: `vertical-row-${row}-col-${column + 1}`,
+        id: `vertical-row-${row}-col-${junctionIndex}`,
         kind: "vertical_junction",
         axis: "vertical",
         row,
-        column: column + 1,
+        column: junctionIndex,
         segmentIndex: segments.length,
         leftField,
         rightField,
         leftOperation: leftField.operation,
         rightOperation: rightField.operation,
-        junctionType: "static",
-        ownerFieldKey: null,
+        junctionType: division?.type === "flying" ? "flying" : "static",
+        ownerFieldKey: division?.ownerFieldKey ?? null,
       });
     }
   }

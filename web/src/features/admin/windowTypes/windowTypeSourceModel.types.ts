@@ -185,6 +185,14 @@ export type WindowTypeSourceModelConstraints = {
   blockingIssues?: WindowTypeSourceModelBlockingIssue[];
 };
 
+export type WindowTypeSourceModelDevDivisionRule = {
+  axis: "vertical" | "horizontal";
+  index: number;
+  row?: number | null;
+  type: "static" | "flying";
+  ownerFieldKey?: string | null;
+};
+
 export type WindowTypeSourceModel = {
   id: string;
   manufacturerId?: string | null;
@@ -203,6 +211,7 @@ export type WindowTypeSourceModel = {
     b92UseSegmentResolver?: boolean | null;
     b92UseDiagnosticJunctionRegistry?: boolean | null;
     b92UseDiagnosticJunctionRegistryCorrections?: boolean | null;
+    b92SegmentResolverDivisions?: WindowTypeSourceModelDevDivisionRule[];
     b92RenderSegmentedSillOverlay?: boolean | null;
   };
 };
