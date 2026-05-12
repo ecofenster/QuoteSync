@@ -1,4 +1,5 @@
 import type { WindowTypeSourceModel } from "../../../admin/windowTypes/windowTypeSourceModel.types";
+import { compareB92VerticalJunctionAssignmentsToRegistry } from "./b92JunctionRuleRegistry";
 import { normalizeB92FieldGrid } from "./b92GridNormalizer";
 import { B92_PROFILE_RULE_REGISTER } from "./b92ProfileRuleRegister";
 import type {
@@ -328,6 +329,33 @@ function resolverInputFromSource(source: WindowTypeSourceModel): B92SegmentResol
   };
 }
 
+function shouldUseDiagnosticJunctionRegistry(source: WindowTypeSourceModel): boolean {
+  return source.dev?.b92UseDiagnosticJunctionRegistry === true;
+}
+
+function diagnosticJunctionRegistryIssues(input: {
+  source: WindowTypeSourceModel;
+  assignments: B92ResolvedProfileAssignment[];
+}): B92SegmentResolutionIssue[] {
+  if (!shouldUseDiagnosticJunctionRegistry(input.source)) return [];
+
+  return compareB92VerticalJunctionAssignmentsToRegistry({
+    viewSide: input.source.view,
+    assignments: input.assignments,
+  })
+    .filter((diagnostic) => diagnostic.code === "profile_mismatch" || diagnostic.code === "unresolved")
+    .map((diagnostic): B92SegmentResolutionIssue => ({
+      id: diagnostic.id,
+      segmentId: diagnostic.segmentId,
+      severity: "warning",
+      code:
+        diagnostic.code === "profile_mismatch"
+          ? "diagnostic_junction_profile_mismatch"
+          : "diagnostic_junction_unresolved",
+      message: `diagnostic junction registry: ${diagnostic.message}`,
+    }));
+}
+
 export function resolveB92ProfileSegmentsFromSource(source: WindowTypeSourceModel): B92SegmentResolutionResult {
   const input = resolverInputFromSource(source);
   const outerEdgeSegments = buildB92OuterEdgeSegments(input.fields);
@@ -365,6 +393,13 @@ export function resolveB92ProfileSegmentsFromSource(source: WindowTypeSourceMode
     if (result.assignment) horizontalTransomAssignments.push(result.assignment);
     issues.push(...result.issues);
   }
+
+  issues.push(
+    ...diagnosticJunctionRegistryIssues({
+      source,
+      assignments: verticalJunctionAssignments,
+    })
+  );
 
   return {
     input,

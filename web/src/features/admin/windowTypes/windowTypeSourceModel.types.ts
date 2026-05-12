@@ -201,6 +201,7 @@ export type WindowTypeSourceModel = {
   dev?: {
     b92SegmentResolverValidation?: boolean | null;
     b92UseSegmentResolver?: boolean | null;
+    b92UseDiagnosticJunctionRegistry?: boolean | null;
     b92RenderSegmentedSillOverlay?: boolean | null;
   };
 };

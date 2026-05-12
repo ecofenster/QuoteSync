@@ -152,7 +152,9 @@ export type B92SegmentResolutionIssue = {
     | "unsupported_operation"
     | "unsupported_layout"
     | "candidate_rule_only"
-    | "blocked_rule";
+    | "blocked_rule"
+    | "diagnostic_junction_profile_mismatch"
+    | "diagnostic_junction_unresolved";
   message: string;
 };
 
