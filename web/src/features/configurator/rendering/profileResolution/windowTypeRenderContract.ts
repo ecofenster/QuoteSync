@@ -7,12 +7,26 @@ import type {
   B92ResolverConstraint,
   B92ThresholdSystem,
 } from "./b92ProfileTypes";
+import type {
+  B92ResolvedProfileAssignment,
+  B92SegmentResolutionIssue,
+} from "./b92SegmentResolver.types";
 
 export type WindowTypeRenderSystem = "B92";
 
 export type WindowTypeRenderReferenceView = "external";
 
 export type WindowTypeRenderValidationMode = "external_refs_internal_validation";
+
+export type WindowTypeRenderB92SegmentResolverDiagnostics = {
+  diagnosticOnly: true;
+  visualGeometryChanged: false;
+  verticalJunctionAssignments: B92ResolvedProfileAssignment[];
+  horizontalTransomAssignments: B92ResolvedProfileAssignment[];
+  outerEdgeAssignments: B92ResolvedProfileAssignment[];
+  sillAssignments: B92ResolvedProfileAssignment[];
+  issues: B92SegmentResolutionIssue[];
+};
 
 export type WindowTypeRenderMeta = {
   system: WindowTypeRenderSystem;
@@ -23,6 +37,7 @@ export type WindowTypeRenderMeta = {
   notes?: string[];
   dev?: {
     b92RenderSegmentedSillOverlay?: boolean | null;
+    b92SegmentResolverDiagnostics?: WindowTypeRenderB92SegmentResolverDiagnostics | null;
   };
 };
 

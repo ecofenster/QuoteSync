@@ -24,6 +24,7 @@ type RuntimeDimensionsMm = {
 type B92SegmentResolverDevSource = WindowTypeSourceModel & {
   dev?: {
     b92UseSegmentResolver?: boolean | null;
+    b92ExposeSegmentResolverDiagnostics?: boolean | null;
     b92RenderSegmentedSillOverlay?: boolean | null;
   };
 };
@@ -80,6 +81,10 @@ function sourceFieldOperation(operation: string | undefined): WindowTypeRenderFi
 
 function shouldUseB92SegmentResolver(source: WindowTypeSourceModel): source is B92SegmentResolverDevSource {
   return (source as B92SegmentResolverDevSource).dev?.b92UseSegmentResolver === true;
+}
+
+function shouldExposeB92SegmentResolverDiagnostics(source: WindowTypeSourceModel): source is B92SegmentResolverDevSource {
+  return (source as B92SegmentResolverDevSource).dev?.b92ExposeSegmentResolverDiagnostics === true;
 }
 
 function isRenderContractProfileId(profileId: string): profileId is B92ProfileId {
@@ -207,9 +212,36 @@ function applyB92SegmentResolverToContract(
   source: WindowTypeSourceModel,
   contract: WindowTypeRenderModel
 ): WindowTypeRenderModel {
-  if (!shouldUseB92SegmentResolver(source)) return contract;
+  const useResolverAssignments = shouldUseB92SegmentResolver(source);
+  const exposeResolverDiagnostics = shouldExposeB92SegmentResolverDiagnostics(source);
+  if (!useResolverAssignments && !exposeResolverDiagnostics) return contract;
 
   const segmentResult = resolveB92ProfileSegmentsFromSource(source);
+  const diagnosticsMetadata = exposeResolverDiagnostics
+    ? {
+        diagnosticOnly: true as const,
+        visualGeometryChanged: false as const,
+        verticalJunctionAssignments: segmentResult.verticalJunctionAssignments,
+        horizontalTransomAssignments: segmentResult.horizontalTransomAssignments,
+        outerEdgeAssignments: segmentResult.outerEdgeAssignments,
+        sillAssignments: segmentResult.sillAssignments,
+        issues: segmentResult.issues,
+      }
+    : contract.meta.dev?.b92SegmentResolverDiagnostics;
+
+  if (!useResolverAssignments) {
+    return {
+      ...contract,
+      meta: {
+        ...contract.meta,
+        dev: {
+          ...contract.meta.dev,
+          b92SegmentResolverDiagnostics: diagnosticsMetadata,
+        },
+      },
+    };
+  }
+
   const appliedVertical = segmentResult.verticalJunctionAssignments
     .map(verticalJunctionFromAssignment)
     .filter((item): item is WindowTypeRenderJunction => !!item);
@@ -274,6 +306,7 @@ function applyB92SegmentResolverToContract(
       dev: {
         ...contract.meta.dev,
         b92RenderSegmentedSillOverlay: source.dev?.b92RenderSegmentedSillOverlay === true,
+        b92SegmentResolverDiagnostics: diagnosticsMetadata,
       },
     },
     verticalJunctions: appliedVertical,
