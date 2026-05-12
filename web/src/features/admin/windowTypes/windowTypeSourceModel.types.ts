@@ -202,6 +202,7 @@ export type WindowTypeSourceModel = {
     b92SegmentResolverValidation?: boolean | null;
     b92UseSegmentResolver?: boolean | null;
     b92UseDiagnosticJunctionRegistry?: boolean | null;
+    b92UseDiagnosticJunctionRegistryCorrections?: boolean | null;
     b92RenderSegmentedSillOverlay?: boolean | null;
   };
 };

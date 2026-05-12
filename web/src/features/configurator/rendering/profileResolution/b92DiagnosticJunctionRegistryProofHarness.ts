@@ -46,11 +46,12 @@ export const B92_DIAGNOSTIC_JUNCTION_REGISTRY_STATIC_PROOF_CASES: readonly B92Di
     label: "simple 2-field fixed/fixed static junction",
     operations: ["fixed", "fixed"],
     expectedRegistryProfile: "B92-11",
-    expectedCurrentResolverProfile: "B92-14",
-    expectedDiagnosticCodes: ["diagnostic_junction_profile_mismatch"],
+    expectedCurrentResolverProfile: "B92-11",
+    expectedDiagnosticCodes: [],
     notes: [
       "Simple 2-field fixed/fixed evidence expects B92-11.",
-      "Current resolver may still assign B92-14, which remains valid for compound/grid fixed/fixed contexts.",
+      "The dev-flag correction may replace the current B92-14 assignment only in this simple 2-field context.",
+      "B92-14 remains valid for separate compound/grid fixed/fixed contexts.",
     ],
   },
   {
@@ -58,11 +59,11 @@ export const B92_DIAGNOSTIC_JUNCTION_REGISTRY_STATIC_PROOF_CASES: readonly B92Di
     label: "2-field fixed/TTL static junction",
     operations: ["fixed", "tt_left"],
     expectedRegistryProfile: "B92-13",
-    expectedCurrentResolverProfile: "B92-12",
-    expectedDiagnosticCodes: ["diagnostic_junction_profile_mismatch"],
+    expectedCurrentResolverProfile: "B92-13",
+    expectedDiagnosticCodes: [],
     notes: [
       "Corrected 2-field fixed/TTL evidence expects B92-13.",
-      "Current resolver uses the generic fixed/tilt-turn vertical mullion rule and may assign B92-12.",
+      "The dev-flag correction may replace the current generic fixed/tilt-turn B92-12 assignment only for fixed/TTL.",
     ],
   },
   {
@@ -148,6 +149,7 @@ function sourceForCase(proofCase: B92DiagnosticJunctionRegistryStaticProofCase):
     dev: {
       b92UseSegmentResolver: true,
       b92UseDiagnosticJunctionRegistry: true,
+      b92UseDiagnosticJunctionRegistryCorrections: true,
     },
   };
 }

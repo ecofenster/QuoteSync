@@ -1,5 +1,9 @@
 import type { WindowTypeSourceModel } from "../../../admin/windowTypes/windowTypeSourceModel.types";
-import { compareB92VerticalJunctionAssignmentsToRegistry } from "./b92JunctionRuleRegistry";
+import {
+  buildB92JunctionRuleKeyFromVerticalSegment,
+  compareB92VerticalJunctionAssignmentsToRegistry,
+  lookupB92TwoFieldVerticalJunctionRule,
+} from "./b92JunctionRuleRegistry";
 import { normalizeB92FieldGrid } from "./b92GridNormalizer";
 import { B92_PROFILE_RULE_REGISTER } from "./b92ProfileRuleRegister";
 import type {
@@ -333,6 +337,57 @@ function shouldUseDiagnosticJunctionRegistry(source: WindowTypeSourceModel): boo
   return source.dev?.b92UseDiagnosticJunctionRegistry === true;
 }
 
+function shouldUseDiagnosticJunctionRegistryCorrections(source: WindowTypeSourceModel): boolean {
+  return source.dev?.b92UseDiagnosticJunctionRegistryCorrections === true;
+}
+
+function isSimpleTwoFieldStaticCorrectionTarget(input: {
+  source: WindowTypeSourceModel;
+  assignment: B92ResolvedProfileAssignment;
+}): boolean {
+  if (input.source.layout.rows !== 1 || input.source.layout.columns !== 2) return false;
+  const segment = input.assignment.segment;
+  if (segment?.kind !== "vertical_junction") return false;
+  if (segment.junctionType !== "static") return false;
+
+  return (
+    (segment.leftOperation === "fixed" && segment.rightOperation === "fixed") ||
+    (segment.leftOperation === "fixed" && segment.rightOperation === "tt_left")
+  );
+}
+
+function applyDiagnosticJunctionRegistryCorrections(input: {
+  source: WindowTypeSourceModel;
+  assignments: B92ResolvedProfileAssignment[];
+}): B92ResolvedProfileAssignment[] {
+  if (!shouldUseDiagnosticJunctionRegistryCorrections(input.source)) return input.assignments;
+
+  return input.assignments.map((assignment) => {
+    if (!isSimpleTwoFieldStaticCorrectionTarget({ source: input.source, assignment })) return assignment;
+    if (assignment.segment?.kind !== "vertical_junction") return assignment;
+
+    const lookup = lookupB92TwoFieldVerticalJunctionRule(
+      buildB92JunctionRuleKeyFromVerticalSegment({
+        viewSide: input.source.view,
+        segment: assignment.segment,
+      })
+    );
+    const profileRef = lookup.result.profileRef;
+    if (!lookup.matched || !profileRef || profileRef === assignment.profileId) return assignment;
+
+    return {
+      ...assignment,
+      id: `${assignment.segmentId}:${profileRef}`,
+      profileId: profileRef,
+      source: "explicit_override",
+      ruleId: lookup.ruleId ?? assignment.ruleId,
+      note: `dev-flag diagnostic junction registry correction: ${assignment.profileId} -> ${profileRef}. ${
+        assignment.note ?? ""
+      }`.trim(),
+    };
+  });
+}
+
 function diagnosticJunctionRegistryIssues(input: {
   source: WindowTypeSourceModel;
   assignments: B92ResolvedProfileAssignment[];
@@ -364,7 +419,7 @@ export function resolveB92ProfileSegmentsFromSource(source: WindowTypeSourceMode
 
   const outerEdgeAssignments: B92ResolvedProfileAssignment[] = [];
   const sillAssignments: B92ResolvedProfileAssignment[] = [];
-  const verticalJunctionAssignments: B92ResolvedProfileAssignment[] = [];
+  let verticalJunctionAssignments: B92ResolvedProfileAssignment[] = [];
   const horizontalTransomAssignments: B92ResolvedProfileAssignment[] = [];
   const couplingCornerAssignments: B92ResolvedProfileAssignment[] = [];
   const thresholdAssignments: B92ResolvedProfileAssignment[] = [];
@@ -393,6 +448,11 @@ export function resolveB92ProfileSegmentsFromSource(source: WindowTypeSourceMode
     if (result.assignment) horizontalTransomAssignments.push(result.assignment);
     issues.push(...result.issues);
   }
+
+  verticalJunctionAssignments = applyDiagnosticJunctionRegistryCorrections({
+    source,
+    assignments: verticalJunctionAssignments,
+  });
 
   issues.push(
     ...diagnosticJunctionRegistryIssues({
