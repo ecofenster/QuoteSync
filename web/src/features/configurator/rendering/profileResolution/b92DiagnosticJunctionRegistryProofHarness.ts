@@ -12,29 +12,28 @@ import type {
   B92SegmentResolutionResult,
 } from "./b92SegmentResolver.types";
 
-type DiagnosticJunctionIssueCode = Extract<
-  B92SegmentResolutionIssue["code"],
-  "diagnostic_junction_profile_mismatch" | "diagnostic_junction_unresolved"
->;
+type ProofIssueCode = B92SegmentResolutionIssue["code"];
 
 export type B92DiagnosticJunctionRegistryStaticProofCase = {
   id: string;
   label: string;
   operations: readonly [B92ResolvedFieldOperation, B92ResolvedFieldOperation];
-  expectedRegistryProfile: B92RuleProfileId;
-  expectedCurrentResolverProfile: B92RuleProfileId;
-  expectedDiagnosticCodes: readonly DiagnosticJunctionIssueCode[];
+  view?: WindowTypeSourceModel["view"];
+  divisions?: NonNullable<WindowTypeSourceModel["dev"]>["b92SegmentResolverDivisions"];
+  expectedRegistryProfile: B92RuleProfileId | null;
+  expectedCurrentResolverProfile: B92RuleProfileId | null;
+  expectedIssueCodes: readonly ProofIssueCode[];
   notes: readonly string[];
 };
 
 export type B92DiagnosticJunctionRegistryStaticProofResult = {
   caseId: string;
   label: string;
-  expectedRegistryProfile: B92RuleProfileId;
-  expectedCurrentResolverProfile: B92RuleProfileId;
+  expectedRegistryProfile: B92RuleProfileId | null;
+  expectedCurrentResolverProfile: B92RuleProfileId | null;
   actualCurrentResolverProfile: B92RuleProfileId | null;
-  expectedDiagnosticCodes: readonly DiagnosticJunctionIssueCode[];
-  actualDiagnosticCodes: DiagnosticJunctionIssueCode[];
+  expectedIssueCodes: readonly ProofIssueCode[];
+  actualIssueCodes: ProofIssueCode[];
   passed: boolean;
   issues: B92SegmentResolutionIssue[];
   result: B92SegmentResolutionResult;
@@ -47,7 +46,7 @@ export const B92_DIAGNOSTIC_JUNCTION_REGISTRY_STATIC_PROOF_CASES: readonly B92Di
     operations: ["fixed", "fixed"],
     expectedRegistryProfile: "B92-11",
     expectedCurrentResolverProfile: "B92-11",
-    expectedDiagnosticCodes: [],
+    expectedIssueCodes: [],
     notes: [
       "Simple 2-field fixed/fixed evidence expects B92-11.",
       "The dev-flag correction may replace the current B92-14 assignment only in this simple 2-field context.",
@@ -60,7 +59,7 @@ export const B92_DIAGNOSTIC_JUNCTION_REGISTRY_STATIC_PROOF_CASES: readonly B92Di
     operations: ["fixed", "tt_left"],
     expectedRegistryProfile: "B92-13",
     expectedCurrentResolverProfile: "B92-13",
-    expectedDiagnosticCodes: [],
+    expectedIssueCodes: [],
     notes: [
       "Corrected 2-field fixed/TTL evidence expects B92-13.",
       "The dev-flag correction may replace the current generic fixed/tilt-turn B92-12 assignment only for fixed/TTL.",
@@ -72,7 +71,7 @@ export const B92_DIAGNOSTIC_JUNCTION_REGISTRY_STATIC_PROOF_CASES: readonly B92Di
     operations: ["fixed", "tt_right"],
     expectedRegistryProfile: "B92-12",
     expectedCurrentResolverProfile: "B92-12",
-    expectedDiagnosticCodes: [],
+    expectedIssueCodes: [],
     notes: ["Corrected 2-field fixed/TTR evidence matches the current generic fixed/tilt-turn resolver assignment."],
   },
   {
@@ -81,8 +80,70 @@ export const B92_DIAGNOSTIC_JUNCTION_REGISTRY_STATIC_PROOF_CASES: readonly B92Di
     operations: ["tt_left", "tt_right"],
     expectedRegistryProfile: "B92-15",
     expectedCurrentResolverProfile: "B92-15",
-    expectedDiagnosticCodes: [],
+    expectedIssueCodes: [],
     notes: ["Corrected 2-field TTL/TTR static evidence matches the current tilt-turn/tilt-turn resolver assignment."],
+  },
+  {
+    id: "turn-tt-flying-internal",
+    label: "2-field turn/TT internal flying junction",
+    operations: ["turn_left", "tt_right"],
+    view: "inside",
+    divisions: [
+      {
+        axis: "vertical",
+        index: 1,
+        type: "flying",
+        ownerFieldKey: "0:0",
+      },
+    ],
+    expectedRegistryProfile: "B92-18",
+    expectedCurrentResolverProfile: "B92-18",
+    expectedIssueCodes: [],
+    notes: [
+      "Internal turn/TT flying mullion evidence expects B92-18.",
+      "The dev-only division metadata marks the centre vertical junction as flying and supplies the owner field.",
+    ],
+  },
+  {
+    id: "turn-tt-flying-external",
+    label: "2-field turn/TT external flying junction",
+    operations: ["turn_left", "tt_right"],
+    view: "outside",
+    divisions: [
+      {
+        axis: "vertical",
+        index: 1,
+        type: "flying",
+        ownerFieldKey: "0:0",
+      },
+    ],
+    expectedRegistryProfile: null,
+    expectedCurrentResolverProfile: null,
+    expectedIssueCodes: ["unresolved_segment"],
+    notes: [
+      "External flying mullion remains unresolved because outside B92-18 evidence is not confirmed.",
+      "This proof must not assign or confirm B92-18 externally.",
+    ],
+  },
+  {
+    id: "turn-tt-flying-missing-owner",
+    label: "2-field turn/TT flying junction missing owner",
+    operations: ["turn_left", "tt_right"],
+    view: "inside",
+    divisions: [
+      {
+        axis: "vertical",
+        index: 1,
+        type: "flying",
+      },
+    ],
+    expectedRegistryProfile: null,
+    expectedCurrentResolverProfile: null,
+    expectedIssueCodes: ["missing_division_owner"],
+    notes: [
+      "Flying mullion metadata requires ownerFieldKey.",
+      "The resolver must not guess master/owner side from operations alone.",
+    ],
   },
 ];
 
@@ -121,7 +182,7 @@ function sourceForCase(proofCase: B92DiagnosticJunctionRegistryStaticProofCase):
     productId: null,
     windowTypeId: null,
     systemCode: "B92",
-    view: "inside",
+    view: proofCase.view ?? "inside",
     referenceView: "external",
     layout: {
       columns: 2,
@@ -134,7 +195,7 @@ function sourceForCase(proofCase: B92DiagnosticJunctionRegistryStaticProofCase):
     constraints: {
       allowFixedSash: true,
       allowMultiField: true,
-      allowOutsideView: false,
+      allowOutsideView: proofCase.view === "outside",
     },
     status: "draft",
     provenance: {
@@ -150,6 +211,7 @@ function sourceForCase(proofCase: B92DiagnosticJunctionRegistryStaticProofCase):
       b92UseSegmentResolver: true,
       b92UseDiagnosticJunctionRegistry: true,
       b92UseDiagnosticJunctionRegistryCorrections: true,
+      b92SegmentResolverDivisions: proofCase.divisions,
     },
   };
 }
@@ -181,12 +243,10 @@ function fieldRule(row: number, column: number, operation: B92ResolvedFieldOpera
   };
 }
 
-function diagnosticCodes(issues: readonly B92SegmentResolutionIssue[]): DiagnosticJunctionIssueCode[] {
+function issueCodes(issues: readonly B92SegmentResolutionIssue[]): ProofIssueCode[] {
   return issues
-    .map((issue) => issue.code)
-    .filter((code): code is DiagnosticJunctionIssueCode => {
-      return code === "diagnostic_junction_profile_mismatch" || code === "diagnostic_junction_unresolved";
-    });
+    .filter((issue) => issue.segmentId?.startsWith("vertical-row-"))
+    .map((issue) => issue.code);
 }
 
 function arraysEqual<T>(left: readonly T[], right: readonly T[]): boolean {
@@ -198,10 +258,10 @@ export function runB92DiagnosticJunctionRegistryStaticProofHarness(): B92Diagnos
     const result = resolveB92ProfileSegmentsFromSource(sourceForCase(proofCase));
     const verticalAssignment = result.verticalJunctionAssignments[0] ?? null;
     const actualCurrentResolverProfile = verticalAssignment?.profileId ?? null;
-    const actualDiagnosticCodes = diagnosticCodes(result.issues);
+    const actualIssueCodes = issueCodes(result.issues);
     const passed =
       actualCurrentResolverProfile === proofCase.expectedCurrentResolverProfile &&
-      arraysEqual(actualDiagnosticCodes, proofCase.expectedDiagnosticCodes);
+      arraysEqual(actualIssueCodes, proofCase.expectedIssueCodes);
 
     return {
       caseId: proofCase.id,
@@ -209,8 +269,8 @@ export function runB92DiagnosticJunctionRegistryStaticProofHarness(): B92Diagnos
       expectedRegistryProfile: proofCase.expectedRegistryProfile,
       expectedCurrentResolverProfile: proofCase.expectedCurrentResolverProfile,
       actualCurrentResolverProfile,
-      expectedDiagnosticCodes: proofCase.expectedDiagnosticCodes,
-      actualDiagnosticCodes,
+      expectedIssueCodes: proofCase.expectedIssueCodes,
+      actualIssueCodes,
       passed,
       issues: result.issues,
       result,
@@ -224,9 +284,9 @@ export function assertB92DiagnosticJunctionRegistryStaticProofHarness(): B92Diag
   if (failures.length > 0) {
     const summary = failures
       .map((failure) => {
-        return `${failure.caseId}: expected resolver ${failure.expectedCurrentResolverProfile} with diagnostics [${failure.expectedDiagnosticCodes.join(
+        return `${failure.caseId}: expected resolver ${failure.expectedCurrentResolverProfile ?? "(none)"} with issues [${failure.expectedIssueCodes.join(
           ", "
-        )}], received ${failure.actualCurrentResolverProfile ?? "(none)"} with diagnostics [${failure.actualDiagnosticCodes.join(
+        )}], received ${failure.actualCurrentResolverProfile ?? "(none)"} with issues [${failure.actualIssueCodes.join(
           ", "
         )}]`;
       })
