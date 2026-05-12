@@ -66,6 +66,7 @@ export const B92_TWO_FIELD_VERTICAL_JUNCTION_RULES = [
     notes: [
       "Europa 92 Alu Clad fixed/fixed internal evidence calls out B92-11 at the centre junction.",
       "Diagnostic-only until fixed/fixed section anchors and projection ownership are promoted into render rules.",
+      "This rule is for the simple 2-field fixed/fixed context; B92-14 may still be valid in separate compound/grid fixed/fixed contexts.",
     ],
   }),
   rule({
@@ -89,6 +90,7 @@ export const B92_TWO_FIELD_VERTICAL_JUNCTION_RULES = [
     notes: [
       "Europa 92 Alu Clad fixed/fixed external evidence also calls out B92-11 at the centre junction.",
       "External cladding/mitre ownership remains diagnostic-only.",
+      "This rule is for the simple 2-field fixed/fixed context; B92-14 may still be valid in separate compound/grid fixed/fixed contexts.",
     ],
   }),
   rule({
@@ -102,7 +104,7 @@ export const B92_TWO_FIELD_VERTICAL_JUNCTION_RULES = [
     leftHanding: null,
     rightHanding: "left",
     ownerSide: "shared",
-    profileRef: "B92-15",
+    profileRef: "B92-13",
     role: "fixed_tilt_turn_centre",
     mirrored: false,
     requiredAnchors: STATIC_SHARED_ANCHORS,
@@ -110,8 +112,9 @@ export const B92_TWO_FIELD_VERTICAL_JUNCTION_RULES = [
     confidence: "confirmed",
     evidenceRefs: EUROPA_92_ALU_CLAD_EVIDENCE_REFS,
     notes: [
-      "Fixed/TTL selects B92-15 in the Europa 92 Alu Clad 2-field evidence.",
-      "Do not derive this by mirroring fixed/TTR; handing changes the selected centre profile.",
+      "Corrected Europa 92 Alu Clad fixed/TTL evidence calls out B92-13 at the centre junction.",
+      "B92-13 is treated as the fixed/TTL hinge-accommodation centre case; do not resolve fixed/TTL to B92-15.",
+      "B92-12 remains the fixed/T&T family ref for the corrected fixed/TTR case.",
     ],
   }),
   rule({
@@ -125,7 +128,7 @@ export const B92_TWO_FIELD_VERTICAL_JUNCTION_RULES = [
     leftHanding: null,
     rightHanding: "left",
     ownerSide: "shared",
-    profileRef: "B92-15",
+    profileRef: "B92-13",
     role: "fixed_tilt_turn_centre",
     mirrored: false,
     requiredAnchors: STATIC_SHARED_ANCHORS,
@@ -133,8 +136,9 @@ export const B92_TWO_FIELD_VERTICAL_JUNCTION_RULES = [
     confidence: "confirmed",
     evidenceRefs: EUROPA_92_ALU_CLAD_EVIDENCE_REFS,
     notes: [
-      "Fixed/TTL external evidence calls out B92-15.",
+      "Corrected Europa 92 Alu Clad fixed/TTL external evidence calls out B92-13.",
       "External projection/cladding details remain diagnostic-only.",
+      "Do not resolve fixed/TTL to B92-15; B92-15 is reserved here for the TTL/TTR static centre case.",
     ],
   }),
   rule({
@@ -157,7 +161,7 @@ export const B92_TWO_FIELD_VERTICAL_JUNCTION_RULES = [
     evidenceRefs: EUROPA_92_ALU_CLAD_EVIDENCE_REFS,
     notes: [
       "Fixed/TTR selects B92-12 in the Europa 92 Alu Clad 2-field evidence.",
-      "This intentionally differs from fixed/TTL.",
+      "This intentionally differs from corrected fixed/TTL, which selects B92-13.",
     ],
   }),
   rule({
