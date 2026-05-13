@@ -38,6 +38,11 @@ import { buildB92FixedNoSashProjectionPilotDrawingModel } from "./b92FixedNoSash
 import { buildB92FixedFixedEvidenceLineworkPilotDrawingModel } from "./b92FixedFixedEvidenceLineworkPilot";
 import { withB92FixedNoSashProjectionParityDiagnostics } from "./b92FixedNoSashProjectionParity";
 import type { B92ProjectedDrawableRegionCategory } from "./b92DatumProjection.types";
+import {
+  getB92AssemblyComponentWidthMm,
+  getB92SimpleFixedFixedVerticalAssembly,
+  type B92ProfileAssemblyComposition,
+} from "./b92ProfileAssemblyComposition";
 
 const VIEW_BOX_WIDTH = 520;
 const VIEW_BOX_HEIGHT = 520;
@@ -73,13 +78,6 @@ const B92_FIXED_NO_SASH_BEAD_FACE_MM = {
   left: 21,
   right: 21,
   bottom: 21,
-} as const;
-
-const B92_FIXED_FIXED_B92_11_JUNCTION_STACK_MM = {
-  total: 78,
-  leftBead: 21,
-  core: 36,
-  rightBead: 21,
 } as const;
 
 type B92DatumFixedNoSashRendererPromotionDevFlags = WindowTypeRenderModel["meta"]["dev"] & {
@@ -581,12 +579,11 @@ type B92FixedFixedJunctionLayout = {
   y: number;
   height: number;
   scale: number;
-  stack: typeof B92_FIXED_FIXED_B92_11_JUNCTION_STACK_MM | null;
+  assembly: B92ProfileAssemblyComposition | null;
 };
 
-function b92FixedFixedJunctionStack(profileId: string) {
-  if (profileId !== "B92-11") return null;
-  return B92_FIXED_FIXED_B92_11_JUNCTION_STACK_MM;
+function b92AssemblyWidthMm(assembly: B92ProfileAssemblyComposition, componentKey: string) {
+  return getB92AssemblyComponentWidthMm(assembly, componentKey);
 }
 
 function buildB92VerticalJunctionShapes(input: {
@@ -603,7 +600,7 @@ function buildB92VerticalJunctionShapes(input: {
     fill: input.showJunctionVisualPilotMarker ? "rgba(254, 226, 226, 0.9)" : "#f4f4f5",
   };
 
-  if (!input.layout.stack) {
+  if (!input.layout.assembly) {
     return [
       rect({
         ...common,
@@ -614,12 +611,12 @@ function buildB92VerticalJunctionShapes(input: {
     ];
   }
 
-  const stack = input.layout.stack;
+  const assembly = input.layout.assembly;
   return [
     rect({
       ...common,
-      x: input.layout.x + stack.leftBead * input.layout.scale,
-      width: stack.core * input.layout.scale,
+      x: input.layout.x + b92AssemblyWidthMm(assembly, "left_bead") * input.layout.scale,
+      width: b92AssemblyWidthMm(assembly, "structural_core") * input.layout.scale,
       role: `vertical_junction_${profileId}_structural_core`,
     }),
   ];
@@ -989,7 +986,7 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
       y: frame.y + visibleFrameMm.top * scale,
       height: (heightMm - visibleFrameMm.top - visibleFrameMm.bottom) * scale,
       scale,
-      stack: allFieldsFixedNoSash ? b92FixedFixedJunctionStack(profileId) : null,
+      assembly: allFieldsFixedNoSash ? getB92SimpleFixedFixedVerticalAssembly(profileId) : null,
     };
     verticalJunctionLayouts.push(layout);
     rightJunctionByFieldId.set(junction.betweenFieldIds[0], layout);
@@ -1111,8 +1108,12 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
     } else {
       const rightJunction = rightJunctionByFieldId.get(item.id);
       const leftJunction = leftJunctionByFieldId.get(item.id);
-      const leftBeadInset = leftJunction?.stack ? leftJunction.stack.rightBead * scale : 0;
-      const rightBeadInset = rightJunction?.stack ? rightJunction.stack.leftBead * scale : 0;
+      const leftBeadInset = leftJunction?.assembly
+        ? b92AssemblyWidthMm(leftJunction.assembly, "right_bead") * scale
+        : 0;
+      const rightBeadInset = rightJunction?.assembly
+        ? b92AssemblyWidthMm(rightJunction.assembly, "left_bead") * scale
+        : 0;
       const fixedGeometry = buildFixedNoSashNestedFieldGeometry({
         fieldId: item.id,
         bounds: {
@@ -1167,9 +1168,9 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
     };
   });
   const interactionVerticalJunctions = verticalJunctionLayouts.map((layout, index) => {
-    const stack = layout.stack;
-    const x = stack
-      ? layout.x + (stack.leftBead + stack.core / 2) * layout.scale
+    const assembly = layout.assembly;
+    const x = assembly
+      ? layout.x + assembly.datum.offsetFromAssemblyStartMm * layout.scale
       : layout.x + (verticalJunctionWidthsMm[index] * layout.scale) / 2;
     return {
       index: index + 1,
