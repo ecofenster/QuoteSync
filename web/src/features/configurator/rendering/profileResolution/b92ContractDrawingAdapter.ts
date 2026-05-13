@@ -40,7 +40,9 @@ import { withB92FixedNoSashProjectionParityDiagnostics } from "./b92FixedNoSashP
 import type { B92ProjectedDrawableRegionCategory } from "./b92DatumProjection.types";
 import {
   getB92AssemblyComponentWidthMm,
+  getB92InternalFlyingVerticalAssembly,
   getB92SimpleFixedFixedVerticalAssembly,
+  resolveB92FlyingAssemblyOrientation,
   type B92ProfileAssemblyComposition,
 } from "./b92ProfileAssemblyComposition";
 
@@ -586,12 +588,36 @@ function b92AssemblyWidthMm(assembly: B92ProfileAssemblyComposition, componentKe
   return getB92AssemblyComponentWidthMm(assembly, componentKey);
 }
 
+function b92BlockedInternalFlyingAssembly(junction: WindowTypeRenderModel["verticalJunctions"][number]) {
+  const composition = getB92InternalFlyingVerticalAssembly(String(junction.profile.profileId));
+  if (!composition || junction.condition !== "flying_mullion") return null;
+  const orientation = resolveB92FlyingAssemblyOrientation({
+    ownerFieldId: junction.ownerFieldId,
+    leftFieldId: junction.betweenFieldIds[0],
+    rightFieldId: junction.betweenFieldIds[1],
+  });
+  return {
+    junctionId: junction.id,
+    profileRef: composition.profileRef,
+    totalMm: composition.totalMm,
+    components: composition.components,
+    datum: composition.datum,
+    orientation,
+    renderGeometry: false,
+    blocker: orientation
+      ? "B92-18 owner/master side is known, but flying sash termination, daylight closure, and glass order rules are not render authority yet."
+      : "B92-18 owner/master side is missing or does not match the joined fields.",
+  };
+}
+
 function buildB92VerticalJunctionShapes(input: {
   layout: B92FixedFixedJunctionLayout;
   width: number;
   showJunctionVisualPilotMarker: boolean;
 }): DrawingShape[] {
   const profileId = String(input.layout.junction.profile.profileId);
+  const blockedFlyingAssembly = b92BlockedInternalFlyingAssembly(input.layout.junction);
+  if (blockedFlyingAssembly) return [];
   const common = {
     y: input.layout.y,
     height: input.layout.height,
@@ -970,6 +996,7 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
 
   const junctionShapes: DrawingShape[] = [];
   const junctionLabels: DrawingLabel[] = [];
+  const blockedFlyingAssemblies: ReturnType<typeof b92BlockedInternalFlyingAssembly>[] = [];
   const showJunctionVisualPilotMarker = shouldUseJunctionGeometryVisualPilot(contract);
   const verticalJunctionLayouts: B92FixedFixedJunctionLayout[] = [];
   const rightJunctionByFieldId = new Map<string, B92FixedFixedJunctionLayout>();
@@ -988,6 +1015,8 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
       scale,
       assembly: allFieldsFixedNoSash ? getB92SimpleFixedFixedVerticalAssembly(profileId) : null,
     };
+    const blockedFlyingAssembly = b92BlockedInternalFlyingAssembly(junction);
+    if (blockedFlyingAssembly) blockedFlyingAssemblies.push(blockedFlyingAssembly);
     verticalJunctionLayouts.push(layout);
     rightJunctionByFieldId.set(junction.betweenFieldIds[0], layout);
     leftJunctionByFieldId.set(junction.betweenFieldIds[1], layout);
@@ -1236,6 +1265,11 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
               enabled: showJunctionVisualPilotMarker,
               marker: showJunctionVisualPilotMarker ? "red centre-junction rect stroke and profile label" : "off",
             },
+            ...(blockedFlyingAssemblies.length > 0
+              ? {
+                  b92BlockedFlyingAssemblies: blockedFlyingAssemblies,
+                }
+              : {}),
             ...(fixedNoSashProjectionPilot.eligibility.enabled
               ? {
                   fixedNoSashProjectionPilot: {
