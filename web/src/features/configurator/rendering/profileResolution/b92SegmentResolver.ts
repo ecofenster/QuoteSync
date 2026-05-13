@@ -156,6 +156,37 @@ function resolveOuterEdgeSegment(
     return resolveSillSegment(segment);
   }
 
+  if ((segment.edge === "left" || segment.edge === "right") && segment.fieldOperation === "fixed") {
+    return {
+      assignment: makeAssignment({
+        segmentId: segment.id,
+        segmentKind: "outer_edge",
+        profileId: "B92-2",
+        status: "confirmed",
+        ruleId: "fixed-side-standard",
+        segment,
+        note: "Fixed side outer jamb uses B92-2 on both left and right outer edges.",
+      }),
+      issues: [],
+    };
+  }
+
+  if ((segment.edge === "left" || segment.edge === "right") && isOpeningFamilyOperation(segment.fieldOperation)) {
+    const profileId = segment.field.hingeSide === segment.edge ? "B92-10" : "B92-9";
+    return {
+      assignment: makeAssignment({
+        segmentId: segment.id,
+        segmentKind: "outer_edge",
+        profileId,
+        status: "confirmed",
+        ruleId: profileId === "B92-10" ? "sash-hinge-side-standard" : "sash-handle-side-standard",
+        segment,
+        note: profileId === "B92-10" ? "Sash hinge-side outer jamb." : "Sash handle-side outer jamb.",
+      }),
+      issues: [],
+    };
+  }
+
   const rule = B92_PROFILE_RULE_REGISTER.outerEdgeRules.find((item: B92OuterEdgeRule) => {
     if (item.edge !== segment.edge) return false;
     return item.fieldOperations.some((operation) => operationMatchesRule(operation, segment.fieldOperation));

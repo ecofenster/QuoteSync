@@ -90,7 +90,7 @@ export const B92_PROFILE_ASSEMBLY_COMPOSITIONS = {
     context: B92_INTERNAL_FLYING_VERTICAL_ASSEMBLY_CONTEXT,
     axis: "vertical",
     assemblyKind: "flying_sash_meeting",
-    status: "blocked",
+    status: "renderable",
     hasLayer1StructuralPost: false,
     renderAsStaticJunction: false,
     totalMm: 131,
@@ -110,7 +110,7 @@ export const B92_PROFILE_ASSEMBLY_COMPOSITIONS = {
     internalConfirmed: true,
     externalConfirmed: false,
     note:
-      "Internal B92-18 flying sash-meeting assembly has no layer 1 static post. Rendering is blocked until owner/passive sash allocation, daylight closure, and glass order rules are explicit.",
+      "Internal B92-18 flying sash-meeting assembly has no layer 1 static post. Render only when owner/master side is explicit; external flying remains unresolved.",
   },
 } as const satisfies Record<string, B92ProfileAssemblyComposition>;
 
@@ -120,7 +120,7 @@ export const B92_BLOCKED_PROFILE_ASSEMBLY_REFS = {
   "B92-14": "Valid context-dependent fixed/fixed ref; renderable contexts must be separated from simple 2-field B92-11.",
   "B92-15": "T&T/T&T static stack is known, but structural allocation, sash termination, and daylight closure are unresolved.",
   "B92-17": "Static sash/sash post semantics are known, but production geometry is blocked by sash overlap, termination, and daylight closure rules.",
-  "B92-18": "Internal flying stack is known, but production rendering remains blocked by owner/passive daylight and glass-order rules. External flying is unresolved.",
+  "B92-18": "Internal flying stack is renderable only with explicit owner/master side. External flying is unresolved.",
   "B92-19": "Horizontal transom stack known; above/below ownership and datum split are unresolved.",
   "B92-20": "Horizontal transom stack known; above/below ownership and datum split are unresolved.",
   "B92-21": "Horizontal transom stack known; above/below ownership and datum split are unresolved.",

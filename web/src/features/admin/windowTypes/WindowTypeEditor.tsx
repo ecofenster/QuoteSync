@@ -185,6 +185,13 @@ function buildGeneratedB92FixedGridSourceModel(selectedDesign: WindowTypeDesignL
   };
 }
 
+function generatedPreviewDimensionsMm(source: WindowTypeSourceModel): RuntimeDimensionsMm {
+  return {
+    widthMm: Math.max(1, source.layout.columns) * 1000,
+    heightMm: Math.max(1, source.layout.rows) * 1000,
+  };
+}
+
 function resolvePreviewSourceModel(
   selectedDesign: WindowTypeDesignListItem | null,
   bootstrap: ConfiguratorCatalogBootstrap
@@ -203,7 +210,7 @@ function resolvePreviewSourceModel(
       return {
         sourceModel: buildGeneratedB92FixedGridSourceModel(selectedDesign),
         sourceLabel: "Generated fixed grid",
-        previewTitle: `Technical Preview — B92 ${layout?.fieldsX ?? 1}x${layout?.fieldsY ?? 1} Fixed Grid 1000 x 1000`,
+        previewTitle: `Technical Preview — B92 ${layout?.fieldsX ?? 1}x${layout?.fieldsY ?? 1} Fixed Grid ${(layout?.fieldsX ?? 1) * 1000} x ${(layout?.fieldsY ?? 1) * 1000}`,
         previewDescription:
           "Dev-only generated B92 fixed grid source: inside view, fixed operation per field, segment resolver enabled.",
         catalogReport: skippedReport,
@@ -395,7 +402,56 @@ function updateSourceFieldOperation(input: {
     ];
   }
 
-  return next;
+  return withGeneratedB92FlyingDivision(next);
+}
+
+function isTurnOnlyOperation(operation: string | undefined) {
+  return operation === "turn_left" || operation === "turn_right";
+}
+
+function isTiltTurnOperation(operation: string | undefined) {
+  return operation === "tt_left" || operation === "tt_right";
+}
+
+function withGeneratedB92FlyingDivision(source: WindowTypeSourceModel): WindowTypeSourceModel {
+  if (source.systemCode !== "B92" || source.view !== "inside" || source.layout.columns !== 2 || source.layout.rows !== 1) {
+    return source;
+  }
+
+  const left = source.fieldRules.find((rule) => rule.fieldSelector.row === 0 && rule.fieldSelector.column === 0);
+  const right = source.fieldRules.find((rule) => rule.fieldSelector.row === 0 && rule.fieldSelector.column === 1);
+  const leftOperation = String(left?.operation ?? left?.operationType ?? "");
+  const rightOperation = String(right?.operation ?? right?.operationType ?? "");
+  const leftKey = left?.fieldSelector.fieldKey ?? "0:0";
+  const rightKey = right?.fieldSelector.fieldKey ?? "0:1";
+  const ownerFieldKey =
+    isTurnOnlyOperation(leftOperation) && isTiltTurnOperation(rightOperation)
+      ? leftKey
+      : isTiltTurnOperation(leftOperation) && isTurnOnlyOperation(rightOperation)
+        ? rightKey
+        : null;
+  const divisions = (source.dev?.b92SegmentResolverDivisions ?? []).filter(
+    (division) => !(division.axis === "vertical" && division.index === 1 && (division.row === undefined || division.row === null || division.row === 0))
+  );
+
+  return {
+    ...source,
+    dev: {
+      ...source.dev,
+      b92SegmentResolverDivisions: ownerFieldKey
+        ? [
+            ...divisions,
+            {
+              axis: "vertical",
+              index: 1,
+              row: 0,
+              type: "flying",
+              ownerFieldKey,
+            },
+          ]
+        : divisions,
+    },
+  };
 }
 
 function resolvedProfile(profileId: "B92-1" | "B92-2" | "B92-3" | "B92-7" | "B92-8" | "B92-9" | "B92-10") {
@@ -1187,7 +1243,7 @@ function WindowTypeTechnicalPreview(props: {
       };
     }
     try {
-      const dimensions = { widthMm: 1000, heightMm: 1000 };
+      const dimensions = generatedPreviewDimensionsMm(activeSourceModel);
       const contract = buildWindowTypeRenderModelFromSource(activeSourceModel, dimensions);
       const fieldType = contract.fields[0]?.type;
       const operation = activeSourceModel.fieldRules[0]?.operation ?? activeSourceModel.fieldRules[0]?.operationType;
@@ -1379,7 +1435,7 @@ function WindowTypeTechnicalPreview(props: {
             maxHeight={300}
             maxWidth={640}
             aspectRatio="16 / 9"
-            fitPadding={{ x: 48, y: 34 }}
+            fitPadding={{ x: 12, y: 12 }}
             onViewportStateChange={setViewportState}
             overlay={
               <>
