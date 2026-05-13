@@ -616,6 +616,7 @@ function buildB92VerticalJunctionShapes(input: {
   showJunctionVisualPilotMarker: boolean;
 }): DrawingShape[] {
   const profileId = String(input.layout.junction.profile.profileId);
+  // Flying mullions are layer-2 sash-meeting assemblies, not layer-1 static junction rectangles.
   const blockedFlyingAssembly = b92BlockedInternalFlyingAssembly(input.layout.junction);
   if (blockedFlyingAssembly) return [];
   const common = {
