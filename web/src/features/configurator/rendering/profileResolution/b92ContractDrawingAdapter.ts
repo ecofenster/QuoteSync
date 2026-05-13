@@ -4,6 +4,7 @@ import type {
   DrawingLabel,
   DrawingLine,
   DrawingMarker,
+  DrawingPolygon,
   DrawingModel,
   DrawingRect,
   DrawingShape,
@@ -34,6 +35,7 @@ import {
 } from "./b92ProjectionValidation";
 import { buildB92ProjectionRendererLikeDiagnosticModel } from "./b92ProjectionRendererLikeAdapter";
 import { buildB92FixedNoSashProjectionPilotDrawingModel } from "./b92FixedNoSashProjectionDrawingPilot";
+import { buildB92FixedFixedEvidenceLineworkPilotDrawingModel } from "./b92FixedFixedEvidenceLineworkPilot";
 import { withB92FixedNoSashProjectionParityDiagnostics } from "./b92FixedNoSashProjectionParity";
 import type { B92ProjectedDrawableRegionCategory } from "./b92DatumProjection.types";
 
@@ -49,9 +51,9 @@ const B92_FIXED_INTERNAL_FRAME_MM = {
 };
 
 const B92_FIXED_NO_SASH_DATUM_RENDERER_FRAME_MM = {
-  top: 37.5,
-  left: 37.5,
-  right: 37.5,
+  top: 57,
+  left: 57,
+  right: 57,
   bottom: 72,
 };
 
@@ -65,6 +67,20 @@ const REQUIRED_B92_FIXED_INTERNAL_PROFILES = {
 const B92_SASH_FACE_MM = 57;
 const B92_BEAD_FACE_MM = 21;
 const B92_SASH_OVERLAP_MM = 19.5;
+
+const B92_FIXED_NO_SASH_BEAD_FACE_MM = {
+  top: 21,
+  left: 21,
+  right: 21,
+  bottom: 21,
+} as const;
+
+const B92_FIXED_FIXED_B92_11_JUNCTION_STACK_MM = {
+  total: 78,
+  leftBead: 21,
+  core: 36,
+  rightBead: 21,
+} as const;
 
 type B92DatumFixedNoSashRendererPromotionDevFlags = WindowTypeRenderModel["meta"]["dev"] & {
   b92UseDatumFixedNoSashRenderer?: boolean | null;
@@ -175,6 +191,13 @@ function getFrameRect(widthMm: number, heightMm: number) {
 function rect(input: Omit<DrawingRect, "kind">): DrawingRect {
   return {
     kind: "rect",
+    ...input,
+  };
+}
+
+function polygon(input: Omit<DrawingPolygon, "kind">): DrawingPolygon {
+  return {
+    kind: "polygon",
     ...input,
   };
 }
@@ -311,12 +334,18 @@ function shouldUseSashOverlapGeometry(contract: WindowTypeRenderModel) {
   return contract.meta.dev?.b92UseSashOverlapGeometry === true;
 }
 
+function shouldUseJunctionGeometryVisualPilot(contract: WindowTypeRenderModel) {
+  return contract.meta.dev?.b92UseJunctionGeometryVisualPilot === true;
+}
+
 function buildSegmentedSillOverlayShapes(
   contract: WindowTypeRenderModel,
   frame: { x: number; y: number; width: number; height: number },
-  scale: number
+  scale: number,
+  options?: { continuousFixedNoSashSill?: boolean }
 ): DrawingShape[] {
   if (!shouldRenderSegmentedSillOverlay(contract)) return [];
+  if (options?.continuousFixedNoSashSill) return [];
   if (!contract.sillSegments || contract.sillSegments.length === 0) return [];
 
   const fieldsByColumn = new Map(contract.fields.map((field) => [field.column, field]));
@@ -453,6 +482,149 @@ function buildFieldHandle(
   };
 }
 
+function buildFixedNoSashNestedFieldGeometry(input: {
+  fieldId: string;
+  bounds: { x: number; y: number; width: number; height: number };
+  scale: number;
+}): { beadShapes: DrawingShape[]; glassShape: DrawingRect; glassBounds: { x: number; y: number; width: number; height: number } } {
+  const bead = {
+    top: B92_FIXED_NO_SASH_BEAD_FACE_MM.top * input.scale,
+    left: B92_FIXED_NO_SASH_BEAD_FACE_MM.left * input.scale,
+    right: B92_FIXED_NO_SASH_BEAD_FACE_MM.right * input.scale,
+    bottom: B92_FIXED_NO_SASH_BEAD_FACE_MM.bottom * input.scale,
+  };
+  const outer = {
+    left: input.bounds.x,
+    top: input.bounds.y,
+    right: input.bounds.x + input.bounds.width,
+    bottom: input.bounds.y + input.bounds.height,
+  };
+  const glassBounds = {
+    x: outer.left + bead.left,
+    y: outer.top + bead.top,
+    width: input.bounds.width - bead.left - bead.right,
+    height: input.bounds.height - bead.top - bead.bottom,
+  };
+  assertCondition(glassBounds.width > 0 && glassBounds.height > 0, `fixed field ${input.fieldId} leaves no visible glass area.`);
+
+  const glassRight = glassBounds.x + glassBounds.width;
+  const glassBottom = glassBounds.y + glassBounds.height;
+  const beadShapes: DrawingShape[] = [
+    polygon({
+      points: [
+        { x: outer.left, y: outer.top },
+        { x: outer.right, y: outer.top },
+        { x: glassRight, y: glassBounds.y },
+        { x: glassBounds.x, y: glassBounds.y },
+      ],
+      stroke: "#111",
+      strokeWidth: 1,
+      fill: "#f4f4f5",
+      role: `b92_fixed_no_sash_glazing_bead_top_${input.fieldId}`,
+    }),
+    polygon({
+      points: [
+        { x: outer.right, y: outer.top },
+        { x: outer.right, y: outer.bottom },
+        { x: glassRight, y: glassBottom },
+        { x: glassRight, y: glassBounds.y },
+      ],
+      stroke: "#111",
+      strokeWidth: 1,
+      fill: "#f4f4f5",
+      role: `b92_fixed_no_sash_glazing_bead_right_${input.fieldId}`,
+    }),
+    polygon({
+      points: [
+        { x: outer.right, y: outer.bottom },
+        { x: outer.left, y: outer.bottom },
+        { x: glassBounds.x, y: glassBottom },
+        { x: glassRight, y: glassBottom },
+      ],
+      stroke: "#111",
+      strokeWidth: 1,
+      fill: "#f4f4f5",
+      role: `b92_fixed_no_sash_glazing_bead_bottom_${input.fieldId}`,
+    }),
+    polygon({
+      points: [
+        { x: outer.left, y: outer.bottom },
+        { x: outer.left, y: outer.top },
+        { x: glassBounds.x, y: glassBounds.y },
+        { x: glassBounds.x, y: glassBottom },
+      ],
+      stroke: "#111",
+      strokeWidth: 1,
+      fill: "#f4f4f5",
+      role: `b92_fixed_no_sash_glazing_bead_left_${input.fieldId}`,
+    }),
+  ];
+  return {
+    beadShapes,
+    glassBounds,
+    glassShape: rect({
+      x: glassBounds.x,
+      y: glassBounds.y,
+      width: glassBounds.width,
+      height: glassBounds.height,
+      stroke: "#111",
+      strokeWidth: 1,
+      fill: "#b9d7f3",
+      role: `b92_fixed_internal_visible_glass_${input.fieldId}`,
+    }),
+  };
+}
+
+type B92FixedFixedJunctionLayout = {
+  junction: WindowTypeRenderModel["verticalJunctions"][number];
+  x: number;
+  y: number;
+  height: number;
+  scale: number;
+  stack: typeof B92_FIXED_FIXED_B92_11_JUNCTION_STACK_MM | null;
+};
+
+function b92FixedFixedJunctionStack(profileId: string) {
+  if (profileId !== "B92-11") return null;
+  return B92_FIXED_FIXED_B92_11_JUNCTION_STACK_MM;
+}
+
+function buildB92VerticalJunctionShapes(input: {
+  layout: B92FixedFixedJunctionLayout;
+  width: number;
+  showJunctionVisualPilotMarker: boolean;
+}): DrawingShape[] {
+  const profileId = String(input.layout.junction.profile.profileId);
+  const common = {
+    y: input.layout.y,
+    height: input.layout.height,
+    stroke: input.showJunctionVisualPilotMarker ? "#dc2626" : "#111",
+    strokeWidth: input.showJunctionVisualPilotMarker ? 2.6 : 1,
+    fill: input.showJunctionVisualPilotMarker ? "rgba(254, 226, 226, 0.9)" : "#f4f4f5",
+  };
+
+  if (!input.layout.stack) {
+    return [
+      rect({
+        ...common,
+        x: input.layout.x,
+        width: input.width,
+        role: `vertical_junction_${profileId}`,
+      }),
+    ];
+  }
+
+  const stack = input.layout.stack;
+  return [
+    rect({
+      ...common,
+      x: input.layout.x + stack.leftBead * input.layout.scale,
+      width: stack.core * input.layout.scale,
+      role: `vertical_junction_${profileId}_structural_core`,
+    }),
+  ];
+}
+
 function datumFixedNoSashRendererPromotionEnabled(contract: WindowTypeRenderModel): boolean {
   const dev = contract.meta.dev as B92DatumFixedNoSashRendererPromotionDevFlags | undefined;
   return dev?.b92UseDatumFixedNoSashRenderer === true;
@@ -522,8 +694,8 @@ function buildB92DatumFixedNoSashRendererPromotionReport(input: {
       "finite positive overall dimensions",
     ],
     reasons: input.promotion.reasons,
-    confirmedVisibleFrameMm: B92_FIXED_NO_SASH_DATUM_RENDERER_FRAME_MM,
-    legacyVisibleFrameMm: B92_FIXED_INTERNAL_FRAME_MM,
+    confirmedStructuralFrameDatumMm: B92_FIXED_NO_SASH_DATUM_RENDERER_FRAME_MM,
+    legacyFixedInternalFrameMm: B92_FIXED_INTERNAL_FRAME_MM,
     pilotProjectionReport: pilotReport,
     note: input.usedAsDrawingModel
       ? "Explicit dev-gated datum renderer promotion used confirmed fixed no-sash datum projection as drawing output."
@@ -584,7 +756,7 @@ function buildB92DatumProjectionDiagnostics(contract: WindowTypeRenderModel) {
           "daylight_opening",
           "glass_order",
         ]
-      : ["visible_frame_face", "daylight_opening", "glass_order"];
+      : ["structural_frame_datum", "daylight_opening", "glass_order"];
 
     return {
       field,
@@ -599,6 +771,16 @@ function buildB92DatumProjectionDiagnostics(contract: WindowTypeRenderModel) {
     visualGeometryChanged: false,
     note:
       "Read-only B92 datum projection diagnostics. Projection output is metadata only and must not replace renderer geometry.",
+    geometrySemantics: {
+      structuralFrame:
+        "B92 structural outer frame remains the source datum. Head and sill own full spans; jambs continue structurally between head and sill.",
+      exposedFrame:
+        "37.5mm is a sash/opening exposed-frame result after sash overlap. It is not the fixed no-sash frame datum.",
+      sashOverlap:
+        "Sash/opening conditions retain the 57mm structural frame and expose 37.5mm top/side plus 52.5mm bottom where confirmed.",
+      glazingBeadMitres:
+        "B92 glazing bead diagnostics use continuous bead segments with 45 degree mitred corner joins; bead geometry must not be read as square-ended overlapping rectangles.",
+    },
     sectionAuthorityProjection: {
       diagnosticOnly: true,
       drawableGeometry: false,
@@ -636,6 +818,11 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
   const field = assertB92FixedInternalContract(contract);
   const widthMm = contract.overall.widthMm;
   const heightMm = contract.overall.heightMm;
+  const fixedFixedEvidenceLineworkPilot = buildB92FixedFixedEvidenceLineworkPilotDrawingModel(contract);
+  if (fixedFixedEvidenceLineworkPilot) {
+    return fixedFixedEvidenceLineworkPilot;
+  }
+
   const datumRendererPromotion = buildB92DatumFixedNoSashRendererPromotion(contract);
   const fixedNoSashProjectionPilot = buildB92FixedNoSashProjectionPilotDrawingModel(contract);
 
@@ -654,6 +841,8 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
 
   const columnIndexes = Array.from(new Set(contract.fields.map((item) => item.column))).sort((a, b) => a - b);
   const rowIndexes = Array.from(new Set(contract.fields.map((item) => item.row))).sort((a, b) => a - b);
+  const allFieldsFixedNoSash = contract.fields.every((item) => item.type === "fixed" && !item.sash);
+  const visibleFrameMm = allFieldsFixedNoSash ? B92_FIXED_NO_SASH_DATUM_RENDERER_FRAME_MM : B92_FIXED_INTERNAL_FRAME_MM;
   const columnWidthsMm = columnIndexes.map((column) => {
     const fieldInColumn = contract.fields.find((item) => item.column === column);
     assertCondition(!!fieldInColumn, `column ${column} is missing a field.`);
@@ -691,13 +880,13 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
   );
   const clearWidthMm =
     widthMm -
-    B92_FIXED_INTERNAL_FRAME_MM.left -
-    B92_FIXED_INTERNAL_FRAME_MM.right -
+    visibleFrameMm.left -
+    visibleFrameMm.right -
     verticalJunctionWidthsMm.reduce((total, value) => total + value, 0);
   const clearHeightMm =
     heightMm -
-    B92_FIXED_INTERNAL_FRAME_MM.top -
-    B92_FIXED_INTERNAL_FRAME_MM.bottom -
+    visibleFrameMm.top -
+    visibleFrameMm.bottom -
     horizontalJunctionHeightsMm.reduce((total, value) => total + value, 0);
   assertCondition(
     clearWidthMm > 0 && clearHeightMm > 0,
@@ -722,7 +911,7 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
       x: frame.x,
       y: frame.y,
       width: frame.width,
-      height: B92_FIXED_INTERNAL_FRAME_MM.top * scale,
+      height: visibleFrameMm.top * scale,
       stroke: "#111",
       strokeWidth: 1.2,
       fill: "#f4f4f5",
@@ -730,19 +919,19 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
     }),
     rect({
       x: frame.x,
-      y: frame.y + B92_FIXED_INTERNAL_FRAME_MM.top * scale,
-      width: B92_FIXED_INTERNAL_FRAME_MM.left * scale,
-      height: (heightMm - B92_FIXED_INTERNAL_FRAME_MM.top - B92_FIXED_INTERNAL_FRAME_MM.bottom) * scale,
+      y: frame.y + visibleFrameMm.top * scale,
+      width: visibleFrameMm.left * scale,
+      height: (heightMm - visibleFrameMm.top - visibleFrameMm.bottom) * scale,
       stroke: "#111",
       strokeWidth: 1.2,
       fill: "#f4f4f5",
       role: "b92_fixed_internal_frame_left",
     }),
     rect({
-      x: frame.x + frame.width - B92_FIXED_INTERNAL_FRAME_MM.right * scale,
-      y: frame.y + B92_FIXED_INTERNAL_FRAME_MM.top * scale,
-      width: B92_FIXED_INTERNAL_FRAME_MM.right * scale,
-      height: (heightMm - B92_FIXED_INTERNAL_FRAME_MM.top - B92_FIXED_INTERNAL_FRAME_MM.bottom) * scale,
+      x: frame.x + frame.width - visibleFrameMm.right * scale,
+      y: frame.y + visibleFrameMm.top * scale,
+      width: visibleFrameMm.right * scale,
+      height: (heightMm - visibleFrameMm.top - visibleFrameMm.bottom) * scale,
       stroke: "#111",
       strokeWidth: 1.2,
       fill: "#f4f4f5",
@@ -750,20 +939,22 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
     }),
     rect({
       x: frame.x,
-      y: frame.y + frame.height - B92_FIXED_INTERNAL_FRAME_MM.bottom * scale,
+      y: frame.y + frame.height - visibleFrameMm.bottom * scale,
       width: frame.width,
-      height: B92_FIXED_INTERNAL_FRAME_MM.bottom * scale,
+      height: visibleFrameMm.bottom * scale,
       stroke: "#111",
       strokeWidth: 1.2,
       fill: "#f4f4f5",
       role: "b92_fixed_internal_frame_bottom",
     }),
   ];
-  const segmentedSillOverlayShapes = buildSegmentedSillOverlayShapes(contract, frame, scale);
+  const segmentedSillOverlayShapes = buildSegmentedSillOverlayShapes(contract, frame, scale, {
+    continuousFixedNoSashSill: allFieldsFixedNoSash,
+  });
   frameShapes.push(...segmentedSillOverlayShapes);
 
   const columnBounds = new Map<number, { x: number; width: number }>();
-  let xCursor = frame.x + B92_FIXED_INTERNAL_FRAME_MM.left * scale;
+  let xCursor = frame.x + visibleFrameMm.left * scale;
   for (let index = 0; index < columnIndexes.length; index += 1) {
     const width = normalizedColumnWidthsMm[index] * scale;
     columnBounds.set(columnIndexes[index], { x: xCursor, width });
@@ -772,7 +963,7 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
   }
 
   const rowBounds = new Map<number, { y: number; height: number }>();
-  let yCursor = frame.y + B92_FIXED_INTERNAL_FRAME_MM.top * scale;
+  let yCursor = frame.y + visibleFrameMm.top * scale;
   for (let index = 0; index < rowIndexes.length; index += 1) {
     const height = normalizedRowHeightsMm[index] * scale;
     rowBounds.set(rowIndexes[index], { y: yCursor, height });
@@ -781,30 +972,56 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
   }
 
   const junctionShapes: DrawingShape[] = [];
-  xCursor = frame.x + B92_FIXED_INTERNAL_FRAME_MM.left * scale + normalizedColumnWidthsMm[0] * scale;
+  const junctionLabels: DrawingLabel[] = [];
+  const showJunctionVisualPilotMarker = shouldUseJunctionGeometryVisualPilot(contract);
+  const verticalJunctionLayouts: B92FixedFixedJunctionLayout[] = [];
+  const rightJunctionByFieldId = new Map<string, B92FixedFixedJunctionLayout>();
+  const leftJunctionByFieldId = new Map<string, B92FixedFixedJunctionLayout>();
+  xCursor = frame.x + visibleFrameMm.left * scale + normalizedColumnWidthsMm[0] * scale;
   for (let index = 0; index < verticalJunctionWidthsMm.length; index += 1) {
     const width = verticalJunctionWidthsMm[index] * scale;
+    const junction = verticalJunctionsByColumn[index]?.[1];
+    assertCondition(!!junction, `vertical junction ${index} is missing contract metadata.`);
+    const profileId = String(junction.profile.profileId);
+    const layout: B92FixedFixedJunctionLayout = {
+      junction,
+      x: xCursor,
+      y: frame.y + visibleFrameMm.top * scale,
+      height: (heightMm - visibleFrameMm.top - visibleFrameMm.bottom) * scale,
+      scale,
+      stack: allFieldsFixedNoSash ? b92FixedFixedJunctionStack(profileId) : null,
+    };
+    verticalJunctionLayouts.push(layout);
+    rightJunctionByFieldId.set(junction.betweenFieldIds[0], layout);
+    leftJunctionByFieldId.set(junction.betweenFieldIds[1], layout);
     junctionShapes.push(
-      rect({
-        x: xCursor,
-        y: frame.y + B92_FIXED_INTERNAL_FRAME_MM.top * scale,
+      ...buildB92VerticalJunctionShapes({
+        layout,
         width,
-        height: (heightMm - B92_FIXED_INTERNAL_FRAME_MM.top - B92_FIXED_INTERNAL_FRAME_MM.bottom) * scale,
-        stroke: "#111",
-        strokeWidth: 1,
-        fill: "#f4f4f5",
-        role: `vertical_junction_${verticalJunctionsByColumn[index]?.[1].profile.profileId ?? "unknown"}`,
+        showJunctionVisualPilotMarker,
       })
     );
+    if (showJunctionVisualPilotMarker) {
+      junctionLabels.push({
+        x: xCursor + width / 2,
+        y: frame.y + visibleFrameMm.top * scale + 20,
+        value: String(profileId),
+        fontSize: 11,
+        fontWeight: 800,
+        fill: "#991b1b",
+        anchor: "middle",
+        role: "b92_junction_visual_pilot_label",
+      });
+    }
     xCursor += width + (normalizedColumnWidthsMm[index + 1] ?? 0) * scale;
   }
 
-  yCursor = frame.y + B92_FIXED_INTERNAL_FRAME_MM.top * scale + normalizedRowHeightsMm[0] * scale;
+  yCursor = frame.y + visibleFrameMm.top * scale + normalizedRowHeightsMm[0] * scale;
   for (let index = 0; index < horizontalJunctionHeightsMm.length; index += 1) {
     const height = horizontalJunctionHeightsMm[index] * scale;
     junctionShapes.push(
       rect({
-        x: frame.x + B92_FIXED_INTERNAL_FRAME_MM.left * scale,
+        x: frame.x + visibleFrameMm.left * scale,
         y: yCursor,
         width: clearWidthMm * scale,
         height,
@@ -819,7 +1036,7 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
 
   const sashShapes: DrawingShape[] = [];
   const glassShapes: DrawingShape[] = [];
-  const labels: DrawingLabel[] = [];
+  const labels: DrawingLabel[] = [...junctionLabels];
   const handles: DrawingHandle[] = [];
   const markers: DrawingMarker[] = [];
 
@@ -892,21 +1109,24 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
         role: "field_label",
       });
     } else {
-      glassShapes.push(
-        rect({
-          x: column.x,
+      const rightJunction = rightJunctionByFieldId.get(item.id);
+      const leftJunction = leftJunctionByFieldId.get(item.id);
+      const leftBeadInset = leftJunction?.stack ? leftJunction.stack.rightBead * scale : 0;
+      const rightBeadInset = rightJunction?.stack ? rightJunction.stack.leftBead * scale : 0;
+      const fixedGeometry = buildFixedNoSashNestedFieldGeometry({
+        fieldId: item.id,
+        bounds: {
+          x: column.x - leftBeadInset,
           y: row.y,
-          width: column.width,
+          width: column.width + leftBeadInset + rightBeadInset,
           height: row.height,
-          stroke: "#111",
-          strokeWidth: 1,
-          fill: "#b9d7f3",
-          role: `b92_fixed_internal_visible_glass_${item.id}`,
-        })
-      );
+        },
+        scale,
+      });
+      glassShapes.push(...fixedGeometry.beadShapes, fixedGeometry.glassShape);
       labels.push({
-        x: column.x + 8,
-        y: row.y + 16,
+        x: fixedGeometry.glassBounds.x + 8,
+        y: fixedGeometry.glassBounds.y + 16,
         value: "Fixed",
         fontSize: 9,
         fill: "#3f3f46",
@@ -925,8 +1145,8 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
   });
 
   const primaryVisibleGlassMm = {
-    x: B92_FIXED_INTERNAL_FRAME_MM.left,
-    y: B92_FIXED_INTERNAL_FRAME_MM.top,
+    x: visibleFrameMm.left,
+    y: visibleFrameMm.top,
     width: clearWidthMm,
     height: clearHeightMm,
   };
@@ -944,6 +1164,18 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
       y: row.y,
       width: column.width,
       height: row.height,
+    };
+  });
+  const interactionVerticalJunctions = verticalJunctionLayouts.map((layout, index) => {
+    const stack = layout.stack;
+    const x = stack
+      ? layout.x + (stack.leftBead + stack.core / 2) * layout.scale
+      : layout.x + (verticalJunctionWidthsMm[index] * layout.scale) / 2;
+    return {
+      index: index + 1,
+      x,
+      y1: layout.y,
+      y2: layout.y + layout.height,
     };
   });
   const legacyModelWithDiagnostics = withB92FixedNoSashProjectionParityDiagnostics({
@@ -987,7 +1219,7 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
             fieldId: field.id,
             validationMode: contract.meta.validationMode,
             requiredProfiles: REQUIRED_B92_FIXED_INTERNAL_PROFILES,
-            visibleFrameMm: B92_FIXED_INTERNAL_FRAME_MM,
+            visibleFrameMm,
             visibleGlassMm: primaryVisibleGlassMm,
             glassOrderNoteMm: glassOrderMm,
             fieldCount: contract.fields.length,
@@ -998,6 +1230,10 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
             sashOverlapGeometry: {
               enabled: shouldUseSashOverlapGeometry(contract),
               overlapMm: shouldUseSashOverlapGeometry(contract) ? B92_SASH_OVERLAP_MM : 0,
+            },
+            junctionGeometryVisualPilot: {
+              enabled: showJunctionVisualPilotMarker,
+              marker: showJunctionVisualPilotMarker ? "red centre-junction rect stroke and profile label" : "off",
             },
             ...(fixedNoSashProjectionPilot.eligibility.enabled
               ? {
@@ -1016,7 +1252,7 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
       },
       interaction: {
         cells: interactionCells,
-        verticalJunctions: [],
+        verticalJunctions: interactionVerticalJunctions,
         horizontalJunctions: [],
       },
     },

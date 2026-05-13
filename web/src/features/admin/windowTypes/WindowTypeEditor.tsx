@@ -1,9 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import QuoteSyncDrawingSvg from "../../configurator/rendering/QuoteSyncDrawingSvg";
+import type { DrawingModel, DrawingRect, DrawingShape } from "../../configurator/rendering/drawingModel";
+import DrawingViewport from "../../configurator/rendering/DrawingViewport";
+import type {
+  DrawingViewportHandle,
+  DrawingViewportState,
+} from "../../configurator/rendering/drawingViewport.types";
 import { buildB92FixedInternalDrawingModelFromContract } from "../../configurator/rendering/profileResolution/b92ContractDrawingAdapter";
 import { b92FixedInternalWindowTypeSourceSeed } from "../../configurator/rendering/profileResolution/b92FixedInternalWindowTypeSource.seed";
 import { buildB92FixedSashInternalDrawingModelFromContract } from "../../configurator/rendering/profileResolution/b92FixedSashInternalDrawingAdapter";
 import { b92FixedSashInternalWindowTypeSourceSeed } from "../../configurator/rendering/profileResolution/b92FixedSashInternalWindowTypeSource.seed";
+import { B92_PROFILE_RULE_REGISTER } from "../../configurator/rendering/profileResolution/b92ProfileRuleRegister";
 import { buildB92TiltTurnInternalDrawingModelFromContract } from "../../configurator/rendering/profileResolution/b92TiltTurnInternalDrawingAdapter";
 import { buildWindowTypeRenderModelFromSource } from "../../configurator/rendering/profileResolution/adminWindowTypeSourceAdapter";
 import {
@@ -11,6 +17,7 @@ import {
   compareCatalogSourceModelToB92FixedSeed,
   type CatalogSourceModelComparisonDifference,
 } from "../../configurator/rendering/profileResolution/catalogWindowTypeSourceAdapter";
+import type { WindowTypeRenderModel } from "../../configurator/rendering/profileResolution/windowTypeRenderContract";
 import type { ConfiguratorCatalogBootstrap } from "../configuratorCatalog.types";
 import type {
   WindowTypeSourceModel,
@@ -30,6 +37,24 @@ type Props = {
   fieldCountLabel: string;
   selectedDesign: WindowTypeDesignListItem | null;
   bootstrap: ConfiguratorCatalogBootstrap;
+  onRenderToolbarRegistration?: (registration: RenderWorkspaceToolbarRegistration | null) => void;
+};
+
+export type RenderWorkspaceToolbarRegistration = {
+  state: {
+    viewport: DrawingViewportState;
+    showDimensions: boolean;
+    showProfiles: boolean;
+  };
+  controls: {
+    fit: () => void;
+    setOneToOne: () => void;
+    zoomIn: () => void;
+    zoomOut: () => void;
+    togglePan: () => void;
+    toggleDimensions: () => void;
+    toggleProfiles: () => void;
+  };
 };
 
 type CatalogBridgePreviewReport = {
@@ -42,7 +67,7 @@ type CatalogBridgePreviewReport = {
 
 type PreviewSourceResult = {
   sourceModel: WindowTypeSourceModel | null;
-  sourceLabel: "Catalog" | "Seed fallback" | "";
+  sourceLabel: "Catalog" | "Seed fallback" | "Generated fixed grid" | "";
   previewTitle: string;
   previewDescription: string;
   catalogReport: CatalogBridgePreviewReport;
@@ -60,6 +85,106 @@ type RuntimeDimensionsMm = {
   heightMm: number;
 };
 
+type ProfileReferenceCallout = {
+  id: string;
+  x: number;
+  y: number;
+  profileId: string;
+  segmentType: string;
+  identity: string;
+  alternatives: string[];
+};
+
+type ProfileReferencePopupState = {
+  callout: ProfileReferenceCallout;
+  x: number;
+  y: number;
+} | null;
+
+type MeasurementLine = {
+  id: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  labelX: number;
+  labelY: number;
+  label: string;
+  color?: string;
+};
+
+type MeasurementDebugReport = {
+  overall: { widthMm: number; heightMm: number };
+  fields: Array<{
+    id: string;
+    row: number;
+    column: number;
+    widthMm: number;
+    heightMm: number;
+    bounds: { x: number; y: number; width: number; height: number } | null;
+    sashBounds: { x: number; y: number; width: number; height: number } | null;
+    glassBounds: { x: number; y: number; width: number; height: number } | null;
+  }>;
+  verticalJunctions: Array<{ id: string; profileId: string | null; betweenFieldIds: [string, string] }>;
+  horizontalJunctions: Array<{ id: string; profileId: string | null; betweenFieldIds: [string, string] }>;
+  sillSegments: Array<{ fieldId: string; column: number; profileId: string }>;
+};
+
+function supportsGeneratedB92FixedGridPreview(selectedDesign: WindowTypeDesignListItem | null) {
+  return (
+    !!selectedDesign?.layout &&
+    selectedDesign.id.startsWith("windows-") &&
+    selectedDesign.id !== "windows-1-timber-inward-opening" &&
+    !selectedDesign.id.includes("sash-case") &&
+    !selectedDesign.id.includes("outward-opening")
+  );
+}
+
+function buildGeneratedB92FixedGridSourceModel(selectedDesign: WindowTypeDesignListItem): WindowTypeSourceModel {
+  const layout = selectedDesign.layout;
+  if (!layout) throw new Error("Generated B92 fixed grid preview requires layout metadata.");
+  const templateRule = b92FixedInternalWindowTypeSourceSeed.fieldRules[0];
+
+  return {
+    ...cloneSourceModel(b92FixedInternalWindowTypeSourceSeed),
+    id: `generated:${selectedDesign.id}`,
+    layout: {
+      columns: layout.fieldsX,
+      rows: layout.fieldsY,
+    },
+    fieldRules: layout.fields.map((field) => ({
+      ...JSON.parse(JSON.stringify(templateRule)) as WindowTypeSourceModelFieldRule,
+      fieldSelector: {
+        row: field.row,
+        column: field.column,
+        fieldKey: field.key,
+      },
+      operationType: "fixed",
+      operation: "fixed",
+    })),
+    constraints: {
+      ...b92FixedInternalWindowTypeSourceSeed.constraints,
+      allowMultiField: true,
+    },
+    provenance: {
+      ...b92FixedInternalWindowTypeSourceSeed.provenance,
+      source: "manual",
+      sourceId: selectedDesign.id,
+      notes: [
+        ...(b92FixedInternalWindowTypeSourceSeed.provenance.notes ?? []),
+        "Generated from Admin Window Type design layout for technical preview only.",
+      ],
+    },
+    dev: {
+      b92UseSegmentResolver: true,
+      b92UseDiagnosticJunctionRegistryCorrections: true,
+      b92UseJunctionGeometryVisualPilot: false,
+      b92RenderSegmentedSillOverlay: false,
+      b92UseSashOverlapGeometry: true,
+    },
+  };
+}
+
 function resolvePreviewSourceModel(
   selectedDesign: WindowTypeDesignListItem | null,
   bootstrap: ConfiguratorCatalogBootstrap
@@ -73,6 +198,17 @@ function resolvePreviewSourceModel(
   };
 
   if (selectedDesign?.id !== "windows-1-timber-inward-opening") {
+    if (supportsGeneratedB92FixedGridPreview(selectedDesign)) {
+      const layout = selectedDesign.layout;
+      return {
+        sourceModel: buildGeneratedB92FixedGridSourceModel(selectedDesign),
+        sourceLabel: "Generated fixed grid",
+        previewTitle: `Technical Preview — B92 ${layout?.fieldsX ?? 1}x${layout?.fieldsY ?? 1} Fixed Grid 1000 x 1000`,
+        previewDescription:
+          "Dev-only generated B92 fixed grid source: inside view, fixed operation per field, segment resolver enabled.",
+        catalogReport: skippedReport,
+      };
+    }
     return {
       sourceModel: null,
       sourceLabel: "",
@@ -149,7 +285,7 @@ function resolvePreviewSourceModel(
     };
     if (!comparison.pass) {
       return {
-        sourceModel: b92FixedInternalWindowTypeSourceSeed,
+        sourceModel: withB92PreviewDevFlags(b92FixedInternalWindowTypeSourceSeed),
         sourceLabel: "Seed fallback",
         previewTitle: "Technical Preview — B92 1 Field Inward Opening 1000 x 1000",
         previewDescription: "Dev-only source-model chain: B92, inside view, 1x1, fixed, no sash, no multi-field.",
@@ -158,7 +294,7 @@ function resolvePreviewSourceModel(
     }
 
     return {
-      sourceModel,
+      sourceModel: withB92PreviewDevFlags(sourceModel),
       sourceLabel: "Catalog",
       previewTitle: "Technical Preview — B92 1 Field Inward Opening 1000 x 1000",
       previewDescription: "Dev-only source-model chain: B92, inside view, 1x1, fixed, no sash, no multi-field.",
@@ -166,7 +302,7 @@ function resolvePreviewSourceModel(
     };
   } catch (error) {
     return {
-      sourceModel: b92FixedInternalWindowTypeSourceSeed,
+      sourceModel: withB92PreviewDevFlags(b92FixedInternalWindowTypeSourceSeed),
       sourceLabel: "Seed fallback",
       previewTitle: "Technical Preview — B92 1 Field Inward Opening 1000 x 1000",
       previewDescription: "Dev-only source-model chain: B92, inside view, 1x1, fixed, no sash, no multi-field.",
@@ -188,6 +324,16 @@ function formatReportValue(value: unknown) {
 
 function cloneSourceModel(source: WindowTypeSourceModel): WindowTypeSourceModel {
   return JSON.parse(JSON.stringify(source)) as WindowTypeSourceModel;
+}
+
+function withB92PreviewDevFlags(source: WindowTypeSourceModel): WindowTypeSourceModel {
+  return {
+    ...cloneSourceModel(source),
+    dev: {
+      ...source.dev,
+      b92UseSashOverlapGeometry: true,
+    },
+  };
 }
 
 function operationTypeForOperation(operation: WindowTypeSourceModelFieldOperation): WindowTypeSourceModelOperationType {
@@ -337,19 +483,656 @@ function buildB92TiltTurnPreviewContractFromSource(
   };
 }
 
+function clampCalloutPosition(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function getCellCenter(cell: { x: number; y: number; width: number; height: number }) {
+  return {
+    x: cell.x + cell.width / 2,
+    y: cell.y + cell.height / 2,
+  };
+}
+
+function getProfileAlternatives(profileId: string, segmentType: string, edge?: "top" | "bottom" | "left" | "right") {
+  const current = B92_PROFILE_RULE_REGISTER.profiles[profileId as keyof typeof B92_PROFILE_RULE_REGISTER.profiles];
+  if (!current) return [];
+
+  return Object.values(B92_PROFILE_RULE_REGISTER.profiles)
+    .filter((profile) => {
+      if (profile.id === profileId) return false;
+      if (segmentType === "vertical mullion") return profile.kinds.includes("vertical_mullion");
+      if (segmentType === "horizontal transom") return profile.kinds.includes("horizontal_transom");
+      if (segmentType === "sill" || segmentType === "bottom") return profile.kinds.includes("sill");
+      if (segmentType === "top" || segmentType === "left" || segmentType === "right") {
+        return profile.kinds.includes("outer_frame") && (!edge || profile.orientations?.includes(edge));
+      }
+      return false;
+    })
+    .map((profile) => profile.id);
+}
+
+function buildProfileReferenceCallouts(
+  contract: WindowTypeRenderModel,
+  model: DrawingModel,
+  disabledCallouts: Set<string>
+): ProfileReferenceCallout[] {
+  const cellsByFieldId = new Map(model.interaction.cells.map((cell) => [cell.key, cell]));
+  const callouts: ProfileReferenceCallout[] = [];
+
+  function pushCallout(input: Omit<ProfileReferenceCallout, "alternatives"> & { edge?: "top" | "bottom" | "left" | "right" }) {
+    if (disabledCallouts.has(input.id)) return;
+    callouts.push({
+      id: input.id,
+      x: clampCalloutPosition(input.x, 18, model.viewBox.width - 18),
+      y: clampCalloutPosition(input.y, 18, model.viewBox.height - 18),
+      profileId: input.profileId,
+      segmentType: input.segmentType,
+      identity: input.identity,
+      alternatives: getProfileAlternatives(input.profileId, input.segmentType, input.edge),
+    });
+  }
+
+  const outerEdgeSegments = contract.outerEdgeSegments ?? [];
+  if (outerEdgeSegments.length > 0) {
+    for (const segment of outerEdgeSegments) {
+      const cell = cellsByFieldId.get(segment.fieldId);
+      if (!cell || !segment.profile.profileId) continue;
+      const center = getCellCenter(cell);
+      const id = `outer-${segment.edge}-${segment.segmentIndex}-${segment.fieldId}`;
+      if (segment.edge === "top") {
+        pushCallout({
+          id,
+          x: center.x,
+          y: cell.y - 24,
+          profileId: segment.profile.profileId,
+          segmentType: "top",
+          identity: `field ${segment.fieldId}, segment ${segment.segmentIndex}`,
+          edge: "top",
+        });
+      } else if (segment.edge === "left") {
+        pushCallout({
+          id,
+          x: cell.x - 24,
+          y: center.y,
+          profileId: segment.profile.profileId,
+          segmentType: "left",
+          identity: `field ${segment.fieldId}, segment ${segment.segmentIndex}`,
+          edge: "left",
+        });
+      } else if (segment.edge === "right") {
+        pushCallout({
+          id,
+          x: cell.x + cell.width + 24,
+          y: center.y,
+          profileId: segment.profile.profileId,
+          segmentType: "right",
+          identity: `field ${segment.fieldId}, segment ${segment.segmentIndex}`,
+          edge: "right",
+        });
+      } else if (!contract.sillSegments || contract.sillSegments.length === 0) {
+        pushCallout({
+          id,
+          x: center.x,
+          y: cell.y + cell.height + 24,
+          profileId: segment.profile.profileId,
+          segmentType: "bottom",
+          identity: `field ${segment.fieldId}, segment ${segment.segmentIndex}`,
+          edge: "bottom",
+        });
+      }
+    }
+  } else {
+    const minRow = Math.min(...contract.fields.map((field) => field.row));
+    const maxRow = Math.max(...contract.fields.map((field) => field.row));
+    const minColumn = Math.min(...contract.fields.map((field) => field.column));
+    const maxColumn = Math.max(...contract.fields.map((field) => field.column));
+
+    for (const field of contract.fields) {
+      const cell = cellsByFieldId.get(field.id);
+      if (!cell) continue;
+      const center = getCellCenter(cell);
+      if (field.row === minRow && field.perimeter.top.profileId) {
+        pushCallout({
+          id: `perimeter-top-${field.id}`,
+          x: center.x,
+          y: cell.y - 24,
+          profileId: field.perimeter.top.profileId,
+          segmentType: "top",
+          identity: `field ${field.id}`,
+          edge: "top",
+        });
+      }
+      if (field.column === minColumn && field.perimeter.left.profileId) {
+        pushCallout({
+          id: `perimeter-left-${field.id}`,
+          x: cell.x - 24,
+          y: center.y,
+          profileId: field.perimeter.left.profileId,
+          segmentType: "left",
+          identity: `field ${field.id}`,
+          edge: "left",
+        });
+      }
+      if (field.column === maxColumn && field.perimeter.right.profileId) {
+        pushCallout({
+          id: `perimeter-right-${field.id}`,
+          x: cell.x + cell.width + 24,
+          y: center.y,
+          profileId: field.perimeter.right.profileId,
+          segmentType: "right",
+          identity: `field ${field.id}`,
+          edge: "right",
+        });
+      }
+      if (field.row === maxRow && field.perimeter.bottom.profileId) {
+        pushCallout({
+          id: `perimeter-bottom-${field.id}`,
+          x: center.x,
+          y: cell.y + cell.height + 24,
+          profileId: field.perimeter.bottom.profileId,
+          segmentType: "bottom",
+          identity: `field ${field.id}`,
+          edge: "bottom",
+        });
+      }
+    }
+  }
+
+  for (const segment of contract.sillSegments ?? []) {
+    const cell = cellsByFieldId.get(segment.fieldId);
+    if (!cell || !segment.profile.profileId) continue;
+    pushCallout({
+      id: `sill-${segment.segmentIndex}-${segment.fieldId}`,
+      x: cell.x + cell.width / 2,
+      y: cell.y + cell.height + 24,
+      profileId: segment.profile.profileId,
+      segmentType: "sill",
+      identity: `field ${segment.fieldId}, column ${segment.column}`,
+      edge: "bottom",
+    });
+  }
+
+  for (const junction of contract.verticalJunctions) {
+    const leftCell = cellsByFieldId.get(junction.betweenFieldIds[0]);
+    const rightCell = cellsByFieldId.get(junction.betweenFieldIds[1]);
+    if (!leftCell || !rightCell || !junction.profile.profileId) continue;
+    pushCallout({
+      id: `vertical-${junction.id}`,
+      x: (leftCell.x + leftCell.width + rightCell.x) / 2,
+      y: (getCellCenter(leftCell).y + getCellCenter(rightCell).y) / 2,
+      profileId: String(junction.profile.profileId),
+      segmentType: "vertical mullion",
+      identity: junction.betweenFieldIds.join(" / "),
+    });
+  }
+
+  for (const junction of contract.horizontalJunctions) {
+    const topCell = cellsByFieldId.get(junction.betweenFieldIds[0]);
+    const bottomCell = cellsByFieldId.get(junction.betweenFieldIds[1]);
+    if (!topCell || !bottomCell || !junction.profile.profileId) continue;
+    pushCallout({
+      id: `horizontal-${junction.id}`,
+      x: (getCellCenter(topCell).x + getCellCenter(bottomCell).x) / 2,
+      y: (topCell.y + topCell.height + bottomCell.y) / 2,
+      profileId: String(junction.profile.profileId),
+      segmentType: "horizontal transom",
+      identity: junction.betweenFieldIds.join(" / "),
+    });
+  }
+
+  return callouts;
+}
+
+function ProfileReferenceOverlay(props: {
+  model: DrawingModel;
+  callouts: ProfileReferenceCallout[];
+  onOpenCallout: (callout: ProfileReferenceCallout, event: React.MouseEvent<SVGGElement>) => void;
+}) {
+  const { model, callouts, onOpenCallout } = props;
+  return (
+    <svg
+      viewBox={`0 0 ${model.viewBox.width} ${model.viewBox.height}`}
+      width="100%"
+      height="100%"
+      style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
+      aria-hidden={callouts.length === 0}
+    >
+      {callouts.map((callout) => (
+        <g
+          key={callout.id}
+          style={{ pointerEvents: "auto", cursor: "pointer" }}
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpenCallout(callout, event);
+          }}
+        >
+          <circle cx={callout.x} cy={callout.y} r={15} fill="#fff7ed" stroke="#c2410c" strokeWidth={1.2} />
+          <text x={callout.x} y={callout.y + 3.5} textAnchor="middle" fontSize={8.5} fontWeight={700} fill="#7c2d12">
+            {callout.profileId}
+          </text>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+function isRectShape(shape: DrawingShape): shape is DrawingRect {
+  return shape.kind === "rect";
+}
+
+function shapeRoleIncludes(fieldId: string, needle: string) {
+  return (shape: DrawingShape) => Boolean(shape.role?.includes(fieldId) && shape.role.includes(needle));
+}
+
+function findRectShape(shapes: DrawingShape[], predicate: (shape: DrawingShape) => boolean) {
+  return shapes.find((shape): shape is DrawingRect => isRectShape(shape) && predicate(shape)) ?? null;
+}
+
+function getShapeBounds(shapes: DrawingShape[]) {
+  const points = shapes.flatMap((shape) => {
+    if (shape.kind === "rect") {
+      return [
+        { x: shape.x, y: shape.y },
+        { x: shape.x + shape.width, y: shape.y + shape.height },
+      ];
+    }
+    if (shape.kind === "line") {
+      return [
+        { x: shape.x1, y: shape.y1 },
+        { x: shape.x2, y: shape.y2 },
+      ];
+    }
+    return shape.points;
+  });
+  if (points.length === 0) return null;
+  const minX = Math.min(...points.map((point) => point.x));
+  const minY = Math.min(...points.map((point) => point.y));
+  const maxX = Math.max(...points.map((point) => point.x));
+  const maxY = Math.max(...points.map((point) => point.y));
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+function formatMm(value: number) {
+  if (!Number.isFinite(value)) return "n/a";
+  return `${Number.isInteger(value) ? value : value.toFixed(1)}mm`;
+}
+
+function measurementLine(input: MeasurementLine): MeasurementLine {
+  return input;
+}
+
+function buildMeasurementDebugData(contract: WindowTypeRenderModel, model: DrawingModel) {
+  const allShapes = model.elements.flatMap((element) => element.shapes);
+  const frameBounds = getShapeBounds(model.geometry.frame);
+  const scale = frameBounds && model.width > 0 ? frameBounds.width / model.width : 1;
+  const cellsByFieldId = new Map(model.interaction.cells.map((cell) => [cell.key, cell]));
+  const lines: MeasurementLine[] = [];
+
+  if (frameBounds) {
+    lines.push(
+      measurementLine({
+        id: "overall-width",
+        x1: frameBounds.x,
+        y1: frameBounds.y - 38,
+        x2: frameBounds.x + frameBounds.width,
+        y2: frameBounds.y - 38,
+        labelX: frameBounds.x + frameBounds.width / 2,
+        labelY: frameBounds.y - 43,
+        label: `overall ${formatMm(contract.overall.widthMm)}`,
+      }),
+      measurementLine({
+        id: "overall-height",
+        x1: frameBounds.x - 38,
+        y1: frameBounds.y,
+        x2: frameBounds.x - 38,
+        y2: frameBounds.y + frameBounds.height,
+        labelX: frameBounds.x - 43,
+        labelY: frameBounds.y + frameBounds.height / 2,
+        label: `overall ${formatMm(contract.overall.heightMm)}`,
+      })
+    );
+  }
+
+  const topFrame = findRectShape(model.geometry.frame, (shape) => shape.role?.includes("frame_top") === true);
+  const leftFrame = findRectShape(model.geometry.frame, (shape) => shape.role?.includes("frame_left") === true);
+  const rightFrame = findRectShape(model.geometry.frame, (shape) => shape.role?.includes("frame_right") === true);
+  const bottomFrame = findRectShape(model.geometry.frame, (shape) => shape.role?.includes("frame_bottom") === true);
+
+  if (topFrame) {
+    lines.push(measurementLine({
+      id: "top-frame-depth",
+      x1: topFrame.x + topFrame.width * 0.18,
+      y1: topFrame.y,
+      x2: topFrame.x + topFrame.width * 0.18,
+      y2: topFrame.y + topFrame.height,
+      labelX: topFrame.x + topFrame.width * 0.18 + 6,
+      labelY: topFrame.y + topFrame.height / 2,
+      label: `top ${formatMm(topFrame.height / scale)}`,
+      color: "#7c3aed",
+    }));
+  }
+  if (leftFrame) {
+    lines.push(measurementLine({
+      id: "left-frame-depth",
+      x1: leftFrame.x,
+      y1: leftFrame.y + leftFrame.height * 0.25,
+      x2: leftFrame.x + leftFrame.width,
+      y2: leftFrame.y + leftFrame.height * 0.25,
+      labelX: leftFrame.x + leftFrame.width / 2,
+      labelY: leftFrame.y + leftFrame.height * 0.25 - 6,
+      label: `left ${formatMm(leftFrame.width / scale)}`,
+      color: "#7c3aed",
+    }));
+  }
+  if (rightFrame) {
+    lines.push(measurementLine({
+      id: "right-frame-depth",
+      x1: rightFrame.x,
+      y1: rightFrame.y + rightFrame.height * 0.25,
+      x2: rightFrame.x + rightFrame.width,
+      y2: rightFrame.y + rightFrame.height * 0.25,
+      labelX: rightFrame.x + rightFrame.width / 2,
+      labelY: rightFrame.y + rightFrame.height * 0.25 - 6,
+      label: `right ${formatMm(rightFrame.width / scale)}`,
+      color: "#7c3aed",
+    }));
+  }
+  if (bottomFrame) {
+    lines.push(measurementLine({
+      id: "bottom-frame-depth",
+      x1: bottomFrame.x + bottomFrame.width * 0.18,
+      y1: bottomFrame.y,
+      x2: bottomFrame.x + bottomFrame.width * 0.18,
+      y2: bottomFrame.y + bottomFrame.height,
+      labelX: bottomFrame.x + bottomFrame.width * 0.18 + 6,
+      labelY: bottomFrame.y + bottomFrame.height / 2,
+      label: `bottom ${formatMm(bottomFrame.height / scale)}`,
+      color: "#7c3aed",
+    }));
+  }
+
+  const debugReport: MeasurementDebugReport = {
+    overall: { widthMm: contract.overall.widthMm, heightMm: contract.overall.heightMm },
+    fields: [],
+    verticalJunctions: contract.verticalJunctions.map((junction) => ({
+      id: junction.id,
+      profileId: junction.profile.profileId,
+      betweenFieldIds: junction.betweenFieldIds,
+    })),
+    horizontalJunctions: contract.horizontalJunctions.map((junction) => ({
+      id: junction.id,
+      profileId: junction.profile.profileId,
+      betweenFieldIds: junction.betweenFieldIds,
+    })),
+    sillSegments: (contract.sillSegments ?? []).map((segment) => ({
+      fieldId: segment.fieldId,
+      column: segment.column,
+      profileId: segment.profile.profileId,
+    })),
+  };
+
+  for (const field of contract.fields) {
+    const cell = cellsByFieldId.get(field.id) ?? null;
+    const center = cell ? getCellCenter(cell) : null;
+    const sashRect = findRectShape(allShapes, shapeRoleIncludes(field.id, "sash"));
+    const glassRect = findRectShape(allShapes, shapeRoleIncludes(field.id, "visible_glass"));
+    const beadRect = findRectShape(allShapes, shapeRoleIncludes(field.id, "bead"));
+
+    debugReport.fields.push({
+      id: field.id,
+      row: field.row,
+      column: field.column,
+      widthMm: field.dimensionsMm.width,
+      heightMm: field.dimensionsMm.height,
+      bounds: cell,
+      sashBounds: sashRect ? { x: sashRect.x, y: sashRect.y, width: sashRect.width, height: sashRect.height } : null,
+      glassBounds: glassRect ? { x: glassRect.x, y: glassRect.y, width: glassRect.width, height: glassRect.height } : null,
+    });
+
+    if (cell && center) {
+      lines.push(
+        measurementLine({
+          id: `field-width-${field.id}`,
+          x1: cell.x,
+          y1: cell.y + cell.height - 12,
+          x2: cell.x + cell.width,
+          y2: cell.y + cell.height - 12,
+          labelX: center.x,
+          labelY: cell.y + cell.height - 16,
+          label: `field ${field.id} w ${formatMm(field.dimensionsMm.width)}`,
+          color: "#0369a1",
+        }),
+        measurementLine({
+          id: `field-height-${field.id}`,
+          x1: cell.x + 12,
+          y1: cell.y,
+          x2: cell.x + 12,
+          y2: cell.y + cell.height,
+          labelX: cell.x + 18,
+          labelY: center.y,
+          label: `h ${formatMm(field.dimensionsMm.height)}`,
+          color: "#0369a1",
+        })
+      );
+    }
+
+    if (glassRect) {
+      lines.push(
+        measurementLine({
+          id: `glass-width-${field.id}`,
+          x1: glassRect.x,
+          y1: glassRect.y + glassRect.height / 2,
+          x2: glassRect.x + glassRect.width,
+          y2: glassRect.y + glassRect.height / 2,
+          labelX: glassRect.x + glassRect.width / 2,
+          labelY: glassRect.y + glassRect.height / 2 - 5,
+          label: `glass ${formatMm(glassRect.width / scale)}`,
+          color: "#0f766e",
+        }),
+        measurementLine({
+          id: `glass-height-${field.id}`,
+          x1: glassRect.x + glassRect.width - 8,
+          y1: glassRect.y,
+          x2: glassRect.x + glassRect.width - 8,
+          y2: glassRect.y + glassRect.height,
+          labelX: glassRect.x + glassRect.width - 12,
+          labelY: glassRect.y + glassRect.height / 2,
+          label: formatMm(glassRect.height / scale),
+          color: "#0f766e",
+        })
+      );
+    }
+
+    if (sashRect) {
+      lines.push(measurementLine({
+        id: `sash-size-${field.id}`,
+        x1: sashRect.x,
+        y1: sashRect.y + 10,
+        x2: sashRect.x + sashRect.width,
+        y2: sashRect.y + 10,
+        labelX: sashRect.x + sashRect.width / 2,
+        labelY: sashRect.y + 7,
+        label: `sash ${formatMm(sashRect.width / scale)} x ${formatMm(sashRect.height / scale)}`,
+        color: "#be123c",
+      }));
+      if (cell) {
+        lines.push(measurementLine({
+          id: `sash-offset-${field.id}`,
+          x1: cell.x,
+          y1: cell.y + 24,
+          x2: sashRect.x,
+          y2: cell.y + 24,
+          labelX: (cell.x + sashRect.x) / 2,
+          labelY: cell.y + 20,
+          label: `sash offset ${formatMm((sashRect.x - cell.x) / scale)}`,
+          color: "#be123c",
+        }));
+      }
+    }
+
+    if (beadRect && glassRect) {
+      lines.push(measurementLine({
+        id: `bead-glass-offset-${field.id}`,
+        x1: beadRect.x,
+        y1: beadRect.y + 22,
+        x2: glassRect.x,
+        y2: beadRect.y + 22,
+        labelX: (beadRect.x + glassRect.x) / 2,
+        labelY: beadRect.y + 18,
+        label: `bead/glass ${formatMm((glassRect.x - beadRect.x) / scale)}`,
+        color: "#a16207",
+      }));
+    }
+  }
+
+  for (const junction of contract.verticalJunctions) {
+    const left = cellsByFieldId.get(junction.betweenFieldIds[0]);
+    const right = cellsByFieldId.get(junction.betweenFieldIds[1]);
+    if (!left || !right) continue;
+    const width = right.x - (left.x + left.width);
+    const x = left.x + left.width + width / 2;
+    lines.push(measurementLine({
+      id: `vertical-junction-${junction.id}`,
+      x1: x,
+      y1: Math.min(left.y, right.y),
+      x2: x,
+      y2: Math.max(left.y + left.height, right.y + right.height),
+      labelX: x + 5,
+      labelY: Math.min(left.y, right.y) + 20,
+      label: `${junction.profile.profileId ?? "n/a"} ${formatMm(width / scale)}`,
+      color: "#9333ea",
+    }));
+    if (frameBounds) {
+      lines.push(measurementLine({
+        id: `vertical-junction-offset-${junction.id}`,
+        x1: frameBounds.x,
+        y1: Math.min(left.y, right.y) - 16,
+        x2: x,
+        y2: Math.min(left.y, right.y) - 16,
+        labelX: (frameBounds.x + x) / 2,
+        labelY: Math.min(left.y, right.y) - 20,
+        label: `offset ${formatMm((x - frameBounds.x) / scale)}`,
+        color: "#9333ea",
+      }));
+    }
+  }
+
+  for (const junction of contract.horizontalJunctions) {
+    const top = cellsByFieldId.get(junction.betweenFieldIds[0]);
+    const bottom = cellsByFieldId.get(junction.betweenFieldIds[1]);
+    if (!top || !bottom) continue;
+    const height = bottom.y - (top.y + top.height);
+    const y = top.y + top.height + height / 2;
+    lines.push(measurementLine({
+      id: `horizontal-junction-${junction.id}`,
+      x1: Math.min(top.x, bottom.x),
+      y1: y,
+      x2: Math.max(top.x + top.width, bottom.x + bottom.width),
+      y2: y,
+      labelX: Math.min(top.x, bottom.x) + 16,
+      labelY: y - 5,
+      label: `${junction.profile.profileId ?? "n/a"} ${formatMm(height / scale)}`,
+      color: "#9333ea",
+    }));
+    if (frameBounds) {
+      lines.push(measurementLine({
+        id: `horizontal-junction-offset-${junction.id}`,
+        x1: Math.min(top.x, bottom.x) - 18,
+        y1: frameBounds.y,
+        x2: Math.min(top.x, bottom.x) - 18,
+        y2: y,
+        labelX: Math.min(top.x, bottom.x) - 24,
+        labelY: (frameBounds.y + y) / 2,
+        label: `offset ${formatMm((y - frameBounds.y) / scale)}`,
+        color: "#9333ea",
+      }));
+    }
+  }
+
+  for (const segment of contract.sillSegments ?? []) {
+    const cell = cellsByFieldId.get(segment.fieldId);
+    if (!cell || !bottomFrame) continue;
+    lines.push(measurementLine({
+      id: `sill-segment-${segment.segmentIndex}-${segment.fieldId}`,
+      x1: cell.x,
+      y1: bottomFrame.y + bottomFrame.height - 10,
+      x2: cell.x + cell.width,
+      y2: bottomFrame.y + bottomFrame.height - 10,
+      labelX: cell.x + cell.width / 2,
+      labelY: bottomFrame.y + bottomFrame.height - 14,
+      label: `${segment.profile.profileId} sill ${formatMm(cell.width / scale)} x ${formatMm(bottomFrame.height / scale)}`,
+      color: "#c2410c",
+    }));
+  }
+
+  return { lines, report: debugReport };
+}
+
+function MeasurementOverlay(props: { model: DrawingModel; lines: MeasurementLine[] }) {
+  const { model, lines } = props;
+  return (
+    <svg
+      viewBox={`0 0 ${model.viewBox.width} ${model.viewBox.height}`}
+      width="100%"
+      height="100%"
+      style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
+      aria-hidden={lines.length === 0}
+    >
+      {lines.map((line) => (
+        <g key={line.id}>
+          <line
+            x1={line.x1}
+            y1={line.y1}
+            x2={line.x2}
+            y2={line.y2}
+            stroke={line.color ?? "#2563eb"}
+            strokeWidth={0.9}
+            strokeDasharray="4 3"
+          />
+          <text
+            x={line.labelX}
+            y={line.labelY}
+            textAnchor="middle"
+            fontSize={8.5}
+            fontWeight={700}
+            fill={line.color ?? "#2563eb"}
+            paintOrder="stroke"
+            stroke="#fff"
+            strokeWidth={2.5}
+          >
+            {line.label}
+          </text>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
 function WindowTypeTechnicalPreview(props: {
   categoryLabel: string;
   selectedDesign: WindowTypeDesignListItem | null;
   bootstrap: ConfiguratorCatalogBootstrap;
+  onRenderToolbarRegistration?: (registration: RenderWorkspaceToolbarRegistration | null) => void;
 }) {
-  const { categoryLabel, selectedDesign, bootstrap } = props;
+  const { categoryLabel, selectedDesign, bootstrap, onRenderToolbarRegistration } = props;
+  const viewportRef = React.useRef<DrawingViewportHandle | null>(null);
+  const [viewportState, setViewportState] = useState<DrawingViewportState>({
+    scalePreset: "auto",
+    tool: "select",
+    zoomMultiplier: 1,
+  });
   const [operationMenu, setOperationMenu] = useState<FieldOperationMenuState>({
     open: false,
     x: 0,
     y: 0,
     field: null,
   });
+  const [showProfileReferences, setShowProfileReferences] = useState(false);
+  const [showMeasurements, setShowMeasurements] = useState(false);
   const [useDatumFixedNoSashRenderer, setUseDatumFixedNoSashRenderer] = useState(false);
+  const [disabledProfileCallouts, setDisabledProfileCallouts] = useState<Set<string>>(() => new Set());
+  const [profilePopup, setProfilePopup] = useState<ProfileReferencePopupState>(null);
   const previewSource = useMemo(
     () => resolvePreviewSourceModel(selectedDesign, bootstrap),
     [selectedDesign, bootstrap]
@@ -363,6 +1146,9 @@ function WindowTypeTechnicalPreview(props: {
   useEffect(() => {
     setEditableSourceModel(sourceModel ? cloneSourceModel(sourceModel) : null);
     setOperationMenu((current) => ({ ...current, open: false }));
+    setProfilePopup(null);
+    setDisabledProfileCallouts(new Set());
+    setShowMeasurements(false);
     setUseDatumFixedNoSashRenderer(false);
   }, [selectedDesignId]);
 
@@ -402,74 +1188,156 @@ function WindowTypeTechnicalPreview(props: {
     }
     try {
       const dimensions = { widthMm: 1000, heightMm: 1000 };
-      const operation = activeSourceModel.fieldRules[0]?.operation ?? activeSourceModel.fieldRules[0]?.operationType;
-      if (
-        operation === "tt_left" ||
-        operation === "tt_right" ||
-        operation === "turn_left" ||
-        operation === "turn_right" ||
-        operation === "tilt_only"
-      ) {
-        const tiltTurnContract = buildB92TiltTurnPreviewContractFromSource(activeSourceModel, dimensions);
-        return {
-          model: buildB92TiltTurnInternalDrawingModelFromContract(tiltTurnContract),
-          error: "",
-        };
-      }
-
       const contract = buildWindowTypeRenderModelFromSource(activeSourceModel, dimensions);
       const fieldType = contract.fields[0]?.type;
+      const operation = activeSourceModel.fieldRules[0]?.operation ?? activeSourceModel.fieldRules[0]?.operationType;
       return {
-        model:
-          fieldType === "fixed_sash"
-            ? buildB92FixedSashInternalDrawingModelFromContract(contract)
-            : buildB92FixedInternalDrawingModelFromContract(
-                useDatumFixedNoSashRenderer
-                  ? {
-                      ...contract,
-                      meta: {
-                        ...contract.meta,
-                        dev: {
-                          ...contract.meta.dev,
-                          b92UseDatumFixedNoSashRenderer: true,
-                          b92ProjectionFixedNoSashParityDiagnostics: true,
-                        },
-                      },
-                    }
-                  : contract
-              ),
+        model: (() => {
+          if (contract.fields.length === 1 && fieldType === "fixed_sash") {
+            return buildB92FixedSashInternalDrawingModelFromContract(contract);
+          }
+          if (
+            contract.fields.length === 1 &&
+            (operation === "tt_left" ||
+              operation === "tt_right" ||
+              operation === "turn_left" ||
+              operation === "turn_right" ||
+              operation === "tilt_only")
+          ) {
+            const tiltTurnContract = buildB92TiltTurnPreviewContractFromSource(activeSourceModel, dimensions);
+            return buildB92TiltTurnInternalDrawingModelFromContract(tiltTurnContract);
+          }
+          return buildB92FixedInternalDrawingModelFromContract(
+            useDatumFixedNoSashRenderer
+              ? {
+                  ...contract,
+                  meta: {
+                    ...contract.meta,
+                    dev: {
+                      ...contract.meta.dev,
+                      b92UseDatumFixedNoSashRenderer: true,
+                      b92ProjectionFixedNoSashParityDiagnostics: true,
+                    },
+                  },
+                }
+              : contract
+          );
+        })(),
+        contract,
         error: "",
       };
     } catch (error) {
       return {
         model: null,
+        contract: null,
         error: error instanceof Error ? error.message : String(error),
       };
     }
   }, [activeSourceModel, useDatumFixedNoSashRenderer]);
+  const profileCallouts = useMemo(() => {
+    if (!showProfileReferences || !previewResult.model || !previewResult.contract) return [];
+    return buildProfileReferenceCallouts(previewResult.contract, previewResult.model, disabledProfileCallouts);
+  }, [disabledProfileCallouts, previewResult.contract, previewResult.model, showProfileReferences]);
+  const measurementDebug = useMemo(() => {
+    if (!showMeasurements || !previewResult.model || !previewResult.contract) return { lines: [], report: null };
+    return buildMeasurementDebugData(previewResult.contract, previewResult.model);
+  }, [previewResult.contract, previewResult.model, showMeasurements]);
+
+  useEffect(() => {
+    if (!showMeasurements || !measurementDebug.report) return;
+    console.group("Window Type Preview Measurements");
+    console.log(measurementDebug.report);
+    console.groupEnd();
+  }, [measurementDebug.report, showMeasurements]);
+
+  useEffect(() => {
+    if (!onRenderToolbarRegistration || !activeSourceModel || !previewResult.model) return undefined;
+    onRenderToolbarRegistration({
+      state: {
+        viewport: viewportState,
+        showDimensions: showMeasurements,
+        showProfiles: showProfileReferences,
+      },
+      controls: {
+        fit: () => viewportRef.current?.fitToView(),
+        setOneToOne: () => viewportRef.current?.setOneToOne(),
+        zoomIn: () => viewportRef.current?.zoomIn(),
+        zoomOut: () => viewportRef.current?.zoomOut(),
+        togglePan: () => viewportRef.current?.setTool(viewportState.tool === "pan" ? "select" : "pan"),
+        toggleDimensions: () => setShowMeasurements((current) => !current),
+        toggleProfiles: () => {
+          setShowProfileReferences((current) => !current);
+          setProfilePopup(null);
+        },
+      },
+    });
+    return () => onRenderToolbarRegistration(null);
+  }, [
+    activeSourceModel,
+    onRenderToolbarRegistration,
+    previewResult.model,
+    showMeasurements,
+    showProfileReferences,
+    viewportState,
+  ]);
 
   return (
-    <div className="admin-card ui-card" style={{ padding: 14, display: "grid", gap: 10 }}>
-      <div>
-        <div className="admin-group-title">
-          {previewTitle}
-        </div>
-        {previewDescription ? <div className="admin-body-copy">{previewDescription}</div> : null}
-      </div>
-      {activeSourceModel ? (
-        <label
-          className="admin-body-copy"
-          style={{ display: "inline-flex", alignItems: "center", gap: 8, width: "fit-content" }}
+    <div style={{ display: "grid", gap: 4, minWidth: 0, alignContent: "start" }}>
+      {activeSourceModel && previewResult.model ? (
+        <div
+          style={{
+            padding: "6px 8px",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 10,
+            alignItems: "center",
+            borderRadius: 6,
+            background: "#07100d",
+            border: "1px solid rgba(34, 197, 94, 0.14)",
+            color: "#d8eee4",
+          }}
         >
-          <input
-            type="checkbox"
-            checked={useDatumFixedNoSashRenderer}
-            onChange={(event) => {
-              setUseDatumFixedNoSashRenderer(event.currentTarget.checked);
-            }}
-          />
-          Use datum fixed no-sash renderer pilot
-        </label>
+          <div style={{ marginRight: "auto", fontSize: 11, fontWeight: 800, color: "#f8fafc" }}>
+            {previewTitle}
+          </div>
+          <label
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, width: "fit-content", fontSize: 11, color: "#d8eee4" }}
+          >
+            <input
+              type="checkbox"
+              checked={showProfileReferences}
+              onChange={(event) => {
+                setShowProfileReferences(event.currentTarget.checked);
+                setProfilePopup(null);
+              }}
+            />
+            Show profile references
+          </label>
+          <label
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, width: "fit-content", fontSize: 11, color: "#d8eee4" }}
+          >
+            <input
+              type="checkbox"
+              checked={showMeasurements}
+              onChange={(event) => {
+                setShowMeasurements(event.currentTarget.checked);
+              }}
+            />
+            Show measurements
+          </label>
+          <label
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, width: "fit-content", fontSize: 11, color: "#d8eee4" }}
+          >
+            <input
+              type="checkbox"
+              checked={useDatumFixedNoSashRenderer}
+              onChange={(event) => {
+                setUseDatumFixedNoSashRenderer(event.currentTarget.checked);
+              }}
+            />
+            Use datum fixed no-sash renderer pilot
+          </label>
+        </div>
       ) : null}
       {!activeSourceModel ? (
         <div className="admin-placeholder-box" style={{ margin: 0 }}>
@@ -480,21 +1348,155 @@ function WindowTypeTechnicalPreview(props: {
           Preview unavailable: {previewResult.error}
         </div>
       ) : previewResult.model ? (
+        <div style={{ position: "relative" }}>
+          <div
+            style={{
+              position: "absolute",
+              right: 14,
+              top: 12,
+              zIndex: 2,
+              color: "#64748b",
+              fontSize: 10.5,
+              fontWeight: 650,
+              background: "transparent",
+              border: 0,
+              borderRadius: 0,
+              padding: 0,
+              pointerEvents: "none",
+              maxWidth: 285,
+              textAlign: "right",
+            }}
+          >
+            Right click window fields for operation and configuration options.
+          </div>
+          <DrawingViewport
+            ref={viewportRef}
+            model={previewResult.model}
+            onCellContextMenu={handleCellContextMenu}
+            showToolbar={false}
+            height={300}
+            minHeight={0}
+            maxHeight={300}
+            maxWidth={640}
+            aspectRatio="16 / 9"
+            fitPadding={{ x: 48, y: 34 }}
+            onViewportStateChange={setViewportState}
+            overlay={
+              <>
+                {showMeasurements ? (
+                  <MeasurementOverlay model={previewResult.model} lines={measurementDebug.lines} />
+                ) : null}
+                {showProfileReferences ? (
+                  <ProfileReferenceOverlay
+                    model={previewResult.model}
+                    callouts={profileCallouts}
+                    onOpenCallout={(callout, event) => {
+                      setProfilePopup({
+                        callout,
+                        x: event.clientX,
+                        y: event.clientY,
+                      });
+                    }}
+                  />
+                ) : null}
+              </>
+            }
+          />
+        </div>
+      ) : null}
+      {showProfileReferences && previewResult.model ? (
+        <div className="admin-body-copy" style={{ display: "grid", gap: 4 }}>
+          <div>
+            Profile reference callouts: {profileCallouts.length === 0 ? "none available" : `${profileCallouts.length} shown`}
+          </div>
+          {disabledProfileCallouts.size > 0 ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+              <span>Disabled:</span>
+              {Array.from(disabledProfileCallouts).map((calloutId) => (
+                <button
+                  key={calloutId}
+                  type="button"
+                  className="admin-nav-button"
+                  onClick={() => {
+                    setDisabledProfileCallouts((current) => {
+                      const next = new Set(current);
+                      next.delete(calloutId);
+                      return next;
+                    });
+                  }}
+                  style={{ padding: "3px 7px" }}
+                >
+                  <span className="admin-nav-button-label">Enable {calloutId}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      {showMeasurements && previewResult.model ? (
+        <div className="admin-body-copy">
+          Measurement overlay: {measurementDebug.lines.length === 0 ? "no measurable drawing bounds available" : `${measurementDebug.lines.length} guide lines shown`}
+        </div>
+      ) : null}
+      {profilePopup ? (
         <div
+          className="admin-card ui-card"
           style={{
-            border: "1px solid #e4e4e7",
-            background: "#fff",
-            minHeight: 260,
-            aspectRatio: "1 / 1",
+            position: "fixed",
+            top: profilePopup.y,
+            left: profilePopup.x,
+            zIndex: 1001,
+            width: 260,
+            padding: 10,
             display: "grid",
-            alignItems: "stretch",
+            gap: 8,
+            boxShadow: "0 18px 45px rgba(15, 23, 42, 0.18)",
           }}
         >
-          <QuoteSyncDrawingSvg model={previewResult.model} onCellContextMenu={handleCellContextMenu} />
+          <div style={{ display: "grid", gap: 2 }}>
+            <div className="admin-setting-label">{profilePopup.callout.profileId}</div>
+            <div className="admin-body-copy">Segment: {profilePopup.callout.segmentType}</div>
+            <div className="admin-body-copy">Identity: {profilePopup.callout.identity}</div>
+          </div>
+          <div style={{ display: "grid", gap: 3 }}>
+            <div className="admin-setting-label">Alternatives</div>
+            {profilePopup.callout.alternatives.length === 0 ? (
+              <div className="admin-body-copy">No alternatives available.</div>
+            ) : (
+              profilePopup.callout.alternatives.map((profileId) => (
+                <div key={profileId} className="admin-body-copy">
+                  {profileId}
+                </div>
+              ))
+            )}
+          </div>
+          <button
+            type="button"
+            className="admin-nav-button"
+            onClick={() => {
+              setDisabledProfileCallouts((current) => {
+                const next = new Set(current);
+                next.add(profilePopup.callout.id);
+                return next;
+              });
+              setProfilePopup(null);
+            }}
+            style={{ justifyContent: "flex-start" }}
+          >
+            <span className="admin-nav-button-label">Disable this callout</span>
+          </button>
+          <button
+            type="button"
+            className="admin-nav-button"
+            onClick={() => setProfilePopup(null)}
+            style={{ justifyContent: "flex-start" }}
+          >
+            <span className="admin-nav-button-label">Close</span>
+          </button>
         </div>
       ) : null}
       {activeSourceModel && !catalogReport.attempted ? (
-        <div className="admin-placeholder-box" style={{ margin: 0 }}>
+        <div style={{ margin: 0, fontSize: 10, color: "#94a3b8" }}>
           Preview source: {sourceLabel}
         </div>
       ) : null}
@@ -543,24 +1545,30 @@ function WindowTypeTechnicalPreview(props: {
 }
 
 export default function WindowTypeEditor(props: Props) {
-  const { categoryLabel, fieldCountLabel, selectedDesign, bootstrap } = props;
+  const { categoryLabel, fieldCountLabel, selectedDesign, bootstrap, onRenderToolbarRegistration } = props;
 
   return (
-    <div style={{ display: "grid", gap: 12, alignContent: "start", minWidth: 0 }}>
-      <div className="admin-card ui-card" style={{ padding: 14, display: "grid", gap: 8 }}>
-        <div className="admin-group-title">Window Type editor</div>
-        <div className="admin-body-copy">
-          {categoryLabel} → {fieldCountLabel}
-          {selectedDesign ? ` → ${selectedDesign.label}` : ""}
+    <div style={{ display: "grid", gap: 8, alignContent: "start", minWidth: 0 }}>
+      <WindowTypeTechnicalPreview
+        categoryLabel={categoryLabel}
+        selectedDesign={selectedDesign}
+        bootstrap={bootstrap}
+        onRenderToolbarRegistration={onRenderToolbarRegistration}
+      />
+      <details className="admin-card ui-card" style={{ padding: 12 }}>
+        <summary className="admin-group-title" style={{ cursor: "pointer" }}>
+          Source model panels
+        </summary>
+        <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+          <div className="admin-body-copy">
+            {categoryLabel} &gt; {fieldCountLabel}
+            {selectedDesign ? ` > ${selectedDesign.label}` : ""}
+          </div>
+          <FieldDefinitionPanel selectedDesign={selectedDesign} />
+          <DivisionJunctionPanel selectedDesign={selectedDesign} />
+          <SectionMappingPanel selectedDesign={selectedDesign} />
         </div>
-        <div className="admin-placeholder-box" style={{ margin: 0 }}>
-          Scaffold only. Source-model panels are mounted here, but no Window Type persistence or migration is wired in this pass.
-        </div>
-      </div>
-      <WindowTypeTechnicalPreview categoryLabel={categoryLabel} selectedDesign={selectedDesign} bootstrap={bootstrap} />
-      <FieldDefinitionPanel selectedDesign={selectedDesign} />
-      <DivisionJunctionPanel selectedDesign={selectedDesign} />
-      <SectionMappingPanel selectedDesign={selectedDesign} />
+      </details>
     </div>
   );
 }
