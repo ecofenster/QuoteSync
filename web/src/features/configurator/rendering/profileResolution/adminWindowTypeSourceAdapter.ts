@@ -25,6 +25,7 @@ type B92SegmentResolverDevSource = WindowTypeSourceModel & {
   dev?: {
     b92UseSegmentResolver?: boolean | null;
     b92ExposeSegmentResolverDiagnostics?: boolean | null;
+    b92UseJunctionGeometryVisualPilot?: boolean | null;
     b92RenderSegmentedSillOverlay?: boolean | null;
   };
 };
@@ -87,6 +88,10 @@ function shouldExposeB92SegmentResolverDiagnostics(source: WindowTypeSourceModel
   return (source as B92SegmentResolverDevSource).dev?.b92ExposeSegmentResolverDiagnostics === true;
 }
 
+function shouldUseB92JunctionGeometryVisualPilot(source: WindowTypeSourceModel): source is B92SegmentResolverDevSource {
+  return (source as B92SegmentResolverDevSource).dev?.b92UseJunctionGeometryVisualPilot === true;
+}
+
 function isRenderContractProfileId(profileId: string): profileId is B92ProfileId {
   return (
     profileId === "B92-1" ||
@@ -124,6 +129,28 @@ function isRenderContractProfileId(profileId: string): profileId is B92ProfileId
     profileId === "B92-23" ||
     profileId === "B92-24"
   );
+}
+
+const B92_INTERNAL_1X2_VERTICAL_JUNCTION_VISUAL_PROFILE_REFS = new Set<string>([
+  "B92-11",
+  "B92-12",
+  "B92-13",
+  "B92-15",
+  "B92-18",
+]);
+
+function sourceWithB92JunctionVisualPilotCorrections(source: WindowTypeSourceModel): WindowTypeSourceModel {
+  return {
+    ...source,
+    dev: {
+      ...source.dev,
+      b92UseDiagnosticJunctionRegistryCorrections: true,
+    },
+  };
+}
+
+function isB92Internal1x2JunctionVisualPilotEligible(source: WindowTypeSourceModel): boolean {
+  return source.systemCode === "B92" && source.view === "inside" && source.layout.rows === 1 && source.layout.columns === 2;
 }
 
 function profileRefFromSegmentAssignment(assignment: B92ResolvedProfileAssignment): WindowTypeRenderProfileRef | null {
@@ -214,9 +241,13 @@ function applyB92SegmentResolverToContract(
 ): WindowTypeRenderModel {
   const useResolverAssignments = shouldUseB92SegmentResolver(source);
   const exposeResolverDiagnostics = shouldExposeB92SegmentResolverDiagnostics(source);
-  if (!useResolverAssignments && !exposeResolverDiagnostics) return contract;
+  const useJunctionVisualPilot = shouldUseB92JunctionGeometryVisualPilot(source);
+  const useJunctionVisualPilotGeometry =
+    useJunctionVisualPilot && isB92Internal1x2JunctionVisualPilotEligible(source);
+  if (!useResolverAssignments && !exposeResolverDiagnostics && !useJunctionVisualPilot) return contract;
 
-  const segmentResult = resolveB92ProfileSegmentsFromSource(source);
+  const resolverSource = useJunctionVisualPilotGeometry ? sourceWithB92JunctionVisualPilotCorrections(source) : source;
+  const segmentResult = resolveB92ProfileSegmentsFromSource(resolverSource);
   const diagnosticsMetadata = exposeResolverDiagnostics
     ? {
         diagnosticOnly: true as const,
@@ -228,6 +259,30 @@ function applyB92SegmentResolverToContract(
         issues: segmentResult.issues,
       }
     : contract.meta.dev?.b92SegmentResolverDiagnostics;
+  const appliedVertical = segmentResult.verticalJunctionAssignments
+    .map((assignment) => {
+      if (!useJunctionVisualPilotGeometry) {
+        return verticalJunctionFromAssignment(assignment);
+      }
+      if (!B92_INTERNAL_1X2_VERTICAL_JUNCTION_VISUAL_PROFILE_REFS.has(assignment.profileId)) {
+        console.warn("B92 junction geometry visual pilot skipped unmapped profile ref.", {
+          segmentId: assignment.segmentId,
+          profileId: assignment.profileId,
+        });
+        return null;
+      }
+      return verticalJunctionFromAssignment(assignment);
+    })
+    .filter((item): item is WindowTypeRenderJunction => !!item);
+
+  if (useJunctionVisualPilot && !isB92Internal1x2JunctionVisualPilotEligible(source)) {
+    console.warn("B92 junction geometry visual pilot skipped: only B92 inside 1x2 sources are supported.", {
+      systemCode: source.systemCode,
+      view: source.view,
+      rows: source.layout.rows,
+      columns: source.layout.columns,
+    });
+  }
 
   if (!useResolverAssignments) {
     return {
@@ -239,12 +294,10 @@ function applyB92SegmentResolverToContract(
           b92SegmentResolverDiagnostics: diagnosticsMetadata,
         },
       },
+      verticalJunctions: useJunctionVisualPilotGeometry ? appliedVertical : contract.verticalJunctions,
     };
   }
 
-  const appliedVertical = segmentResult.verticalJunctionAssignments
-    .map(verticalJunctionFromAssignment)
-    .filter((item): item is WindowTypeRenderJunction => !!item);
   const appliedHorizontal = segmentResult.horizontalTransomAssignments
     .map(horizontalJunctionFromAssignment)
     .filter((item): item is WindowTypeRenderJunction => !!item);

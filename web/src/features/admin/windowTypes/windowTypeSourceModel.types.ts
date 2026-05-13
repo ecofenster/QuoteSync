@@ -213,6 +213,7 @@ export type WindowTypeSourceModel = {
     b92UseDiagnosticJunctionRegistryCorrections?: boolean | null;
     b92SegmentResolverDivisions?: WindowTypeSourceModelDevDivisionRule[];
     b92ExposeSegmentResolverDiagnostics?: boolean | null;
+    b92UseJunctionGeometryVisualPilot?: boolean | null;
     b92RenderSegmentedSillOverlay?: boolean | null;
   };
 };
