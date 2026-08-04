@@ -5,6 +5,7 @@ import { platform } from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
+import { cleanupPhase6Profile, createPhase6ProfileDirectory, terminateOwnedChrome } from "./e2e-chrome-profile.mjs";
 
 const APP_URL = process.env.QS_E2E_APP_URL ?? "http://localhost:4173";
 const API_URL = process.env.QS_E2E_API_URL ?? "http://localhost:3001";
@@ -99,8 +100,8 @@ function chromeCandidates() {
 }
 
 async function launchChrome() {
-  const userDataDir = resolve(`.tmp-chrome-phase6-${Date.now()}-${Math.random().toString(16).slice(2)}`);
-  await mkdir(userDataDir, { recursive: true });
+  const userDataDir = await createPhase6ProfileDirectory();
+  console.log(`Phase 6 Chrome profile: ${userDataDir}`);
 
   let lastError = null;
   for (const chrome of chromeCandidates()) {
@@ -325,10 +326,12 @@ async function run() {
   await cleanupStalePhase6Estimates(client.id);
   const tempEstimate = await createTemporaryEstimate(client.id);
 
-  const chrome = await launchChrome();
-  const page = await createCdpPage(APP_URL);
+  let chrome = null;
+  let page = null;
 
   try {
+    chrome = await launchChrome();
+    page = await createCdpPage(APP_URL);
     await waitForPage(page, () => document.body.innerText.includes("Client Database"), [], "App shell did not render", 90000);
     await page.evaluate(pageScript(() => {
       localStorage.clear();
@@ -445,12 +448,26 @@ async function run() {
 
     console.log("Phase 6 E2E passed");
   } finally {
-    page.close();
+    if (page) {
+      await page.send("Browser.close").catch(() => {});
+      page.close();
+    }
     await cleanupTemporaryEstimate();
     await cleanupStalePhase6Estimates(client.id);
-    if (!chrome.child.killed) chrome.child.kill();
-    await delay(500);
-    await rm(chrome.userDataDir, { recursive: true, force: true }).catch(() => {});
+    if (chrome) {
+      const termination = await terminateOwnedChrome(chrome.child);
+      await delay(300);
+      const cleanup = await cleanupPhase6Profile(chrome.userDataDir);
+      if (!cleanup.removed) {
+        console.warn("Phase 6 Chrome profile cleanup was delayed", {
+          profile: chrome.userDataDir,
+          attempts: cleanup.attempts,
+          code: cleanup.error?.code ?? "unknown",
+          chromeExited: termination.exited,
+        });
+        if (!termination.exited) process.exitCode = 1;
+      }
+    }
   }
 }
 
