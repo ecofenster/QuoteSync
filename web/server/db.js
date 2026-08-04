@@ -3,6 +3,7 @@ import path from 'path';
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import { fileURLToPath } from 'url';
+import { initializeSupplierCommercialSchema } from './schema/supplierCommercialSchema.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1397,6 +1398,8 @@ export const dbPromise = openDatabaseWithRecovery(dbPath).then(async (db) => {
   await ensureColumn(db, 'estimates', 'created_by_user_id', 'TEXT');
   await ensureColumn(db, 'estimates', 'created_by_name', 'TEXT');
   await ensureColumn(db, 'estimates', 'created_by_role', 'TEXT');
+
+  await initializeSupplierCommercialSchema(db);
 
   await db.run(
     `
