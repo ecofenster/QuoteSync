@@ -95,8 +95,6 @@ export default function GoogleMapPanel({
   useEffect(() => {
     let cancelled = false;
 
-    console.log("GoogleMapPanel apiKey", { length: apiKey?.length ?? 0, prefix: apiKey ? apiKey.slice(0, 8) : "" });
-
     if (!apiKey) {
       setLoadError("Google Maps API key missing. Add VITE_GOOGLE_MAPS_API_KEY to .env.local.");
       return;
@@ -213,9 +211,9 @@ loadGoogleMaps(apiKey)
 
   if (loadError) {
     return (
-      <div style={{ borderRadius: 14, border: "1px dashed #d4d4d8", background: "#fff", minHeight: height, padding: 16 }}>
-        <div style={{ fontSize: 14, fontWeight: 800, color: "#18181b" }}>Google Maps unavailable</div>
-        <div style={{ marginTop: 6, fontSize: 12, color: "#52525b" }}>{loadError}</div>
+      <div style={{ borderRadius: 14, border: "1px dashed var(--color-border)", background: "var(--color-surface)", minHeight: height, padding: 16 }}>
+        <div style={{ fontSize: 14, fontWeight: 800, color: "var(--color-text-primary)" }}>Google Maps unavailable</div>
+        <div style={{ marginTop: 6, fontSize: 12, color: "var(--color-text-secondary)" }}>{loadError}</div>
       </div>
     );
   }
@@ -229,8 +227,8 @@ loadGoogleMaps(apiKey)
           minHeight: height,
           borderRadius: 14,
           overflow: "hidden",
-          border: "1px solid #e4e4e7",
-          background: "#fff",
+          border: "1px solid var(--color-border)",
+          background: "var(--color-surface)",
         }}
       />
       {!items.length && (
@@ -250,9 +248,9 @@ loadGoogleMaps(apiKey)
             style={{
               fontSize: 13,
               fontWeight: 700,
-              color: "#52525b",
-              background: "rgba(255,255,255,0.92)",
-              border: "1px solid #e4e4e7",
+              color: "var(--color-text-secondary)",
+              background: "var(--ui-popover-background, var(--color-surface))",
+              border: "1px solid var(--color-border)",
               borderRadius: 12,
               padding: "10px 14px",
             }}

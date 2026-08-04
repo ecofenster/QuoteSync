@@ -11,12 +11,14 @@ export function Button({
   variant = "primary",
   disabled,
   style,
+  "data-testid": dataTestId,
 }: {
   children: React.ReactNode;
   onClick?: () => void;
   variant?: "primary" | "secondary" | "outline";
   disabled?: boolean;
   style?: React.CSSProperties;
+  "data-testid"?: string;
 }) {
   const className = `ep-button ${variant === "primary" ? "ep-button--primary" : variant === "outline" ? "ep-button--outline" : "ep-button--secondary"}`;
   return (
@@ -25,6 +27,7 @@ export function Button({
       disabled={!!disabled}
       onClick={onClick}
       className={className}
+      data-testid={dataTestId}
       style={{
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.55 : 1,
@@ -38,7 +41,7 @@ export function Button({
 
 export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
   const { style, disabled, ...rest } = props;
-  return <input {...rest} className="ep-shared-input" disabled={disabled} style={{ background: disabled ? "#f4f4f5" : "#ffffff", ...(style as any) }} />;
+  return <input {...rest} className="ep-shared-input" disabled={disabled} style={style} />;
 }
 
 export function Pill({ children }: { children: React.ReactNode }) {
@@ -59,26 +62,24 @@ export function noteCategoryLabel(category: "general" | "follow_up" | "service" 
   return category.charAt(0).toUpperCase() + category.slice(1);
 }
 
-export function noteCategoryPillStyle(category: "general" | "follow_up" | "service" | "installer" | "client_request"): React.CSSProperties {
-  if (category === "follow_up") return { background: "#eef2ff", color: "#3730a3", border: "1px solid #c7d2fe" };
-  if (category === "service") return { background: "#ecfeff", color: "#155e75", border: "1px solid #a5f3fc" };
-  if (category === "installer") return { background: "#f0fdf4", color: "#166534", border: "1px solid #bbf7d0" };
-  if (category === "client_request") return { background: "#fff7ed", color: "#9a3412", border: "1px solid #fed7aa" };
-  return { background: "#f4f4f5", color: "#18181b", border: "1px solid #e4e4e7" };
+export function noteCategoryPillClassName(category: "general" | "follow_up" | "service" | "installer" | "client_request") {
+  if (category === "follow_up") return "ep-note-pill--follow-up";
+  if (category === "client_request") return "ep-note-pill--client-request";
+  return category === "general" ? "" : `ep-note-pill--${category}`;
 }
 
 export const labelStyle: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 800,
-  color: "#3f3f46",
+  color: "var(--color-text-secondary)",
   marginBottom: 6,
 };
 
-export function qsOutcomeStyle(outcome: string): React.CSSProperties {
-  const o = (outcome || "").toLowerCase();
-  if (o === "order") return { background: "#22c55e", color: "#000", fontWeight: 800, border: "1px solid #22c55e" };
-  if (o === "lost") return { background: "#ef4444", color: "#fff", fontWeight: 800, border: "1px solid #ef4444" };
-  return { background: "#f59e0b", color: "#000", fontWeight: 800, border: "1px solid #f59e0b" };
+export function qsOutcomeClassName(outcome: string) {
+  const normalized = (outcome || "").toLowerCase();
+  if (normalized === "order") return "ep-outcome-control--order";
+  if (normalized === "lost") return "ep-outcome-control--lost";
+  return "ep-outcome-control--open";
 }
 
 export function ensureOrderMeta(e: any) {
@@ -117,8 +118,8 @@ export function OrderTimelineBar({ timeline }: { timeline: any[] }) {
       </div>
       <div className="ep-timeline-grid">
         {timeline.map((t, i) => (
-          <div key={i} className="ep-timeline-item" style={{ background: t.completed ? "#f0fdf4" : "#fff" }}>
-            <div className="ep-timeline-item-label" style={{ color: t.completed ? "#166534" : "#52525b" }}>
+          <div key={i} className={`ep-timeline-item ep-timeline-item--${t.completed ? "complete" : "pending"}`}>
+            <div className="ep-timeline-item-label">
               {t.completed ? "Complete" : "Pending"}
             </div>
             <div className="ep-timeline-item-stage">{stageLabel(t.stage)}</div>

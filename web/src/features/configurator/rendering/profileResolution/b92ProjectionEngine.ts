@@ -44,6 +44,27 @@ function edgeBand(bounds: B92ProjectionBoundsMm, edge: B92Edge, valueMm: number)
   return { x: bounds.x + bounds.width - valueMm, y: bounds.y, width: valueMm, height: bounds.height };
 }
 
+function structuralFrameBand(
+  bounds: B92ProjectionBoundsMm,
+  edge: B92Edge,
+  valueMm: number,
+  chain: B92ProjectionDatumChain
+): B92ProjectionBoundsMm {
+  if (edge === "top" || edge === "bottom") return edgeBand(bounds, edge, valueMm);
+
+  const topMm = confirmedValue(chain.edgeAuthorities.top?.structuralFaceMm);
+  const bottomMm = confirmedValue(chain.edgeAuthorities.bottom?.structuralFaceMm);
+  if (topMm === null || bottomMm === null) return edgeBand(bounds, edge, valueMm);
+
+  const height = bounds.height - topMm - bottomMm;
+  if (!Number.isFinite(height) || height <= 0) return edgeBand(bounds, edge, valueMm);
+
+  if (edge === "left") {
+    return { x: bounds.x, y: bounds.y + topMm, width: valueMm, height };
+  }
+  return { x: bounds.x + bounds.width - valueMm, y: bounds.y + topMm, width: valueMm, height };
+}
+
 function offsetEdgeBand(
   bounds: B92ProjectionBoundsMm,
   edge: B92Edge,
@@ -160,7 +181,10 @@ function projectFrameRegion(
   return {
     region: {
       ...region,
-      boundsMm: edgeBand(fieldBounds, edge, valueMm),
+      boundsMm:
+        region.category === "structural_frame_datum"
+          ? structuralFrameBand(fieldBounds, edge, valueMm, chain)
+          : edgeBand(fieldBounds, edge, valueMm),
       status: "resolved",
     },
   };
@@ -264,7 +288,7 @@ function projectSashFaceRegion(
       ...region,
       boundsMm: offsetEdgeBand(fieldBounds, edge, visibleFaceMm, sashFaceMm),
       status: "resolved",
-      note: `${region.note ?? ""} Projected from confirmed top/side visible frame datum plus 57mm sash face; no uniform overlap assumed.`.trim(),
+      note: `${region.note ?? ""} Projected from confirmed top/side exposed visible frame after sash overlap plus 57mm sash face; no uniform overlap assumed.`.trim(),
     },
   };
 }
@@ -408,6 +432,12 @@ function projectDaylightOpeningFromResolvedEdges(
     left: regionForEdge(projectedRegions, "visible_frame_face", "left", fieldId),
     right: regionForEdge(projectedRegions, "visible_frame_face", "right", fieldId),
   };
+  const structuralFrameEdges = {
+    top: regionForEdge(projectedRegions, "structural_frame_datum", "top", fieldId),
+    bottom: regionForEdge(projectedRegions, "structural_frame_datum", "bottom", fieldId),
+    left: regionForEdge(projectedRegions, "structural_frame_datum", "left", fieldId),
+    right: regionForEdge(projectedRegions, "structural_frame_datum", "right", fieldId),
+  };
   const daylightBounds =
     beadEdges.top && beadEdges.bottom && beadEdges.left && beadEdges.right
       ? innerBoundsFromEdgeRegions({
@@ -418,11 +448,21 @@ function projectDaylightOpeningFromResolvedEdges(
         })
       : visibleFrameEdges.top && visibleFrameEdges.bottom && visibleFrameEdges.left && visibleFrameEdges.right
         ? innerBoundsFromEdgeRegions({
-            top: visibleFrameEdges.top,
-            bottom: visibleFrameEdges.bottom,
-            left: visibleFrameEdges.left,
-            right: visibleFrameEdges.right,
-          })
+          top: visibleFrameEdges.top,
+          bottom: visibleFrameEdges.bottom,
+          left: visibleFrameEdges.left,
+          right: visibleFrameEdges.right,
+        })
+        : structuralFrameEdges.top &&
+            structuralFrameEdges.bottom &&
+            structuralFrameEdges.left &&
+            structuralFrameEdges.right
+          ? innerBoundsFromEdgeRegions({
+              top: structuralFrameEdges.top,
+              bottom: structuralFrameEdges.bottom,
+              left: structuralFrameEdges.left,
+              right: structuralFrameEdges.right,
+            })
         : null;
 
   if (!daylightBounds) {
@@ -562,12 +602,17 @@ export function projectB92DatumProjectionPlan(input: B92ProjectionEngineInput): 
     };
   }
 
+  const projectionUnresolvedIds = new Set<string>();
   const projectedRegions = plan.regions.map((region) => {
     const result = projectRegion(region, plan.fieldChains, fieldBoundsById);
-    if (result.unresolved) unresolvedItems.push(result.unresolved);
+    if (result.unresolved) {
+      if (result.unresolved.id.endsWith(":projection-unresolved")) {
+        projectionUnresolvedIds.add(result.unresolved.id);
+      }
+      unresolvedItems.push(result.unresolved);
+    }
     return result.region;
   });
-  const projectionUnresolvedIds = new Set<string>();
   const projectedRegionsWithOpenings = projectedRegions.map((region, index, regions) => {
     if (region.category !== "daylight_opening") return region;
     const result = projectDaylightOpeningFromResolvedEdges(region, regions);

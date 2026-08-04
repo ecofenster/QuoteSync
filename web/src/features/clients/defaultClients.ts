@@ -75,7 +75,7 @@ function makeDemoEstimate(opts: { uid: () => string }, n: number): Estimate {
     estimateRef: base,
     baseEstimateRef: base,
     revisionNo: 0,
-    status: "Draft",
+        status: "Draft" as const,
     estimatedOrderMonth: ORDER_MONTHS[(n - 1) % ORDER_MONTHS.length],
     estimatedOrderYear: year + Math.floor((n - 1) / ORDER_MONTHS.length),
     defaults: makeDefaultEstimateDefaults(),
@@ -326,7 +326,7 @@ const counties = [
       estimateRef: `${base.estimateRef}-${String(estimateIndex + 1).padStart(2, "0")}`,
       baseEstimateRef: `${base.baseEstimateRef}-${String(estimateIndex + 1).padStart(2, "0")}`,
       revisionNo: 0,
-      status: "Draft",
+      status: "Draft" as const,
       estimatedOrderMonth: randFrom([...ORDER_MONTHS]),
       estimatedOrderYear: new Date().getFullYear() + randInt(0, 1),
       orderMeta: isOrderSeed || isInstallationSeed ? buildDemoOrderMeta(isInstallationSeed ? "installation" : "order") : undefined,
@@ -421,6 +421,4 @@ const counties = [
     ...extraClients,
   ];
 }
-
-
 

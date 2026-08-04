@@ -445,12 +445,12 @@ export function buildFourFieldFixedStaticMullionLayoutDefinition(
   };
 }
 
-export type ConfiguratorLayoutRendererInput = {
+export type ConfiguratorLayoutAdminPreviewInput = {
   fieldsX: number;
   fieldsY: number;
   insertion: string;
   cellInsertions: Record<string, string>;
-  windowConfiguration: {
+  adminPreviewConfiguration: {
     junctions: Array<{ key: string; type?: string; ownerFieldId?: string | null }>;
   };
 };
@@ -474,9 +474,9 @@ export function mapConfiguratorOpeningToRendererInsertion(
   return "Fixed";
 }
 
-export function buildRendererInputFromConfiguratorLayoutDefinition(
+export function buildAdminPreviewInputFromConfiguratorLayoutDefinition(
   layout: ConfiguratorLayoutDefinitionV2
-): ConfiguratorLayoutRendererInput {
+): ConfiguratorLayoutAdminPreviewInput {
   const cellInsertions = Object.fromEntries(
     layout.fields.map((field) => [field.key, mapConfiguratorOpeningToRendererInsertion(field.opening)])
   );
@@ -488,7 +488,7 @@ export function buildRendererInputFromConfiguratorLayoutDefinition(
     fieldsY: layout.rows,
     insertion: fallbackInsertion,
     cellInsertions,
-    windowConfiguration: {
+    adminPreviewConfiguration: {
       junctions: layout.junctions.map((junction) => ({
         key: junction.key,
         type: junction.type,

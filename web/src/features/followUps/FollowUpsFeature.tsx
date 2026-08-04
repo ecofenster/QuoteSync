@@ -535,38 +535,17 @@ export default function FollowUpsFeature({
                     key={iso}
                     type="button"
                     onClick={() => setSelectedDateISO(iso)}
-                    style={{
-                      borderRadius: 12,
-                      border: isSelected ? "2px solid #18181b" : "1px solid #e4e4e7",
-                      background: isSelected ? "#18181b" : "#fff",
-                      color: isSelected ? "#fff" : "#111827",
-                      padding: "10px 0",
-                      cursor: "pointer",
-                      opacity: inMonth ? 1 : 0.4,
-                      position: "relative",
-                      fontWeight: 900,
-                    }}
+                    className={`follow-ups__calendar-day${isSelected ? " follow-ups__calendar-day--selected" : ""}`}
+                    style={{ opacity: inMonth ? 1 : 0.4 }}
                     title={iso}
                   >
                     {d.getDate()}
                     {isToday && !isSelected && (
-                      <span style={{ position: "absolute", top: 6, right: 6, width: 8, height: 8, borderRadius: 999, background: "#16a34a" }} />
+                      <span className="follow-ups__calendar-today-dot" />
                     )}
                     {count > 0 && (
                       <span
-                        style={{
-                          position: "absolute",
-                          bottom: 6,
-                          left: "50%",
-                          transform: "translateX(-50%)",
-                          fontSize: 10,
-                          fontWeight: 900,
-                          padding: "2px 6px",
-                          borderRadius: 999,
-                          border: isSelected ? "1px solid rgba(255,255,255,0.35)" : "1px solid #e4e4e7",
-                          background: isSelected ? "rgba(255,255,255,0.18)" : "#f4f4f5",
-                          color: isSelected ? "#fff" : "#111827",
-                        }}
+                        className={`follow-ups__calendar-count${isSelected ? " follow-ups__calendar-count--selected" : ""}`}
                       >
                         {count}
                       </span>
@@ -591,20 +570,7 @@ export default function FollowUpsFeature({
                 <div
                   key={fu.id}
                   onClick={() => setSelectedFollowUpId(fu.id)}
-                  style={{
-                    borderRadius: 14,
-                    border: active
-                      ? "2px solid #18181b"
-                      : overdue
-                      ? "1px solid #fca5a5"
-                      : "1px solid #e4e4e7",
-                    background: active ? "#18181b" : overdue ? "#fff7f7" : "#fff",
-                    color: active ? "#fff" : "#111827",
-                    padding: 10,
-                    cursor: "pointer",
-                    display: "grid",
-                    gap: 6,
-                  }}
+                  className={`follow-ups__item${active ? " follow-ups__item--active" : overdue ? " follow-ups__item--overdue" : ""}`}
                 >
                   <div className="follow-ups__item-head">
                     <div className="follow-ups__item-title">{fu.title || "Follow-up"}</div>
@@ -620,13 +586,7 @@ export default function FollowUpsFeature({
                   <div className="follow-ups__item-activity">
                     Latest activity: {latestActivityAt ? new Date(latestActivityAt).toLocaleString() : "—"}
                   </div>
-                  <div
-                    className="follow-ups__item-note-card"
-                    style={{
-                      border: active ? "1px solid rgba(255,255,255,0.25)" : "1px solid #e4e4e7",
-                      background: active ? "rgba(255,255,255,0.08)" : "#fafafa",
-                    }}
-                  >
+                  <div className="follow-ups__item-note-card">
                     <div className="follow-ups__item-note-label">
                       Latest follow-up note
                     </div>
@@ -720,11 +680,6 @@ export default function FollowUpsFeature({
               type="button"
               onClick={addFollowUpNoteFromPanel}
               disabled={!selectedFollowUp || !noteText.trim()}
-              style={{
-                cursor: (!selectedFollowUp || !noteText.trim()) ? "not-allowed" : "pointer",
-                opacity: (!selectedFollowUp || !noteText.trim()) ? 0.55 : 1,
-                justifySelf: "end",
-              }}
             >
               {selectedFollowUp?.estimateId ? "Save note to follow-up + estimate" : "Save note to follow-up + client"}
             </button>

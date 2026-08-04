@@ -71,6 +71,17 @@ export type B92OuterEdgeSegment = {
   segmentIndex: number;
   field: B92NormalizedField;
   fieldOperation: B92ResolvedFieldOperation;
+  rowContext: {
+    rowIndex: number;
+    totalColumns: number;
+    operations: B92ResolvedFieldOperation[];
+    operationFamilies: B92OperationFamily[];
+    hasMixedOperations: boolean;
+    allFixed: boolean;
+    allSash: boolean;
+    hasFixed: boolean;
+    hasSashOrOpening: boolean;
+  };
 };
 
 export type B92VerticalJunctionSegment = {
@@ -107,6 +118,8 @@ export type B92HorizontalTransomSegment = {
     hasMixedOperations: boolean;
     allFixed: boolean;
     allSash: boolean;
+    hasFixed: boolean;
+    hasSashOrOpening: boolean;
   };
 };
 

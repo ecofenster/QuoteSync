@@ -1,6 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { Client, ClientId, EstimateId, EstimateOutcome } from "../../models/types";
-import { Button, qsOutcomeStyle } from "../estimatePicker/tabs/shared";
+import { Button, qsOutcomeClassName } from "../estimatePicker/tabs/shared";
 import type { EstimateCollectionItem } from "./EstimateCollectionItem";
 
 type Props = {
@@ -97,42 +97,19 @@ export default function EstimateCollectionActions(props: Props) {
         <div className="ep-estimate-action-label">Estimate status</div>
         <div
           role="button"
+          className={`ep-outcome-control ${qsOutcomeClassName(currentOutcome)}`}
           onClick={(ev) => {
             ev.stopPropagation();
             setStatusMenuForEstimateId((prev) => (prev === item.id ? null : item.id));
           }}
-          style={{
-            ...qsOutcomeStyle(currentOutcome),
-            height: 38,
-            padding: "0 28px 0 14px",
-            borderRadius: 999,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 8,
-            userSelect: "none",
-            cursor: "pointer",
-          }}
         >
-          <span style={{ fontWeight: 900 }}>{currentOutcome}</span>
-          <span style={{ fontWeight: 900, lineHeight: 1, transform: "translateY(-1px)" }}>▾</span>
+          <span className="ep-outcome-control__label">{currentOutcome}</span>
+          <span className="ep-outcome-control__chevron">▾</span>
         </div>
 
         {statusMenuForEstimateId === item.id && (
           <div
-            style={{
-              position: "absolute",
-              top: "100%",
-              left: 0,
-              marginTop: 6,
-              minWidth: 140,
-              background: "#fff",
-              border: "1px solid rgba(0,0,0,0.12)",
-              borderRadius: 10,
-              boxShadow: "0 10px 24px rgba(0,0,0,0.12)",
-              overflow: "hidden",
-              zIndex: 20,
-            }}
+            className="ep-outcome-menu"
             onClick={(ev) => ev.stopPropagation()}
           >
             {(["Open", "Order", "Lost"] as EstimateOutcome[]).map((opt) => (
@@ -143,18 +120,7 @@ export default function EstimateCollectionActions(props: Props) {
                   persistEstimateOutcome(itemClient.id, item.id, opt);
                   setStatusMenuForEstimateId(null);
                 }}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  textAlign: "left",
-                  background: "#fff",
-                  color: "#111827",
-                  fontWeight: 800,
-                  border: "none",
-                  padding: "8px 10px",
-                  cursor: "pointer",
-                  borderBottom: opt === "Lost" ? "none" : "1px solid rgba(0,0,0,0.08)",
-                }}
+                className="ep-outcome-menu__item"
               >
                 {opt}
               </button>
@@ -209,6 +175,7 @@ export default function EstimateCollectionActions(props: Props) {
         <Button
           variant="outline"
           disabled={!canUseOutputActions}
+          data-testid="estimate-print-pdf"
           onClick={() =>
             printEstimatePdfService({
               pickerClient: itemClient,

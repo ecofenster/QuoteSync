@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "typecheck": "tsc -b --noEmit",
     "lint": "eslint .",
+    "test": "npm run test:phase5",
+    "test:phase5": "node scripts/run-phase5-tests.mjs",
+    "test:e2e": "npm run build && node scripts/run-phase6-e2e.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

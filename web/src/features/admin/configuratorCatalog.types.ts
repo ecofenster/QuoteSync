@@ -87,10 +87,43 @@ export type ConfiguratorSectionMappingRole =
   | "right_jamb"
   | "head"
   | "bottom"
+  | "bottom"
   | "cill"
   | "static_mullion"
   | "flying_mullion"
+  | "glazing_bar"
   | "threshold";
+
+export type ConfiguratorSectionVariantCondition =
+  | "standard"
+  | "wider_frame"
+  | "frame_only"
+  | "frame_with_sash"
+  | "no_rebate"
+  | "internal_rebate"
+  | "external_rebate"
+  | "rebate_both_sides";
+
+export type ConfiguratorSectionOperationContext =
+  | "fixed"
+  | "fixed_sash"
+  | "turn"
+  | "tilt"
+  | "tilt_turn"
+  | "sliding"
+  | "lift_slide"
+  | "door";
+
+export type ConfiguratorSectionMappingRuleRecord = {
+  id: string;
+  window_type_id: string | null;
+  profile_role: ConfiguratorSectionMappingRole | string;
+  variant_condition: ConfiguratorSectionVariantCondition | string;
+  operation_context: ConfiguratorSectionOperationContext | string;
+  section_reference_id: string | null;
+  notes?: string | null;
+  is_active?: boolean;
+};
 
 export type ConfiguratorDivisionJunctionKind =
   | "static_vertical"
@@ -231,10 +264,10 @@ export type ConfiguratorRenderProfileRecord = {
   code: string;
   operation_type: string;
   view_logic: "inside" | "outside" | "both" | string;
-  frame_top_visible_mm: number;
-  frame_left_visible_mm: number;
-  frame_right_visible_mm: number;
-  frame_bottom_visible_mm: number;
+  frame_top_visible_mm: number | null;
+  frame_left_visible_mm: number | null;
+  frame_right_visible_mm: number | null;
+  frame_bottom_visible_mm: number | null;
   sash_top_visible_mm: number | null;
   sash_left_visible_mm: number | null;
   sash_right_visible_mm: number | null;
@@ -243,8 +276,8 @@ export type ConfiguratorRenderProfileRecord = {
   bead_left_visible_mm: number | null;
   bead_right_visible_mm: number | null;
   bead_bottom_visible_mm: number | null;
-  preview_width_mm: number;
-  preview_height_mm: number;
+  preview_width_mm: number | null;
+  preview_height_mm: number | null;
   handle_axis_offset_mm: number | null;
   handle_height_mm: number | null;
   hinge_pivot_offset_mm: number | null;

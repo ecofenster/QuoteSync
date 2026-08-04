@@ -11,10 +11,10 @@
 const STORAGE_KEY = "quotesync_system_settings";
 
 export const DEFAULT_SETTINGS: SystemSettings = {
-  loadDefaults: true,
-  loadDemoClients: true,
-  loadDemoEstimates: true,
-  loadDemoForecast: true,
+  loadDefaults: false,
+  loadDemoClients: false,
+  loadDemoEstimates: false,
+  loadDemoForecast: false,
   mapsProvider: "none",
   googleMapsApiKey: "",
   azureMapsApiKey: "",

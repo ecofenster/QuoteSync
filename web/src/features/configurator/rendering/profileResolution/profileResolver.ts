@@ -4,6 +4,7 @@ import type {
   ProfileResolutionInput,
   ProfileResolutionResult,
   ProfileResolutionView,
+  ProfileRefId,
   ResolvedPilotConnection,
   ResolvedPilotField,
   ResolvedProfileEdge,
@@ -143,8 +144,8 @@ function uniqueRefs(
   fields: ResolvedPilotField[],
   verticalConnections: ResolvedPilotConnection[],
   horizontalConnections: ResolvedPilotConnection[]
-) {
-  const refs = new Set<string>();
+): ProfileRefId[] {
+  const refs = new Set<ProfileRefId>();
   for (const field of fields) {
     (Object.values(field.edges) as ResolvedProfileEdge[]).forEach((edge) => {
       if (edge.profileRef && edge.profileRef !== "REQUIRES_CONFIRMATION") refs.add(edge.profileRef);

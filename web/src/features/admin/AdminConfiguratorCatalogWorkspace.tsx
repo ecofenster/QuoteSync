@@ -14,7 +14,7 @@ import type {
   ConfiguratorWindowTypeRecord,
 } from "./configuratorCatalog.types";
 import { Button, H3, Small } from "../estimatePicker/tabs/shared";
-import { buildWindowDrawingModel } from "../configurator/rendering/buildWindowDrawingModel";
+import { buildAdminPreviewWindowDrawingModel } from "./rendering/adminPreviewRenderAdapter";
 import DrawingViewport from "../configurator/rendering/DrawingViewport";
 import {
   buildRenderDefinitionContextKey,
@@ -24,14 +24,15 @@ import {
 } from "../configurator/rendering/profileSectionMapping";
 import {
   applyLayoutDefinitionOverridesToResolvedProfiles,
-  buildRendererInputFromConfiguratorLayoutDefinition,
+  buildAdminPreviewInputFromConfiguratorLayoutDefinition,
   buildFourFieldFixedStaticMullionLayoutDefinition,
   buildThreeFieldFixedStaticMullionLayoutDefinition,
   buildTwoFieldFixedStaticMullionLayoutDefinition,
 } from "../configurator/configuratorSchema.helpers";
 import AdminWindowTypesWorkspace from "./windowTypes/AdminWindowTypesWorkspace";
+import B92ConfiguratorShell from "../b92Configurator/B92ConfiguratorShell";
 
-type AdminConfiguratorTopTab = "manufacturers" | "windowTypes" | "configuratorRender";
+type AdminConfiguratorTopTab = "manufacturers" | "windowTypes" | "configuratorRender" | "b92Configurator";
 type ProductGroupKey =
   | "windows"
   | "sideBalconyDoors"
@@ -53,6 +54,7 @@ const TOP_TABS: Array<{ key: AdminConfiguratorTopTab; label: string; description
   { key: "manufacturers", label: "Manufacturers", description: "Manufacturers and their products/systems only." },
   { key: "windowTypes", label: "Window Types", description: "Opening behaviours only, separate from render geometry." },
   { key: "configuratorRender", label: "Configurator Render", description: "Dimension-driven native render definition." },
+  { key: "b92Configurator", label: "B92 Configurator", description: "Migration shell for the future main B92 configurator." },
 ];
 
 const PRODUCT_GROUP_TABS: Array<{ key: ProductGroupKey; label: string }> = [
@@ -830,6 +832,7 @@ function ConfiguratorRenderPanel(props: {
   const [renderViewCode, setRenderViewCode] = useState<RenderProfileViewCode>("IV");
   const [renderVariantCode, setRenderVariantCode] = useState<RenderProfileVariantCode>("NOSASH");
   const [manualCodeOverride, setManualCodeOverride] = useState(false);
+  const [twoFieldJunctionType, setTwoFieldJunctionType] = useState<"static" | "flying">("static");
 
   const windowTypes = bootstrap.windowTypes ?? [];
   const renderProfileRecords = bootstrap.renderProfiles ?? [];
@@ -997,7 +1000,7 @@ function ConfiguratorRenderPanel(props: {
   const previewInsertion = buildPreviewInsertion(selectedOpeningOperation);
   const internalModel = useMemo(
     () =>
-      buildWindowDrawingModel({
+      buildAdminPreviewWindowDrawingModel({
         widthMm: Math.max(300, Number(internalPreviewDraft.preview_width_mm || 1000)),
         heightMm: Math.max(300, Number(internalPreviewDraft.preview_height_mm || 1200)),
         fieldsX: 1,
@@ -1006,7 +1009,7 @@ function ConfiguratorRenderPanel(props: {
         orientationView: "inside",
         openingSymbolMode: "din",
         resolvedProfiles: buildResolvedSectionProfileSetFromRenderProfile(internalPreviewDraft, "inside"),
-        windowConfiguration: {
+        adminPreviewConfiguration: {
           hardware: {
             defaultHandleHeightMm: numericOrNull(internalPreviewDraft.handle_height_mm) ?? 1050,
             defaultHingeType: "Standard",
@@ -1017,7 +1020,7 @@ function ConfiguratorRenderPanel(props: {
   );
   const externalModel = useMemo(
     () =>
-      buildWindowDrawingModel({
+      buildAdminPreviewWindowDrawingModel({
         widthMm: Math.max(300, Number(externalPreviewDraft.preview_width_mm || 1000)),
         heightMm: Math.max(300, Number(externalPreviewDraft.preview_height_mm || 1200)),
         fieldsX: 1,
@@ -1026,7 +1029,7 @@ function ConfiguratorRenderPanel(props: {
         orientationView: "outside",
         openingSymbolMode: "din",
         resolvedProfiles: buildResolvedSectionProfileSetFromRenderProfile(externalPreviewDraft, "outside"),
-        windowConfiguration: {
+        adminPreviewConfiguration: {
           hardware: {
             defaultHandleHeightMm: numericOrNull(externalPreviewDraft.handle_height_mm) ?? 1050,
             defaultHingeType: "Standard",
@@ -1036,10 +1039,21 @@ function ConfiguratorRenderPanel(props: {
     [externalPreviewDraft, previewInsertion]
   );
 
-  const twoFieldPreviewLayout = useMemo(
-    () => buildTwoFieldFixedStaticMullionLayoutDefinition(78),
-    []
-  );
+  const twoFieldPreviewLayout = useMemo(() => {
+    const baseLayout = buildTwoFieldFixedStaticMullionLayoutDefinition(78);
+    return {
+      ...baseLayout,
+      junctions: baseLayout.junctions.map((junction) =>
+        junction.key === "vertical-1"
+          ? {
+              ...junction,
+              type: twoFieldJunctionType,
+              ownerFieldId: twoFieldJunctionType === "flying" ? "1,0" : null,
+            }
+          : junction
+      ),
+    };
+  }, [twoFieldJunctionType]);
   const threeFieldPreviewLayout = useMemo(
     () => buildThreeFieldFixedStaticMullionLayoutDefinition(78),
     []
@@ -1049,15 +1063,15 @@ function ConfiguratorRenderPanel(props: {
     []
   );
   const twoFieldRendererInput = useMemo(
-    () => buildRendererInputFromConfiguratorLayoutDefinition(twoFieldPreviewLayout),
+    () => buildAdminPreviewInputFromConfiguratorLayoutDefinition(twoFieldPreviewLayout),
     [twoFieldPreviewLayout]
   );
   const threeFieldRendererInput = useMemo(
-    () => buildRendererInputFromConfiguratorLayoutDefinition(threeFieldPreviewLayout),
+    () => buildAdminPreviewInputFromConfiguratorLayoutDefinition(threeFieldPreviewLayout),
     [threeFieldPreviewLayout]
   );
   const fourFieldRendererInput = useMemo(
-    () => buildRendererInputFromConfiguratorLayoutDefinition(fourFieldPreviewLayout),
+    () => buildAdminPreviewInputFromConfiguratorLayoutDefinition(fourFieldPreviewLayout),
     [fourFieldPreviewLayout]
   );
   const twoFieldBaseResolvedProfiles = useMemo(() => {
@@ -1099,7 +1113,7 @@ function ConfiguratorRenderPanel(props: {
   );
   const twoFieldInternalModel = useMemo(
     () =>
-      buildWindowDrawingModel({
+      buildAdminPreviewWindowDrawingModel({
         widthMm: 1600,
         heightMm: Math.max(300, Number(internalPreviewDraft.preview_height_mm || 1200)),
         fieldsX: twoFieldRendererInput.fieldsX,
@@ -1109,8 +1123,8 @@ function ConfiguratorRenderPanel(props: {
         orientationView: "inside",
         openingSymbolMode: "din",
         resolvedProfiles: twoFieldResolvedProfiles,
-        windowConfiguration: {
-          ...twoFieldRendererInput.windowConfiguration,
+        adminPreviewConfiguration: {
+          ...twoFieldRendererInput.adminPreviewConfiguration,
           hardware: {
             defaultHandleHeightMm: numericOrNull(internalPreviewDraft.handle_height_mm) ?? 1050,
             defaultHingeType: "Standard",
@@ -1121,7 +1135,7 @@ function ConfiguratorRenderPanel(props: {
   );
   const threeFieldInternalModel = useMemo(
     () =>
-      buildWindowDrawingModel({
+      buildAdminPreviewWindowDrawingModel({
         widthMm: 2400,
         heightMm: Math.max(300, Number(internalPreviewDraft.preview_height_mm || 1200)),
         fieldsX: threeFieldRendererInput.fieldsX,
@@ -1131,8 +1145,8 @@ function ConfiguratorRenderPanel(props: {
         orientationView: "inside",
         openingSymbolMode: "din",
         resolvedProfiles: threeFieldResolvedProfiles,
-        windowConfiguration: {
-          ...threeFieldRendererInput.windowConfiguration,
+        adminPreviewConfiguration: {
+          ...threeFieldRendererInput.adminPreviewConfiguration,
           hardware: {
             defaultHandleHeightMm: numericOrNull(internalPreviewDraft.handle_height_mm) ?? 1050,
             defaultHingeType: "Standard",
@@ -1143,7 +1157,7 @@ function ConfiguratorRenderPanel(props: {
   );
   const fourFieldInternalModel = useMemo(
     () =>
-      buildWindowDrawingModel({
+      buildAdminPreviewWindowDrawingModel({
         widthMm: 3200,
         heightMm: Math.max(300, Number(internalPreviewDraft.preview_height_mm || 1200)),
         fieldsX: fourFieldRendererInput.fieldsX,
@@ -1153,8 +1167,8 @@ function ConfiguratorRenderPanel(props: {
         orientationView: "inside",
         openingSymbolMode: "din",
         resolvedProfiles: fourFieldResolvedProfiles,
-        windowConfiguration: {
-          ...fourFieldRendererInput.windowConfiguration,
+        adminPreviewConfiguration: {
+          ...fourFieldRendererInput.adminPreviewConfiguration,
           hardware: {
             defaultHandleHeightMm: numericOrNull(internalPreviewDraft.handle_height_mm) ?? 1050,
             defaultHingeType: "Standard",
@@ -1283,8 +1297,22 @@ function ConfiguratorRenderPanel(props: {
                     <br />
                     Fixed + Fixed
                     <br />
-                    Static mullion 78mm
+                    {twoFieldJunctionType === "flying" ? "Flying mullion (right master)" : "Static mullion 78mm"}
                   </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div className="admin-setting-label">Junction type</div>
+                  <select
+                    value={twoFieldJunctionType}
+                    onChange={(event) =>
+                      setTwoFieldJunctionType(event.currentTarget.value === "flying" ? "flying" : "static")
+                    }
+                    className="admin-input"
+                  >
+                    <option value="static">Static Mullion</option>
+                    <option value="flying">Flying Mullion</option>
+                  </select>
                 </div>
 
                 <div style={{ display: "grid", gap: 10 }}>
@@ -1295,6 +1323,11 @@ function ConfiguratorRenderPanel(props: {
                     fieldsY: {twoFieldRendererInput.fieldsY}
                     <br />
                     insertion: {twoFieldRendererInput.insertion}
+                    <br />
+                    junction: {twoFieldRendererInput.adminPreviewConfiguration.junctions[0]?.type ?? "static"}
+                    {twoFieldRendererInput.adminPreviewConfiguration.junctions[0]?.ownerFieldId
+                      ? ` / owner ${twoFieldRendererInput.adminPreviewConfiguration.junctions[0]?.ownerFieldId}`
+                      : ""}
                   </div>
                 </div>
 
@@ -1609,25 +1642,23 @@ function ConfiguratorRenderPanel(props: {
                             />
                           </FormField>
                         ) : null}
-                        {!(selectedOpeningDirection === "inward" && renderViewCode === "EV") ? (
-                          <FormField label="Glazing bead visible">
-                            <input
-                              type="number"
-                              value={renderDraft.bead_top_visible_mm ?? ""}
-                              onChange={(event) => {
-                                const value = numericOrNull(event.currentTarget.value);
-                                setRenderDraft((previous) => ({
-                                  ...previous,
-                                  bead_top_visible_mm: value,
-                                  bead_left_visible_mm: value,
-                                  bead_right_visible_mm: value,
-                                  bead_bottom_visible_mm: value,
-                                }));
-                              }}
-                              style={inputStyle}
-                            />
-                          </FormField>
-                        ) : null}
+                        <FormField label="Glazing bead visible">
+                          <input
+                            type="number"
+                            value={renderDraft.bead_top_visible_mm ?? ""}
+                            onChange={(event) => {
+                              const value = numericOrNull(event.currentTarget.value);
+                              setRenderDraft((previous) => ({
+                                ...previous,
+                                bead_top_visible_mm: value,
+                                bead_left_visible_mm: value,
+                                bead_right_visible_mm: value,
+                                bead_bottom_visible_mm: value,
+                              }));
+                            }}
+                            style={inputStyle}
+                          />
+                        </FormField>
                       </>
                     ) : (
                       <>
@@ -1934,9 +1965,13 @@ function ConfiguratorRenderPanel(props: {
   );
 }
 
-export default function AdminConfiguratorCatalogWorkspace() {
+export default function AdminConfiguratorCatalogWorkspace(props: {
+  initialTab?: AdminConfiguratorTopTab;
+  initialWindowTypesCategory?: "windows";
+  onRenderWorkspaceActive?: (active: boolean) => void;
+}) {
   const [bootstrap, setBootstrap] = useState<ConfiguratorCatalogBootstrap>(defaultBootstrap);
-  const [activeTab, setActiveTab] = useState<AdminConfiguratorTopTab>("windowTypes");
+  const [activeTab, setActiveTab] = useState<AdminConfiguratorTopTab>(props.initialTab ?? "windowTypes");
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -1980,7 +2015,7 @@ export default function AdminConfiguratorCatalogWorkspace() {
   }, []);
 
   return (
-    <div style={{ display: "grid", gap: 16 }}>
+    <div style={{ display: "grid", gap: activeTab === "windowTypes" ? 8 : 16 }}>
       <div className="admin-card ui-card" style={{ padding: 16, display: "grid", gap: 12 }}>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {TOP_TABS.map((tab) => (
@@ -2006,9 +2041,20 @@ export default function AdminConfiguratorCatalogWorkspace() {
         activeTab === "manufacturers" ? (
           <ManufacturersPanel bootstrap={bootstrap} setBootstrap={setBootstrap} />
         ) : activeTab === "windowTypes" ? (
-          <AdminWindowTypesWorkspace bootstrap={bootstrap} />
-        ) : (
+          <AdminWindowTypesWorkspace
+            bootstrap={bootstrap}
+            initialCategory={props.initialWindowTypesCategory}
+            onRenderWorkspaceActive={props.onRenderWorkspaceActive}
+          />
+        ) : activeTab === "configuratorRender" ? (
           <ConfiguratorRenderPanel bootstrap={bootstrap} setBootstrap={setBootstrap} />
+        ) : (
+          <SectionShell
+            title="B92 Configurator"
+            description="Controlled Admin access point for the future main B92 profile-section assembly configurator shell. Existing Window Types, Configurator Render, and Estimate configurators remain available during migration."
+          >
+            <B92ConfiguratorShell />
+          </SectionShell>
         )
       )}
     </div>

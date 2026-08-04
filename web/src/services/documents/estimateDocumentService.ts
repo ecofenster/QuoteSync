@@ -1,4 +1,5 @@
 import { estimateTotals, estimateCostTotal } from "../../domain/estimates/estimateCalculations";
+import { describePositionForOutput, getContractAwarePositionMetrics } from "../../features/configurator/configuredPositionContract.utils";
 
 function estimateCostLine(
   e: any,
@@ -7,7 +8,7 @@ function estimateCostLine(
 ) {
   const raw = itemPriceByPositionId[p.id] ?? String(p.itemPrice ?? "");
   const itemPrice = Number(raw || 0);
-  const quantityPrice = (Number.isFinite(itemPrice) ? itemPrice : 0) * Math.max(1, Number(p.qty || 1));
+  const quantityPrice = (Number.isFinite(itemPrice) ? itemPrice : 0) * Math.max(1, getContractAwarePositionMetrics(p).qty);
   return { itemPrice, quantityPrice };
 }
 
@@ -27,12 +28,14 @@ export function buildEstimateHtml(args: {
   const estimateCost = estimateCostTotal(args.e, args.itemPriceByPositionId);
   const rows = (args.e.positions ?? []).map((p: any) => {
     const pricing = estimateCostLine(args.e, p, args.itemPriceByPositionId);
+    const metrics = getContractAwarePositionMetrics(p);
+    const description = describePositionForOutput(p, args.positionDescription(p));
     return `
         <tr>
           <td style="padding:8px;border:1px solid #d4d4d8;">${p.positionRef}</td>
           <td style="padding:8px;border:1px solid #d4d4d8;">${p.roomName || ""}</td>
-          <td style="padding:8px;border:1px solid #d4d4d8;">${args.positionDescription(p)}</td>
-          <td style="padding:8px;border:1px solid #d4d4d8;text-align:right;">${p.qty}</td>
+          <td style="padding:8px;border:1px solid #d4d4d8;">${description}</td>
+          <td style="padding:8px;border:1px solid #d4d4d8;text-align:right;">${metrics.qty}</td>
           <td style="padding:8px;border:1px solid #d4d4d8;text-align:right;">${args.formatMoney(pricing.itemPrice)}</td>
           <td style="padding:8px;border:1px solid #d4d4d8;text-align:right;">${args.formatMoney(pricing.quantityPrice)}</td>
         </tr>

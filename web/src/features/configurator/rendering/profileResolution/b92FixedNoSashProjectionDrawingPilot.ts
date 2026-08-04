@@ -22,6 +22,13 @@ const REQUIRED_B92_FIXED_INTERNAL_PROFILES = {
   bottom: "B92-3",
 } as const;
 
+const B92_FIXED_NO_SASH_STRUCTURAL_FRAME_MM = {
+  top: 57,
+  left: 57,
+  right: 57,
+  bottom: 72,
+} as const;
+
 export type B92FixedNoSashProjectionPilotEligibility = {
   enabled: boolean;
   eligible: boolean;
@@ -75,6 +82,39 @@ function toViewportBounds(boundsMm: B92ProjectionBoundsMm, frame: ReturnType<typ
     y: frame.y + boundsMm.y * frame.scale,
     width: boundsMm.width * frame.scale,
     height: boundsMm.height * frame.scale,
+  };
+}
+
+function fixedNoSashStructuralFrameBoundsMm(
+  edge: "top" | "left" | "right" | "bottom",
+  widthMm: number,
+  heightMm: number
+): B92ProjectionBoundsMm {
+  if (edge === "top") {
+    return { x: 0, y: 0, width: widthMm, height: B92_FIXED_NO_SASH_STRUCTURAL_FRAME_MM.top };
+  }
+  if (edge === "bottom") {
+    return {
+      x: 0,
+      y: heightMm - B92_FIXED_NO_SASH_STRUCTURAL_FRAME_MM.bottom,
+      width: widthMm,
+      height: B92_FIXED_NO_SASH_STRUCTURAL_FRAME_MM.bottom,
+    };
+  }
+  const jambHeight = heightMm - B92_FIXED_NO_SASH_STRUCTURAL_FRAME_MM.top - B92_FIXED_NO_SASH_STRUCTURAL_FRAME_MM.bottom;
+  if (edge === "left") {
+    return {
+      x: 0,
+      y: B92_FIXED_NO_SASH_STRUCTURAL_FRAME_MM.top,
+      width: B92_FIXED_NO_SASH_STRUCTURAL_FRAME_MM.left,
+      height: jambHeight,
+    };
+  }
+  return {
+    x: widthMm - B92_FIXED_NO_SASH_STRUCTURAL_FRAME_MM.right,
+    y: B92_FIXED_NO_SASH_STRUCTURAL_FRAME_MM.top,
+    width: B92_FIXED_NO_SASH_STRUCTURAL_FRAME_MM.right,
+    height: jambHeight,
   };
 }
 
@@ -173,9 +213,10 @@ function buildProjectionModel(contract: WindowTypeRenderModel, field: WindowType
   });
   const frame = frameViewport(contract.overall.widthMm, contract.overall.heightMm);
   const frameShapes: DrawingShape[] = (["top", "left", "right", "bottom"] as const).map((edge) => {
-    const region = regionByIdOrCategory({ regions: projected.projectedRegions, category: "visible_frame_face", edge });
+    regionByIdOrCategory({ regions: projected.projectedRegions, category: "structural_frame_datum", edge });
+    const boundsMm = fixedNoSashStructuralFrameBoundsMm(edge, field.dimensionsMm.width, field.dimensionsMm.height);
     return rect({
-      ...toViewportBounds(region.boundsMm as B92ProjectionBoundsMm, frame),
+      ...toViewportBounds(boundsMm, frame),
       stroke: "#111",
       strokeWidth: 1.2,
       fill: "#f4f4f5",
@@ -254,11 +295,23 @@ function buildProjectionModel(contract: WindowTypeRenderModel, field: WindowType
           diagnosticOnlyUntilFlagged: false,
           visualGeometryChangedByExplicitPilotFlag: true,
           source: "confirmed_b92_fixed_no_sash_datum_projection",
-          visibleFrameMm: {
-            top: 37.5,
-            left: 37.5,
-            right: 37.5,
-            bottom: 72,
+          structuralFrameDatumMm: B92_FIXED_NO_SASH_STRUCTURAL_FRAME_MM,
+          structuralFrameOwnership: {
+            top: "head owns full top span",
+            bottom: "sill owns full bottom span",
+            left: "left jamb continues structurally between head and sill",
+            right: "right jamb continues structurally between head and sill",
+          },
+          sashOverlapDiagnostics: {
+            appliesToFixedNoSash: false,
+            note:
+              "Fixed no-sash has no sash overlap. The 37.5mm exposed-frame value is reserved for sash/opening conditions where sash overlaps the 57mm structural frame.",
+          },
+          glazingBeadMitres: {
+            joinType: "45_degree_mitre",
+            appliesTo: ["fixed", "fixed_sash", "tilt_turn", "turn_only", "tilt_only"],
+            note:
+              "Glazing bead diagnostics describe continuous bead segments with mitred corner joins, not four square-ended overlapping rectangles.",
           },
           daylightOpeningMm: daylight.boundsMm,
           glassOrderMm: glassOrder.boundsMm,

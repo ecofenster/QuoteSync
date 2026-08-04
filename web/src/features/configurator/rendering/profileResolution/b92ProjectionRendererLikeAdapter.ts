@@ -20,6 +20,11 @@ export type B92RendererLikeDiagnosticRegion = {
   boundsMm: B92ProjectionBoundsMm;
   status: Extract<B92ProjectionResolutionStatus, "resolved">;
   comparisonOnly: true;
+  joinGeometry?: {
+    cornerJoin: "45_degree_mitre";
+    squareEndedRectangle: false;
+    note: string;
+  };
   note?: string;
 };
 
@@ -55,6 +60,12 @@ export type B92RendererLikeDiagnosticModel = {
     sash: B92RendererLikeDiagnosticRegion[];
     glass: B92RendererLikeDiagnosticRegion[];
     sectionStacks: B92RendererLikeSectionStackRecord[];
+  };
+  geometrySemantics: {
+    structuralFrame: string;
+    exposedFrame: string;
+    sashOverlap: string;
+    glazingBeadMitres: string;
   };
   fields: B92RendererLikeDiagnosticField[];
   unresolved: B92ProjectionUnresolvedItem[];
@@ -97,7 +108,8 @@ function isFixedRendererLikeRegion(region: B92ProjectedDrawableRegion): boolean 
   return (
     region.status === "resolved" &&
     !!region.boundsMm &&
-    (region.category === "visible_frame_face" ||
+    (region.category === "structural_frame_datum" ||
+      region.category === "visible_frame_face" ||
       region.category === "daylight_opening" ||
       region.category === "glass_order")
   );
@@ -138,6 +150,15 @@ function rendererLikeRegion(input: {
     boundsMm: cloneBounds(input.region.boundsMm),
     status: "resolved",
     comparisonOnly: true,
+    joinGeometry:
+      input.region.category === "bead"
+        ? {
+            cornerJoin: "45_degree_mitre",
+            squareEndedRectangle: false,
+            note:
+              "B92 glazing bead diagnostics treat top, bottom, left, and right bead segments as mitred at corners.",
+          }
+        : undefined,
     note: input.region.note,
   };
 }
@@ -213,12 +234,22 @@ export function buildB92ProjectionRendererLikeDiagnosticModel(
     visualGeometryChanged: false,
     source: "b92_datum_projection_diagnostics",
     note:
-      "Renderer-like diagnostic comparison model only. It is not drawable geometry and must not replace SVG or preview rendering.",
+      "Renderer-like diagnostic comparison model only. Fixed no-sash frame regions are structural/internal datum; sash-field visible frame regions are exposed results after sash overlap. This is not drawable geometry and must not replace SVG or preview rendering.",
     layers: {
       frame,
       sash,
       glass,
       sectionStacks,
+    },
+    geometrySemantics: {
+      structuralFrame:
+        "Outer structural frame datum is the source geometry. Fixed no-sash uses 57mm top/left/right and 72mm bottom; head and sill own full spans while jambs run between them.",
+      exposedFrame:
+        "Exposed frame is a derived sash/opening result. The 37.5mm top/side value is not a fixed-frame datum.",
+      sashOverlap:
+        "Sash-based B92 conditions retain the 57mm structural frame; sash overlap conceals 19.5mm at confirmed top/side positions and leaves 37.5mm exposed. Bottom exposed sash condition is 52.5mm.",
+      glazingBeadMitres:
+        "Glazing bead regions are diagnostics for continuous bead segments with 45 degree mitred joins, not square-ended overlapping rectangles.",
     },
     fields: input.fields.map((field) => {
       const regions = fieldRendererLikeRegions(field);

@@ -17,6 +17,8 @@ import { estimateTotals, estimateCostTotal } from '../../domain/estimates/estima
 import { addFollowUpForEstimate as addFollowUpForEstimateService } from '../../services/followups/followupService';
 import { buildSendEmailText as buildSendEmailTextService, openMailClient as openMailClientService } from '../../services/email/emailService';
 import { printEstimatePdf as printEstimatePdfService, downloadEstimateWordDoc as downloadEstimateWordDocService } from '../../services/documents/estimateDocumentService';
+import { getConfiguredPositionContract } from "../configurator/configuredPositionContract.utils";
+import { positionDescriptionForDisplay } from "../../domain/positions/positionPresentation";
 import ClientInfoTab from './tabs/ClientInfoTab';
 import NotesTab from './tabs/NotesTab';
 import FilesTab from './tabs/FilesTab';
@@ -148,20 +150,14 @@ function Button({
   disabled?: boolean;
   style?: React.CSSProperties;
 }) {
-  const isPrimary = variant === "primary";
+  const className = `ep-button ${variant === "primary" ? "ep-button--primary" : variant === "outline" ? "ep-button--outline" : "ep-button--secondary"}`;
   return (
     <button
       type="button"
       disabled={!!disabled}
       onClick={onClick}
+      className={className}
       style={{
-        borderRadius: 18,
-        border: isPrimary ? "none" : "1px solid #e4e4e7",
-        background: isPrimary ? "#18181b" : "#fff",
-        color: isPrimary ? "#fff" : "#3f3f46",
-        padding: "10px 14px",
-        fontSize: 14,
-        fontWeight: 800,
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.55 : 1,
         ...style,
@@ -174,46 +170,19 @@ function Button({
 
 function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
   const { style, disabled, ...rest } = props;
-  const base: React.CSSProperties = {
-    width: "100%",
-    boxSizing: "border-box",
-    padding: "10px 12px",
-    borderRadius: 14,
-    border: "1px solid #e4e4e7",
-    background: disabled ? "#f4f4f5" : "#ffffff",
-    color: "#111827",
-    fontSize: 14,
-    outline: "none",
-  };
-  return <input {...rest} disabled={disabled} style={{ ...base, ...(style as any) }} />;
+  return <input {...rest} className="ep-shared-input" disabled={disabled} style={style} />;
 }
 
 function Pill({ children }: { children: React.ReactNode }) {
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        borderRadius: 999,
-        padding: "4px 10px",
-        fontSize: 12,
-        fontWeight: 800,
-        background: "#f4f4f5",
-        color: "#18181b",
-        border: "1px solid #e4e4e7",
-      }}
-    >
-      {children}
-    </span>
-  );
+  return <span className="ep-pill-base">{children}</span>;
 }
 
 function Small({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
-  return <div style={{ fontSize: 12, color: "#71717a", ...(style || {}) }}>{children}</div>;
+  return <div className="ep-small" style={style}>{children}</div>;
 }
 
 function H3({ children }: { children: React.ReactNode }) {
-  return <h3 style={{ fontSize: 14, margin: 0, fontWeight: 800, color: "#18181b" }}>{children}</h3>;
+  return <h3 className="ep-h3">{children}</h3>;
 }
 
 function noteCategoryLabel(category: "general" | "follow_up" | "service" | "installer" | "client_request") {
@@ -227,13 +196,13 @@ function noteCategoryPillStyle(category: "general" | "follow_up" | "service" | "
   if (category === "service") return { background: "#ecfeff", color: "#155e75", border: "1px solid #a5f3fc" };
   if (category === "installer") return { background: "#f0fdf4", color: "#166534", border: "1px solid #bbf7d0" };
   if (category === "client_request") return { background: "#fff7ed", color: "#9a3412", border: "1px solid #fed7aa" };
-  return { background: "#f4f4f5", color: "#18181b", border: "1px solid #e4e4e7" };
+  return { background: "var(--color-surface-muted)", color: "var(--color-text-primary)", border: "1px solid var(--color-border)" };
 }
 
 const labelStyle: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 800,
-  color: "#3f3f46",
+  color: "var(--color-text-secondary)",
   marginBottom: 6,
 };
 
@@ -270,21 +239,21 @@ function OrderTimelineBar({ timeline }: { timeline: any[] }) {
   const percent = timeline.length ? Math.round((completedCount / timeline.length) * 100) : 0;
 
   return (
-    <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <div style={{ fontSize: 12, fontWeight: 800, color: "#3f3f46" }}>Order timeline</div>
-        <div style={{ fontSize: 12, fontWeight: 800, color: "#3f3f46" }}>{completedCount}/{timeline.length} complete ({percent}%)</div>
+    <div className="ep-timeline">
+      <div className="ep-timeline-header">
+        <div className="ep-timeline-label">Order timeline</div>
+        <div className="ep-timeline-label">{completedCount}/{timeline.length} complete ({percent}%)</div>
       </div>
-      <div style={{ height: 10, borderRadius: 999, background: "#e4e4e7", overflow: "hidden" }}>
+      <div className="ep-timeline-progress">
         <div style={{ width: `${percent}%`, height: "100%", background: "#22c55e" }} />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+      <div className="ep-timeline-grid">
         {timeline.map((t, i) => (
-          <div key={i} style={{ borderRadius: 10, border: "1px solid #e4e4e7", padding: 8, background: t.completed ? "#f0fdf4" : "#fff" }}>
-            <div style={{ fontSize: 11, fontWeight: 800, color: t.completed ? "#166534" : "#52525b", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+          <div key={i} className={`ep-timeline-item ep-timeline-item--${t.completed ? "complete" : "pending"}`}>
+            <div className="ep-timeline-item-label">
               {t.completed ? "Complete" : "Pending"}
             </div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#18181b", marginTop: 4 }}>{stageLabel(t.stage)}</div>
+            <div className="ep-timeline-item-stage">{stageLabel(t.stage)}</div>
           </div>
         ))}
       </div>
@@ -302,7 +271,7 @@ function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => void })
   const [i1, i2, i3, it, ic, ico, ip] = addressTuple(invoiceStructured);
 
   return (
-    <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", padding: 12, background: "#fff" }}>
+    <div className="ep-pane-card ep-client-details-card">
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <H3>Client contact information</H3>
         <Button variant="secondary" onClick={onEdit}>Edit</Button>
@@ -312,7 +281,7 @@ function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => void })
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <input type="checkbox" checked={c.type === "Business"} disabled />
-            <span style={{ fontSize: 12, fontWeight: 800, color: "#3f3f46" }}>Business customer</span>
+            <span className="ep-client-details-checkbox-label">Business customer</span>
           </label>
           <Small>Type: {c.type}</Small>
         </div>
@@ -351,7 +320,7 @@ function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => void })
           <Input value={c.home || ""} onChange={() => {}} disabled />
         </div>
 
-        <div style={{ marginTop: 10, borderTop: "1px solid #e4e4e7", paddingTop: 10 }}>
+        <div className="ep-client-details-section">
           <button
             type="button"
             onClick={() => setCustomerAddressOpen((prev) => !prev)}
@@ -365,7 +334,7 @@ function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => void })
               alignItems: "center",
               gap: 8,
               font: "inherit",
-              color: "#18181b",
+              color: "var(--color-text-primary)",
             }}
           >
             <H3>{customerAddressOpen ? "▼" : "▶"} Customer address</H3>
@@ -414,7 +383,7 @@ function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => void })
           )}
         </div>
 
-        <div style={{ marginTop: 10, borderTop: "1px solid #e4e4e7", paddingTop: 10 }}>
+        <div className="ep-client-details-section">
           <button
             type="button"
             onClick={() => setInvoiceAddressOpen((prev) => !prev)}
@@ -428,7 +397,7 @@ function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => void })
               alignItems: "center",
               gap: 8,
               font: "inherit",
-              color: "#18181b",
+              color: "var(--color-text-primary)",
             }}
           >
             <H3>{invoiceAddressOpen ? "▼" : "▶"} Invoice address</H3>
@@ -595,6 +564,7 @@ export default function EstimatePickerTabs(props: Props) {
   }, [estimateCreatorFilterByTab]);
 
   if (!pickerClient) return null;
+  const activePickerClient = pickerClient;
 
   async function apiFetchJson(path: string, options?: RequestInit) {
     const res = await fetch(`http://localhost:3001${path}`, options);
@@ -625,7 +595,7 @@ export default function EstimatePickerTabs(props: Props) {
           ? estimateCreatorFilterByTab.lost
           : estimateCreatorFilterByTab.estimates;
 
-    return pickerClient.estimates.filter((e) => {
+    return activePickerClient.estimates.filter((e) => {
       if ((((e as any).outcome ?? "Open") as EstimateOutcome) !== outcome) return false;
       if (activeFilter === "all") return true;
       return String(e.createdByUserId || CURRENT_APP_USER.id) === CURRENT_APP_USER.id;
@@ -688,11 +658,11 @@ export default function EstimatePickerTabs(props: Props) {
       const next = { ...prev, [estimateId]: installerId };
       return next;
     });
-    setEstimateInstaller(pickerClient.id, estimateId, installerId);
+    setEstimateInstaller(activePickerClient.id, estimateId, installerId);
   }
 
   function setOrderMetaField(estimateId: EstimateId, key: string, value: any) {
-    updateEstimateOrderMeta(pickerClient.id, estimateId, { [key]: value });
+    updateEstimateOrderMeta(activePickerClient.id, estimateId, { [key]: value });
   }
 
   function stageDateValue(e: any, stage: string): string {
@@ -718,14 +688,16 @@ export default function EstimatePickerTabs(props: Props) {
   }
 
   function positionDescription(p: Client["estimates"][number]["positions"][number]) {
-    return `${p.positionType} • ${p.insertion} • ${p.widthMm} × ${p.heightMm} mm`;
+    return positionDescriptionForDisplay(p);
   }
 
   function PositionPreview({ position }: { position: Client["estimates"][number]["positions"][number] }) {
+    const contract = getConfiguredPositionContract(position);
     return (
       <div style={{ width: 48, height: 54, borderRadius: 12, border: "1px solid #d4d4d8", background: "#fafafa", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <div style={{ width: position.positionType === "Door" ? 18 : 28, height: 38, borderRadius: 3, border: "2px solid #52525b", position: "relative", background: "#fff" }}>
           <div style={{ position: "absolute", inset: 4, border: "1px solid #a1a1aa", borderRadius: 2 }} />
+          {contract ? <div style={{ position: "absolute", left: -4, right: -4, bottom: -14, fontSize: 8, fontWeight: 800, textAlign: "center", color: "#2563eb" }}>B92</div> : null}
         </div>
       </div>
     );
@@ -755,14 +727,14 @@ export default function EstimatePickerTabs(props: Props) {
   }
 
   function confirmDeleteEstimate(estimateId: EstimateId) {
-    const estimate = pickerClient.estimates.find((x) => x.id === estimateId);
+    const estimate = activePickerClient.estimates.find((x) => x.id === estimateId);
     if (!estimate) return;
     const ok = window.confirm(`Send estimate ${estimate.estimateRef} to recycle bin?`);
     if (!ok) return;
     if (expandedEstimateId === estimateId) {
       setExpandedEstimateId(null);
     }
-    deleteEstimatesForClient(pickerClient.id, [estimateId]);
+    deleteEstimatesForClient(activePickerClient.id, [estimateId]);
   }
 
   function renderEstimateSection(
@@ -1081,7 +1053,7 @@ export default function EstimatePickerTabs(props: Props) {
                     </Button>
                   </div>
 
-                  <Small style={{ color: "#6b7280" }}>
+                  <Small style={{ color: "var(--color-text-muted)" }}>
                     Use “Print PDF” to generate the customer-facing estimate PDF, then attach that PDF in your email app. Direct file attachment from the browser send flow is not wired yet.
                   </Small>
                 </div>
@@ -1114,7 +1086,7 @@ export default function EstimatePickerTabs(props: Props) {
                     </label>
                   </div>
 
-                  <Small style={{ color: "#6b7280" }}>
+                  <Small style={{ color: "var(--color-text-muted)" }}>
                     Follow-ups are saved to the database and appear in Customers - Follow Ups on the scheduled due date.
                   </Small>
                 </div>

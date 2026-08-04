@@ -1,6 +1,6 @@
 import React from "react";
 import type { Client, EstimateId } from "../../../models/types";
-import { Button, H3, Small, noteCategoryLabel, noteCategoryPillStyle } from "./shared";
+import { Button, H3, Small, noteCategoryLabel, noteCategoryPillClassName } from "./shared";
 
 type NoteCategory = "general" | "follow_up" | "service" | "installer" | "client_request";
 type NoteFilter = "all" | NoteCategory;
@@ -158,7 +158,7 @@ export default function NotesTab(props: {
                 activeFilteredNotes.map((note) => (
                   <div key={note.id} className="ep-note-card">
                     <div className="ep-note-card-header">
-                      <span className="ep-note-pill" style={{ ...noteCategoryPillStyle(note.category) }}>
+                      <span className={`ep-note-pill ${noteCategoryPillClassName(note.category)}`.trim()}>
                         {noteCategoryLabel(note.category)}
                       </span>
                       <Small>{new Date(note.updatedAt || note.createdAt).toLocaleString()}</Small>

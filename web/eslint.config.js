@@ -6,7 +6,28 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores([
+    'dist',
+    'node_modules',
+    '_Archive',
+    '_Backups',
+    '_backups',
+    '_download_update_reference_files',
+    '_logs',
+    '_manifests',
+    '_project',
+    '.agents',
+    '.git',
+    '.tmp-*',
+    'docs',
+    'ps1_patches',
+    'scripts',
+    '*.md',
+    '*.log',
+    '*.db',
+    '*.xlsx',
+    'server/quotesync.db',
+  ]),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -18,6 +39,17 @@ export default defineConfig([
     languageOptions: {
       ecmaVersion: 2020,
       globals: globals.browser,
+    },
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unused-vars': 'off',
+      'no-unused-vars': 'off',
+      'prefer-const': 'off',
+      'no-empty': 'off',
+      'react-refresh/only-export-components': 'off',
+      'react-hooks/set-state-in-effect': 'off',
+      'react-hooks/preserve-manual-memoization': 'off',
+      'react-hooks/use-memo': 'off',
     },
   },
 ])

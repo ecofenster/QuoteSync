@@ -233,33 +233,34 @@ export const B92_TWO_FIELD_VERTICAL_JUNCTION_RULES = [
       "External projection/cladding details remain diagnostic-only.",
     ],
   }),
-  ...(["turn_left", "turn_right"] as const).flatMap((leftOperation) =>
-    (["tt_left", "tt_right"] as const).map((rightOperation) =>
-      rule({
-        id: `b92-2field-${leftOperation}-${rightOperation}-flying-centre-inside`,
-        systemCode: "B92",
-        axis: "vertical",
-        viewSide: "inside",
-        leftOperation,
-        rightOperation,
-        junctionType: "flying",
-        leftHanding: handingForOperation(leftOperation),
-        rightHanding: handingForOperation(rightOperation),
-        ownerSide: "requires_owner",
-        profileRef: "B92-18",
-        role: "flying_mullion_centre",
-        mirrored: false,
-        requiredAnchors: FLYING_MULLION_ANCHORS,
-        projectionStatus: "requires_section_dxf",
-        confidence: "confirmed",
-        evidenceRefs: EUROPA_92_ALU_CLAD_EVIDENCE_REFS,
-        notes: [
-          "Turn/TT flying mullion is confirmed internally as B92-18.",
-          "Owner field selection is still required before production geometry can use this rule.",
-          "No outside rule is marked confirmed because external evidence did not clearly call out B92-18.",
-        ],
-      })
-    )
+  ...([
+    ["turn_left", "tt_right"],
+    ["tt_left", "turn_right"],
+  ] as const).map(([leftOperation, rightOperation]) =>
+    rule({
+      id: `b92-2field-${leftOperation}-${rightOperation}-flying-centre-inside`,
+      systemCode: "B92",
+      axis: "vertical",
+      viewSide: "inside",
+      leftOperation,
+      rightOperation,
+      junctionType: "flying",
+      leftHanding: handingForOperation(leftOperation),
+      rightHanding: handingForOperation(rightOperation),
+      ownerSide: "requires_owner",
+      profileRef: "B92-18",
+      role: "flying_mullion_centre",
+      mirrored: false,
+      requiredAnchors: FLYING_MULLION_ANCHORS,
+      projectionStatus: "requires_section_dxf",
+      confidence: "confirmed",
+      evidenceRefs: EUROPA_92_ALU_CLAD_EVIDENCE_REFS,
+      notes: [
+        "Turn/TT flying mullion is confirmed internally as B92-18 only when both fields meet on their opening side.",
+        "Owner field selection is still required before production geometry can use this rule.",
+        "No outside rule is marked confirmed because external evidence did not clearly call out B92-18.",
+      ],
+    })
   ),
 ] as const satisfies readonly B92JunctionRule[];
 

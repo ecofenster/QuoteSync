@@ -106,6 +106,11 @@ export type B92ProjectedDrawableRegion = {
   ownerRole?: B92ProjectionOwnerRole;
   profileId?: string | null;
   datumChainId?: string;
+  orderExpansionMm?: {
+    widthDeltaMm: B92DatumMm;
+    heightDeltaMm: B92DatumMm;
+    biteBehindBeadMm: B92DatumMm;
+  };
   status: B92ProjectionResolutionStatus;
   note?: string;
 };
@@ -148,11 +153,7 @@ export type B92ProjectedDaylightOpening = B92ProjectedDrawableRegion & {
 export type B92ProjectedGlassOrderGeometry = B92ProjectedDrawableRegion & {
   category: "glass_order";
   visibility: "order_only";
-  orderExpansionMm?: {
-    widthDeltaMm: B92DatumMm;
-    heightDeltaMm: B92DatumMm;
-    biteBehindBeadMm: B92DatumMm;
-  };
+  orderExpansionMm?: NonNullable<B92ProjectedDrawableRegion["orderExpansionMm"]>;
 };
 
 export type B92ProjectedMeetingOwnershipGeometry = B92ProjectedDrawableRegion & {

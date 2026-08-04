@@ -7,6 +7,13 @@ import type {
 type ValidatedFixedSashGeometryRules = Partial<WindowTypeSourceModelGeometryRules> & {
   measurementStatus: "validated";
   measurementTodo: string;
+  visibleFrameWithTrickleVentMm?: {
+    top: number;
+    left: number;
+    right: number;
+    bottom: number;
+    notes?: string;
+  };
 };
 
 type ValidatedFixedSashFieldRule = Omit<WindowTypeSourceModelFieldRule, "geometryRules"> & {
@@ -108,7 +115,7 @@ export const b92FixedSashInternalWindowTypeSourceSeed = {
           right: 37.5,
           bottom: 52.5,
         },
-        ventVisibleFrameMm: {
+        visibleFrameWithTrickleVentMm: {
           top: 59.5,
           left: 37.5,
           right: 37.5,

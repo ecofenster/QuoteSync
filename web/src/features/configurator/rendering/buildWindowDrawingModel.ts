@@ -18,6 +18,10 @@ import {
   serializeDrawingModelForB92FixedInternalParity,
   type B92FixedInternalParityComparison,
 } from "./profileResolution/b92FixedInternalParity";
+import {
+  getWindowConfigurationRenderCompatibility,
+  type WindowDrawingModelLegacyConfiguration,
+} from "./windowConfigurationRenderAdapter";
 
 type PosDraft = {
   widthMm: number;
@@ -29,28 +33,9 @@ type PosDraft = {
   colWidthsMm?: number[];
   rowHeightsMm?: number[];
   orientationView?: "inside" | "outside";
+  openingSymbolMode?: "din" | "uk";
   resolvedProfiles?: ResolvedSectionProfileSet | null;
-  windowConfiguration?: {
-    junctions?: Array<{ key: string; type?: string; ownerFieldId?: string | null }>;
-    fields?: Array<{
-      key: string;
-      type?: string;
-      handleHeightMm?: number | null;
-      hingeType?: string | null;
-      handleAxisOffsetMm?: number | null;
-      hingePivotOffsetMm?: number | null;
-    }>;
-    hardware?: { defaultHandleHeightMm?: number | null; defaultHingeType?: string | null };
-    frame?: { finishMode?: "single" | "dual"; internalColour?: string | null; externalColour?: string | null };
-    dev?: {
-      b92FixedInternalContractValidation?: boolean | null;
-      b92ContractDrawing?: boolean | null;
-      b92ContractDrawingReturn?: boolean | null;
-      b92System?: string | null;
-      useAdminSourceModel?: boolean | null;
-      useAdminSourceModelReturn?: boolean | null;
-    };
-  };
+  windowConfiguration?: WindowDrawingModelLegacyConfiguration | null;
 };
 
 type B92FixedInternalParityDevReport =
@@ -885,31 +870,32 @@ export function buildWindowDrawingModel(pos: PosDraft): DrawingModel {
   const rowSplits = normalizeSplits(heightMm, fieldsY, pos.rowHeightsMm);
   const insertions = normalizeCellInsertions(fieldsX, fieldsY, pos.cellInsertions, pos.insertion);
   const view = pos.orientationView ?? "inside";
+  const renderCompatibility = getWindowConfigurationRenderCompatibility(pos);
   const shouldValidateB92FixedInternalContract =
     view === "inside" &&
     fieldsX === 1 &&
     fieldsY === 1 &&
     isFixedInsertion(pos.insertion) &&
     !isFixedSashInsertion(pos.insertion) &&
-    !!pos.windowConfiguration?.dev?.b92FixedInternalContractValidation &&
-    pos.windowConfiguration.dev.b92System === "B92";
+    !!renderCompatibility.dev.b92FixedInternalContractValidation &&
+    renderCompatibility.dev.b92System === "B92";
   const b92FixedInternalContractValidationReport = shouldValidateB92FixedInternalContract
     ? validateB92FixedInternalContractPreview({
-        system: pos.windowConfiguration?.dev?.b92System ?? null,
+        system: renderCompatibility.dev.b92System ?? null,
         view,
         fieldsX,
         fieldsY,
         insertion: pos.insertion,
         widthMm,
         heightMm,
-        devFlagEnabled: pos.windowConfiguration?.dev?.b92FixedInternalContractValidation,
-        useAdminSourceModel: pos.windowConfiguration?.dev?.useAdminSourceModel,
-        useAdminSourceModelReturn: pos.windowConfiguration?.dev?.useAdminSourceModelReturn,
+        devFlagEnabled: renderCompatibility.dev.b92FixedInternalContractValidation,
+        useAdminSourceModel: renderCompatibility.dev.useAdminSourceModel,
+        useAdminSourceModelReturn: renderCompatibility.dev.useAdminSourceModelReturn,
       })
     : null;
   const shouldRunB92ContractDrawingParity =
-    !!pos.windowConfiguration?.dev?.b92ContractDrawing &&
-    pos.windowConfiguration?.dev?.b92System === "B92" &&
+    !!renderCompatibility.dev.b92ContractDrawing &&
+    renderCompatibility.dev.b92System === "B92" &&
     view === "inside" &&
     fieldsX === 1 &&
     fieldsY === 1 &&
@@ -938,7 +924,7 @@ export function buildWindowDrawingModel(pos: PosDraft): DrawingModel {
         toleranceMm: 0,
       });
       if (
-        pos.windowConfiguration?.dev?.b92ContractDrawingReturn === true &&
+        renderCompatibility.dev.b92ContractDrawingReturn === true &&
         b92FixedInternalParityResult.pass === true
       ) {
         return {
@@ -962,13 +948,13 @@ export function buildWindowDrawingModel(pos: PosDraft): DrawingModel {
     }
   }
   const frameFinishFill = resolveFrameFinishColour(
-    pos.windowConfiguration?.frame?.finishMode,
-    pos.windowConfiguration?.frame?.internalColour,
-    pos.windowConfiguration?.frame?.externalColour,
+    renderCompatibility.frame.finishMode,
+    renderCompatibility.frame.internalColour,
+    renderCompatibility.frame.externalColour,
     view
   );
   const junctionRecordsByKey = new Map(
-    (pos.windowConfiguration?.junctions ?? []).map((junction) => [
+    renderCompatibility.junctions.map((junction) => [
       junction.key,
       {
         key: junction.key,
@@ -981,10 +967,10 @@ export function buildWindowDrawingModel(pos: PosDraft): DrawingModel {
     Array.from(junctionRecordsByKey.values()).map((junction) => [junction.key, junction.type])
   );
   const fieldConfigByKey = new Map(
-    (pos.windowConfiguration?.fields ?? []).map((field) => [field.key, field])
+    renderCompatibility.fields.map((field) => [field.key, field])
   );
-  const defaultHandleHeightMm = pos.windowConfiguration?.hardware?.defaultHandleHeightMm ?? 1050;
-  const defaultHingeType = pos.windowConfiguration?.hardware?.defaultHingeType ?? "Standard";
+  const defaultHandleHeightMm = renderCompatibility.hardware.defaultHandleHeightMm ?? 1050;
+  const defaultHingeType = renderCompatibility.hardware.defaultHingeType ?? "Standard";
   const primaryVerticalJunction = junctionRecordsByKey.get("vertical-1") ?? null;
   const flyingOwnerFieldId =
     fieldsX === 2 &&

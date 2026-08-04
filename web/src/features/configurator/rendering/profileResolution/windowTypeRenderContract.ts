@@ -36,7 +36,12 @@ export type WindowTypeRenderMeta = {
   designRule: string;
   notes?: string[];
   dev?: {
+    b92UseDatumFixedNoSashRenderer?: boolean | null;
+    b92ProjectionFixedNoSashParityDiagnostics?: boolean | null;
     b92RenderSegmentedSillOverlay?: boolean | null;
+    b92UseSashOverlapGeometry?: boolean | null;
+    b92UseJunctionGeometryVisualPilot?: boolean | null;
+    b92JunctionGeometryVisualPilotView?: "inside" | "outside" | null;
     b92SegmentResolverDiagnostics?: WindowTypeRenderB92SegmentResolverDiagnostics | null;
   };
 };

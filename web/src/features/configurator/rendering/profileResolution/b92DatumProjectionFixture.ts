@@ -108,18 +108,18 @@ function fieldChain(
 }
 
 function fixedNoSashRegions(fieldId: string, chainId: string): B92ProjectedDrawableRegion[] {
-  const visibleFrame = B92_INTERNAL_FIXED_NO_SASH_DATUM_GEOMETRY.frame.visibleFaceMm;
+  const structuralFrame = B92_INTERNAL_FIXED_NO_SASH_DATUM_GEOMETRY.frame.structuralFaceMm;
   const regions = B92_EDGES.flatMap((edge) => {
-    const visibleFace = visibleFrame[edge];
-    if (!visibleFace) return [];
+    const structuralFace = structuralFrame[edge];
+    if (!structuralFace) return [];
     return region({
-      id: `${fieldId}:fixed-visible-frame-${edge}`,
-      category: "visible_frame_face",
+      id: `${fieldId}:fixed-structural-frame-${edge}`,
+      category: "structural_frame_datum",
       visibility: "visible",
       fieldId,
       edge,
       datumChainId: chainId,
-      note: `Confirmed fixed no-sash visible ${edge} frame datum: ${visibleFace.valueMm}mm.`,
+      note: `Confirmed fixed no-sash structural/internal ${edge} frame datum: ${structuralFace.valueMm}mm.`,
     });
   });
 
@@ -130,7 +130,7 @@ function fixedNoSashRegions(fieldId: string, chainId: string): B92ProjectedDrawa
       visibility: "visible",
       fieldId,
       datumChainId: chainId,
-      note: "Fixed no-sash daylight opening can be projected from four confirmed visible frame faces.",
+      note: "Fixed no-sash daylight opening can be projected from four confirmed structural/internal frame edges.",
     })
   );
 
@@ -182,7 +182,7 @@ function sashFieldRegions(fieldId: string, chainId: string): B92ProjectedDrawabl
           fieldId,
           edge,
           datumChainId: chainId,
-          note: "Confirmed visible frame face; no visual bounds calculated.",
+          note: "Confirmed exposed visible frame face after sash overlap; no visual bounds calculated.",
         })
       );
     }
@@ -221,7 +221,7 @@ function sashFieldRegions(fieldId: string, chainId: string): B92ProjectedDrawabl
           fieldId,
           edge,
           datumChainId: chainId,
-          note: "Confirmed bead/glass offset datum; no visual bounds calculated.",
+          note: "Confirmed bead/glass offset datum; bead segments terminate into 45 degree mitred corner joins and must not be treated as square-ended overlap rectangles.",
         })
       );
     }
@@ -263,7 +263,7 @@ function fieldSteps(datumGeometry: B92FieldDatumGeometry): B92ProjectionDatumSte
   return B92_EDGES.flatMap((edge) =>
     [
       datumStep("structural_edge", edge, datumGeometry.frame.structuralFaceMm[edge], "Confirmed structural datum."),
-      datumStep("visible_frame_face", edge, datumGeometry.frame.visibleFaceMm[edge], "Confirmed visible frame datum."),
+      datumStep("visible_frame_face", edge, datumGeometry.frame.visibleFaceMm[edge], "Confirmed exposed visible frame datum after sash overlap."),
       datumStep("hidden_rebate", edge, datumGeometry.frame.hiddenBehindSashMm[edge], "Confirmed hidden/rebate datum."),
       datumStep("sash_face", edge, datumGeometry.sash?.visibleFaceMm[edge], "Confirmed sash face/depth datum."),
       datumStep("bead_face", edge, datumGeometry.sash?.beadFaceMm[edge], "Confirmed bead/glass offset datum."),
@@ -273,12 +273,6 @@ function fieldSteps(datumGeometry: B92FieldDatumGeometry): B92ProjectionDatumSte
 
 function fixedNoSashFixtureUnresolved(fieldId: string): B92ProjectionUnresolvedItem[] {
   return [
-    {
-      id: `${fieldId}:fixed-top-side-frame-datum-unresolved`,
-      reason: "missing_datum_authority",
-      fieldId,
-      note: "Fixed no-sash structural frame datum is not confirmed; visible frame faces are confirmed.",
-    },
     {
       id: `${fieldId}:meeting-ownership-unresolved`,
       reason: "unknown_meeting_geometry",

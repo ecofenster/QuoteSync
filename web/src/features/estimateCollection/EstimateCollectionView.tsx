@@ -135,7 +135,6 @@ export default function EstimateCollectionView(props: Props) {
               key={item.id}
               className={`ep-estimate-card ep-estimate-card--${viewMode} ${isExpanded ? "ep-estimate-card--expanded" : ""}`}
               style={{
-                border: isExpanded ? "2px solid #18181b" : "1px solid #e4e4e7",
                 gridColumn: viewMode === "grid" && isExpanded ? "1 / -1" : undefined,
               }}
             >

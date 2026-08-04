@@ -1,21 +1,35 @@
 :root {
+  color-scheme: light;
+
   /* Brand */
-  --color-brand-primary: #55b948;
-  --color-brand-primary-soft: #b5da9c;
+  --qs-brand-black: #231f20;
+  --qs-brand-green: #55b948;
+  --qs-brand-light-green: #b5da9c;
+  --qs-brand-white: #ffffff;
+  --color-brand-black: var(--qs-brand-black);
+  --color-brand-green: var(--qs-brand-green);
+  --color-brand-light-green: var(--qs-brand-light-green);
+  --color-brand-white: var(--qs-brand-white);
+  --color-brand-primary: var(--qs-brand-green);
+  --color-brand-primary-soft: var(--qs-brand-light-green);
   --color-brand-primary-strong: #3f9f36;
-  --color-brand-on-primary: #ffffff;
+  --color-brand-on-primary: var(--qs-brand-white);
+  --color-brand-light: var(--qs-brand-light-green);
 
   /* Core surfaces */
-  --color-surface: #ffffff;
+  --color-surface: var(--qs-brand-white);
   --color-surface-alt: #f7f8f7;
   --color-surface-muted: #eef3ea;
-  --color-surface-inverse: #231f20;
+  --color-surface-subtle: #fafafa;
+  --color-surface-inverse: var(--qs-brand-black);
+  --color-surface-glass: var(--qs-brand-white);
 
   /* Text */
-  --color-text-primary: #231f20;
+  --color-text-primary: var(--qs-brand-black);
   --color-text-secondary: #3a3637;
   --color-text-muted: #6b6768;
-  --color-text-on-dark: #ffffff;
+  --color-text-on-inverse: var(--qs-brand-white);
+  --color-text-on-dark: var(--color-text-on-inverse);
 
   /* Borders */
   --color-border: #d7ded2;
@@ -23,7 +37,7 @@
   --color-divider: #e7ece3;
 
   /* State */
-  --color-success: #55b948;
+  --color-success: var(--qs-brand-green);
   --color-warning: #c68a12;
   --color-danger: #b42318;
   --color-info: #1d4f91;
@@ -64,8 +78,72 @@
   --shadow-md: 0 8px 24px rgba(35, 31, 32, 0.08);
   --shadow-lg: 0 16px 40px rgba(35, 31, 32, 0.12);
 
+  /* Theme surfaces */
+  --app-background: #f4f7f2;
+  --app-shell-background: var(--app-background);
+  --app-shell-header-bg: var(--qs-brand-white);
+  --app-shell-header-border: #d9e2d4;
+  --app-shell-main-bg: transparent;
+  --ui-backdrop-filter: none;
+  --ui-card-background: var(--qs-brand-white);
+  --ui-control-background: var(--qs-brand-white);
+  --ui-control-background-hover: #f7faf5;
+  --ui-control-background-disabled: var(--color-surface-muted);
+  --ui-control-border: #d9e2d4;
+  --ui-table-header-background: var(--color-surface-subtle);
+  --ui-table-row-hover-background: var(--color-surface-alt);
+  --ui-popover-background: var(--qs-brand-white);
+  --ui-popover-border: var(--ui-control-border);
+
   /* Layout */
   --container-max-width: 1440px;
   --sidebar-width: 280px;
   --header-height: 72px;
+}
+
+:root[data-qs-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-qs-theme="dark"] {
+  color-scheme: dark;
+  --color-brand-primary: #55b948;
+  --color-brand-primary-soft: #b5da9c;
+  --color-brand-primary-strong: #6fd35f;
+  --color-brand-on-primary: #231f20;
+  --color-surface: #1d1a1b;
+  --color-surface-alt: #292526;
+  --color-surface-muted: #332f30;
+  --color-surface-subtle: #242122;
+  --color-surface-inverse: #ffffff;
+  --color-surface-glass: #231f20;
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #e4eadf;
+  --color-text-muted: #b6c1b0;
+  --color-text-on-inverse: #231f20;
+  --color-border: rgba(181, 218, 156, 0.22);
+  --color-border-strong: rgba(85, 185, 72, 0.5);
+  --color-divider: rgba(255, 255, 255, 0.12);
+  --color-warning: #f1b84b;
+  --color-danger: #ff8a7a;
+  --color-info: #9bc4ff;
+  --color-focus-ring: rgba(85, 185, 72, 0.42);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 14px 34px rgba(0, 0, 0, 0.34);
+  --shadow-lg: 0 26px 64px rgba(0, 0, 0, 0.42);
+  --app-background: #231f20;
+  --app-shell-background: var(--app-background);
+  --app-shell-header-bg: #231f20;
+  --app-shell-header-border: rgba(85, 185, 72, 0.34);
+  --app-shell-main-bg: transparent;
+  --ui-backdrop-filter: none;
+  --ui-card-background: #2d292a;
+  --ui-control-background: rgba(255, 255, 255, 0.06);
+  --ui-control-background-hover: rgba(85, 185, 72, 0.16);
+  --ui-control-background-disabled: rgba(255, 255, 255, 0.04);
+  --ui-control-border: rgba(181, 218, 156, 0.24);
+  --ui-table-header-background: #242122;
+  --ui-table-row-hover-background: #292526;
+  --ui-popover-background: #2d292a;
+  --ui-popover-border: rgba(181, 218, 156, 0.24);
 }

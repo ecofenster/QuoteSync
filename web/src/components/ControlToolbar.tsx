@@ -1,11 +1,7 @@
 import React from "react";
 
 export function ControlToolbar({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-      {children}
-    </div>
-  );
+  return <div className="ui-control-toolbar">{children}</div>;
 }
 
 export function ControlToolbarGroup({
@@ -16,9 +12,9 @@ export function ControlToolbarGroup({
   children: React.ReactNode;
 }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-      <div style={{ fontSize: 12, color: "#71717a" }}>{label}</div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>{children}</div>
+    <div className="ui-control-toolbar__group">
+      <div className="ui-control-toolbar__label">{label}</div>
+      <div className="ui-control-toolbar__items">{children}</div>
     </div>
   );
 }

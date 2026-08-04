@@ -5,6 +5,7 @@ import {
 import type {
   B92ProjectedDrawableRegion,
   B92ProjectedDrawableRegionCategory,
+  B92ProjectedGlassOrderGeometry,
   B92ProjectionBoundsMm,
   B92ProjectionUnresolvedReason,
 } from "./b92DatumProjection.types";
@@ -189,9 +190,14 @@ function validateGlassOrderIfProjected(result: B92ProjectionEngineResult): B92Pr
   const daylight = result.projectedRegions.find((region) => region.category === "daylight_opening");
   const glassOrder = result.projectedRegions.find((region) => region.category === "glass_order");
   if (!daylight?.boundsMm || !glassOrder?.boundsMm || glassOrder.category !== "glass_order") return [];
+  const projectedGlassOrder: B92ProjectedGlassOrderGeometry = {
+    ...glassOrder,
+    category: "glass_order",
+    visibility: "order_only",
+  };
 
   try {
-    assertGlassOrderExpansion(daylight, glassOrder);
+    assertGlassOrderExpansion(daylight, projectedGlassOrder);
     return [];
   } catch (error) {
     return [
@@ -274,7 +280,7 @@ export function validateB92ProjectionFixture(fixture: StaticFixtureKey): B92Proj
 
   const expectedCategories: B92ProjectedDrawableRegionCategory[] =
     fixture === "fixed_no_sash"
-      ? ["visible_frame_face", "daylight_opening", "glass_order"]
+      ? ["structural_frame_datum", "daylight_opening", "glass_order"]
       : [
           "structural_frame_datum",
           "visible_frame_face",
@@ -288,7 +294,7 @@ export function validateB92ProjectionFixture(fixture: StaticFixtureKey): B92Proj
   const baseReport = validateB92ProjectionEngineResult(`b92-static-fixture:${fixture}`, result, expectedCategories);
   const resolvedCategoryIssues =
     fixture === "fixed_no_sash"
-      ? validateResolvedCategories(result, ["visible_frame_face", "daylight_opening", "glass_order"])
+      ? validateResolvedCategories(result, ["structural_frame_datum", "daylight_opening", "glass_order"])
       : validateResolvedCategories(result, [
           "structural_frame_datum",
           "visible_frame_face",

@@ -1,7 +1,44 @@
 /* QuoteSync Phase 2 — controlled tool CSS integration */
 
 .bsen-tool {
+  display: grid;
+  gap: 16px;
+  align-items: start;
   color: var(--color-text-primary);
+}
+
+.bsen-stack {
+  display: grid;
+  gap: 8px;
+}
+
+.bsen-stack--compact {
+  gap: 6px;
+}
+
+.bsen-title {
+  color: var(--color-text-primary);
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.bsen-intro {
+  max-width: 900px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.bsen-search-grid {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.bsen-content-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
 }
 
 .bsen-card {
@@ -44,9 +81,47 @@
 }
 
 .bsen-chip--active {
-  border-color: var(--color-brand-black, #231f20);
-  background: var(--color-brand-black, #231f20);
-  color: var(--color-brand-on-primary, #ffffff);
+  border-color: var(--color-surface-inverse);
+  background: var(--color-surface-inverse);
+  color: var(--color-text-on-inverse);
+}
+
+.bsen-section-title,
+.bsen-detail-section-title {
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.bsen-section-title {
+  font-size: 14px;
+}
+
+.bsen-chip-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bsen-count,
+.bsen-eyebrow {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.bsen-eyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.bsen-list {
+  display: grid;
+  gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 6px;
 }
 
 .bsen-list-item {
@@ -61,17 +136,44 @@
 }
 
 .bsen-list-item--active {
-  border-color: var(--color-brand-black, #231f20);
-  background: color-mix(in srgb, var(--color-light-green, #b5da9c) 18%, white);
+  border-color: var(--color-brand-primary);
+  background: color-mix(in srgb, var(--color-brand-primary) 12%, var(--color-surface));
+}
+
+.bsen-list-item__header,
+.bsen-detail-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bsen-detail-heading {
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.bsen-list-item__code {
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.bsen-list-item__title {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .bsen-badge,
 .bsen-tag {
   border-radius: 999px;
   border: 1px solid var(--color-border);
-  background: var(--color-surface-subtle, #fafafa);
+  background: var(--color-surface-subtle);
   padding: 4px 8px;
-  color: var(--color-text-secondary, #3f3f46);
+  color: var(--color-text-secondary);
 }
 
 .bsen-badge {
@@ -85,5 +187,22 @@
   font-size: 12px;
   font-weight: 700;
   color: var(--color-text-primary);
+}
+
+.bsen-detail-title {
+  color: var(--color-text-primary);
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.bsen-detail-copy {
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.bsen-empty {
+  color: var(--color-text-secondary);
+  font-size: 14px;
 }
 

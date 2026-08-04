@@ -101,3 +101,16 @@
 .u-p-4 {
   padding: var(--space-4) !important;
 }
+
+.u-token-surface {
+  background: var(--color-surface) !important;
+  color: var(--color-text-primary) !important;
+}
+
+.u-token-muted {
+  color: var(--color-text-muted) !important;
+}
+
+.u-token-border {
+  border-color: var(--color-border) !important;
+}

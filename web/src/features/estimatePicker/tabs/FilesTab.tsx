@@ -1,5 +1,5 @@
 import React from "react";
-import type { ClientFile } from "../../../models/types";
+import { asFileId, type ClientFile } from "../../../models/types";
 import { Button, H3, Pill, Small } from "./shared";
 
 export default function FilesTab(props: {
@@ -50,7 +50,7 @@ export default function FilesTab(props: {
             if (!url) return;
             const addedAt = new Date().toISOString();
             props.setClientFiles((prev) => [
-              { id: "file_" + addedAt, label: (props.clientFileLabel || "File").trim(), url, addedAt, addedBy: props.activeUserName, fileNames: props.clientFileNames },
+              { id: asFileId("file_" + addedAt), label: (props.clientFileLabel || "File").trim(), url, addedAt, addedBy: props.activeUserName, fileNames: props.clientFileNames },
               ...prev,
             ]);
             props.setClientFileLabel("");

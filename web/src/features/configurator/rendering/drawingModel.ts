@@ -65,7 +65,7 @@ export type DrawingShape = DrawingLine | DrawingRect | DrawingPolygon;
 export type DrawingModel = {
   width: number;
   height: number;
-  viewBox: { width: number; height: number };
+  viewBox: { x?: number; y?: number; width: number; height: number };
   elements: Array<{ id: string; role: string; shapes: DrawingShape[] }>;
   geometry: {
     frame: DrawingShape[];

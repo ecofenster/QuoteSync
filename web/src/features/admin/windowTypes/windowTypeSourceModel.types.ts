@@ -214,6 +214,8 @@ export type WindowTypeSourceModel = {
     b92SegmentResolverDivisions?: WindowTypeSourceModelDevDivisionRule[];
     b92ExposeSegmentResolverDiagnostics?: boolean | null;
     b92UseJunctionGeometryVisualPilot?: boolean | null;
+    b92JunctionGeometryVisualPilotView?: "inside" | "outside" | null;
     b92RenderSegmentedSillOverlay?: boolean | null;
+    b92UseSashOverlapGeometry?: boolean | null;
   };
 };

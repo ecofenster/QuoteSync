@@ -26,19 +26,9 @@ export default function Toggle({
           onChange={(e) => onChange(e.currentTarget.checked)}
         />
 
-        <span
-          className="toggle__track"
-          style={{
-            background: value ? "#111827" : "#e5e7eb",
-          }}
-        />
+        <span className="toggle__track" />
 
-        <span
-          className="toggle__thumb"
-          style={{
-            left: value ? 26 : 3,
-          }}
-        />
+        <span className="toggle__thumb" />
       </div>
     </label>
   );

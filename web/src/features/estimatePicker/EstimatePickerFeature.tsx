@@ -99,7 +99,7 @@ type Props = {
 
 function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
-    <div className="epf-card ui-card ui-card--pad-md" style={{ boxShadow: "0 1px 2px rgba(0,0,0,.06)", ...style }}>
+    <div className="epf-card ui-card ui-card--pad-md" style={style}>
       {children}
     </div>
   );
@@ -419,7 +419,7 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
           {clients.length === 0 && <Small>No clients yet.</Small>}
 
           {clients.map((c) => (
-            <div key={c.id} className="epf-client-row">
+            <div key={c.id} className="epf-client-row" data-testid="client-picker-row" data-client-ref={c.clientRef}>
               <div className="epf-client-meta">
                 <div className="epf-client-name">
                   {c.type === "Business" ? (c.businessName || c.clientName) : c.clientName}

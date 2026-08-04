@@ -71,7 +71,13 @@ export default function EstimatePositionsTable(props: Props) {
       <div className="ep-positions-toolbar">
         <div className="ep-positions-field">
           <div className="ep-positions-field-label">Quick add</div>
-          <select className="ep-positions-select" value={quickAddPositionType} onChange={(e) => setQuickAddPositionType(e.target.value as "Window" | "Door")} disabled={isSaving}>
+          <select
+            className="ep-positions-select"
+            value={quickAddPositionType}
+            onChange={(e) => setQuickAddPositionType(e.target.value as "Window" | "Door")}
+            disabled={isSaving}
+            data-testid="position-quick-add-kind"
+          >
             <option value="Window">Window</option>
             <option value="Door">Door</option>
           </select>
@@ -79,7 +85,13 @@ export default function EstimatePositionsTable(props: Props) {
 
         <div className="ep-positions-field">
           <div className="ep-positions-field-label">Type</div>
-          <select className="ep-positions-select" value={quickAddInsertion} onChange={(e) => setQuickAddInsertion(e.target.value)} disabled={isSaving}>
+          <select
+            className="ep-positions-select"
+            value={quickAddInsertion}
+            onChange={(e) => setQuickAddInsertion(e.target.value)}
+            disabled={isSaving}
+            data-testid="position-quick-add-type"
+          >
             {availableInsertions.map((option) => (
               <option key={option} value={option}>
                 {option}
@@ -95,6 +107,7 @@ export default function EstimatePositionsTable(props: Props) {
           }}
           disabled={isSaving}
           className="ep-positions-add-button"
+          data-testid="position-quick-add-submit"
           style={{
             cursor: isSaving ? "not-allowed" : "pointer",
             opacity: isSaving ? 0.55 : 1,
@@ -132,11 +145,16 @@ export default function EstimatePositionsTable(props: Props) {
 
               return (
                 <React.Fragment key={p.id}>
-                  <tr onClick={() => togglePosition(p.id)} className="ep-positions-row" aria-expanded={isExpanded}>
+                  <tr
+                    onClick={() => togglePosition(p.id)}
+                    className={`ep-positions-row${isExpanded ? " ep-positions-row--expanded" : ""}`}
+                    aria-expanded={isExpanded}
+                    data-testid="estimate-position-row"
+                    data-position-ref={p.positionRef ?? ""}
+                  >
                     <td
                       className="ep-positions-cell ep-positions-cell--center"
                       style={{
-                        borderBottom: isExpanded ? "none" : "1px solid #f4f4f5",
                         width: 42,
                         minWidth: 42,
                         cursor: "pointer",
@@ -147,7 +165,6 @@ export default function EstimatePositionsTable(props: Props) {
 
                     <td
                       className="ep-positions-cell"
-                      style={{ borderBottom: isExpanded ? "none" : "1px solid #f4f4f5" }}
                       onClick={(ev) => ev.stopPropagation()}
                     >
                       <Input
@@ -159,7 +176,6 @@ export default function EstimatePositionsTable(props: Props) {
 
                     <td
                       className="ep-positions-cell"
-                      style={{ borderBottom: isExpanded ? "none" : "1px solid #f4f4f5" }}
                       onClick={(ev) => ev.stopPropagation()}
                     >
                       <Input
@@ -169,13 +185,13 @@ export default function EstimatePositionsTable(props: Props) {
                       />
                     </td>
 
-                    <td className="ep-positions-cell" style={{ borderBottom: isExpanded ? "none" : "1px solid #f4f4f5" }}>
+                    <td className="ep-positions-cell">
                       <PositionPreview position={p} />
                     </td>
 
-                    <td className="ep-positions-cell" style={{ borderBottom: isExpanded ? "none" : "1px solid #f4f4f5" }}>
+                    <td className="ep-positions-cell">
                       <div className="ep-positions-description">
-                        <div className="ep-positions-description-title">{positionDescription(p)}</div>
+                        <div className="ep-positions-description-title" data-testid="estimate-position-description">{positionDescription(p)}</div>
                         <div className="ep-positions-dimensions" onClick={(ev) => ev.stopPropagation()}>
                           <Input
                             value={String(p.widthMm ?? "")}
@@ -198,7 +214,6 @@ export default function EstimatePositionsTable(props: Props) {
 
                     <td
                       className="ep-positions-cell ep-positions-cell--right"
-                      style={{ borderBottom: isExpanded ? "none" : "1px solid #f4f4f5" }}
                       onClick={(ev) => ev.stopPropagation()}
                     >
                       <Input
@@ -212,7 +227,7 @@ export default function EstimatePositionsTable(props: Props) {
 
                     <td
                       className="ep-positions-cell ep-positions-cell--right"
-                      style={{ borderBottom: isExpanded ? "none" : "1px solid #f4f4f5", width: 140 }}
+                      style={{ width: 140 }}
                       onClick={(ev) => ev.stopPropagation()}
                     >
                       <Input
@@ -224,13 +239,12 @@ export default function EstimatePositionsTable(props: Props) {
                       />
                     </td>
 
-                    <td className="ep-positions-cell ep-positions-cell--right" style={{ borderBottom: isExpanded ? "none" : "1px solid #f4f4f5", fontWeight: 800 }}>
+                    <td className="ep-positions-cell ep-positions-cell--right" style={{ fontWeight: 800 }} data-testid="estimate-position-quantity-price">
                       {formatMoney(quantityPrice)}
                     </td>
 
                     <td
                       className="ep-positions-cell ep-positions-cell--center"
-                      style={{ borderBottom: isExpanded ? "none" : "1px solid #f4f4f5" }}
                       onClick={(ev) => ev.stopPropagation()}
                     >
                       <div className="ep-positions-actions">
@@ -317,7 +331,7 @@ export default function EstimatePositionsTable(props: Props) {
 
                   {isExpanded && (
                     <tr>
-                      <td colSpan={9} className="ep-positions-expanded-cell" style={{ borderBottom: "1px solid #f4f4f5" }}>
+                      <td colSpan={9} className="ep-positions-expanded-cell">
                         <PositionExpandedPanel p={p} />
                       </td>
                     </tr>

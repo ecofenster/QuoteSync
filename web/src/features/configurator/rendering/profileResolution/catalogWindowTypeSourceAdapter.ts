@@ -224,15 +224,19 @@ function optionalInterfaceProfile(input: {
     findBestMapping({ ...input, key: "fixed_internal_interface" }) ??
     findBestMapping({ ...input, key: "internal_interface" });
   if (!mapping) return null;
-  const profile = input.profilesById.get(mapping.profile_id) ?? null;
-  if (!profile || profile.is_active === false) fail("fixed internal interface section profile must be active when mapped.");
-  if (profile.code !== "B92-6") fail(`fixed internal interface profile must be B92-6; received ${profile.code || "(blank)"}.`);
+  const mappedProfile = input.profilesById.get(mapping.profile_id) ?? null;
+  const profile = Array.from(input.profilesById.values()).find((item) => item.code === "B92-2" && item.is_active !== false) ?? null;
+  if (!profile) fail("fixed internal interface section profile B92-2 must be active when mapped.");
+  if (mappedProfile && mappedProfile.is_active === false) fail("fixed internal interface section profile must be active when mapped.");
+  if (mappedProfile && mappedProfile.code !== "B92-2" && mappedProfile.code !== "B92-6") {
+    fail(`fixed internal interface profile must be B92-2; received ${mappedProfile.code || "(blank)"}.`);
+  }
   return {
-    profileCode: "B92-6",
+    profileCode: "B92-2",
     role: "fixed_internal_interface",
     required: false,
     sectionProfileId: profile.id,
-    notes: profile.notes || mapping.notes || undefined,
+    notes: profile.notes || mappedProfile?.notes || mapping.notes || undefined,
   };
 }
 

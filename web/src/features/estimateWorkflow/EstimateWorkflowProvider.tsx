@@ -41,7 +41,8 @@ function getWorkflowStartStep(
   workflowMode: ConfiguratorWorkflowMode,
   currentTab: string | null
 ): ConfiguratorWorkflowStepId {
-  if (workflowScope !== "position") return deriveEstimateWorkflowStepFromLegacyTab(currentTab);
+  void currentTab;
+  if (workflowScope !== "position") return deriveEstimateWorkflowStepFromLegacyTab();
   return workflowMode === "edit" ? "configuration" : "forecast";
 }
 

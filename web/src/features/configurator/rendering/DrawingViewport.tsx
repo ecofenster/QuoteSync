@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import QuoteSyncDrawingSvg from "./QuoteSyncDrawingSvg";
 import DrawingPreviewToolbar from "./DrawingPreviewToolbar";
 import {
@@ -17,10 +17,14 @@ import type {
   DrawingViewportPan,
   DrawingViewportProps,
   DrawingScalePreset,
+  DrawingViewportHandle,
   DrawingViewportTool,
 } from "./drawingViewport.types";
 
-export default function DrawingViewport(props: DrawingViewportProps) {
+function DrawingViewport(
+  props: DrawingViewportProps,
+  ref: React.ForwardedRef<DrawingViewportHandle>
+) {
   const {
     model,
     selectedCellKey,
@@ -28,11 +32,17 @@ export default function DrawingViewport(props: DrawingViewportProps) {
     onCellContextMenu,
     onRemoveVerticalJunction,
     onRemoveHorizontalJunction,
+    height,
     minHeight = 320,
+    maxHeight,
+    maxWidth,
     aspectRatio = "16 / 9",
+    fitPadding = { x: 32, y: 44 },
     initialScalePreset = "auto",
     initialTool = "select",
     showToolbar = true,
+    overlay,
+    onViewportStateChange,
   } = props;
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -70,10 +80,14 @@ export default function DrawingViewport(props: DrawingViewportProps) {
 
   const fitScale = useMemo(() => {
     if (!viewportSize.width || !viewportSize.height) return 1;
-    const widthScale = viewportSize.width / Math.max(1, model.viewBox.width);
-    const heightScale = viewportSize.height / Math.max(1, model.viewBox.height);
+    const paddingX = typeof fitPadding === "number" ? fitPadding : fitPadding.x;
+    const paddingY = typeof fitPadding === "number" ? fitPadding : fitPadding.y;
+    const availableWidth = Math.max(1, viewportSize.width - paddingX * 2);
+    const availableHeight = Math.max(1, viewportSize.height - paddingY * 2);
+    const widthScale = availableWidth / Math.max(1, model.viewBox.width);
+    const heightScale = availableHeight / Math.max(1, model.viewBox.height);
     return Math.max(0.01, Math.min(widthScale, heightScale));
-  }, [model.viewBox.height, model.viewBox.width, viewportSize.height, viewportSize.width]);
+  }, [fitPadding, model.viewBox.height, model.viewBox.width, viewportSize.height, viewportSize.width]);
 
   const effectiveScale = useMemo(
     () =>
@@ -89,6 +103,38 @@ export default function DrawingViewport(props: DrawingViewportProps) {
   const contentHeight = Math.max(1, model.viewBox.height * effectiveScale);
   const snapAnchors = useMemo(() => collectDrawingSnapAnchors(model), [model]);
   const activeMeasurementEnd = measurementPreview;
+
+  const resetView = React.useCallback(() => {
+    setZoomMultiplier(1);
+    setPan({ x: 0, y: 0 });
+    setMeasurementStart(null);
+    setMeasurementPreview(null);
+    setMeasurements([]);
+    setHoveredMeasurementId(null);
+  }, []);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      fitToView: () => {
+        setScalePreset("auto");
+        resetView();
+      },
+      setOneToOne: () => {
+        setScalePreset("1:1");
+        resetView();
+      },
+      zoomIn: () => setZoomMultiplier((current) => stepZoomMultiplier(current, "in")),
+      zoomOut: () => setZoomMultiplier((current) => stepZoomMultiplier(current, "out")),
+      resetView,
+      setTool,
+    }),
+    [resetView]
+  );
+
+  useEffect(() => {
+    onViewportStateChange?.({ scalePreset, tool, zoomMultiplier });
+  }, [onViewportStateChange, scalePreset, tool, zoomMultiplier]);
 
   useEffect(() => {
     const element = viewportRef.current;
@@ -110,14 +156,7 @@ export default function DrawingViewport(props: DrawingViewportProps) {
           onToolChange={setTool}
           onZoomIn={() => setZoomMultiplier((current) => stepZoomMultiplier(current, "in"))}
           onZoomOut={() => setZoomMultiplier((current) => stepZoomMultiplier(current, "out"))}
-          onResetZoom={() => {
-            setZoomMultiplier(1);
-            setPan({ x: 0, y: 0 });
-            setMeasurementStart(null);
-            setMeasurementPreview(null);
-            setMeasurements([]);
-            setHoveredMeasurementId(null);
-          }}
+          onResetZoom={resetView}
           onClearMeasurements={() => {
             setMeasurementStart(null);
             setMeasurementPreview(null);
@@ -213,15 +252,19 @@ export default function DrawingViewport(props: DrawingViewportProps) {
         }}
         style={{
           width: "100%",
-          minHeight,
-          aspectRatio,
+          minHeight: "880px",
+          aspectRatio: "16 / 9",
           overflow: "auto",
-          background: "#fff",
-          borderRadius: 12,
+          background: "#ffffff",
+          borderRadius: "12px",
           display: "grid",
           placeItems: "center",
-          cursor: tool === "pan" ? (isDragging ? "grabbing" : "grab") : tool === "measure" ? "crosshair" : "default",
+          cursor: "default",
           userSelect: "none",
+          maxWidth: "100%",
+          maxHeight: "900px",
+          justifySelf: "center",
+          height: "880px",
         }}
       >
         <div
@@ -232,6 +275,7 @@ export default function DrawingViewport(props: DrawingViewportProps) {
             flex: "0 0 auto",
             pointerEvents: tool === "pan" || tool === "measure" ? "none" : "auto",
             position: "relative",
+            overflow: "visible",
           }}
         >
           <QuoteSyncDrawingSvg
@@ -242,6 +286,7 @@ export default function DrawingViewport(props: DrawingViewportProps) {
             onRemoveVerticalJunction={tool === "pan" || tool === "measure" ? undefined : onRemoveVerticalJunction}
             onRemoveHorizontalJunction={tool === "pan" || tool === "measure" ? undefined : onRemoveHorizontalJunction}
           />
+          {overlay}
           <svg
             viewBox={`0 0 ${model.viewBox.width} ${model.viewBox.height}`}
             width="100%"
@@ -369,3 +414,5 @@ export default function DrawingViewport(props: DrawingViewportProps) {
     </div>
   );
 }
+
+export default forwardRef<DrawingViewportHandle, DrawingViewportProps>(DrawingViewport);

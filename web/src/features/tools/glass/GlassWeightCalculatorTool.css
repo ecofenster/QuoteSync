@@ -1,7 +1,24 @@
 /* QuoteSync Phase 2 — controlled tool CSS integration */
 
 .glass-tool {
+  display: grid;
+  gap: 24px;
+  max-width: 1400px;
   color: var(--color-text-primary);
+}
+
+.glass-layout {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.glass-content-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: stretch;
 }
 
 .glass-card {
@@ -9,6 +26,11 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.glass-card-title {
+  margin: 0 0 12px;
+  color: var(--color-text-primary);
 }
 
 .glass-label {
@@ -41,6 +63,57 @@
   background: var(--color-surface);
 }
 
+.glass-pane-list {
+  margin-top: 12px;
+}
+
+.glass-pane-controls,
+.glass-actions,
+.glass-shape-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.glass-pane-controls {
+  gap: 6px;
+}
+
+.glass-actions {
+  margin-top: 16px;
+}
+
+.glass-summary-build {
+  margin-top: 8px;
+}
+
+.glass-shape-list {
+  gap: 16px;
+  margin-top: 6px;
+}
+
+.glass-shape-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.glass-shape-option--selected {
+  border-color: var(--color-info);
+  background: color-mix(in srgb, var(--color-info) 10%, var(--color-surface));
+}
+
+.glass-shape-option__label {
+  margin-top: 4px;
+  font-size: 13px;
+}
+
 .glass-pane-title {
   font-size: 12px;
   font-weight: 700;
@@ -56,11 +129,22 @@
   border: 1px solid var(--color-border);
   padding: 6px 8px;
   text-align: left;
-  background: var(--color-surface-subtle, var(--color-light-green, #b5da9c));
+  background: var(--color-surface-subtle);
 }
 
 .glass-table__cell {
   border: 1px solid var(--color-border);
   padding: 6px 8px;
+}
+
+.glass-table-scroll {
+  overflow-x: auto;
+}
+
+@media (max-width: 1100px) {
+  .glass-layout,
+  .glass-content-grid {
+    grid-template-columns: 1fr;
+  }
 }
 

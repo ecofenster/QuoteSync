@@ -3,6 +3,60 @@ import { dbPromise } from '../db.js';
 
 const router = express.Router();
 
+const PROTECTED_CLIENT_REFS = new Set([
+  'EF-CL-001',
+  'EF-CL-002',
+  'EF-CL-003',
+  'EF-CL-004',
+  'EF-CL-005',
+  'EF-CL-006',
+  'EF-CL-007',
+  'EF-CL-008',
+]);
+
+function normalizeClientRef(value) {
+  return String(value || '').trim().toUpperCase();
+}
+
+function isProtectedClientRef(value) {
+  return PROTECTED_CLIENT_REFS.has(normalizeClientRef(value));
+}
+
+async function getClientIdentity(db, id) {
+  return db.get(
+    `
+      SELECT id, client_ref, deleted_at
+      FROM clients
+      WHERE id = ?
+      LIMIT 1
+    `,
+    [id]
+  );
+}
+
+async function findClientByRef(db, clientRef, excludeId = null) {
+  const normalizedRef = normalizeClientRef(clientRef);
+  if (!normalizedRef) return null;
+
+  const params = [normalizedRef];
+  let excludeSql = '';
+  if (excludeId) {
+    excludeSql = 'AND id != ?';
+    params.push(excludeId);
+  }
+
+  return db.get(
+    `
+      SELECT id, client_ref, deleted_at
+      FROM clients
+      WHERE UPPER(TRIM(client_ref)) = ?
+        ${excludeSql}
+      LIMIT 1
+    `,
+    params
+  );
+}
+
 function normalizeBooleanFlag(value) {
   return value ? 1 : 0;
 }
@@ -135,6 +189,14 @@ router.post('/', async (req, res) => {
       longitude,
     } = req.body ?? {};
 
+    const normalizedClientRef = normalizeClientRef(client_ref);
+    if (normalizedClientRef) {
+      const existingRef = await findClientByRef(db, normalizedClientRef);
+      if (existingRef) {
+        return res.status(409).json({ error: 'A client with this reference already exists' });
+      }
+    }
+
     await db.run(
       `
         INSERT INTO clients (
@@ -173,7 +235,7 @@ router.post('/', async (req, res) => {
         home ?? '',
         project_name ?? '',
         created_at ?? new Date().toISOString(),
-        client_ref ?? '',
+        normalizedClientRef,
         client_type ?? 'Individual',
         contact_name ?? '',
         company_name ?? '',
@@ -225,6 +287,23 @@ router.put('/:id', async (req, res) => {
       longitude,
     } = req.body ?? {};
 
+    const current = await getClientIdentity(db, req.params.id);
+    if (!current) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+
+    if (isProtectedClientRef(current.client_ref)) {
+      return res.status(403).json({ error: 'Protected live clients cannot be overwritten' });
+    }
+
+    const normalizedClientRef = normalizeClientRef(client_ref);
+    if (normalizedClientRef) {
+      const existingRef = await findClientByRef(db, normalizedClientRef, req.params.id);
+      if (existingRef) {
+        return res.status(409).json({ error: 'A client with this reference already exists' });
+      }
+    }
+
     await db.run(
       `
         UPDATE clients
@@ -259,7 +338,7 @@ router.put('/:id', async (req, res) => {
         mobile ?? '',
         home ?? '',
         project_name ?? '',
-        client_ref ?? '',
+        normalizedClientRef,
         client_type ?? 'Individual',
         contact_name ?? '',
         company_name ?? '',
@@ -289,6 +368,15 @@ router.delete('/:id', async (req, res) => {
   try {
     const db = await dbPromise;
     const deletedAt = new Date().toISOString();
+
+    const current = await getClientIdentity(db, req.params.id);
+    if (!current) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+
+    if (isProtectedClientRef(current.client_ref)) {
+      return res.status(403).json({ error: 'Protected live clients cannot be deleted' });
+    }
 
     await db.run(
       `
@@ -355,6 +443,15 @@ router.post('/:id/restore', async (req, res) => {
 router.delete('/:id/purge', async (req, res) => {
   try {
     const db = await dbPromise;
+
+    const current = await getClientIdentity(db, req.params.id);
+    if (!current) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+
+    if (isProtectedClientRef(current.client_ref)) {
+      return res.status(403).json({ error: 'Protected live clients cannot be purged' });
+    }
 
     await db.run(
       `

@@ -221,12 +221,14 @@ export type Position = {
   cellInsertions: Record<string, string>; // key: "col,row"
   colWidthsMm?: number[];
   rowHeightsMm?: number[];
+  openingSymbolMode?: "din" | "uk";
 
   positionType: "Window" | "Door";
 
   // per-position overrides (optional)
   useEstimateDefaults: boolean;
   overrides: Partial<EstimateDefaults>;
+  configuredContract?: import("../features/configurator/configuredPositionContract.types").ConfiguredPositionContract | null;
 };
 
 export type ClientNote = {

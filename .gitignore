@@ -31,7 +31,10 @@ web/_download_update_reference_files/
 web/_handover/
 web/_logs/
 web/_manifests/
-web/_project/
+web/_project/*
+!web/_project/PROJECT_STATUS.md
+!web/_project/LEGACY_INVENTORY_PHASE_9.md
+!web/_project/POST_PHASE_9_CHANGE_INVENTORY.md
 web/_docs/
 web/node_modules/
 web/dist/
@@ -41,3 +44,12 @@ web/quotesync.db
 ~$*
 
 web/.env*
+
+# Local test/browser output
+**/.tmp-chrome-*/
+**/.tmp-phase5-tests/
+
+# Runtime databases and backups
+/quotesync.db
+/web/server/quotesync.db
+/web/quotesync.db.backup-*

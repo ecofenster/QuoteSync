@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from "react";
-import type { Client, ClientId, EstimateId, EstimateOutcome, MenuKey, OrderMeta } from "../../models/types";
+import React, { useMemo } from "react";
+import type { Client, ClientId, Estimate, EstimateId, EstimateOutcome, MenuKey, OrderMeta } from "../../models/types";
 import "./MainDashboard.css";
 
 type DashboardFollowUp = {
@@ -16,25 +16,6 @@ type DashboardFollowUp = {
   status?: string;
 };
 
-type DashboardViewMode = "grid" | "list";
-
-type DashboardMetricConfig = {
-  id: string;
-  title: string;
-  value: number;
-  description: string;
-  tone?: "default" | "highlight" | "muted";
-};
-
-type DashboardSectionConfig = {
-  id: string;
-  title: string;
-  description: string;
-  metrics: DashboardMetricConfig[];
-  actionMenu?: MenuKey;
-  fixed?: boolean;
-};
-
 type Props = {
   clients: Client[];
   activeUserName?: string;
@@ -42,54 +23,63 @@ type Props = {
   onOpenEstimate?: (clientId: ClientId, estimateId: EstimateId) => void;
 };
 
-function Card({
-  children,
-  className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  const nextClassName = ["main-dashboard-card", "ui-card", className].filter(Boolean).join(" ");
-  return <div className={nextClassName}>{children}</div>;
-}
+type PriorityTone = "sales" | "today" | "warning" | "invoice";
+type KpiTone = "lead" | "quote" | "order" | "revenue";
 
-function H2({ children }: { children: React.ReactNode }) {
-  return <h2 className="main-dashboard-title">{children}</h2>;
-}
+type PriorityAction = {
+  id: string;
+  icon: React.ReactNode;
+  value: string;
+  label: string;
+  text: string;
+  tone: PriorityTone;
+  menu?: MenuKey;
+};
 
-function H3({ children }: { children: React.ReactNode }) {
-  return <h3 className="main-dashboard-heading">{children}</h3>;
-}
+type KpiCard = {
+  id: string;
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  trend: string;
+  tone: KpiTone;
+  unavailable?: boolean;
+};
 
-function Small({ children }: { children: React.ReactNode }) {
-  return <div className="main-dashboard-small">{children}</div>;
-}
+type ScheduleItem = {
+  id: string;
+  time: string;
+  type: string;
+  title: string;
+  subtitle: string;
+  person: string;
+  menu?: MenuKey;
+};
 
-function Button({
-  children,
-  onClick,
-  variant = "primary",
-  active = false,
-}: {
-  children: React.ReactNode;
-  onClick?: () => void;
-  variant?: "primary" | "secondary";
-  active?: boolean;
-}) {
-  const className = [
-    "main-dashboard-button",
-    variant === "primary" ? "main-dashboard-button--primary" : "main-dashboard-button--secondary",
-    active ? "main-dashboard-button--active" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+type ActivityItem = {
+  id: string;
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+  timestamp: string;
+  menu?: MenuKey;
+};
 
-  return (
-    <button type="button" onClick={onClick} className={className}>
-      {children}
-    </button>
-  );
-}
+type PipelineStage = {
+  label: string;
+  value: number;
+  tone: KpiTone;
+  unavailable?: boolean;
+};
+
+type OrderRow = {
+  client: Client;
+  estimate: Estimate;
+  outcome: EstimateOutcome;
+  meta: Partial<OrderMeta>;
+  needsAttention: boolean;
+  value: number;
+};
 
 function startOfDay(d: Date) {
   const x = new Date(d);
@@ -111,13 +101,6 @@ function startOfWeek(d: Date) {
   return x;
 }
 
-function endOfWeek(d: Date) {
-  const x = startOfWeek(d);
-  x.setDate(x.getDate() + 6);
-  x.setHours(23, 59, 59, 999);
-  return x;
-}
-
 function startOfMonth(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
 }
@@ -130,6 +113,47 @@ function parseDate(raw?: string) {
   if (!raw) return null;
   const date = new Date(raw);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function isInRange(date: Date | null, start: Date, end: Date) {
+  return !!date && date >= start && date <= end;
+}
+
+function formatTime(date: Date | null) {
+  if (!date) return "Today";
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("en-GB", {
+    style: "currency",
+    currency: "GBP",
+    maximumFractionDigits: 0,
+  }).format(value || 0);
+}
+
+function formatRelativeDate(date: Date | null) {
+  if (!date) return "Date unavailable";
+  return date.toLocaleDateString([], { day: "2-digit", month: "short" });
+}
+
+function clientDisplayName(client: Client) {
+  return client.type === "Business" ? client.businessName || client.clientName || "Client" : client.clientName || "Client";
+}
+
+function clientAddress(client: Client, estimate?: Estimate) {
+  return (
+    estimate?.location?.projectAddress ||
+    estimate?.projectAddress ||
+    client.projectAddress ||
+    client.customerAddress ||
+    client.postcode ||
+    "Address not recorded"
+  );
+}
+
+function estimateValue(estimate: Estimate) {
+  return estimate.positions.reduce((sum, position) => sum + Number(position.itemPrice || 0) * Number(position.qty || 1), 0);
 }
 
 function loadEstimateOutcomesForClient(clientId: string): Record<string, string> {
@@ -154,132 +178,119 @@ function loadFollowUpsSafe(): DashboardFollowUp[] {
   }
 }
 
-function MetricCard({
-  metric,
-  viewMode,
-}: {
-  metric: DashboardMetricConfig;
-  viewMode: DashboardViewMode;
-}) {
-  const className = [
-    "main-dashboard-metric",
-    `main-dashboard-metric--${viewMode}`,
-    metric.tone === "highlight" ? "main-dashboard-metric--highlight" : "",
-    metric.tone === "muted" ? "main-dashboard-metric--muted" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+function Icon(props: { name: "phone" | "calendar" | "warning" | "invoice" | "lead" | "quote" | "order" | "revenue" | "activity" }) {
+  const common = {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
 
   return (
-    <div className={className}>
-      <div className="main-dashboard-metric-copy">
-        <div className="main-dashboard-metric-title">{metric.title}</div>
-        <Small>{metric.description}</Small>
-      </div>
-      <div className="main-dashboard-metric-value">{metric.value}</div>
-    </div>
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      {props.name === "phone" ? (
+        <path {...common} d="M6.5 4.5 9 7l-1.5 2c1.2 2.5 3 4.3 5.5 5.5L15 13l2.5 2.5-1.2 3c-.3.7-1 1-1.7.9C9 18.5 5.5 15 4.6 9.4c-.1-.7.2-1.4.9-1.7l1-3.2Z" />
+      ) : props.name === "calendar" ? (
+        <>
+          <rect x="4" y="5" width="16" height="15" rx="2" {...common} />
+          <path {...common} d="M8 3v4M16 3v4M4 10h16" />
+        </>
+      ) : props.name === "warning" ? (
+        <>
+          <path {...common} d="M12 4 21 20H3L12 4Z" />
+          <path {...common} d="M12 9v5M12 17h.01" />
+        </>
+      ) : props.name === "invoice" ? (
+        <>
+          <path {...common} d="M7 3h10v18l-2-1.2-2 1.2-2-1.2-2 1.2-2-1.2V3Z" />
+          <path {...common} d="M9 8h6M9 12h6M9 16h4" />
+        </>
+      ) : props.name === "lead" ? (
+        <>
+          <circle cx="12" cy="8" r="4" {...common} />
+          <path {...common} d="M4.5 21a7.5 7.5 0 0 1 15 0" />
+        </>
+      ) : props.name === "quote" ? (
+        <>
+          <rect x="4" y="5" width="16" height="14" rx="2" {...common} />
+          <path {...common} d="M8 9h8M8 13h5" />
+        </>
+      ) : props.name === "order" ? (
+        <>
+          <path {...common} d="M6 7h12l-1 14H7L6 7Z" />
+          <path {...common} d="M9 7a3 3 0 0 1 6 0M9.5 12l2 2 4-4" />
+        </>
+      ) : props.name === "revenue" ? (
+        <>
+          <path {...common} d="M12 3v18M17 7.5c0-1.7-1.7-3-4.2-3H10c-2 0-3.5 1.2-3.5 2.8 0 4.2 11 1.8 11 6.8 0 1.9-1.7 3.4-4.2 3.4H10c-2.4 0-4-1.4-4-3.2" />
+        </>
+      ) : (
+        <>
+          <circle cx="12" cy="12" r="8" {...common} />
+          <path {...common} d="M12 8v4l3 2" />
+        </>
+      )}
+    </svg>
   );
 }
 
-function DashboardSection({
-  section,
-  viewMode,
-  order,
-  onOpenMenu,
-}: {
-  section: DashboardSectionConfig;
-  viewMode: DashboardViewMode;
-  order: number;
-  onOpenMenu?: (menu: MenuKey) => void;
-}) {
-  const actionMenu = section.actionMenu;
-
+function PriorityCard(props: { action: PriorityAction; onOpenMenu?: (menu: MenuKey) => void }) {
+  const clickable = !!props.action.menu && !!props.onOpenMenu;
   return (
-    <Card
-      className={[
-        "main-dashboard-section",
-        section.fixed ? "main-dashboard-section--fixed" : "main-dashboard-section--sortable-ready",
-      ].join(" ")}
+    <button
+      type="button"
+      className={`qs-priority-card qs-priority-card--${props.action.tone}`}
+      onClick={clickable ? () => props.onOpenMenu?.(props.action.menu as MenuKey) : undefined}
+      disabled={!clickable}
     >
-      <section data-section-id={section.id} data-section-order={order}>
-        <div className="main-dashboard-section-header">
-          <div className="main-dashboard-section-copy">
-            <div className="main-dashboard-section-eyebrow">
-              {section.fixed ? "Fixed Section" : "Section"}
-            </div>
-            <H3>{section.title}</H3>
-            <Small>{section.description}</Small>
-          </div>
+      <span className="qs-priority-card__icon">{props.action.icon}</span>
+      <span className="qs-priority-card__body">
+        <span className="qs-priority-card__value">{props.action.value}</span>
+        <span className="qs-priority-card__label">{props.action.label}</span>
+        <span className="qs-priority-card__text">{props.action.text}</span>
+      </span>
+      <span className="qs-priority-card__chevron">›</span>
+    </button>
+  );
+}
 
-          <div className="main-dashboard-section-actions">
-            {!section.fixed ? (
-              <div className="main-dashboard-section-grip" aria-hidden="true" title="Reorder placeholder">
-                <span />
-                <span />
-                <span />
-              </div>
-            ) : null}
-            {actionMenu ? (
-              <Button variant="secondary" onClick={() => onOpenMenu?.(actionMenu)}>
-                Open
-              </Button>
-            ) : null}
-          </div>
-        </div>
-
-        <div className={`main-dashboard-metrics main-dashboard-metrics--${viewMode}`}>
-          {section.metrics.map((metric) => (
-            <MetricCard key={metric.id} metric={metric} viewMode={viewMode} />
-          ))}
-        </div>
-      </section>
-    </Card>
+function KpiCardView(props: { card: KpiCard }) {
+  return (
+    <div className={`qs-kpi-card qs-kpi-card--${props.card.tone}${props.card.unavailable ? " qs-kpi-card--unavailable" : ""}`}>
+      <div className="qs-kpi-card__top">
+        <span className="qs-kpi-card__icon">{props.card.icon}</span>
+        <span className="qs-kpi-card__trend">{props.card.trend}</span>
+      </div>
+      <div className="qs-kpi-card__label">{props.card.label}</div>
+      <div className="qs-kpi-card__value">{props.card.value}</div>
+      <svg className="qs-kpi-card__spark" viewBox="0 0 120 28" aria-hidden="true">
+        <path d="M2 22 C20 16, 26 18, 38 10 S62 18, 76 8 S100 12, 118 5" />
+      </svg>
+    </div>
   );
 }
 
 export default function MainDashboard(props: Props) {
   const { clients, activeUserName = "User", onOpenMenu } = props;
-  const [viewMode, setViewMode] = useState<DashboardViewMode>("grid");
 
   const dashboardData = useMemo(() => {
     const now = new Date();
-    const followUps = loadFollowUpsSafe();
     const todayStart = startOfDay(now);
     const todayEnd = endOfDay(now);
     const weekStart = startOfWeek(now);
-    const weekEnd = endOfWeek(now);
     const monthStart = startOfMonth(now);
     const monthEnd = endOfMonth(now);
-
-    const countFollowUpsInRange = (start: Date, end: Date) =>
-      followUps.filter((item) => {
-        const dueDate = parseDate(item.dueAt || item.dueDateISO);
-        return dueDate ? dueDate >= start && dueDate <= end : false;
-      }).length;
-
-    const orderRows: Array<{
-      clientId: string;
-      estimateId: string;
-      outcome: EstimateOutcome;
-      productionEndDate?: string;
-      factoryDispatchDate?: string;
-      deliveryDate?: string;
-      installationDate?: string;
-      balanceInvoiceDueDate?: string;
-      clientSignoffReceivedDate?: string;
-      factoryOrderSignedOffDate?: string;
-      factoryInvoicePaidDate?: string;
-      needsAttention: boolean;
-    }> = [];
-
-    let openEstimates = 0;
+    const followUps = loadFollowUpsSafe();
+    const orderRows: OrderRow[] = [];
+    const openEstimateRows: Array<{ client: Client; estimate: Estimate; value: number }> = [];
 
     for (const client of clients) {
       const outcomes = loadEstimateOutcomesForClient(client.id);
-
       for (const estimate of client.estimates) {
         const outcome = (outcomes[estimate.id] ?? estimate.outcome ?? "Open") as EstimateOutcome;
-        if (outcome === "Open") openEstimates += 1;
+        const value = estimateValue(estimate);
+        if (outcome === "Open") openEstimateRows.push({ client, estimate, value });
         if (outcome !== "Order") continue;
 
         const meta = (estimate.orderMeta ?? {}) as Partial<OrderMeta>;
@@ -291,431 +302,327 @@ export default function MainDashboard(props: Props) {
           !meta.installationDate;
 
         orderRows.push({
-          clientId: client.id,
-          estimateId: estimate.id,
+          client,
+          estimate,
           outcome,
-          productionEndDate: meta.productionEndDate || meta.productionCompletedDate,
-          factoryDispatchDate: meta.factoryDispatchDate,
-          deliveryDate: meta.deliveryDate,
-          installationDate: meta.installationDate,
-          balanceInvoiceDueDate: meta.balanceInvoiceDueDate,
-          clientSignoffReceivedDate: meta.clientSignoffReceivedDate,
-          factoryOrderSignedOffDate: meta.factoryOrderSignedOffDate,
-          factoryInvoicePaidDate: meta.factoryInvoicePaidDate,
+          meta,
           needsAttention,
+          value,
         });
       }
     }
 
-    const countOrderDatesInRange = (
-      key:
-        | "productionEndDate"
-        | "factoryDispatchDate"
-        | "deliveryDate"
-        | "installationDate"
-        | "balanceInvoiceDueDate",
-      start: Date,
-      end: Date
-    ) =>
-      orderRows.filter((row) => {
-        const date = parseDate(row[key]);
-        return date ? date >= start && date <= end : false;
-      }).length;
+    const followUpsToday = followUps.filter((item) => isInRange(parseDate(item.dueAt || item.dueDateISO), todayStart, todayEnd));
+    const followUpsThisWeek = followUps.filter((item) => {
+      const date = parseDate(item.dueAt || item.dueDateISO);
+      return !!date && date >= weekStart && date <= todayEnd;
+    });
+    const installationsToday = orderRows.filter((row) => isInRange(parseDate(row.meta.installationDate), todayStart, todayEnd));
+    const invoicesToday = orderRows.filter((row) => isInRange(parseDate(row.meta.balanceInvoiceDueDate), todayStart, todayEnd));
+    const overdueOrders = orderRows.filter((row) => row.needsAttention);
+    const revenueMtd = orderRows
+      .filter((row) => isInRange(parseDate(row.meta.clientSignoffReceivedDate || row.meta.factoryOrderSignedOffDate), monthStart, monthEnd))
+      .reduce((sum, row) => sum + row.value, 0);
+    const pipelineValue = [...openEstimateRows.map((row) => row.value), ...orderRows.map((row) => row.value)].reduce((sum, value) => sum + value, 0);
 
-    const deliveriesToday = countOrderDatesInRange("deliveryDate", todayStart, todayEnd);
-    const deliveriesThisWeek = countOrderDatesInRange("deliveryDate", weekStart, weekEnd);
-    const installationsToday = countOrderDatesInRange("installationDate", todayStart, todayEnd);
-    const installationsThisWeek = countOrderDatesInRange("installationDate", weekStart, weekEnd);
+    const schedule: ScheduleItem[] = [
+      ...installationsToday.map((row) => ({
+        id: `install-${row.client.id}-${row.estimate.id}`,
+        time: formatTime(parseDate(row.meta.installationDate)),
+        type: "Install",
+        title: row.estimate.estimateRef || "Installation",
+        subtitle: clientAddress(row.client, row.estimate),
+        person: row.meta.installerId || row.estimate.createdByName || "Unassigned",
+        menu: "installation" as MenuKey,
+      })),
+      ...followUpsToday.map((item) => ({
+        id: `follow-${item.id}`,
+        time: formatTime(parseDate(item.dueAt || item.dueDateISO)),
+        type: "Follow up",
+        title: item.title || item.estimateRef || "Customer follow-up",
+        subtitle: item.clientName || item.clientRef || "Client not linked",
+        person: "Sales",
+        menu: "follow_ups" as MenuKey,
+      })),
+      ...invoicesToday.map((row) => ({
+        id: `invoice-${row.client.id}-${row.estimate.id}`,
+        time: formatTime(parseDate(row.meta.balanceInvoiceDueDate)),
+        type: "Invoice",
+        title: row.estimate.estimateRef || "Balance invoice",
+        subtitle: clientDisplayName(row.client),
+        person: "Accounts",
+        menu: "orders" as MenuKey,
+      })),
+    ].slice(0, 5);
+
+    const datedActivities: Array<ActivityItem & { date: Date | null }> = [];
+    for (const row of orderRows) {
+      datedActivities.push({
+        id: `activity-order-${row.client.id}-${row.estimate.id}`,
+        icon: <Icon name="order" />,
+        title: row.estimate.estimateRef ? `Order ${row.estimate.estimateRef}` : "Order updated",
+        subtitle: clientDisplayName(row.client),
+        timestamp: formatRelativeDate(parseDate(row.meta.factoryOrderSignedOffDate || row.meta.clientSignoffReceivedDate)),
+        date: parseDate(row.meta.factoryOrderSignedOffDate || row.meta.clientSignoffReceivedDate),
+        menu: "orders",
+      });
+    }
+    for (const item of followUps.slice(0, 8)) {
+      datedActivities.push({
+        id: `activity-follow-${item.id}`,
+        icon: <Icon name="phone" />,
+        title: item.title || "Follow-up scheduled",
+        subtitle: item.clientName || item.estimateRef || "Follow-up item",
+        timestamp: formatRelativeDate(parseDate(item.dueAt || item.dueDateISO)),
+        date: parseDate(item.dueAt || item.dueDateISO),
+        menu: "follow_ups",
+      });
+    }
+
+    const activities = datedActivities
+      .sort((a, b) => (b.date?.getTime() ?? 0) - (a.date?.getTime() ?? 0))
+      .slice(0, 5)
+      .map(({ date: _date, ...activity }) => activity);
 
     return {
-      summary: {
-        todayTaskCount: countFollowUpsInRange(todayStart, todayEnd) + deliveriesToday + installationsToday,
-        thisWeekTaskCount: countFollowUpsInRange(weekStart, weekEnd) + deliveriesThisWeek + installationsThisWeek,
-      },
-      followUps: {
-        today: countFollowUpsInRange(todayStart, todayEnd),
-        thisWeek: countFollowUpsInRange(weekStart, weekEnd),
-        thisMonth: countFollowUpsInRange(monthStart, monthEnd),
-      },
-      estimates: {
-        openEstimates,
-        openOrders: orderRows.length,
-        ordersNeedingAttention: orderRows.filter((row) => row.needsAttention).length,
-      },
-      productionEndDates: {
-        today: countOrderDatesInRange("productionEndDate", todayStart, todayEnd),
-        thisWeek: countOrderDatesInRange("productionEndDate", weekStart, weekEnd),
-        thisMonth: countOrderDatesInRange("productionEndDate", monthStart, monthEnd),
-      },
-      invoices: {
-        sendToday: countOrderDatesInRange("balanceInvoiceDueDate", todayStart, todayEnd),
-        thisWeek: countOrderDatesInRange("balanceInvoiceDueDate", weekStart, weekEnd),
-        thisMonth: countOrderDatesInRange("balanceInvoiceDueDate", monthStart, monthEnd),
-      },
-      factoryPickups: {
-        today: countOrderDatesInRange("factoryDispatchDate", todayStart, todayEnd),
-        thisWeek: countOrderDatesInRange("factoryDispatchDate", weekStart, weekEnd),
-        thisMonth: countOrderDatesInRange("factoryDispatchDate", monthStart, monthEnd),
-      },
-      deliveryDates: {
-        today: deliveriesToday,
-        thisWeek: deliveriesThisWeek,
-        thisMonth: countOrderDatesInRange("deliveryDate", monthStart, monthEnd),
-      },
-      installations: {
-        today: installationsToday,
-        thisWeek: installationsThisWeek,
-        thisMonth: countOrderDatesInRange("installationDate", monthStart, monthEnd),
-      },
-      clients: {
-        clientPortalQueue: 0,
-      },
-      orders: {
-        orderSignOffsNotReceived: orderRows.filter((row) => !row.clientSignoffReceivedDate).length,
-        factorySignOffsNotProcessed: orderRows.filter((row) => !row.factoryOrderSignedOffDate).length,
-        customersNotPaidInvoice: 0,
-        factoryInvoicesNotPaid: orderRows.filter((row) => !row.factoryInvoicePaidDate).length,
-      },
-      serviceIssues: {
-        openServiceIssues: 0,
-        newServiceIssues: 0,
-        pastDueDate: 0,
-        siteServiceUpdates: 0,
-      },
+      followUpsToday: followUpsToday.length,
+      followUpsThisWeek: followUpsThisWeek.length,
+      installationsToday: installationsToday.length,
+      invoicesToday: invoicesToday.length,
+      ordersNeedingAttention: overdueOrders.length,
+      openEstimates: openEstimateRows.length,
+      ordersWon: orderRows.length,
+      revenueMtd,
+      pipelineValue,
+      schedule,
+      activities,
+      pipeline: [
+        { label: "New Leads", value: 0, tone: "lead" as KpiTone, unavailable: true },
+        { label: "Quoted", value: openEstimateRows.length, tone: "quote" as KpiTone },
+        { label: "In Negotiation", value: followUpsThisWeek.length, tone: "revenue" as KpiTone },
+        { label: "Won", value: orderRows.length, tone: "order" as KpiTone },
+      ],
     };
   }, [clients]);
 
-  const followUpsSection: DashboardSectionConfig = {
-    id: "follow-ups",
-    title: "Follow Ups",
-    description: "Fixed priority section for immediate follow-up workload.",
-    fixed: true,
-    actionMenu: "follow_ups",
-    metrics: [
-      {
-        id: "follow-ups-today",
-        title: "Due Today",
-        value: dashboardData.followUps.today,
-        description: "Items due today from the follow up system.",
-        tone: "highlight",
-      },
-      {
-        id: "follow-ups-week",
-        title: "Due This Week",
-        value: dashboardData.followUps.thisWeek,
-        description: "Items due this week from the follow up system.",
-      },
-      {
-        id: "follow-ups-month",
-        title: "Due This Month",
-        value: dashboardData.followUps.thisMonth,
-        description: "Items due this month from the follow up system.",
-      },
-    ],
-  };
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
-  const sections: DashboardSectionConfig[] = [
+  const priorityActions: PriorityAction[] = [
     {
-      id: "estimates",
-      title: "Estimates",
-      description: "Pipeline totals covering open estimates and live orders.",
-      actionMenu: "estimates",
-      metrics: [
-        {
-          id: "estimates-open",
-          title: "Open Estimates",
-          value: dashboardData.estimates.openEstimates,
-          description: "Estimates currently still open.",
-          tone: "highlight",
-        },
-        {
-          id: "orders-open",
-          title: "Open Orders",
-          value: dashboardData.estimates.openOrders,
-          description: "Orders currently active in the workflow.",
-        },
-        {
-          id: "orders-attention",
-          title: "Orders Needing Attention",
-          value: dashboardData.estimates.ordersNeedingAttention,
-          description: "Orders missing key milestones or dates.",
-        },
-      ],
-    },
-    {
-      id: "production-end-dates",
-      title: "Production End Dates",
-      description: "Upcoming production completions by time period.",
-      actionMenu: "orders",
-      metrics: [
-        {
-          id: "production-today",
-          title: "Today",
-          value: dashboardData.productionEndDates.today,
-          description: "Production end dates scheduled for today.",
-        },
-        {
-          id: "production-week",
-          title: "This Week",
-          value: dashboardData.productionEndDates.thisWeek,
-          description: "Production end dates scheduled this week.",
-        },
-        {
-          id: "production-month",
-          title: "This Month",
-          value: dashboardData.productionEndDates.thisMonth,
-          description: "Production end dates scheduled this month.",
-        },
-      ],
-    },
-    {
-      id: "invoices",
-      title: "Invoices",
-      description: "Balance invoice due dates ready for invoice sending.",
-      actionMenu: "orders",
-      metrics: [
-        {
-          id: "invoices-today",
-          title: "Send Today",
-          value: dashboardData.invoices.sendToday,
-          description: "Invoices due to be sent today.",
-        },
-        {
-          id: "invoices-week",
-          title: "This Week",
-          value: dashboardData.invoices.thisWeek,
-          description: "Invoices due to be sent this week.",
-        },
-        {
-          id: "invoices-month",
-          title: "This Month",
-          value: dashboardData.invoices.thisMonth,
-          description: "Invoices due to be sent this month.",
-        },
-      ],
-    },
-    {
-      id: "factory-pickups",
-      title: "Factory Pickups",
-      description: "Dispatch and pickup readiness from current order dates.",
-      actionMenu: "orders",
-      metrics: [
-        {
-          id: "factory-pickups-today",
-          title: "Today",
-          value: dashboardData.factoryPickups.today,
-          description: "Factory pickups scheduled for today.",
-        },
-        {
-          id: "factory-pickups-week",
-          title: "This Week",
-          value: dashboardData.factoryPickups.thisWeek,
-          description: "Factory pickups scheduled this week.",
-        },
-        {
-          id: "factory-pickups-month",
-          title: "This Month",
-          value: dashboardData.factoryPickups.thisMonth,
-          description: "Factory pickups scheduled this month.",
-        },
-      ],
-    },
-    {
-      id: "delivery-dates",
-      title: "Delivery Dates",
-      description: "Scheduled deliveries across the current workload.",
-      actionMenu: "orders",
-      metrics: [
-        {
-          id: "delivery-today",
-          title: "Today",
-          value: dashboardData.deliveryDates.today,
-          description: "Deliveries scheduled for today.",
-        },
-        {
-          id: "delivery-week",
-          title: "This Week",
-          value: dashboardData.deliveryDates.thisWeek,
-          description: "Deliveries scheduled this week.",
-        },
-        {
-          id: "delivery-month",
-          title: "This Month",
-          value: dashboardData.deliveryDates.thisMonth,
-          description: "Deliveries scheduled this month.",
-        },
-      ],
+      id: "follow-ups",
+      icon: <Icon name="phone" />,
+      value: String(dashboardData.followUpsToday),
+      label: "Quotes to Follow Up",
+      text: dashboardData.followUpsThisWeek ? `${dashboardData.followUpsThisWeek} due this week` : "No follow-ups due this week",
+      tone: "sales",
+      menu: "follow_ups",
     },
     {
       id: "installations",
-      title: "Installations",
-      description: "Installation workload over the active calendar windows.",
-      actionMenu: "installation",
-      metrics: [
-        {
-          id: "installations-today",
-          title: "Today",
-          value: dashboardData.installations.today,
-          description: "Installations scheduled for today.",
-        },
-        {
-          id: "installations-week",
-          title: "This Week",
-          value: dashboardData.installations.thisWeek,
-          description: "Installations scheduled this week.",
-        },
-        {
-          id: "installations-month",
-          title: "This Month",
-          value: dashboardData.installations.thisMonth,
-          description: "Installations scheduled this month.",
-        },
-      ],
-    },
-    {
-      id: "clients",
-      title: "Clients",
-      description: "Client-facing queue summary for future dashboard wiring.",
-      actionMenu: "client_database",
-      metrics: [
-        {
-          id: "clients-portal-queue",
-          title: "Client Portal Queue",
-          value: dashboardData.clients.clientPortalQueue,
-          description: "Placeholder until client portal queue data is wired in.",
-          tone: "muted",
-        },
-      ],
+      icon: <Icon name="calendar" />,
+      value: String(dashboardData.installationsToday),
+      label: "Installations Today",
+      text: "Scheduled installation work",
+      tone: "today",
+      menu: "installation",
     },
     {
       id: "orders",
-      title: "Orders",
-      description: "Outstanding order admin and payment processing checks.",
-      actionMenu: "orders",
-      metrics: [
-        {
-          id: "orders-signoff-not-received",
-          title: "Order Sign Offs Not Received",
-          value: dashboardData.orders.orderSignOffsNotReceived,
-          description: "Orders still missing client sign-off receipt.",
-        },
-        {
-          id: "orders-factory-signoff",
-          title: "Factory Sign Offs Not Processed",
-          value: dashboardData.orders.factorySignOffsNotProcessed,
-          description: "Orders still missing factory sign-off processing.",
-        },
-        {
-          id: "orders-customer-unpaid",
-          title: "Customers Not Paid Invoice",
-          value: dashboardData.orders.customersNotPaidInvoice,
-          description: "Placeholder until customer invoice payment tracking is available.",
-          tone: "muted",
-        },
-        {
-          id: "orders-factory-unpaid",
-          title: "Factory Invoices Not Paid",
-          value: dashboardData.orders.factoryInvoicesNotPaid,
-          description: "Orders with no factory invoice payment date recorded.",
-        },
-      ],
+      icon: <Icon name="warning" />,
+      value: String(dashboardData.ordersNeedingAttention),
+      label: "Orders Needing Attention",
+      text: "Missing sign-off, production or install dates",
+      tone: "warning",
+      menu: "orders",
     },
     {
-      id: "service-issues",
-      title: "Service Issues",
-      description: "Service issue queue reserved for later wiring.",
-      metrics: [
-        {
-          id: "service-open",
-          title: "Open Service Issues",
-          value: dashboardData.serviceIssues.openServiceIssues,
-          description: "Placeholder until service issue data is wired in.",
-          tone: "muted",
-        },
-        {
-          id: "service-new",
-          title: "New Service Issues",
-          value: dashboardData.serviceIssues.newServiceIssues,
-          description: "Placeholder until service issue data is wired in.",
-          tone: "muted",
-        },
-        {
-          id: "service-past-due",
-          title: "Past Due Date",
-          value: dashboardData.serviceIssues.pastDueDate,
-          description: "Placeholder until service issue due dates are wired in.",
-          tone: "muted",
-        },
-        {
-          id: "service-site-updates",
-          title: "Site Service Updates",
-          value: dashboardData.serviceIssues.siteServiceUpdates,
-          description: "Placeholder until site update data is wired in.",
-          tone: "muted",
-        },
-      ],
+      id: "invoices",
+      icon: <Icon name="invoice" />,
+      value: String(dashboardData.invoicesToday),
+      label: "Invoices to Send",
+      text: "Balance invoices due today",
+      tone: "invoice",
+      menu: "orders",
     },
   ];
 
+  const kpis: KpiCard[] = [
+    {
+      id: "new-leads",
+      icon: <Icon name="lead" />,
+      label: "New Leads",
+      value: "N/A",
+      trend: "Lead source not wired",
+      tone: "lead",
+      unavailable: true,
+    },
+    {
+      id: "quotes-sent",
+      icon: <Icon name="quote" />,
+      label: "Quotes Sent",
+      value: String(dashboardData.openEstimates),
+      trend: "Open quote pipeline",
+      tone: "quote",
+    },
+    {
+      id: "orders-won",
+      icon: <Icon name="order" />,
+      label: "Orders Won",
+      value: String(dashboardData.ordersWon),
+      trend: "Active order book",
+      tone: "order",
+    },
+    {
+      id: "revenue-mtd",
+      icon: <Icon name="revenue" />,
+      label: "Revenue MTD",
+      value: formatCurrency(dashboardData.revenueMtd),
+      trend: "From recorded order values",
+      tone: "revenue",
+    },
+  ];
+
+  const maxPipeline = Math.max(1, ...dashboardData.pipeline.map((stage) => stage.value));
+
   return (
-    <div className="main-dashboard">
-      <Card className="main-dashboard-hero">
-        <div className="main-dashboard-hero-header">
-          <div className="main-dashboard-hero-copy">
-            <H2>Welcome {activeUserName}</H2>
-            <Small>Operational dashboard for today and this week.</Small>
-          </div>
-
-          <div className="main-dashboard-view-toggle" role="tablist" aria-label="Dashboard view mode">
-            <Button
-              variant="secondary"
-              active={viewMode === "grid"}
-              onClick={() => setViewMode("grid")}
-            >
-              Grid
-            </Button>
-            <Button
-              variant="secondary"
-              active={viewMode === "list"}
-              onClick={() => setViewMode("list")}
-            >
-              List
-            </Button>
-          </div>
+    <div className="qs-dashboard">
+      <section className="qs-dashboard-hero">
+        <div className="qs-dashboard-hero__copy">
+          <div className="qs-dashboard-eyebrow">Operational dashboard</div>
+          <h1>{greeting}, {activeUserName}</h1>
+          <p>Here&apos;s what needs your attention today.</p>
         </div>
-
-        <div className="main-dashboard-summary-grid">
-          <div className="main-dashboard-summary-card">
-            <div className="main-dashboard-summary-label">Today</div>
-            <div className="main-dashboard-summary-value">{dashboardData.summary.todayTaskCount}</div>
-            <Small>You have follow ups, deliveries and installations scheduled today.</Small>
-          </div>
-          <div className="main-dashboard-summary-card">
-            <div className="main-dashboard-summary-label">This week</div>
-            <div className="main-dashboard-summary-value">{dashboardData.summary.thisWeekTaskCount}</div>
-            <Small>You have follow ups, deliveries and installations scheduled this week.</Small>
-          </div>
+        <div className="qs-dashboard-hero__actions">
+          <label className="qs-dashboard-search">
+            <span>Search</span>
+            <input placeholder="Find client, quote or order" />
+          </label>
+          <button type="button" className="qs-dashboard-primary-action" onClick={() => onOpenMenu?.("client_database")}>
+            Add Client
+          </button>
         </div>
-      </Card>
+      </section>
 
-      <DashboardSection
-        section={followUpsSection}
-        viewMode={viewMode}
-        order={0}
-        onOpenMenu={onOpenMenu}
-      />
+      <section className="qs-priority-panel">
+        <div className="qs-section-header">
+          <div>
+            <div className="qs-dashboard-eyebrow">Now</div>
+            <h2>Priority Actions</h2>
+          </div>
+          <button type="button" className="qs-link-button" onClick={() => onOpenMenu?.("follow_ups")}>
+            View Priority Actions
+          </button>
+        </div>
+        <div className="qs-priority-grid">
+          {priorityActions.map((action) => (
+            <PriorityCard key={action.id} action={action} onOpenMenu={onOpenMenu} />
+          ))}
+        </div>
+      </section>
 
-      <div className="main-dashboard-sections">
-        {sections.map((section, index) => (
-          <DashboardSection
-            key={section.id}
-            section={section}
-            viewMode={viewMode}
-            order={index + 1}
-            onOpenMenu={onOpenMenu}
-          />
+      <section className="qs-kpi-grid" aria-label="Business performance">
+        {kpis.map((card) => (
+          <KpiCardView key={card.id} card={card} />
         ))}
-      </div>
+      </section>
+
+      <section className="qs-dashboard-row">
+        <article className="qs-schedule-card">
+          <div className="qs-section-header">
+            <div>
+              <div className="qs-dashboard-eyebrow">Today</div>
+              <h2>Upcoming Schedule</h2>
+            </div>
+            <button type="button" className="qs-link-button" onClick={() => onOpenMenu?.("installation")}>
+              View Calendar
+            </button>
+          </div>
+          <div className="qs-timeline">
+            {dashboardData.schedule.length ? (
+              dashboardData.schedule.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className="qs-timeline-item"
+                  onClick={() => item.menu && onOpenMenu?.(item.menu)}
+                >
+                  <span className="qs-timeline-item__time">{item.time}</span>
+                  <span className="qs-timeline-item__dot" />
+                  <span className="qs-timeline-item__copy">
+                    <strong>{item.type}: {item.title}</strong>
+                    <span>{item.subtitle}</span>
+                    <em>{item.person}</em>
+                  </span>
+                </button>
+              ))
+            ) : (
+              <div className="qs-empty-state">No dated follow-ups, invoices or installations for today.</div>
+            )}
+          </div>
+        </article>
+
+        <article className="qs-pipeline-card">
+          <div className="qs-section-header">
+            <div>
+              <div className="qs-dashboard-eyebrow">Pipeline</div>
+              <h2>Pipeline Overview</h2>
+            </div>
+            <div className="qs-pipeline-value">{formatCurrency(dashboardData.pipelineValue)}</div>
+          </div>
+          <div className="qs-pipeline-bars">
+            {dashboardData.pipeline.map((stage) => (
+              <div key={stage.label} className={`qs-pipeline-stage qs-pipeline-stage--${stage.tone}${stage.unavailable ? " qs-pipeline-stage--unavailable" : ""}`}>
+                <div className="qs-pipeline-stage__meta">
+                  <span>{stage.label}</span>
+                  <strong>{stage.unavailable ? "N/A" : stage.value}</strong>
+                </div>
+                <div className="qs-pipeline-stage__track">
+                  <span style={{ width: `${Math.max(8, (stage.value / maxPipeline) * 100)}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="qs-activity-card">
+          <div className="qs-section-header">
+            <div>
+              <div className="qs-dashboard-eyebrow">Latest</div>
+              <h2>Recent Activity</h2>
+            </div>
+            <button type="button" className="qs-link-button" onClick={() => onOpenMenu?.("orders")}>
+              View all activity
+            </button>
+          </div>
+          <div className="qs-activity-list">
+            {dashboardData.activities.length ? (
+              dashboardData.activities.map((item) => (
+                <button key={item.id} type="button" className="qs-activity-item" onClick={() => item.menu && onOpenMenu?.(item.menu)}>
+                  <span className="qs-activity-item__icon">{item.icon}</span>
+                  <span className="qs-activity-item__copy">
+                    <strong>{item.title}</strong>
+                    <span>{item.subtitle}</span>
+                  </span>
+                  <span className="qs-activity-item__time">{item.timestamp}</span>
+                </button>
+              ))
+            ) : (
+              <div className="qs-empty-state">No recent dated activity available.</div>
+            )}
+          </div>
+        </article>
+      </section>
+
+      <section className="qs-dashboard-callout">
+        <div>
+          <h2>Stay on top of your business</h2>
+          <p>You have priority actions that need your attention.</p>
+        </div>
+        <button type="button" className="qs-dashboard-primary-action" onClick={() => onOpenMenu?.("follow_ups")}>
+          View Priority Actions
+        </button>
+      </section>
     </div>
   );
 }

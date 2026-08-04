@@ -34,6 +34,8 @@ dist-ssr
 # Root level
 _backups/
 Docs/
+!docs/
+!docs/ADR-0001-canonical-configured-position-architecture.md
 SQLite/
 
 # Web app specific

@@ -1,5 +1,5 @@
 import type { WindowTypeSourceModel } from "../../../admin/windowTypes/windowTypeSourceModel.types";
-import type { B92JoinCondition, B92ProfileId } from "./b92ProfileTypes";
+import type { B92FieldType, B92JoinCondition, B92ProfileId } from "./b92ProfileTypes";
 import { resolveB92ProfileSegmentsFromSource } from "./b92SegmentResolver";
 import type {
   B92HorizontalTransomSegment,
@@ -26,7 +26,9 @@ type B92SegmentResolverDevSource = WindowTypeSourceModel & {
     b92UseSegmentResolver?: boolean | null;
     b92ExposeSegmentResolverDiagnostics?: boolean | null;
     b92UseJunctionGeometryVisualPilot?: boolean | null;
+    b92JunctionGeometryVisualPilotView?: "inside" | "outside" | null;
     b92RenderSegmentedSillOverlay?: boolean | null;
+    b92UseSashOverlapGeometry?: boolean | null;
   };
 };
 
@@ -80,6 +82,37 @@ function sourceFieldOperation(operation: string | undefined): WindowTypeRenderFi
   return operation;
 }
 
+function fieldTypeForSourceOperation(operationType: string | undefined, operation: string | undefined): B92FieldType {
+  if (operationType === "fixed") return "fixed";
+  if (operationType === "fixed_sash" || operation === "fixed_sash") return "fixed_sash";
+  if (operationType === "turn_only" || operation === "turn_left" || operation === "turn_right") return "turn_only";
+  if (
+    operationType === "tilt_turn" ||
+    operation === "tt_left" ||
+    operation === "tt_right" ||
+    operation === "tilt_only"
+  ) {
+    return "tilt_turn";
+  }
+  return "unknown";
+}
+
+function hingeSideForSourceOperation(operation: string | undefined): "left" | "right" | null {
+  if (operation === "tt_left" || operation === "turn_left") return "left";
+  if (operation === "tt_right" || operation === "turn_right") return "right";
+  return null;
+}
+
+function handleSideForSourceOperation(operation: string | undefined): "left" | "right" | null {
+  if (operation === "tt_left" || operation === "turn_left") return "right";
+  if (operation === "tt_right" || operation === "turn_right") return "left";
+  return null;
+}
+
+function isSashBasedFieldRule(fieldRule: WindowTypeSourceModel["fieldRules"][number]) {
+  return fieldTypeForSourceOperation(fieldRule.operationType, fieldRule.operation) !== "fixed";
+}
+
 function shouldUseB92SegmentResolver(source: WindowTypeSourceModel): source is B92SegmentResolverDevSource {
   return (source as B92SegmentResolverDevSource).dev?.b92UseSegmentResolver === true;
 }
@@ -98,7 +131,9 @@ function isRenderContractProfileId(profileId: string): profileId is B92ProfileId
     profileId === "B92-1/78V" ||
     profileId === "B92-2" ||
     profileId === "B92-3" ||
+    profileId === "B92-4" ||
     profileId === "B92-4/100V" ||
+    profileId === "B92-5" ||
     profileId === "B92-6" ||
     profileId === "B92-7" ||
     profileId === "B92-7/100" ||
@@ -213,21 +248,22 @@ function outerEdgeDifferences(contract: WindowTypeRenderModel, segmentResult: B9
   return segmentResult.outerEdgeAssignments
     .map((assignment) => {
       if (assignment.segment?.kind !== "outer_edge") return null;
-      const field = contract.fields.find((item) => item.id === assignment.segment?.field.id);
+      const segment = assignment.segment;
+      const field = contract.fields.find((item) => item.id === segment.field.id);
       if (!field) {
         return {
           segmentId: assignment.segmentId,
-          edge: assignment.segment.edge,
+          edge: segment.edge,
           contractProfileId: null,
           resolverProfileId: assignment.profileId,
           reason: "field not found in render contract",
         };
       }
-      const contractProfileId = field.perimeter[assignment.segment.edge]?.profileId ?? null;
+      const contractProfileId = field.perimeter[segment.edge]?.profileId ?? null;
       if (contractProfileId === assignment.profileId) return null;
       return {
         segmentId: assignment.segmentId,
-        edge: assignment.segment.edge,
+        edge: segment.edge,
         contractProfileId,
         resolverProfileId: assignment.profileId,
       };
@@ -242,6 +278,7 @@ function applyB92SegmentResolverToContract(
   const useResolverAssignments = shouldUseB92SegmentResolver(source);
   const exposeResolverDiagnostics = shouldExposeB92SegmentResolverDiagnostics(source);
   const useJunctionVisualPilot = shouldUseB92JunctionGeometryVisualPilot(source);
+  const junctionGeometryVisualPilotView = source.dev?.b92JunctionGeometryVisualPilotView ?? null;
   const useJunctionVisualPilotGeometry =
     useJunctionVisualPilot && isB92Internal1x2JunctionVisualPilotEligible(source);
   if (!useResolverAssignments && !exposeResolverDiagnostics && !useJunctionVisualPilot) return contract;
@@ -291,6 +328,8 @@ function applyB92SegmentResolverToContract(
         ...contract.meta,
         dev: {
           ...contract.meta.dev,
+          b92UseJunctionGeometryVisualPilot: useJunctionVisualPilotGeometry,
+          b92JunctionGeometryVisualPilotView: junctionGeometryVisualPilotView,
           b92SegmentResolverDiagnostics: diagnosticsMetadata,
         },
       },
@@ -341,17 +380,6 @@ function applyB92SegmentResolverToContract(
     );
   }
 
-  console.group("B92 Resolver Integration");
-  console.log({
-    appliedVertical,
-    appliedHorizontal,
-    outerEdgeSegments,
-    sillSegments,
-    outerEdgesReadOnly,
-    unresolved: segmentResult.issues,
-  });
-  console.groupEnd();
-
   return {
     ...contract,
     meta: {
@@ -359,6 +387,9 @@ function applyB92SegmentResolverToContract(
       dev: {
         ...contract.meta.dev,
         b92RenderSegmentedSillOverlay: source.dev?.b92RenderSegmentedSillOverlay === true,
+        b92UseSashOverlapGeometry: source.dev?.b92UseSashOverlapGeometry === true,
+        b92UseJunctionGeometryVisualPilot: useJunctionVisualPilotGeometry,
+        b92JunctionGeometryVisualPilotView: source.dev?.b92JunctionGeometryVisualPilotView ?? null,
         b92SegmentResolverDiagnostics: diagnosticsMetadata,
       },
     },
@@ -369,10 +400,7 @@ function applyB92SegmentResolverToContract(
   };
 }
 
-function buildPerimeter(source: WindowTypeSourceModel): WindowTypeRenderPerimeter {
-  const fieldRule = source.fieldRules[0];
-  assertCondition(fieldRule, "one field rule is required.");
-
+function buildPerimeterFromFieldRule(fieldRule: WindowTypeSourceModel["fieldRules"][number]): WindowTypeRenderPerimeter {
   const { perimeterProfiles } = fieldRule;
   assertProfileCode(perimeterProfiles.top.profileCode, "B92-1", "top");
   assertProfileCode(perimeterProfiles.left.profileCode, "B92-2", "left");
@@ -387,6 +415,12 @@ function buildPerimeter(source: WindowTypeSourceModel): WindowTypeRenderPerimete
   };
 }
 
+function buildPerimeter(source: WindowTypeSourceModel): WindowTypeRenderPerimeter {
+  const fieldRule = source.fieldRules[0];
+  assertCondition(fieldRule, "one field rule is required.");
+  return buildPerimeterFromFieldRule(fieldRule);
+}
+
 function validateB92FixedInternalSource(source: WindowTypeSourceModel, dimensions: RuntimeDimensionsMm): void {
   assertFinitePositiveDimension(dimensions.widthMm, "widthMm");
   assertFinitePositiveDimension(dimensions.heightMm, "heightMm");
@@ -395,31 +429,79 @@ function validateB92FixedInternalSource(source: WindowTypeSourceModel, dimension
   assertCondition(source.systemCode === "B92", "systemCode must be B92.");
   assertCondition(source.view === "inside", "view must be inside.");
   assertCondition(source.referenceView === "external", "referenceView must be external.");
-  assertCondition(source.layout.columns === 1 && source.layout.rows === 1, "layout must be 1x1.");
-  assertCondition(source.fieldRules.length === 1, "exactly one field rule is required.");
+  assertCondition(source.layout.columns >= 1 && source.layout.rows >= 1, "layout must have at least one row and column.");
+  assertCondition(
+    source.fieldRules.length === source.layout.columns * source.layout.rows,
+    "one field rule is required for every layout cell."
+  );
 
-  const fieldRule = source.fieldRules[0];
-  assertCondition(fieldRule, "one field rule is required.");
-  assertCondition(fieldRule.fieldSelector.row === 0, "field rule row must be 0.");
-  assertCondition(fieldRule.fieldSelector.column === 0, "field rule column must be 0.");
-  assertCondition(fieldRule.operationType === "fixed", "operationType must be fixed.");
-  assertCondition(fieldRule.excludedOperationTypes?.includes("fixed_sash"), "fixed_sash must be excluded.");
+  const seenCells = new Set<string>();
+  for (const fieldRule of source.fieldRules) {
+    const { row, column } = fieldRule.fieldSelector;
+    assertCondition(row >= 0 && row < source.layout.rows, `field rule row ${row} is outside layout.`);
+    assertCondition(column >= 0 && column < source.layout.columns, `field rule column ${column} is outside layout.`);
+    const key = `${row}:${column}`;
+    assertCondition(!seenCells.has(key), `duplicate field rule for row ${row}, column ${column}.`);
+    seenCells.add(key);
 
-  assertProfileCode(fieldRule.perimeterProfiles.top.profileCode, "B92-1", "top");
-  assertProfileCode(fieldRule.perimeterProfiles.left.profileCode, "B92-2", "left");
-  assertProfileCode(fieldRule.perimeterProfiles.right.profileCode, "B92-2", "right");
-  assertProfileCode(fieldRule.perimeterProfiles.bottom.profileCode, "B92-3", "bottom");
+    const fieldType = fieldTypeForSourceOperation(fieldRule.operationType, fieldRule.operation);
+    assertCondition(
+      fieldType === "fixed" || fieldType === "fixed_sash" || fieldType === "tilt_turn" || fieldType === "turn_only",
+      "field operation must be fixed, fixed_sash, tilt_turn, or turn_only."
+    );
 
-  const { visibleFrameMm, glassOrderRule } = fieldRule.geometryRules;
-  assertCondition(visibleFrameMm.top === 78, "visible frame top must be 78mm.");
-  assertCondition(visibleFrameMm.left === 78, "visible frame left must be 78mm.");
-  assertCondition(visibleFrameMm.right === 78, "visible frame right must be 78mm.");
-  assertCondition(visibleFrameMm.bottom === 93, "visible frame bottom must be 93mm.");
+    assertProfileCode(fieldRule.perimeterProfiles.top.profileCode, "B92-1", "top");
+    assertProfileCode(fieldRule.perimeterProfiles.left.profileCode, "B92-2", "left");
+    assertProfileCode(fieldRule.perimeterProfiles.right.profileCode, "B92-2", "right");
+    assertProfileCode(fieldRule.perimeterProfiles.bottom.profileCode, "B92-3", "bottom");
 
-  assertCondition(glassOrderRule.biteBehindBeadMm === 13, "glass order biteBehindBeadMm must be 13mm.");
-  assertCondition(glassOrderRule.widthDeltaMm === 26, "glass order widthDeltaMm must be 26mm.");
-  assertCondition(glassOrderRule.heightDeltaMm === 26, "glass order heightDeltaMm must be 26mm.");
-  assertCondition(glassOrderRule.formula === "visible_glass_plus_2x_bite", "glass order formula is unsupported.");
+    const { visibleFrameMm, sashGeometryRules, beadGeometryRules, glassOrderRule } = fieldRule.geometryRules;
+    if (fieldType === "fixed") {
+      assertCondition(visibleFrameMm.top === 78, "visible frame top must be 78mm.");
+      assertCondition(visibleFrameMm.left === 78, "visible frame left must be 78mm.");
+      assertCondition(visibleFrameMm.right === 78, "visible frame right must be 78mm.");
+      assertCondition(visibleFrameMm.bottom === 93, "visible frame bottom must be 93mm.");
+    } else {
+      assertCondition(visibleFrameMm.top === 37.5, "sash field visible frame top must be 37.5mm.");
+      assertCondition(visibleFrameMm.left === 37.5, "sash field visible frame left must be 37.5mm.");
+      assertCondition(visibleFrameMm.right === 37.5, "sash field visible frame right must be 37.5mm.");
+      assertCondition(visibleFrameMm.bottom === 52.5, "sash field visible frame bottom must be 52.5mm.");
+      assertCondition(!!fieldRule.sashProfiles, "sashProfiles are required for sash field operations.");
+      assertProfileCode(fieldRule.sashProfiles.top?.profileCode ?? "", "B92-7", "sash top");
+      assertProfileCode(fieldRule.sashProfiles.left?.profileCode ?? "", "B92-9", "sash left");
+      assertProfileCode(fieldRule.sashProfiles.right?.profileCode ?? "", "B92-10", "sash right");
+      assertProfileCode(fieldRule.sashProfiles.bottom?.profileCode ?? "", "B92-8", "sash bottom");
+      assertNumberBySide("sashGeometryRules.visibleFaceMm", sashGeometryRules?.visibleFaceMm, {
+        top: 57,
+        left: 57,
+        right: 57,
+        bottom: 57,
+      });
+      assertNumberBySide("sashGeometryRules.insetMm", sashGeometryRules?.insetMm, {
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+      });
+      assertNumberBySide("sashGeometryRules.overlapMm", sashGeometryRules?.overlapMm, {
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+      });
+      assertNumberBySide("beadGeometryRules.visibleFaceMm", beadGeometryRules?.visibleFaceMm, {
+        top: 21,
+        left: 21,
+        right: 21,
+        bottom: 21,
+      });
+    }
+
+    assertCondition(glassOrderRule.biteBehindBeadMm === 13, "glass order biteBehindBeadMm must be 13mm.");
+    assertCondition(glassOrderRule.widthDeltaMm === 26, "glass order widthDeltaMm must be 26mm.");
+    assertCondition(glassOrderRule.heightDeltaMm === 26, "glass order heightDeltaMm must be 26mm.");
+    assertCondition(glassOrderRule.formula === "visible_glass_plus_2x_bite", "glass order formula is unsupported.");
+  }
 }
 
 function validateB92FixedSashInternalSource(source: WindowTypeSourceModel, dimensions: RuntimeDimensionsMm): void {
@@ -518,6 +600,15 @@ function metadataNotesFromSource(source: WindowTypeSourceModel): string[] {
   return [...notes, ...(source.provenance.notes ?? [])];
 }
 
+function devMetaFromSource(source: WindowTypeSourceModel): WindowTypeRenderModel["meta"]["dev"] {
+  return {
+    b92RenderSegmentedSillOverlay: source.dev?.b92RenderSegmentedSillOverlay === true,
+    b92UseSashOverlapGeometry: source.dev?.b92UseSashOverlapGeometry === true,
+    b92UseJunctionGeometryVisualPilot: source.dev?.b92UseJunctionGeometryVisualPilot === true,
+    b92JunctionGeometryVisualPilotView: source.dev?.b92JunctionGeometryVisualPilotView ?? null,
+  };
+}
+
 function buildB92FixedInternalRenderModelFromSource(
   source: WindowTypeSourceModel,
   dimensions: RuntimeDimensionsMm
@@ -527,7 +618,8 @@ function buildB92FixedInternalRenderModelFromSource(
   const fieldRule = source.fieldRules[0];
   assertCondition(fieldRule, "one field rule is required.");
 
-  const fieldId = fieldRule.fieldSelector.fieldKey ?? "fixed-1";
+  const columnWidthMm = dimensions.widthMm / source.layout.columns;
+  const rowHeightMm = dimensions.heightMm / source.layout.rows;
 
   const contract: WindowTypeRenderModel = {
     meta: {
@@ -537,25 +629,52 @@ function buildB92FixedInternalRenderModelFromSource(
       source: "resolver_contract",
       designRule: B92_FIXED_INTERNAL_DESIGN_RULE,
       notes: metadataNotesFromSource(source),
+      dev: devMetaFromSource(source),
     },
     overall: {
       widthMm: dimensions.widthMm,
       heightMm: dimensions.heightMm,
     },
-    fields: [
-      {
-        id: fieldId,
-        row: fieldRule.fieldSelector.row,
-        column: fieldRule.fieldSelector.column,
-        type: "fixed",
-        operation: sourceFieldOperation(fieldRule.operation),
-        dimensionsMm: {
-          width: dimensions.widthMm,
-          height: dimensions.heightMm,
-        },
-        perimeter: buildPerimeter(source),
+    fields: source.fieldRules.map((rule) => ({
+      id: rule.fieldSelector.fieldKey ?? `${rule.fieldSelector.column},${rule.fieldSelector.row}`,
+      row: rule.fieldSelector.row,
+      column: rule.fieldSelector.column,
+      type: fieldTypeForSourceOperation(rule.operationType, rule.operation),
+      operation: sourceFieldOperation(rule.operation ?? "fixed"),
+      dimensionsMm: {
+        width: columnWidthMm,
+        height: rowHeightMm,
       },
-    ],
+      perimeter: buildPerimeterFromFieldRule(rule),
+      ...(isSashBasedFieldRule(rule)
+        ? {
+            sash: {
+              openingType:
+                fieldTypeForSourceOperation(rule.operationType, rule.operation) === "fixed_sash"
+                  ? "fixed_sash"
+                  : fieldTypeForSourceOperation(rule.operationType, rule.operation) === "turn_only"
+                    ? "turn_only"
+                    : "tilt_turn",
+              operation: sourceFieldOperation(rule.operation),
+              hingeSide: hingeSideForSourceOperation(rule.operation),
+              handleSide: handleSideForSourceOperation(rule.operation),
+              profiles: {
+                top: resolvedProfile("B92-7", rule.sashProfiles?.top?.notes),
+                left: resolvedProfile("B92-9", rule.sashProfiles?.left?.notes),
+                right: resolvedProfile("B92-10", rule.sashProfiles?.right?.notes),
+                bottom: resolvedProfile("B92-8", rule.sashProfiles?.bottom?.notes),
+              },
+              geometry: {
+                visibleFaceMm: rule.geometryRules.sashGeometryRules?.visibleFaceMm,
+                insetMm: rule.geometryRules.sashGeometryRules?.insetMm,
+                overlapMm: rule.geometryRules.sashGeometryRules?.overlapMm,
+                beadVisibleFaceMm: rule.geometryRules.beadGeometryRules?.visibleFaceMm,
+                glassOrderRule: rule.geometryRules.glassOrderRule,
+              },
+            },
+          }
+        : {}),
+    })),
     verticalJunctions: [],
     horizontalJunctions: [],
     couplings: [],
@@ -588,6 +707,7 @@ function buildB92FixedSashInternalRenderModelFromSource(
       source: "resolver_contract",
       designRule: B92_FIXED_SASH_INTERNAL_DESIGN_RULE,
       notes: metadataNotesFromSource(source),
+      dev: devMetaFromSource(source),
     },
     overall: {
       widthMm: dimensions.widthMm,

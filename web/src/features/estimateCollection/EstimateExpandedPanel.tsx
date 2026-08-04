@@ -2,8 +2,10 @@ import React from "react";
 import type { Client, ClientId, EstimateId, EstimateOutcome } from "../../models/types";
 import { estimateCostTotal, estimateTotals } from "../../domain/estimates/estimateCalculations";
 import EstimatePositionsFeature from "../estimatePositions/EstimatePositionsFeature";
-import { EstimateWorkflowProvider } from "../estimateWorkflow/EstimateWorkflowProvider";
-import { useEstimateWorkflow } from "../estimateWorkflow/useEstimateWorkflow";
+import {
+  DisabledEstimateWorkflowProvider,
+  useDisabledEstimateWorkflow,
+} from "../estimateWorkflow/disabledWorkflowQuarantine";
 import OrderInstallationsBlock from "../estimatePicker/tabs/OrderInstallationsBlock";
 import { Button, Pill, Small } from "../estimatePicker/tabs/shared";
 import EstimateCollectionActions from "./EstimateCollectionActions";
@@ -89,7 +91,7 @@ function EstimateExpandedPanelContent(props: Props) {
     currentConfiguredEstimateId,
     currentConfiguredPositionId,
     clearConfigurationTarget,
-  } = useEstimateWorkflow();
+  } = useDisabledEstimateWorkflow();
 
   const activeEstimate = React.useMemo(
     () => (String(currentEstimateId || "") === String(item.id) ? item : null),
@@ -138,8 +140,6 @@ function EstimateExpandedPanelContent(props: Props) {
   }
 
   async function updateEstimatePositions(updatedPositions: any[]) {
-    item.positions = updatedPositions;
-
     await apiFetchJson(`/api/estimates/${item.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -255,11 +255,11 @@ function EstimateExpandedPanelContent(props: Props) {
       </div>
 
       <div className="ep-estimate-stats-grid">
-        <div className="ep-stat-card">
+        <div className="ep-stat-card" data-testid="expanded-total-square-metres">
           <div className="ep-stat-label">Total m²</div>
           <div className="ep-stat-value">{formatMeasure(totals.totalSquareMetres)}</div>
         </div>
-        <div className="ep-stat-card">
+        <div className="ep-stat-card" data-testid="expanded-total-quantity">
           <div className="ep-stat-label">Linear metreage</div>
           <div className="ep-stat-value">{formatMeasure(totals.totalLinearMetres)}</div>
         </div>
@@ -275,6 +275,7 @@ function EstimateExpandedPanelContent(props: Props) {
 
       <EstimatePositionsFeature
         e={item}
+        clientId={itemClient.id}
         itemPriceByPositionId={itemPriceByPositionId}
         setItemPriceByPositionId={setItemPriceByPositionId}
         formatMoney={formatMoney}
@@ -290,7 +291,7 @@ export default function EstimateExpandedPanel(props: Props) {
   const { item, currentTab, itemClient } = props;
 
   return (
-    <EstimateWorkflowProvider
+    <DisabledEstimateWorkflowProvider
       currentTab={currentTab}
       currentClientId={itemClient.id}
       currentEstimateId={item.id}
@@ -300,6 +301,6 @@ export default function EstimateExpandedPanel(props: Props) {
       workflowMode="edit"
     >
       <EstimateExpandedPanelContent {...props} />
-    </EstimateWorkflowProvider>
+    </DisabledEstimateWorkflowProvider>
   );
 }

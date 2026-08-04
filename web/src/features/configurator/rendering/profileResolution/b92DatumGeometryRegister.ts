@@ -29,13 +29,13 @@ const confirmedStackMm = (valuesMm: number[], note: string): B92DatumMm[] =>
  */
 export const B92_INTERNAL_FIXED_NO_SASH_DATUM_GEOMETRY: B92FieldDatumGeometry = {
   frame: {
-    structuralFaceMm: {},
-    visibleFaceMm: {
-      top: confirmedMm(37.5, "Fixed no-sash top/head visible frame datum from B92 profile matrix."),
-      left: confirmedMm(37.5, "Fixed no-sash left visible frame datum from B92 profile matrix."),
-      right: confirmedMm(37.5, "Fixed no-sash right visible frame datum from B92 profile matrix."),
-      bottom: confirmedMm(72, "Fixed no-sash frame visible bottom."),
+    structuralFaceMm: {
+      top: confirmedMm(57, "Fixed no-sash top/head structural frame datum."),
+      left: confirmedMm(57, "Fixed no-sash left structural frame datum."),
+      right: confirmedMm(57, "Fixed no-sash right structural frame datum."),
+      bottom: confirmedMm(72, "Fixed no-sash bottom sill structural frame datum."),
     },
+    visibleFaceMm: {},
     hiddenBehindSashMm: {},
   },
   glassOrderRule: {
@@ -52,12 +52,13 @@ export const B92_INTERNAL_FIXED_NO_SASH_DATUM_GEOMETRY: B92FieldDatumGeometry = 
  * Confirmed:
  * - top structural datum: 57mm
  * - side structural datum: 57mm
- * - top visible frame: 37.5mm
- * - side visible frame: 37.5mm
+ * - top exposed visible frame after sash overlap: 37.5mm
+ * - side exposed visible frame after sash overlap: 37.5mm
  * - hidden behind sash top/sides: 19.5mm
  * - bottom visible sill: 52.5mm
  * - sash face/depth: 57mm
  * - bead/glass offset: 21mm
+ * - glazing beads terminate into 45 degree mitred corner joins
  * - glass size = daylight opening + 26mm width/height
  * - glass order bite behind bead: 13mm each side
  *
@@ -73,9 +74,9 @@ export const B92_INTERNAL_SASH_FIELD_DATUM_GEOMETRY: B92FieldDatumGeometry = {
       right: confirmedMm(57, "Right side structural frame datum."),
     },
     visibleFaceMm: {
-      top: confirmedMm(37.5, "Top visible frame face."),
-      left: confirmedMm(37.5, "Left side visible frame face."),
-      right: confirmedMm(37.5, "Right side visible frame face."),
+      top: confirmedMm(37.5, "Top exposed visible frame face after sash overlap."),
+      left: confirmedMm(37.5, "Left side exposed visible frame face after sash overlap."),
+      right: confirmedMm(37.5, "Right side exposed visible frame face after sash overlap."),
       bottom: confirmedMm(52.5, "T&T / Turn / Tilt / Fixed Sash bottom visible sill."),
     },
     hiddenBehindSashMm: {
@@ -93,10 +94,10 @@ export const B92_INTERNAL_SASH_FIELD_DATUM_GEOMETRY: B92FieldDatumGeometry = {
     },
     sashOverlayMm: {},
     beadFaceMm: {
-      top: confirmedMm(21, "Bead/glass offset."),
-      bottom: confirmedMm(21, "Bead/glass offset."),
-      left: confirmedMm(21, "Bead/glass offset."),
-      right: confirmedMm(21, "Bead/glass offset."),
+      top: confirmedMm(21, "Bead/glass offset. Bead segment terminates into 45 degree mitred corner joins."),
+      bottom: confirmedMm(21, "Bead/glass offset. Bead segment terminates into 45 degree mitred corner joins."),
+      left: confirmedMm(21, "Bead/glass offset. Bead segment terminates into 45 degree mitred corner joins."),
+      right: confirmedMm(21, "Bead/glass offset. Bead segment terminates into 45 degree mitred corner joins."),
     },
     glassOrderRule: {
       biteBehindBeadMm: confirmedMm(13, "Glass order bite behind bead each side."),

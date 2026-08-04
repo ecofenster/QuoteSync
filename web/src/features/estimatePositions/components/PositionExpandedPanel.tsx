@@ -1,4 +1,4 @@
-import React from "react";
+import { getConfiguredPositionContract } from "../../configurator/configuredPositionContract.utils";
 
 type Props = {
   p: any;
@@ -6,23 +6,21 @@ type Props = {
 
 export default function PositionExpandedPanel(props: Props) {
   const { p } = props;
+  const contract = getConfiguredPositionContract(p);
 
   return (
-    <div
-      style={{
-        borderTop: "1px solid #e4e4e7",
-        background: "#fafafa",
-        padding: 14,
-        display: "grid",
-        gap: 6,
-      }}
-    >
-      <div style={{ fontSize: 13, fontWeight: 800, color: "#18181b" }}>
-        Advanced options coming soon
+    <div className="ep-position-expanded-panel">
+      <div className="ep-position-expanded-panel__title">
+        {contract ? "B92 configured position" : "Advanced options coming soon"}
       </div>
-      <div style={{ fontSize: 12, color: "#52525b" }}>
+      <div className="ep-position-expanded-panel__copy">
         Position: {p.positionRef || "—"} {p.roomName ? `• ${p.roomName}` : ""}
       </div>
+      {contract ? (
+        <div className="ep-position-expanded-panel__copy">
+          Contract v{contract.schemaVersion} • {contract.profileProof.proofStatus.replace(/_/g, " ")} • {contract.render.proofFamilyId}
+        </div>
+      ) : null}
     </div>
   );
 }

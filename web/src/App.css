@@ -1,1 +1,229 @@
-/* Intentionally empty — QuoteSync UI uses inline styles for theme neutrality. */
+/* Legacy operational screens */
+
+.demo-mode-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border: 1px solid var(--color-warning, #f59e0b);
+  border-radius: 12px;
+  background: var(--color-warning-surface, #fffbeb);
+  color: var(--color-text-primary);
+  font-size: 13px;
+}
+
+.demo-mode-banner strong {
+  font-weight: 900;
+}
+
+.demo-mode-banner span {
+  color: var(--color-text-secondary);
+}
+
+.demo-mode-banner--warning {
+  border-color: var(--color-border);
+  background: var(--color-surface-subtle);
+}
+
+.operational-surface {
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+}
+
+.operational-surface--subtle {
+  background: var(--color-surface-subtle);
+}
+
+.operational-empty {
+  padding: 16px;
+  border: 1px dashed var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface);
+}
+
+.operational-stat {
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface-subtle);
+}
+
+.operational-stat__label,
+.operational-eyebrow {
+  margin-bottom: 4px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.operational-stat__value {
+  color: var(--color-text-primary);
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.operational-card {
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+}
+
+.operational-card--expanded,
+.operational-card--selected {
+  border: 2px solid var(--color-surface-inverse);
+}
+
+.operational-title {
+  color: var(--color-text-primary);
+}
+
+.operational-copy {
+  color: var(--color-text-secondary);
+}
+
+.operational-toggle {
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.operational-toggle--active {
+  border-color: var(--color-surface-inverse);
+  background: var(--color-surface-inverse);
+  color: var(--color-text-on-inverse);
+}
+
+.operational-toggle--current {
+  border-width: 2px;
+  border-color: var(--color-surface-inverse);
+}
+
+.operational-select {
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--ui-control-background, var(--color-surface));
+  color: var(--color-text-primary);
+  font-size: 14px;
+}
+
+.operational-table-shell {
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface);
+}
+
+.operational-table-header {
+  background: var(--color-surface-subtle);
+}
+
+.operational-table-cell {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.operational-table-section-header {
+  border-bottom: 1px solid var(--color-border);
+}
+
+/* Residual legacy panels */
+
+.legacy-surface-card {
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+}
+
+.legacy-section-divider {
+  border-top: 1px solid var(--color-border);
+}
+
+.legacy-section-toggle {
+  border: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+}
+
+.legacy-checkbox-label,
+.legacy-setting-label {
+  color: var(--color-text-secondary);
+}
+
+.legacy-modal-surface {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-lg);
+  color: var(--color-text-primary);
+}
+
+.legacy-modal-status {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-subtle);
+}
+
+.legacy-error-callout {
+  border: 1px solid var(--color-danger);
+  background: var(--color-surface-subtle);
+  color: var(--color-danger);
+}
+
+/* Tools hub */
+
+.tools-hub {
+  display: grid;
+  gap: 16px;
+}
+
+.tools-hub__tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tools-hub__tab {
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.tools-hub__tab--active {
+  border: 2px solid var(--color-surface-inverse);
+  background: var(--color-surface-muted);
+}
+
+.tools-hub__placeholder {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 300px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+}
+
+.tools-hub__placeholder-title {
+  margin-bottom: 4px;
+  font-weight: 700;
+}
+
+.tools-hub__placeholder-copy {
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}

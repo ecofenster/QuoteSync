@@ -16,13 +16,13 @@ export type B92FrameDatumGeometry = {
   /**
    * Confirmed:
    * - top/side structural frame datum: 57mm
+   * - fixed no-sash bottom sill datum: 72mm
    */
   structuralFaceMm: B92PerEdgeMm;
   /**
    * Confirmed:
-   * - top/side visible frame: 37.5mm
-   * - T&T / Turn / Tilt sill visible: 52.5mm
-   * - Fixed sill visible: 72mm
+   * - sash/opening exposed top/side frame after sash overlap: 37.5mm
+   * - T&T / Turn / Tilt / Fixed Sash exposed sill visible: 52.5mm
    */
   visibleFaceMm: B92PerEdgeMm;
   /**

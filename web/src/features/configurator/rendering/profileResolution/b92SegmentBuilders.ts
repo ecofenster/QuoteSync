@@ -88,6 +88,8 @@ function buildRowContext(grid: GridDimensions, rowIndex: number): B92HorizontalT
     hasMixedOperations: uniqueOperations.size > 1,
     allFixed: operationFamilies.every((family) => family === "fixed"),
     allSash: operationFamilies.every((family) => family !== "fixed"),
+    hasFixed: operationFamilies.some((family) => family === "fixed"),
+    hasSashOrOpening: operationFamilies.some((family) => family !== "fixed"),
   };
 }
 
@@ -97,6 +99,7 @@ export function buildB92OuterEdgeSegments(fields: B92NormalizedField[]): B92Oute
 
   for (let column = 0; column < grid.columns; column += 1) {
     const field = requireField(grid, 0, column);
+    const rowContext = buildRowContext(grid, 0);
     segments.push({
       id: `outer-top-col-${column}`,
       kind: "outer_edge",
@@ -106,11 +109,13 @@ export function buildB92OuterEdgeSegments(fields: B92NormalizedField[]): B92Oute
       segmentIndex: column,
       field,
       fieldOperation: field.operation,
+      rowContext,
     });
   }
 
   for (let column = 0; column < grid.columns; column += 1) {
     const field = requireField(grid, grid.maxRow, column);
+    const rowContext = buildRowContext(grid, grid.maxRow);
     segments.push({
       id: `outer-bottom-col-${column}`,
       kind: "outer_edge",
@@ -120,11 +125,13 @@ export function buildB92OuterEdgeSegments(fields: B92NormalizedField[]): B92Oute
       segmentIndex: column,
       field,
       fieldOperation: field.operation,
+      rowContext,
     });
   }
 
   for (let row = 0; row < grid.rows; row += 1) {
     const field = requireField(grid, row, 0);
+    const rowContext = buildRowContext(grid, row);
     segments.push({
       id: `outer-left-row-${row}`,
       kind: "outer_edge",
@@ -134,11 +141,13 @@ export function buildB92OuterEdgeSegments(fields: B92NormalizedField[]): B92Oute
       segmentIndex: row,
       field,
       fieldOperation: field.operation,
+      rowContext,
     });
   }
 
   for (let row = 0; row < grid.rows; row += 1) {
     const field = requireField(grid, row, grid.maxColumn);
+    const rowContext = buildRowContext(grid, row);
     segments.push({
       id: `outer-right-row-${row}`,
       kind: "outer_edge",
@@ -148,6 +157,7 @@ export function buildB92OuterEdgeSegments(fields: B92NormalizedField[]): B92Oute
       segmentIndex: row,
       field,
       fieldOperation: field.operation,
+      rowContext,
     });
   }
 
@@ -168,9 +178,32 @@ function findVerticalDivision(input: {
   );
 }
 
+function isTurnTiltFlyingPair(leftOperation: B92ResolvedFieldOperation, rightOperation: B92ResolvedFieldOperation) {
+  const leftIsTurn = leftOperation === "turn_left" || leftOperation === "turn_right";
+  const rightIsTurn = rightOperation === "turn_left" || rightOperation === "turn_right";
+  const leftIsTiltTurn = leftOperation === "tt_left" || leftOperation === "tt_right";
+  const rightIsTiltTurn = rightOperation === "tt_left" || rightOperation === "tt_right";
+  return (leftIsTurn && rightIsTiltTurn) || (leftIsTiltTurn && rightIsTurn);
+}
+
+function hingeSideForOperation(operation: B92ResolvedFieldOperation) {
+  if (operation === "turn_left" || operation === "tt_left") return "left";
+  if (operation === "turn_right" || operation === "tt_right") return "right";
+  return null;
+}
+
+function ownerFieldKeyForTurnTiltFlyingPair(leftField: B92NormalizedField, rightField: B92NormalizedField) {
+  if (!isTurnTiltFlyingPair(leftField.operation, rightField.operation)) return null;
+  const leftHingeSide = leftField.hingeSide ?? hingeSideForOperation(leftField.operation);
+  const rightHingeSide = rightField.hingeSide ?? hingeSideForOperation(rightField.operation);
+  if (leftHingeSide === "right" || rightHingeSide === "left") return null;
+  return leftField.operation === "turn_left" || leftField.operation === "turn_right" ? leftField.key : rightField.key;
+}
+
 export function buildB92VerticalJunctionSegments(
   fields: B92NormalizedField[],
-  divisions: readonly B92DivisionRule[] = []
+  divisions: readonly B92DivisionRule[] = [],
+  options: { inferInternalTurnTiltFlying?: boolean } = {}
 ): B92VerticalJunctionSegment[] {
   const grid = getGridDimensions(fields);
   const segments: B92VerticalJunctionSegment[] = [];
@@ -185,6 +218,9 @@ export function buildB92VerticalJunctionSegments(
         row,
         index: junctionIndex,
       });
+      const inferredFlyingOwnerFieldKey = options.inferInternalTurnTiltFlying
+        ? ownerFieldKeyForTurnTiltFlyingPair(leftField, rightField)
+        : null;
       segments.push({
         id: `vertical-row-${row}-col-${junctionIndex}`,
         kind: "vertical_junction",
@@ -196,8 +232,8 @@ export function buildB92VerticalJunctionSegments(
         rightField,
         leftOperation: leftField.operation,
         rightOperation: rightField.operation,
-        junctionType: division?.type === "flying" ? "flying" : "static",
-        ownerFieldKey: division?.ownerFieldKey ?? null,
+        junctionType: inferredFlyingOwnerFieldKey || division?.type === "flying" ? "flying" : "static",
+        ownerFieldKey: inferredFlyingOwnerFieldKey ?? division?.ownerFieldKey ?? null,
       });
     }
   }

@@ -141,13 +141,14 @@ function resolveVerticalProfile(input: {
   }
   const isFlying =
     input.junctionType === "flying" &&
-    ((input.ownerFieldId === leftField.key && rightField.key) || (input.ownerFieldId === rightField.key && leftField.key));
-  const hingeAtCentreFixedTiltTurn =
+    (input.ownerFieldId === leftField.key || input.ownerFieldId === rightField.key);
+  const hingeAtCentreFixedTiltTurn = Boolean(
     leftType === "fixed" && isTiltTurnFamily(rightType)
       ? rightField.hingeSide === "left"
       : isTiltTurnFamily(leftType) && rightType === "fixed"
         ? leftField.hingeSide === "right"
-        : false;
+        : false
+  );
   const lookup = lookupConnectionProfile({
     view: input.view,
     fieldsX: input.fieldsX,

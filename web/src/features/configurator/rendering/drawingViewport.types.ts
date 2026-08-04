@@ -1,3 +1,4 @@
+import type React from "react";
 import type { DrawingModel } from "./drawingModel";
 
 export type DrawingScalePreset = "auto" | "1:1" | "1:2" | "1:5" | "1:10" | "1:16" | "1:20" | "1:50" | "1:100";
@@ -23,11 +24,32 @@ export type DrawingViewportInteractionProps = {
 
 export type DrawingViewportProps = DrawingViewportInteractionProps & {
   model: DrawingModel;
+  height?: number | string;
   minHeight?: number;
+  maxHeight?: number | string;
+  maxWidth?: number | string;
   aspectRatio?: string;
+  fitPadding?: number | { x: number; y: number };
   initialScalePreset?: DrawingScalePreset;
   initialTool?: DrawingViewportTool;
   showToolbar?: boolean;
+  overlay?: React.ReactNode;
+  onViewportStateChange?: (state: DrawingViewportState) => void;
+};
+
+export type DrawingViewportState = {
+  scalePreset: DrawingScalePreset;
+  tool: DrawingViewportTool;
+  zoomMultiplier: number;
+};
+
+export type DrawingViewportHandle = {
+  fitToView: () => void;
+  setOneToOne: () => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
+  resetView: () => void;
+  setTool: (tool: DrawingViewportTool) => void;
 };
 
 export type DrawingViewportPoint = {

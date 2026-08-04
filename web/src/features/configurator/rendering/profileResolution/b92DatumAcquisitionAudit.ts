@@ -91,17 +91,17 @@ export const B92_DATUM_ACQUISITION_AUDIT: B92DatumAcquisitionAuditItem[] = [
   {
     id: "b92-fixed-no-sash-structural-datum",
     category: "fixed_no_sash",
-    status: "partial",
+    status: "confirmed",
     requiredMeasurements: [
-      "fixed no-sash structural datum relationship for all edges",
+      "fixed no-sash structural/internal datum: top 57mm, left 57mm, right 57mm, bottom sill 72mm",
     ],
     affectedProjectionRegions: ["structural_frame_datum", "hidden_frame_rebate", "construction_datum"],
     affectedFutureRendererBehaviour: [
-      "separates fixed structural frame datum from visible frame and daylight projection",
-      "keeps future frame construction regions explicit rather than derived from visible faces",
+      "uses fixed no-sash structural frame datum as daylight source geometry",
+      "prevents sash-overlap exposed frame values from being reused as fixed-frame dimensions",
     ],
-    sourceNote: "Fixed no-sash visible faces are confirmed from the B92 profile matrix: top/left/right 37.5mm and bottom 72mm. Structural datum values remain unconfirmed.",
-    todoNote: "Acquire fixed no-sash structural datum values before renderer migration.",
+    sourceNote: "Fixed/no-sash internal frame datum is confirmed as top/left/right 57mm and bottom sill 72mm. The 37.5mm value belongs to sash/opening exposed frame after sash overlap, not fixed no-sash frame datum.",
+    todoNote: "No fixed no-sash internal structural datum acquisition is currently outstanding.",
   },
   {
     id: "b92-daylight-opening-derivation",
@@ -117,7 +117,7 @@ export const B92_DATUM_ACQUISITION_AUDIT: B92DatumAcquisitionAuditItem[] = [
       "derives daylight from datum-authoritative enclosing edges",
       "avoids rectangle inflation and symmetric frame-thickness assumptions",
     ],
-    sourceNote: "Projection engine derives daylight only when four resolved enclosing edges exist. Fixed no-sash single-field daylight is now derivable from confirmed visible frame faces; sash fields remain blocked by bottom sash/bead placement.",
+    sourceNote: "Projection engine derives daylight only when four resolved enclosing edges exist. Fixed no-sash single-field daylight is now derivable from confirmed structural/internal frame datum; sash fields remain blocked by bottom sash/bead placement.",
     todoNote: "Complete sash-bottom and meeting-side edge authorities before renderer replacement.",
   },
   {

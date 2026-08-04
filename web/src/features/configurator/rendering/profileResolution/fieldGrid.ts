@@ -243,7 +243,7 @@ export function buildGridModel(input: ProfileResolutionInput): GridModel {
   }
 
   const fieldsByKey = new Map(normalizedFields.map((field) => [field.key, field]));
-  const junctionRecordsByKey = new Map(
+  const junctionRecordsByKey: Map<string, JunctionRecord> = new Map(
     input.junctions.map((junction) => [
       junction.key,
       {

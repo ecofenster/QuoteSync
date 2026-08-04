@@ -1,6 +1,9 @@
 import React, { useMemo, useState } from "react";
 import DrawingViewport from "../../configurator/rendering/DrawingViewport";
-import { buildWindowDrawingModel } from "../../configurator/rendering/buildWindowDrawingModel";
+import {
+  buildAdminPreviewWindowDrawingModel,
+  type AdminPreviewWindowDrawingModelInput,
+} from "../rendering/adminPreviewRenderAdapter";
 import type { WindowTypeDesignListItem } from "./WindowTypeDesignList";
 import B92ProfileSectionAssemblyPreview from "./B92ProfileSectionAssemblyPreview";
 import {
@@ -21,8 +24,6 @@ const TEMP_RAL_OPTIONS = [
 type Props = {
   selectedDesign: WindowTypeDesignListItem | null;
 };
-
-type WindowDrawingModelInput = Parameters<typeof buildWindowDrawingModel>[0];
 
 type PreviewLayout = {
   fieldsX: number;
@@ -283,7 +284,7 @@ export default function WindowTypePreviewPanel(props: Props) {
 
   const previewModel = useMemo(
     () =>
-      buildWindowDrawingModel({
+      buildAdminPreviewWindowDrawingModel({
         widthMm: previewWidthMm,
         heightMm: previewHeightMm,
         fieldsX: previewLayout.fieldsX,
@@ -293,7 +294,7 @@ export default function WindowTypePreviewPanel(props: Props) {
         colWidthsMm,
         rowHeightsMm,
         orientationView: previewView === "external" ? "outside" : "inside",
-        windowConfiguration: (
+        adminPreviewConfiguration: (
           ((useRectanglePilot || useMultiFieldRectanglePilot) && !isFixedSashDesign) ||
           (useFixedSashRectanglePilot && isFixedSashDesign) ||
           (useInternalProfileResolutionPilot && previewView === "internal")
@@ -324,7 +325,7 @@ export default function WindowTypePreviewPanel(props: Props) {
                       },
               }
             : undefined
-        ) as WindowDrawingModelInput["windowConfiguration"],
+        ) as AdminPreviewWindowDrawingModelInput["adminPreviewConfiguration"],
       }),
     [
       externalCladdingRal,

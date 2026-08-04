@@ -103,30 +103,9 @@ function logB92SegmentResolverValidation(
   if (sourceModel.dev?.b92SegmentResolverValidation !== true) return;
 
   const segmentResult = resolveB92ProfileSegmentsFromSource(sourceModel);
-  console.group("B92 Segment Resolver");
-  console.log({
-    outerEdges: segmentResult.outerEdgeAssignments,
-    sills: segmentResult.sillAssignments,
-    vertical: segmentResult.verticalJunctionAssignments.map((assignment) => ({
-      ...assignment,
-      hingeInfo:
-        assignment.segment?.kind === "vertical_junction"
-          ? {
-              left: assignment.segment.leftField.hingeSide,
-              right: assignment.segment.rightField.hingeSide,
-            }
-          : null,
-    })),
-    horizontal: segmentResult.horizontalTransomAssignments.map((assignment) => ({
-      ...assignment,
-      rowContext:
-        assignment.segment?.kind === "horizontal_transom"
-          ? assignment.segment.rowContext
-          : null,
-    })),
-    issues: segmentResult.issues,
-  });
-  console.groupEnd();
+  if (segmentResult.issues.length > 0) {
+    console.warn("B92 segment resolver validation issues", segmentResult.issues);
+  }
 }
 
 export function buildB92FixedSingleFieldContractPreview(

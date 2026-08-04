@@ -3,6 +3,7 @@ import {
   WINDOW_GLASS_PRESETS,
   normalizeConfigurationState,
 } from "../configurator/configuratorWorkflow.helpers";
+import { getLegacyWindowConfiguration } from "../configurator/legacyWindowConfigurationAdapter";
 import type {
   ConfiguratorEstimateDefaultsSectionId,
   ConfiguratorWorkflowDraft,
@@ -60,6 +61,7 @@ export function createDraft(seed: DraftSeed): ConfiguratorWorkflowDraft {
     estimate?.location?.projectAddressStructured ??
     null;
   const now = new Date().toISOString();
+  const legacyWindowConfiguration = getLegacyWindowConfiguration(position);
   const glassPreset =
     WINDOW_GLASS_PRESETS.find((preset) => preset.spec === defaults?.glassType || preset.label === defaults?.glassType) ??
     WINDOW_GLASS_PRESETS[0];
@@ -133,9 +135,9 @@ export function createDraft(seed: DraftSeed): ConfiguratorWorkflowDraft {
     },
     configuration: normalizeConfigurationState(
       {
-        ...position?.windowConfiguration,
+        ...legacyWindowConfiguration,
         activeSectionId:
-          position?.windowConfiguration?.activeSectionId ?? CONFIGURATION_SECTION_OPTIONS[0]?.id ?? "layout",
+          legacyWindowConfiguration.activeSectionId ?? CONFIGURATION_SECTION_OPTIONS[0]?.id ?? "layout",
         glass: {
           presetId: glassPreset.id,
           presetLabel: glassPreset.label,

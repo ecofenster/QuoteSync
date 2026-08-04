@@ -30,7 +30,12 @@ export default function EstimateCollectionRow(props: Props) {
   const showClientIdentity = !!(item.clientName || item.clientReference);
 
   return (
-    <div onClick={onToggle} className={`ep-estimate-summary ep-estimate-summary--${viewMode}`}>
+    <div
+      onClick={onToggle}
+      className={`ep-estimate-summary ep-estimate-summary--${viewMode}`}
+      data-testid="estimate-summary"
+      data-estimate-ref={item.estimateRef}
+    >
       <div className="ep-estimate-summary-main">
         <div className="ep-estimate-summary-topline">
           <ExpandToggle expanded={isExpanded} />

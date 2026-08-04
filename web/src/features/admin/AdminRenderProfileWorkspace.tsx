@@ -10,7 +10,7 @@ import type {
   ConfiguratorCatalogBootstrap,
   ConfiguratorRenderProfileRecord,
 } from "./configuratorCatalog.types";
-import { buildWindowDrawingModel } from "../configurator/rendering/buildWindowDrawingModel";
+import { buildAdminPreviewWindowDrawingModel } from "./rendering/adminPreviewRenderAdapter";
 import QuoteSyncDrawingSvg from "../configurator/rendering/QuoteSyncDrawingSvg";
 import type { ResolvedSectionProfileSet } from "../configurator/rendering/profileSectionMapping";
 
@@ -78,6 +78,15 @@ function blankForm(context: { manufacturerId: string; productId: string; windowT
     handle_axis_offset_mm: null,
     handle_height_mm: 1050,
     hinge_pivot_offset_mm: 0,
+    trickle_vent_enabled: false,
+    trickle_vent_ea_value: "",
+    trickle_vent_head_visible_mm: null,
+    trickle_vent_slot_top_offset_mm: null,
+    trickle_vent_slot_height_mm: null,
+    trickle_vent_slot_bottom_offset_mm: null,
+    trickle_vent_slot_widths_mm: [],
+    trickle_vent_slot_gaps_mm: [],
+    external_cladding_inset_mm: null,
     external_frame_cladding_colour: "",
     external_sash_cladding_colour: "",
     notes: "",
@@ -124,6 +133,7 @@ function buildResolvedProfiles(record: ConfiguratorRenderProfileRecord): Resolve
     overlapMm: 0,
     visibleInternalFaceMm: view === "inside" ? visibleFaceWidthMm : null,
     glassInsetMm: beadVisibleFaceMm,
+    beadOffsetMm: view === "inside" ? beadVisibleFaceMm : null,
     beadVisibleFaceMm,
     handleAxisOffsetMm: side === "left" || side === "right" ? handleOffset : null,
     hingePivotOffsetMm: side === "left" || side === "right" ? pivotOffset : null,
@@ -151,6 +161,7 @@ function buildResolvedProfiles(record: ConfiguratorRenderProfileRecord): Resolve
           overlapMm: 0,
           visibleInternalFaceMm: view === "inside" ? visibleFaceWidthMm : null,
           glassInsetMm: beadVisibleFaceMm,
+          beadOffsetMm: view === "inside" ? beadVisibleFaceMm : null,
           beadVisibleFaceMm,
           handleAxisOffsetMm: side === "left" || side === "right" ? handleOffset : null,
           hingePivotOffsetMm: side === "left" || side === "right" ? pivotOffset : null,
@@ -189,6 +200,7 @@ function buildResolvedProfiles(record: ConfiguratorRenderProfileRecord): Resolve
       overlapMm: 0,
       visibleInternalFaceMm: null,
       glassInsetMm: null,
+      beadOffsetMm: null,
       beadVisibleFaceMm: null,
       handleAxisOffsetMm: null,
       hingePivotOffsetMm: null,
@@ -207,6 +219,7 @@ function buildResolvedProfiles(record: ConfiguratorRenderProfileRecord): Resolve
       overlapMm: 0,
       visibleInternalFaceMm: null,
       glassInsetMm: null,
+      beadOffsetMm: null,
       beadVisibleFaceMm: null,
       handleAxisOffsetMm: null,
       hingePivotOffsetMm: null,
@@ -225,6 +238,7 @@ function buildResolvedProfiles(record: ConfiguratorRenderProfileRecord): Resolve
       overlapMm: 0,
       visibleInternalFaceMm: null,
       glassInsetMm: null,
+      beadOffsetMm: null,
       beadVisibleFaceMm: null,
       handleAxisOffsetMm: null,
       hingePivotOffsetMm: null,
@@ -234,6 +248,7 @@ function buildResolvedProfiles(record: ConfiguratorRenderProfileRecord): Resolve
       notes: record.notes,
     },
     cill: null,
+    trickleVent: null,
     sectionReferenceIds: [],
     referenceInputs: [],
   };
@@ -364,7 +379,7 @@ export default function AdminRenderProfileWorkspace(props: Props) {
 
   const previewModel = useMemo(() => {
     const resolvedProfiles = buildResolvedProfiles(formState);
-    const model = buildWindowDrawingModel({
+    const model = buildAdminPreviewWindowDrawingModel({
       widthMm: Math.max(300, Number(formState.preview_width_mm || 1000)),
       heightMm: Math.max(300, Number(formState.preview_height_mm || 1200)),
       fieldsX: 1,
@@ -373,7 +388,7 @@ export default function AdminRenderProfileWorkspace(props: Props) {
       orientationView: formState.view_logic === "outside" ? "outside" : "inside",
       openingSymbolMode: "din",
       resolvedProfiles,
-      windowConfiguration: {
+      adminPreviewConfiguration: {
         hardware: {
           defaultHandleHeightMm: numericOrNull(formState.handle_height_mm) ?? 1050,
           defaultHingeType: "Standard",
@@ -481,10 +496,10 @@ export default function AdminRenderProfileWorkspace(props: Props) {
                   </select>
                 </FormField>
                 <FormField label="Preview width (mm)">
-                  <input type="number" value={formState.preview_width_mm} onChange={(event) => setField("preview_width_mm", Number(event.currentTarget.value || 0))} style={inputStyle} />
+                  <input type="number" value={formState.preview_width_mm ?? ""} onChange={(event) => setField("preview_width_mm", Number(event.currentTarget.value || 0))} style={inputStyle} />
                 </FormField>
                 <FormField label="Preview height (mm)">
-                  <input type="number" value={formState.preview_height_mm} onChange={(event) => setField("preview_height_mm", Number(event.currentTarget.value || 0))} style={inputStyle} />
+                  <input type="number" value={formState.preview_height_mm ?? ""} onChange={(event) => setField("preview_height_mm", Number(event.currentTarget.value || 0))} style={inputStyle} />
                 </FormField>
               </div>
 

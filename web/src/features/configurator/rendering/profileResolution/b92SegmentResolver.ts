@@ -118,6 +118,22 @@ function resolveSillSegment(
     };
   }
 
+  if (segment.fieldOperation === "fixed" && segment.rowContext.hasFixed && segment.rowContext.hasSashOrOpening) {
+    const assignment = makeAssignment({
+      segmentId: segment.id,
+      segmentKind: "sill",
+      profileId: "B92-5",
+      status: "confirmed",
+      ruleId: "fixed-bottom-mixed-row-sill",
+      segment,
+      note: "Fixed bottom segment uses B92-5 when its row contains fixed plus sash/opening fields.",
+    });
+    return {
+      assignment,
+      issues: [],
+    };
+  }
+
   const rule = B92_PROFILE_RULE_REGISTER.sillRules.find((item: B92SillRule) =>
     item.bottomFieldOperations.some((operation) => operationMatchesRule(operation, segment.fieldOperation))
   );
@@ -141,7 +157,7 @@ function resolveSillSegment(
     status: rule.status,
     ruleId: rule.id,
     segment,
-    note: rule.notes?.join(" "),
+    note: "notes" in rule ? rule.notes?.join(" ") : undefined,
   });
   return {
     assignment,
@@ -154,6 +170,26 @@ function resolveOuterEdgeSegment(
 ): { assignment: B92ResolvedProfileAssignment | null; issues: B92SegmentResolutionIssue[] } {
   if (segment.edge === "bottom") {
     return resolveSillSegment(segment);
+  }
+
+  if (
+    segment.edge === "top" &&
+    segment.fieldOperation === "fixed" &&
+    segment.rowContext.hasFixed &&
+    segment.rowContext.hasSashOrOpening
+  ) {
+    return {
+      assignment: makeAssignment({
+        segmentId: segment.id,
+        segmentKind: "outer_edge",
+        profileId: "B92-4",
+        status: "confirmed",
+        ruleId: "fixed-top-mixed-row",
+        segment,
+        note: "Fixed top segment uses B92-4 when its row contains fixed plus sash/opening fields.",
+      }),
+      issues: [],
+    };
   }
 
   if ((segment.edge === "left" || segment.edge === "right") && segment.fieldOperation === "fixed") {
@@ -211,7 +247,7 @@ function resolveOuterEdgeSegment(
     status: rule.status,
     ruleId: rule.id,
     segment,
-    note: rule.notes?.join(" "),
+    note: "notes" in rule ? rule.notes?.join(" ") : undefined,
   });
   return {
     assignment,
@@ -475,7 +511,9 @@ function diagnosticJunctionRegistryIssues(input: {
 export function resolveB92ProfileSegmentsFromSource(source: WindowTypeSourceModel): B92SegmentResolutionResult {
   const input = resolverInputFromSource(source);
   const outerEdgeSegments = buildB92OuterEdgeSegments(input.fields);
-  const verticalJunctionSegments = buildB92VerticalJunctionSegments(input.fields, input.divisions);
+  const verticalJunctionSegments = buildB92VerticalJunctionSegments(input.fields, input.divisions, {
+    inferInternalTurnTiltFlying: input.view === "inside",
+  });
   const horizontalTransomSegments = buildB92HorizontalTransomSegments(input.fields);
 
   const outerEdgeAssignments: B92ResolvedProfileAssignment[] = [];

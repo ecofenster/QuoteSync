@@ -16,6 +16,7 @@ import type {
   WindowMullionType,
   WindowSystemOptionsDefinition,
 } from "../estimateWorkflow/workflow.types";
+import { getLegacyWindowConfiguration } from "./legacyWindowConfigurationAdapter";
 
 export const WINDOW_LAYOUT_PRESETS: Array<{
   id: string;
@@ -100,23 +101,11 @@ const DEFAULT_FRAME_DIMENSION_MM = 70;
 const DEFAULT_HANDLE_HEIGHT_MM = 1050;
 const MAX_LAYOUT_DIMENSION = 12;
 
-function evenSplit(total: number, parts: number) {
-  const safeParts = Math.max(1, Math.round(parts));
-  const base = Math.floor(total / safeParts);
-  const remainder = total - base * safeParts;
-  const out: number[] = [];
-  for (let index = 0; index < safeParts; index += 1) {
-    out.push(base + (index < remainder ? 1 : 0));
-  }
-  return out;
-}
-
 function clampLayoutDimension(value: unknown, fallback: number) {
   const next = Number(value);
   if (!Number.isFinite(next)) return fallback;
   return Math.max(1, Math.min(MAX_LAYOUT_DIMENSION, Math.round(next)));
 }
-
 export function deriveCompositionMode(rows: number, columns: number): WindowCompositionMode {
   if (rows <= 1 && columns <= 1) return "single";
   if (rows <= 1) return "linearHorizontal";
@@ -158,13 +147,14 @@ function inferLegacyRowsAndColumns(layoutFamilyId: unknown, fieldsX: number, fie
 
 export function normalizeLayoutDefinition(
   layout: WindowLayoutDefinition | undefined,
-  basePosition?: any
+  basePosition?: unknown
 ): WindowLayoutDefinition {
-  const storedLayout = basePosition?.windowConfiguration?.layout ?? {};
+  const storedConfiguration = getLegacyWindowConfiguration(basePosition);
+  const storedLayout: Partial<WindowLayoutDefinition> = storedConfiguration.layout ?? {};
   const inferredLegacy = inferLegacyRowsAndColumns(
-    layout?.presetKey ?? storedLayout?.presetKey ?? basePosition?.windowConfiguration?.layoutFamilyId,
-    Math.max(1, Number(basePosition?.fieldsX || 1)),
-    Math.max(1, Number(basePosition?.fieldsY || 1))
+    layout?.presetKey ?? storedLayout?.presetKey ?? storedConfiguration.layoutFamilyId,
+    Math.max(1, Number((basePosition as { fieldsX?: unknown } | null | undefined)?.fieldsX || 1)),
+    Math.max(1, Number((basePosition as { fieldsY?: unknown } | null | undefined)?.fieldsY || 1))
   );
   const rows = clampLayoutDimension(layout?.rows ?? storedLayout?.rows ?? inferredLegacy.rows, inferredLegacy.rows);
   const columns = clampLayoutDimension(
@@ -219,10 +209,6 @@ function isTiltAndTurnFieldType(fieldType: WindowFieldType | undefined) {
     fieldType === "turnTiltLeft" ||
     fieldType === "turnTiltRight"
   );
-}
-
-export function fieldTypeToInsertion(fieldType: WindowFieldType) {
-  return WINDOW_FIELD_TYPE_OPTIONS.find((option) => option.id === fieldType)?.insertion ?? "Fixed";
 }
 
 export function insertionToFieldType(insertion: unknown): WindowFieldType {
@@ -437,14 +423,13 @@ function normalizeDivisionBasis(value: unknown): DivisionBasis {
 function normalizeOrientationView(value: unknown): OrientationView {
   return value === "outside" ? "outside" : "inside";
 }
-
 export function normalizeConfigurationState(
   configuration: ConfiguratorWorkflowDraft["configuration"] | undefined,
-  basePosition?: any
+  basePosition?: unknown
 ): NonNullable<ConfiguratorWorkflowDraft["configuration"]> {
-  const storedConfiguration = basePosition?.windowConfiguration ?? {};
+  const storedConfiguration = getLegacyWindowConfiguration(basePosition);
   const layout = normalizeLayoutDefinition(configuration?.layout ?? storedConfiguration?.layout, basePosition);
-  const fallbackType = insertionToFieldType(basePosition?.insertion ?? "Fixed");
+  const fallbackType = insertionToFieldType((basePosition as { insertion?: unknown } | null | undefined)?.insertion ?? "Fixed");
   const fields = normalizeFields(
     layout.rows,
     layout.columns,
@@ -468,11 +453,15 @@ export function normalizeConfigurationState(
     manualVerticalSplitsMm:
       configuration?.manualVerticalSplitsMm ??
       storedConfiguration?.manualVerticalSplitsMm ??
-      (Array.isArray(basePosition?.colWidthsMm) ? basePosition.colWidthsMm : []),
+      (Array.isArray((basePosition as { colWidthsMm?: unknown } | null | undefined)?.colWidthsMm)
+        ? (basePosition as { colWidthsMm: number[] }).colWidthsMm
+        : []),
     manualHorizontalSplitsMm:
       configuration?.manualHorizontalSplitsMm ??
       storedConfiguration?.manualHorizontalSplitsMm ??
-      (Array.isArray(basePosition?.rowHeightsMm) ? basePosition.rowHeightsMm : []),
+      (Array.isArray((basePosition as { rowHeightsMm?: unknown } | null | undefined)?.rowHeightsMm)
+        ? (basePosition as { rowHeightsMm: number[] }).rowHeightsMm
+        : []),
     orientationView: normalizeOrientationView(
       configuration?.orientationView ?? storedConfiguration?.orientationView
     ),
@@ -487,139 +476,5 @@ export function normalizeConfigurationState(
       configuration?.internalRenderProfileId ?? storedConfiguration?.internalRenderProfileId ?? null,
     externalRenderProfileId:
       configuration?.externalRenderProfileId ?? storedConfiguration?.externalRenderProfileId ?? null,
-  };
-}
-
-function normalizeSplitArray(values: number[] | undefined, expectedLength: number) {
-  if (!Array.isArray(values) || values.length !== expectedLength) return undefined;
-  const normalized = values.map((value) => Math.max(1, Math.round(Number(value || 0))));
-  return normalized.every((value) => Number.isFinite(value) && value > 0) ? normalized : undefined;
-}
-
-function arraysMatch(left: number[] | undefined, right: number[] | undefined) {
-  if (!left || !right || left.length !== right.length) return false;
-  return left.every((value, index) => Math.round(value) === Math.round(right[index]));
-}
-
-export function buildPositionFromWorkflowDraft(basePosition: any, draft: ConfiguratorWorkflowDraft) {
-  const configuration = normalizeConfigurationState(draft.configuration, basePosition);
-  const layout = configuration.layout ?? normalizeLayoutDefinition(undefined, basePosition);
-  const cellInsertions = Object.fromEntries(
-    (configuration.fields ?? []).map((field) => [field.key, fieldTypeToInsertion(field.type)])
-  );
-  const firstFieldInsertion =
-    cellInsertions[buildFieldKey(0, 0)] ?? fieldTypeToInsertion(configuration.fields?.[0]?.type ?? "fixed");
-
-  return {
-    ...basePosition,
-    positionRef: draft.addPosition.positionReference ?? basePosition?.positionRef ?? "",
-    qty: Number(draft.addPosition.quantity || 1),
-    roomName: draft.addPosition.roomName ?? basePosition?.roomName ?? "",
-    product: draft.addPosition.product ?? basePosition?.product ?? "",
-    productType: draft.addPosition.productType ?? basePosition?.productType ?? "",
-    positionType: "Window",
-    family: "window",
-    widthMm: Number(draft.dimensions.widthMm || basePosition?.widthMm || 1000),
-    heightMm: Number(draft.dimensions.heightMm || basePosition?.heightMm || 1200),
-    fieldsX: layout.columns,
-    fieldsY: layout.rows,
-    insertion: firstFieldInsertion,
-    cellInsertions,
-    colWidthsMm:
-      configuration.splitMode === "manual"
-        ? normalizeSplitArray(configuration.manualVerticalSplitsMm, layout.columns)
-        : undefined,
-    rowHeightsMm:
-      configuration.splitMode === "manual"
-        ? normalizeSplitArray(configuration.manualHorizontalSplitsMm, layout.rows)
-        : undefined,
-    orientationView: configuration.orientationView,
-    windowConfiguration: configuration,
-  };
-}
-
-export function applyPositionToWorkflowDraft(
-  draft: ConfiguratorWorkflowDraft,
-  updatedPosition: any
-): ConfiguratorWorkflowDraft {
-  const layout = normalizeLayoutDefinition(
-    updatedPosition?.windowConfiguration?.layout,
-    updatedPosition
-  );
-  const existingConfiguration = normalizeConfigurationState(draft.configuration, updatedPosition);
-  const nextManualVerticalSplits = Array.isArray(updatedPosition?.colWidthsMm)
-    ? updatedPosition.colWidthsMm
-    : existingConfiguration.manualVerticalSplitsMm;
-  const nextManualHorizontalSplits = Array.isArray(updatedPosition?.rowHeightsMm)
-    ? updatedPosition.rowHeightsMm
-    : existingConfiguration.manualHorizontalSplitsMm;
-  const equalVerticalSplits = evenSplit(
-    Math.max(1, Number(updatedPosition?.widthMm || draft.dimensions.widthMm || 1000)),
-    layout.columns
-  );
-  const equalHorizontalSplits = evenSplit(
-    Math.max(1, Number(updatedPosition?.heightMm || draft.dimensions.heightMm || 1200)),
-    layout.rows
-  );
-  const splitMode =
-    existingConfiguration.splitMode === "manual" ||
-    (layout.columns > 1 && !arraysMatch(nextManualVerticalSplits, equalVerticalSplits)) ||
-    (layout.rows > 1 && !arraysMatch(nextManualHorizontalSplits, equalHorizontalSplits))
-      ? "manual"
-      : "equal";
-  const existingFieldsByKey = new Map(
-    (existingConfiguration.fields ?? []).map((field) => [field.key, field])
-  );
-  const fields = normalizeFields(
-    layout.rows,
-    layout.columns,
-    buildDefaultFields(layout.rows, layout.columns, "fixed").map((field) => {
-      const existing = existingFieldsByKey.get(field.key);
-      return {
-        ...field,
-        ...existing,
-        type: insertionToFieldType(
-          updatedPosition?.cellInsertions?.[field.key] ?? updatedPosition?.insertion ?? existing?.type
-        ),
-      };
-    }),
-    insertionToFieldType(updatedPosition?.insertion ?? "Fixed")
-  );
-
-  return {
-    ...draft,
-    addPosition: {
-      ...draft.addPosition,
-      product: updatedPosition?.product ?? draft.addPosition.product,
-      productType: updatedPosition?.productType ?? draft.addPosition.productType,
-      positionReference: updatedPosition?.positionRef ?? draft.addPosition.positionReference,
-      quantity: Number(updatedPosition?.qty || draft.addPosition.quantity || 1),
-      roomName: updatedPosition?.roomName ?? draft.addPosition.roomName,
-      positionType: "Window",
-      family: "window",
-    },
-    dimensions: {
-      ...draft.dimensions,
-      widthMm: Number(updatedPosition?.widthMm || draft.dimensions.widthMm || 0),
-      heightMm: Number(updatedPosition?.heightMm || draft.dimensions.heightMm || 0),
-    },
-    configuration: {
-      ...existingConfiguration,
-      layout,
-      fields,
-      junctions: normalizeJunctions(
-        layout.rows,
-        layout.columns,
-        fields,
-        updatedPosition?.windowConfiguration?.junctions ?? existingConfiguration.junctions,
-        updatedPosition?.windowConfiguration?.mullions
-      ),
-      splitMode,
-      manualVerticalSplitsMm: nextManualVerticalSplits,
-      manualHorizontalSplitsMm: nextManualHorizontalSplits,
-      orientationView: normalizeOrientationView(
-        updatedPosition?.orientationView ?? existingConfiguration.orientationView
-      ),
-    },
   };
 }

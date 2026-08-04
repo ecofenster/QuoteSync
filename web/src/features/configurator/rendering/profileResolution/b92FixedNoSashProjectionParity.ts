@@ -368,6 +368,15 @@ export function buildB92FixedNoSashProjectionParityReport(input: {
       actual: input.existingRendererModel,
       toleranceMm,
     });
+    if (!glassOrderComparison) {
+      return emptyReport({
+        enabled: true,
+        eligible: true,
+        reasons: [],
+        toleranceMm,
+        error: "Glass order comparison was not available.",
+      });
+    }
     const summary = paritySummary({ comparison, projectionSnapshot, existingSnapshot });
     const compact = compactComparisons(comparison);
     const failures = parityFailures({ comparison, glassOrderComparison });

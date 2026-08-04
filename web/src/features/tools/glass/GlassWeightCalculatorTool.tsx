@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import "./GlassWeightCalculatorTool.css";
 
 type GlazingType = "single" | "double" | "triple" | "quad";
@@ -490,17 +490,10 @@ export default function GlassWeightCalculatorTool() {
   }
 
   return (
-    <div className="glass-tool" style={{ maxWidth: 1400, display: "grid", gap: 24 }}>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "380px 1fr",
-          gap: 24,
-          alignItems: "flex-start",
-        }}
-      >
+    <div className="glass-tool">
+      <div className="glass-layout">
         <div className="glass-card ui-card">
-          <h2 style={{ margin: "0 0 12px" }}>Glass position</h2>
+          <h2 className="glass-card-title">Glass position</h2>
 
           <label className="glass-label">Glazing type</label>
           <select
@@ -514,14 +507,14 @@ export default function GlassWeightCalculatorTool() {
             <option value="quad">Quadruple glazed (IGU)</option>
           </select>
 
-          <div style={{ marginTop: 12 }}>
+          <div className="glass-pane-list">
             {panes.map((pane, index) => (
               <div
                 key={index}
                 className="glass-pane-card"
               >
                 <div className="glass-pane-title">Pane {index + 1}</div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <div className="glass-pane-controls">
                   <select
                     value={pane.type}
                     onChange={(e) => {
@@ -561,16 +554,9 @@ export default function GlassWeightCalculatorTool() {
           </div>
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 24,
-            alignItems: "stretch",
-          }}
-        >
+        <div className="glass-content-grid">
           <div className="glass-card ui-card">
-            <h2 style={{ margin: "0 0 12px" }}>Position summary</h2>
+            <h2 className="glass-card-title">Position summary</h2>
             <div>Glass area: {calculated.area ? calculated.area.toFixed(3) + " m²" : "–"}</div>
             <div>Weight per m² (unit): {calculated.weightPerM2.toFixed(1)} kg/m²</div>
             <div>Total unit weight: {calculated.totalWeight.toFixed(1)} kg</div>
@@ -578,7 +564,7 @@ export default function GlassWeightCalculatorTool() {
               Approx. weight per pane:{" "}
               {calculated.avgPaneWeight ? calculated.avgPaneWeight.toFixed(1) + " kg" : "–"}
             </div>
-            <div style={{ marginTop: 8 }}>
+            <div className="glass-summary-build">
               <strong>{glazingLabel(glazingType)}</strong>
               <br />
               {calculated.buildLines.map((line) => (
@@ -588,16 +574,16 @@ export default function GlassWeightCalculatorTool() {
           </div>
 
           <div className="glass-card ui-card">
-            <h2 style={{ margin: "0 0 12px" }}>Insulated glazing unit</h2>
+            <h2 className="glass-card-title">Insulated glazing unit</h2>
             <IGUDiagram glazing={glazingType} />
-            <div style={{ marginTop: 8 }}>
+            <div className="glass-summary-build">
               {glazingLabel(glazingType)}: {calculated.buildLines.join(" | ")}
             </div>
           </div>
 
           <div className="glass-card ui-card">
-            <h2 style={{ margin: "0 0 12px" }}>Shape</h2>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginTop: 6 }}>
+            <h2 className="glass-card-title">Shape</h2>
+            <div className="glass-shape-list">
               {[
                 ["rectangle", "Rectangle / square"],
                 ["circle", "Circle"],
@@ -612,20 +598,11 @@ export default function GlassWeightCalculatorTool() {
                   <div
                     key={shape}
                     onClick={() => setCurrentShape(shape as ShapeType)}
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      cursor: "pointer",
-                      padding: 6,
-                      borderRadius: 10,
-                      border: selected ? "2px solid #3b82f6" : "2px solid transparent",
-                      background: selected ? "#eff6ff" : "transparent",
-                    }}
+                    className={`glass-shape-option${selected ? " glass-shape-option--selected" : ""}`}
                     title={label}
                   >
                     <ShapeIcon shape={shape as ShapeType} />
-                    <div style={{ marginTop: 4, fontSize: 13 }}>{label}</div>
+                    <div className="glass-shape-option__label">{label}</div>
                   </div>
                 );
               })}
@@ -633,7 +610,7 @@ export default function GlassWeightCalculatorTool() {
           </div>
 
           <div className="glass-card ui-card">
-            <h2 style={{ margin: "0 0 12px" }}>Dimensions & actions</h2>
+            <h2 className="glass-card-title">Dimensions & actions</h2>
 
             {currentShape === "rectangle" && (
               <>
@@ -706,7 +683,7 @@ export default function GlassWeightCalculatorTool() {
               </>
             )}
 
-            <div style={{ marginTop: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div className="glass-actions">
               <button className="glass-button ui-button" onClick={() => void 0}>Calculate weight</button>
               <button className="glass-button ui-button" onClick={addToPositionsTable}>Add to positions table</button>
             </div>
@@ -715,8 +692,8 @@ export default function GlassWeightCalculatorTool() {
       </div>
 
       <div className="glass-card ui-card">
-        <h2 style={{ margin: "0 0 12px" }}>Positions table</h2>
-        <div style={{ overflowX: "auto" }}>
+        <h2 className="glass-card-title">Positions table</h2>
+        <div className="glass-table-scroll">
           <table id="positionsTable" className="glass-table">
             <thead>
               <tr>
@@ -756,7 +733,7 @@ export default function GlassWeightCalculatorTool() {
           </table>
         </div>
 
-        <div style={{ marginTop: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div className="glass-actions">
           <button className="glass-button ui-button" onClick={exportCSV}>Export to CSV</button>
           <button className="glass-button ui-button" onClick={exportPDF}>Export to PDF</button>
         </div>

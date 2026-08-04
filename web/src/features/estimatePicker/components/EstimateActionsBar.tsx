@@ -1,6 +1,6 @@
 import React from "react";
 import type { EstimateOutcome } from "../../../models/types";
-import { Button, qsOutcomeStyle } from "../tabs/shared";
+import { Button, qsOutcomeClassName } from "../tabs/shared";
 
 type Props = {
   e: any;
@@ -56,15 +56,15 @@ export default function EstimateActionsBar(props: Props) {
   } = props;
 
   return (
-    <div style={{ display: "flex", alignItems: "flex-end", gap: 14, flexWrap: "wrap" }}>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7280", marginBottom: 4 }}>Email</div>
+    <div className="ep-estimate-actions-grid">
+      <div className="ep-estimate-action-group">
+        <div className="ep-estimate-action-label">Email</div>
         <Button variant="outline" disabled={!canUseOutputActions} onClick={() => { setSendModalEstimateId(e.id); setSendModalOpen(true); }}>
           Send
         </Button>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7280", marginBottom: 4 }}>Follow up</div>
+      <div className="ep-estimate-action-group">
+        <div className="ep-estimate-action-label">Follow up</div>
         <Button
           variant="outline"
           disabled={!canUseOutputActions}
@@ -83,48 +83,22 @@ export default function EstimateActionsBar(props: Props) {
           Add Follow Up
         </Button>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", position: "relative" }}>
-        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7280", marginBottom: 4 }}>Estimate status</div>
+      <div className="ep-estimate-action-group ep-estimate-action-group--status">
+        <div className="ep-estimate-action-label">Estimate status</div>
         <div
           role="button"
+          className={`ep-outcome-control ${qsOutcomeClassName(currentOutcome)}`}
           onClick={(ev) => {
             ev.stopPropagation();
             setStatusMenuForEstimateId((prev) => (prev === e.id ? null : e.id));
           }}
-          style={{
-            ...(qsOutcomeStyle(currentOutcome)),
-            height: 38,
-            padding: "0 28px 0 14px",
-            borderRadius: 999,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 8,
-            userSelect: "none",
-            cursor: "pointer",
-          }}
         >
-          <span style={{ fontWeight: 900 }}>{currentOutcome}</span>
-          <span style={{ fontWeight: 900, lineHeight: 1, transform: "translateY(-1px)" }}>▾</span>
+          <span className="ep-outcome-control__label">{currentOutcome}</span>
+          <span className="ep-outcome-control__chevron">▾</span>
         </div>
 
         {statusMenuForEstimateId === e.id && (
-          <div
-            style={{
-              position: "absolute",
-              top: "100%",
-              left: 0,
-              marginTop: 6,
-              minWidth: 140,
-              background: "#fff",
-              border: "1px solid rgba(0,0,0,0.12)",
-              borderRadius: 10,
-              boxShadow: "0 10px 24px rgba(0,0,0,0.12)",
-              overflow: "hidden",
-              zIndex: 20,
-            }}
-            onClick={(ev) => ev.stopPropagation()}
-          >
+          <div className="ep-outcome-menu" onClick={(ev) => ev.stopPropagation()}>
             {(["Open", "Order", "Lost"] as EstimateOutcome[]).map((opt) => (
               <button
                 key={opt}
@@ -133,18 +107,7 @@ export default function EstimateActionsBar(props: Props) {
                   persistEstimateOutcome(pickerClient.id, e.id, opt);
                   setStatusMenuForEstimateId(null);
                 }}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  textAlign: "left",
-                  background: "#fff",
-                  color: "#111827",
-                  fontWeight: 800,
-                  border: "none",
-                  padding: "8px 10px",
-                  cursor: "pointer",
-                  borderBottom: opt === "Lost" ? "none" : "1px solid rgba(0,0,0,0.08)",
-                }}
+                className="ep-outcome-menu__item"
               >
                 {opt}
               </button>
@@ -152,20 +115,20 @@ export default function EstimateActionsBar(props: Props) {
           </div>
         )}
       </div>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7280", marginBottom: 4 }}>Copy estimate</div>
+      <div className="ep-estimate-action-group">
+        <div className="ep-estimate-action-label">Copy estimate</div>
         <Button variant="outline" onClick={() => copyEstimateForClient(pickerClient, e.id)}>Copy</Button>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7280", marginBottom: 4 }}>Delete estimate</div>
+      <div className="ep-estimate-action-group">
+        <div className="ep-estimate-action-label">Delete estimate</div>
         <Button variant="outline" onClick={() => confirmDeleteEstimate(e.id)}>Delete</Button>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7280", marginBottom: 4 }}>Open estimate</div>
+      <div className="ep-estimate-action-group">
+        <div className="ep-estimate-action-label">Open estimate</div>
         <Button variant="primary" onClick={() => openEstimateFromPicker(e.id)}>Open</Button>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7280", marginBottom: 4 }}>Print Word Doc</div>
+      <div className="ep-estimate-action-group">
+        <div className="ep-estimate-action-label">Print Word Doc</div>
         <Button
           variant="outline"
           disabled={!canUseOutputActions}
@@ -176,8 +139,8 @@ export default function EstimateActionsBar(props: Props) {
           Print Word Doc
         </Button>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7280", marginBottom: 4 }}>Print PDF</div>
+      <div className="ep-estimate-action-group">
+        <div className="ep-estimate-action-label">Print PDF</div>
         <Button
           variant="outline"
           disabled={!canUseOutputActions}
@@ -188,8 +151,8 @@ export default function EstimateActionsBar(props: Props) {
           Print PDF
         </Button>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7280", marginBottom: 4 }}>Import Supplier Estimate</div>
+      <div className="ep-estimate-action-group">
+        <div className="ep-estimate-action-label">Import Supplier Estimate</div>
         <Button variant="outline" disabled={!canUsePricingActions} onClick={() => importSupplierEstimate(e.id)}>Import Supplier Estimate</Button>
       </div>
     </div>

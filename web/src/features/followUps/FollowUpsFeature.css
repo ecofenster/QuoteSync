@@ -122,6 +122,75 @@
   text-align: center;
 }
 
+.follow-ups__calendar-day {
+  position: relative;
+  padding: 10px 0;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.follow-ups__calendar-day--selected {
+  border: 2px solid var(--color-surface-inverse);
+  background: var(--color-surface-inverse);
+  color: var(--color-text-on-inverse);
+}
+
+.follow-ups__calendar-today-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--color-success);
+}
+
+.follow-ups__calendar-count {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 2px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface-muted);
+  color: var(--color-text-primary);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.follow-ups__calendar-count--selected {
+  border-color: color-mix(in srgb, var(--color-text-on-inverse) 35%, transparent);
+  background: color-mix(in srgb, var(--color-text-on-inverse) 18%, transparent);
+  color: var(--color-text-on-inverse);
+}
+
+.follow-ups__item {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.follow-ups__item--active {
+  border: 2px solid var(--color-surface-inverse);
+  background: var(--color-surface-inverse);
+  color: var(--color-text-on-inverse);
+}
+
+.follow-ups__item--overdue {
+  border-color: color-mix(in srgb, var(--color-danger) 45%, var(--color-border));
+  background: color-mix(in srgb, var(--color-danger) 8%, var(--color-surface));
+}
+
 .follow-ups__item-head,
 .follow-ups__actions {
   display: flex;
@@ -167,11 +236,16 @@
   border: 1px solid var(--color-border);
   border-radius: 14px;
   padding: 12px;
-  background: var(--color-surface-subtle, #fafafa);
+  background: var(--color-surface-subtle);
 }
 
 .follow-ups__item-note-card {
   padding: 8px;
+}
+
+.follow-ups__item--active .follow-ups__item-note-card {
+  border-color: color-mix(in srgb, var(--color-text-on-inverse) 25%, transparent);
+  background: color-mix(in srgb, var(--color-text-on-inverse) 8%, transparent);
 }
 
 .follow-ups__item-note-label,
@@ -206,8 +280,8 @@
 .follow-ups__primary-button,
 .follow-ups__save-button {
   border: none;
-  background: var(--color-surface-inverse, #18181b);
-  color: var(--color-text-on-dark, #fff);
+  background: var(--color-surface-inverse);
+  color: var(--color-text-on-inverse);
 }
 
 .follow-ups__composer {
@@ -226,4 +300,13 @@
   outline: none;
   direction: ltr;
   unicode-bidi: plaintext;
+}
+
+.follow-ups__save-button {
+  justify-self: end;
+}
+
+.follow-ups__save-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }

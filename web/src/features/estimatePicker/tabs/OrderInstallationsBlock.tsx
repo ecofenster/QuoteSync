@@ -18,7 +18,7 @@ type Props = {
 const labelStyle: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 800,
-  color: "#3f3f46",
+  color: "var(--color-text-secondary)",
   marginBottom: 6,
 };
 
@@ -57,22 +57,22 @@ export default function OrderInstallationsBlock(props: Props) {
           </div>
 
           {(e.orderMeta?.installerId || selectedInstallerByEstimateId[e.id]) ? (
-            <div className="ep-order-selected-card" style={{ border: "1px solid #bbf7d0", background: "#f0fdf4" }}>
-              <div className="ep-order-selected-label" style={{ color: "#166534" }}>
+            <div className="ep-order-selected-card">
+              <div className="ep-order-selected-label">
                 Selected installer
               </div>
-              <div className="ep-order-selected-value" style={{ color: "#14532d" }}>
+              <div className="ep-order-selected-value">
                 {installerLabel(e.orderMeta?.installerId || selectedInstallerByEstimateId[e.id])}
               </div>
             </div>
           ) : (
-            <div className="ep-empty-state" style={{ background: "#fff", borderColor: "#d4d4d8" }}>
+            <div className="ep-empty-state ep-empty-state--surface">
               <Small>No installer selected yet.</Small>
             </div>
           )}
 
           {rankedInstallers.length === 0 ? (
-            <div className="ep-empty-state" style={{ padding: 12, background: "#fff", borderColor: "#d4d4d8" }}>
+            <div className="ep-empty-state ep-empty-state--surface ep-empty-state--compact">
               <Small>No installer results yet.</Small>
             </div>
           ) : (
@@ -84,12 +84,7 @@ export default function OrderInstallationsBlock(props: Props) {
                     key={i}
                     type="button"
                     onClick={() => selectInstallerForEstimate(e.id, r.installerId)}
-                    className="ep-order-result-button"
-                    style={{
-                      border: isSelected ? "2px solid #22c55e" : "1px solid #e4e4e7",
-                      background: isSelected ? "#f0fdf4" : "#fff",
-                      cursor: "pointer",
-                    }}
+                    className={`ep-order-result-button${isSelected ? " ep-order-result-button--selected" : ""}`}
                   >
                     <div className="ep-order-result-header">
                       <div className="ep-order-result-title">{installerLabel(r.installerId)}</div>

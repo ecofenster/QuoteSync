@@ -1,8 +1,18 @@
 import React, { useEffect, useMemo, useState } from "react";
 import EstimatePositionsTable from "../estimatePicker/tabs/EstimatePositionsTable";
+import { createB92DefaultConfiguratorState } from "../b92Configurator/b92ConfiguratorState";
+import {
+  compileB92ConfiguratorStateToConfiguredPositionContract,
+  projectConfiguredPositionContractToLegacyPosition,
+} from "../b92Configurator/b92ConfiguredPositionCompiler";
+import {
+  applyConfiguredContractFlatPatch,
+  getConfiguredPositionContract,
+} from "../configurator/configuredPositionContract.utils";
 
 type Props = {
   e: any;
+  clientId?: string;
   itemPriceByPositionId: Record<string, string>;
   setItemPriceByPositionId: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   formatMoney: (n: number) => string;
@@ -13,7 +23,8 @@ type Props = {
 
 type QuickAddPositionType = "Window" | "Door";
 
-const WINDOW_INSERTIONS = ["Fixed", "Tilt & Turn", "Top Hung"];
+const B92_QUICK_ADD_INSERTION = "B92 Approved Fixed";
+const WINDOW_INSERTIONS = [B92_QUICK_ADD_INSERTION, "Fixed", "Tilt & Turn", "Top Hung"];
 const DOOR_INSERTIONS = ["Single Door", "French Door", "Sliding Door"];
 
 function nextPositionRef(positions: any[], positionType: QuickAddPositionType) {
@@ -22,7 +33,7 @@ function nextPositionRef(positions: any[], positionType: QuickAddPositionType) {
 
   for (const position of positions) {
     const value = String(position?.positionRef ?? "").trim().toUpperCase();
-    const match = value.match(new RegExp(`^${prefix}-(\d+)$`));
+    const match = value.match(new RegExp(`^${prefix}-(\\d+)$`));
     if (!match) continue;
     const n = Number(match[1]);
     if (Number.isFinite(n) && n > maxIndex) {
@@ -60,7 +71,16 @@ export default function EstimatePositionsFeature(props: Props) {
 
   function updatePositionDraft(positionId: string, patch: Record<string, any>) {
     setDraftPositions((prev) =>
-      prev.map((position) => (String(position?.id) === String(positionId) ? { ...position, ...patch } : position))
+      prev.map((position) => {
+        if (String(position?.id) !== String(positionId)) return position;
+        const configuredContract = getConfiguredPositionContract(position);
+        const nextContract = configuredContract ? applyConfiguredContractFlatPatch(configuredContract, patch) : null;
+        return {
+          ...position,
+          ...patch,
+          ...(nextContract ? { configuredContract: nextContract } : {}),
+        };
+      })
     );
   }
 
@@ -80,23 +100,45 @@ export default function EstimatePositionsFeature(props: Props) {
   async function quickAddPosition() {
     const currentPositions = Array.isArray(draftPositions) ? draftPositions : [];
     const nextId = `tmp_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const positionRef = nextPositionRef(currentPositions, quickAddPositionType);
+    const shouldCreateB92Contract = quickAddPositionType === "Window" && quickAddInsertion === B92_QUICK_ADD_INSERTION;
 
     const nextPosition = {
       id: nextId,
-      positionRef: nextPositionRef(currentPositions, quickAddPositionType),
+      positionRef,
       qty: 1,
       itemPrice: 0,
       roomName: "",
-      widthMm: 1000,
-      heightMm: 1200,
+      widthMm: shouldCreateB92Contract ? 1000 : 1000,
+      heightMm: shouldCreateB92Contract ? 1000 : 1200,
       fieldsX: 1,
       fieldsY: 1,
-      insertion: quickAddInsertion,
-      cellInsertions: {},
+      insertion: shouldCreateB92Contract ? "Fixed" : quickAddInsertion,
+      cellInsertions: shouldCreateB92Contract ? { "0,0": "Fixed" } : {},
       positionType: quickAddPositionType,
       useEstimateDefaults: true,
       overrides: {},
     };
+
+    if (shouldCreateB92Contract) {
+      const b92State = createB92DefaultConfiguratorState();
+      const compiled = compileB92ConfiguratorStateToConfiguredPositionContract(b92State, {
+        clientId: String(props.clientId ?? ""),
+        estimateId: String(e?.id ?? ""),
+        positionId: nextId,
+        positionRef,
+        quantity: 1,
+        roomName: "",
+        itemPrice: 0,
+      });
+      if (!compiled.ok) {
+        window.alert(`B92 position was not created: ${compiled.errors.join(" ")}`);
+        return;
+      }
+      Object.assign(nextPosition, projectConfiguredPositionContractToLegacyPosition(compiled.contract), {
+        configuredContract: compiled.contract,
+      });
+    }
 
     const updatedPositions = [...currentPositions, nextPosition];
     setDraftPositions(updatedPositions);

@@ -205,6 +205,7 @@ export interface ConfiguratorWorkflowDraft {
     layout?: WindowLayoutDefinition;
     fields?: WindowFieldDefinition[];
     junctions?: WindowJunctionDefinition[];
+    mullions?: WindowJunctionDefinition[];
     splitMode?: SplitMode;
     divisionBasis?: DivisionBasis;
     manualVerticalSplitsMm?: number[];

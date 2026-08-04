@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { BSEN_STANDARDS } from "./bsen.data";
 import type { BSENStandard } from "./bsen.types";
 import "./BSENStandardsTool.css";
@@ -155,16 +155,16 @@ export default function BSENStandardsTool() {
   const selectedCategories = selected ? inferCategories(selected) : [];
 
   return (
-    <div className="bsen-tool" style={{ display: "grid", gap: 16, alignItems: "start" }}>
+    <div className="bsen-tool">
       <div className="bsen-card ui-card">
-        <div style={{ display: "grid", gap: 6 }}>
-          <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>EN / BS Numbers</div>
-          <div style={{ fontSize: 13, color: "#52525b", maxWidth: 900 }}>
+        <div className="bsen-stack bsen-stack--compact">
+          <div className="bsen-title">EN / BS Numbers</div>
+          <div className="bsen-intro">
             Search and review relevant EN / BS standards for windows, doors, glazing, thermal, fire, security and related compliance topics.
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "160px minmax(0, 1fr) auto", gap: 10 }}>
+        <div className="bsen-search-grid">
           <select value={family} onChange={(e) => setFamily(e.currentTarget.value)} className="bsen-input ui-input">
             <option value="BS">BS</option>
             <option value="EN">EN</option>
@@ -195,19 +195,19 @@ export default function BSENStandardsTool() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(280px, 360px) minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
+      <div className="bsen-content-grid">
         <div
           className="bsen-card bsen-card--library ui-card"
         >
-          <div style={{ display: "grid", gap: 8 }}>
-            <div style={{ fontSize: 14, fontWeight: 900, color: "#18181b" }}>Standards library</div>
+          <div className="bsen-stack">
+            <div className="bsen-section-title">Standards library</div>
             <input
               value={query}
               onChange={(e) => setQuery(e.currentTarget.value)}
               placeholder="Filter by code, title, tag, category or topic"
               className="bsen-input ui-input"
             />
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <div className="bsen-chip-row">
               {categoryOrder.map((item) => {
                 const active = category === item;
                 return (
@@ -222,10 +222,10 @@ export default function BSENStandardsTool() {
                 );
               })}
             </div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#71717a" }}>{filtered.length} standards shown</div>
+            <div className="bsen-count">{filtered.length} standards shown</div>
           </div>
 
-          <div style={{ minHeight: 0, overflowY: "auto", paddingRight: 6, display: "grid", gap: 8 }}>
+          <div className="bsen-list">
             {filtered.map((item) => {
               const active = selected?.code === item.code;
               const categories = inferCategories(item);
@@ -241,15 +241,15 @@ export default function BSENStandardsTool() {
                   }}
                   className={active ? "bsen-list-item bsen-list-item--active" : "bsen-list-item"}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-                    <div style={{ fontSize: 13, fontWeight: 900, color: "#18181b" }}>{item.code}</div>
+                  <div className="bsen-list-item__header">
+                    <div className="bsen-list-item__code">{item.code}</div>
                     <span
                       className="bsen-badge"
                     >
                       {categories[0] || "General"}
                     </span>
                   </div>
-                  <div style={{ fontSize: 12, lineHeight: 1.35, color: "#52525b" }}>{item.title}</div>
+                  <div className="bsen-list-item__title">{item.title}</div>
                 </button>
               );
             })}
@@ -261,10 +261,10 @@ export default function BSENStandardsTool() {
         >
           {selected ? (
             <>
-              <div style={{ display: "grid", gap: 6 }}>
-                <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a" }}>Overview only</div>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>
+              <div className="bsen-stack bsen-stack--compact">
+                <div className="bsen-eyebrow">Overview only</div>
+                <div className="bsen-detail-heading">
+                  <div className="bsen-title">
                     {selected.code}{selected.year ? `: ${selected.year}` : ""}
                   </div>
                   {selectedCategories.map((item) => (
@@ -276,26 +276,26 @@ export default function BSENStandardsTool() {
                     </span>
                   ))}
                 </div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: "#18181b" }}>{selected.title}</div>
-                <div style={{ fontSize: 13, color: "#52525b" }}>
+                <div className="bsen-detail-title">{selected.title}</div>
+                <div className="bsen-intro">
                   <strong>Applies to:</strong> {selected.applies}
                 </div>
               </div>
 
-              <div style={{ display: "grid", gap: 6 }}>
-                <div style={{ fontSize: 13, fontWeight: 900, color: "#18181b" }}>What this standard covers</div>
-                <div style={{ fontSize: 14, lineHeight: 1.6, color: "#3f3f46" }}>{selected.covers}</div>
+              <div className="bsen-stack bsen-stack--compact">
+                <div className="bsen-detail-section-title">What this standard covers</div>
+                <div className="bsen-detail-copy">{selected.covers}</div>
               </div>
 
-              <div style={{ display: "grid", gap: 6 }}>
-                <div style={{ fontSize: 13, fontWeight: 900, color: "#18181b" }}>Explained in plain English</div>
-                <div style={{ fontSize: 14, lineHeight: 1.6, color: "#3f3f46" }}>{selected.plain}</div>
+              <div className="bsen-stack bsen-stack--compact">
+                <div className="bsen-detail-section-title">Explained in plain English</div>
+                <div className="bsen-detail-copy">{selected.plain}</div>
               </div>
 
               {!!(selected.tags || []).length && (
-                <div style={{ display: "grid", gap: 8 }}>
-                  <div style={{ fontSize: 13, fontWeight: 900, color: "#18181b" }}>Related tags</div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <div className="bsen-stack">
+                  <div className="bsen-detail-section-title">Related tags</div>
+                  <div className="bsen-chip-row">
                     {(selected.tags || []).map((tag) => (
                       <span
                         key={tag}
@@ -309,7 +309,7 @@ export default function BSENStandardsTool() {
               )}
             </>
           ) : (
-            <div style={{ fontSize: 14, color: "#52525b" }}>
+            <div className="bsen-empty">
               No matching standard found. Check the family (BS / EN / BS EN / BS EN ISO) and try a number such as 14351-1, 12150 or 10077-1.
             </div>
           )}

@@ -17,7 +17,7 @@ export const B92_FIXED_PERIMETER_MAP = {
   head: { profileId: "B92-1", role: "fixed_head", source: "locked_map" },
   jamb: { profileId: "B92-2", role: "fixed_jamb", source: "locked_map" },
   sill: { profileId: "B92-3", role: "fixed_sill", source: "locked_map" },
-  internalInterface: { profileId: "B92-6", role: "fixed_internal_interface", source: "locked_map" },
+  internalInterface: { profileId: "B92-2", role: "fixed_internal_interface", source: "locked_map" },
   ventHead: { profileId: "B92-1/78V", role: "trickle_vent_head", source: "locked_map" },
   mixedFixedVentHead: { profileId: "B92-4/100V", role: "trickle_vent_head", source: "locked_map" },
 } as const satisfies Record<string, B92ProfileReference>;

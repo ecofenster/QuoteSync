@@ -46,7 +46,7 @@ export const b92FixedInternalWindowTypeSourceSeed = {
       },
       interfaceProfiles: {
         fixedInternal: {
-          profileCode: "B92-6",
+          profileCode: "B92-2",
           role: "fixed_internal_interface",
           required: false,
         },

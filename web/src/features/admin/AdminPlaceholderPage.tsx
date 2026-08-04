@@ -16,6 +16,9 @@ type AdminSectionKey =
   | "integrations"
   | "supplier_defaults";
 
+type AdminConfiguratorInitialTab = "manufacturers" | "windowTypes" | "configuratorRender" | "b92Configurator";
+type AdminWindowTypesInitialCategory = "windows";
+
 type EditableBooleanValue = {
   enabled: boolean;
 };
@@ -288,9 +291,14 @@ function SettingRow({
   );
 }
 
-export default function AdminPlaceholderPage() {
+export default function AdminPlaceholderPage(props: {
+  initialSection?: AdminSectionKey;
+  initialConfiguratorTab?: AdminConfiguratorInitialTab;
+  initialWindowTypesCategory?: AdminWindowTypesInitialCategory;
+} = {}) {
   const [settingsByGroup, setSettingsByGroup] = useState<GroupedSystemSettings>({});
-  const [activeSection, setActiveSection] = useState<AdminSectionKey>("settings");
+  const [activeSection, setActiveSection] = useState<AdminSectionKey>(props.initialSection ?? "settings");
+  const [configuratorRenderWorkspaceActive, setConfiguratorRenderWorkspaceActive] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -448,7 +456,11 @@ export default function AdminPlaceholderPage() {
         description="Dedicated feature access and capability controls will live here. This phase keeps the main settings section active first."
       />
     ) : activeSection === "configurator_controls" ? (
-      <AdminConfiguratorCatalogWorkspace />
+      <AdminConfiguratorCatalogWorkspace
+        initialTab={props.initialConfiguratorTab}
+        initialWindowTypesCategory={props.initialWindowTypesCategory}
+        onRenderWorkspaceActive={setConfiguratorRenderWorkspaceActive}
+      />
     ) : activeSection === "branding" ? (
       <AdminSectionPlaceholder
         title="Branding"
@@ -466,13 +478,16 @@ export default function AdminPlaceholderPage() {
       />
     );
 
+  const hideAdminSidebar = activeSection === "configurator_controls" && configuratorRenderWorkspaceActive;
+
   return (
     <div
       className="admin-shell"
       style={{
-        gridTemplateColumns: "280px minmax(0, 1fr)",
+        gridTemplateColumns: hideAdminSidebar ? "minmax(0, 1fr)" : "280px minmax(0, 1fr)",
       }}
     >
+      {!hideAdminSidebar ? (
       <div className="admin-card admin-sidebar-card ui-card" style={{ padding: 14, position: "sticky", top: 16 }}>
         <div className="admin-sidebar-title">
           Admin
@@ -495,6 +510,7 @@ export default function AdminPlaceholderPage() {
           );
         })}
       </div>
+      ) : null}
 
       <div>{sectionContent}</div>
     </div>

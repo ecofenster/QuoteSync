@@ -32,31 +32,46 @@ export default function WindowTypeDesignList(props: Props) {
   const { categoryLabel, fieldCountLabel, designs, selectedDesignId, onSelectDesign } = props;
 
   return (
-    <div className="admin-card ui-card" style={{ padding: 16, display: "grid", gap: 12, alignContent: "start" }}>
-      <div className="admin-group-title">Window Type designs</div>
-      <div className="admin-body-copy">
+    <div
+      style={{
+        padding: 8,
+        display: "grid",
+        gap: 8,
+        alignContent: "start",
+        borderRadius: 8,
+        background: "#07100d",
+        border: "1px solid rgba(34, 197, 94, 0.14)",
+        color: "#d8eee4",
+        minHeight: "calc(100vh - 156px)",
+      }}
+    >
+      <div style={{ fontSize: 10, fontWeight: 800, color: "#a7f3d0", textTransform: "uppercase" }}>Window layouts</div>
+      <div style={{ fontSize: 11, color: "#94a3b8" }}>
         {categoryLabel} → {fieldCountLabel}
       </div>
-      <div style={{ display: "flex", justifyContent: "flex-start" }}>
-        <button type="button" className="admin-nav-button">
-          <span className="admin-nav-button-label">New Type</span>
-        </button>
-      </div>
-      <div style={{ display: "grid", gap: 8 }}>
+      <div style={{ display: "grid", gap: 6 }}>
         {designs.map((design, index) => {
           const showGroupLabel = design.groupLabel && design.groupLabel !== designs[index - 1]?.groupLabel;
           return (
             <React.Fragment key={design.id}>
-              {showGroupLabel ? <div className="admin-setting-label">{design.groupLabel}</div> : null}
+              {showGroupLabel ? (
+                <div style={{ fontSize: 9, fontWeight: 800, color: "#7dd3a7", textTransform: "uppercase" }}>
+                  {design.groupLabel}
+                </div>
+              ) : null}
               <button
                 type="button"
                 onClick={() => onSelectDesign(design.id)}
                 className={selectedDesignId === design.id ? "admin-nav-button admin-nav-button--active" : "admin-nav-button"}
+                style={{
+                  justifyContent: "flex-start",
+                  padding: "7px 8px",
+                  background: selectedDesignId === design.id ? "#22c55e" : "#0b1714",
+                  borderColor: selectedDesignId === design.id ? "#22c55e" : "rgba(34, 197, 94, 0.18)",
+                  color: selectedDesignId === design.id ? "#052e16" : "#d8eee4",
+                }}
               >
                 <span className="admin-nav-button-label">{design.label}</span>
-                <span className={selectedDesignId === design.id ? "admin-nav-button-desc admin-nav-button-desc--active" : "admin-nav-button-desc"}>
-                  {design.description}
-                </span>
               </button>
             </React.Fragment>
           );

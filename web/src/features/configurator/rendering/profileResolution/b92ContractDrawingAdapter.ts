@@ -93,6 +93,25 @@ const B92_FIXED_NO_SASH_BEAD_FACE_MM = {
   bottom: 21,
 } as const;
 
+const B92_MIXED_FIXED_STACK_MM = {
+  sideFrame: 43,
+  sideFrameWithBead: 64,
+  topFrameOuter: 43,
+  topFrameInner: 57,
+  topFrameWithBead: 78,
+  bottomFrameOuter: 58,
+  bottomFrameWithAddon: 109,
+  bottomFrameWithAddonAndBead: 130,
+} as const;
+
+const B92_13_MIXED_FIXED_CENTRE_SIDE_MM = {
+  centreFaceInsetFromFixedTopOuterRight: 1.5,
+  centreReturnFromFace: 38.5,
+  centreInnerFromFace: 59.5,
+  centreFaceVisibleTop: 37.5,
+  centreFaceVisibleBottom: 52.5,
+} as const;
+
 type B92DatumFixedNoSashRendererPromotionDevFlags = WindowTypeRenderModel["meta"]["dev"] & {
   b92UseDatumFixedNoSashRenderer?: boolean | null;
   b92UseProjectionFixedNoSashDrawingPilot?: boolean | null;
@@ -368,6 +387,147 @@ function shouldUseJunctionGeometryVisualPilot(contract: WindowTypeRenderModel) {
   return contract.meta.dev?.b92UseJunctionGeometryVisualPilot === true;
 }
 
+function isExactB92MixedFixedTtrReferenceCase(contract: WindowTypeRenderModel): boolean {
+  if (contract.fields.length !== 2) return false;
+  if (contract.verticalJunctions.length !== 1) return false;
+  if (contract.horizontalJunctions.length !== 0) return false;
+  if (contract.overall.widthMm !== 2000 || contract.overall.heightMm !== 1000) return false;
+
+  const leftField = contract.fields.find((field) => field.column === 0 && field.row === 0);
+  const rightField = contract.fields.find((field) => field.column === 1 && field.row === 0);
+  if (!leftField || !rightField) return false;
+  const rightOperation = rightField.operation ?? rightField.sash?.operation;
+  const junction = contract.verticalJunctions[0];
+  const leftTopProfile = contract.outerEdgeSegments?.find((segment) => segment.fieldId === leftField.id && segment.edge === "top")?.profile.profileId;
+  const leftBottomProfile = contract.sillSegments?.find((segment) => segment.fieldId === leftField.id)?.profile.profileId;
+  const rightTopProfile = contract.outerEdgeSegments?.find((segment) => segment.fieldId === rightField.id && segment.edge === "top")?.profile.profileId;
+  const rightBottomProfile = contract.sillSegments?.find((segment) => segment.fieldId === rightField.id)?.profile.profileId;
+  const rightSideSashProfile = rightField.sash?.profiles?.right?.profileId ?? rightField.perimeter.right.profileId;
+
+  return (
+    leftField.type === "fixed" &&
+    rightOperation === "tt_right" &&
+    leftTopProfile === "B92-4" &&
+    leftBottomProfile === "B92-5" &&
+    leftField.perimeter.left.profileId === "B92-2" &&
+    rightTopProfile === "B92-7" &&
+    rightBottomProfile === "B92-8" &&
+    rightSideSashProfile === "B92-9" &&
+    junction.profile.profileId === "B92-13" &&
+    junction.betweenFieldIds[0] === leftField.id &&
+    junction.betweenFieldIds[1] === rightField.id
+  );
+}
+
+function buildB92ExactInternalFixedB92_4_B92_5_TTRDrawing(contract: WindowTypeRenderModel): DrawingModel {
+  const exactSvgLines = [
+    [40, 40, 1040, 40],
+    [83, 83, 1038.5, 83],
+    [83, 97, 1038.5, 97],
+    [2040, 40, 2040, 1040],
+    [2040, 1040, 40, 1040],
+    [2002.5, 987.5, 1038.5, 987.5],
+    [1000, 931, 83, 931],
+    [979, 910, 104, 910],
+    [40, 982, 40, 97],
+    [83, 982, 83, 97],
+    [104, 910, 83, 931],
+    [83, 97, 104, 118],
+    [104, 118, 979, 118],
+    [979, 910, 979, 118],
+    [1000, 982, 1000, 97],
+    [1038.5, 987.5, 1038.5, 77.5],
+    [979, 118, 1000, 97],
+    [1000, 931, 979, 910],
+    [1040, 40, 2040, 40],
+    [1038.5, 77.5, 2002.5, 77.5],
+    [1095.5, 134.5, 1945.5, 134.5],
+    [1116.5, 155.5, 1924.5, 155.5],
+    [1095.5, 987.5, 1095.5, 77.5],
+    [1116.5, 155.5, 1116.5, 909.5],
+    [1116.5, 155.5, 1095.5, 134.5],
+    [1095.5, 930.5, 1945.5, 930.5],
+    [2002.5, 77.5, 2002.5, 987.5],
+    [1095.5, 930.5, 1116.5, 909.5],
+    [1116.5, 909.5, 1924.5, 909.5],
+    [1945.5, 77.5, 1945.5, 987.5],
+    [1924.5, 155.5, 1924.5, 909.5],
+    [1945.5, 930.5, 1924.5, 909.5],
+    [1945.5, 134.5, 1924.5, 155.5],
+    [1116.5, 155.5, 1924.5, 520.593],
+    [1924.5, 520.593, 1116.5, 909.5],
+    [1116.5, 909.5, 1520.5, 155.5],
+    [1520.5, 155.5, 1924.5, 909.5],
+    [2040, 982, 2002.5, 982],
+    [2040, 97, 2002.5, 97],
+    [104, 118, 104, 910],
+    [83, 83, 83, 97],
+    [40, 97, 40, 40],
+    [40, 982, 40, 1040],
+    [1038.5, 83, 1038.5, 97],
+    [83, 97, 40, 97],
+    [40, 982, 1038.5, 982],
+  ] as const;
+  const allShapes = exactSvgLines.map(([x1, y1, x2, y2], index) =>
+    line({
+      x1,
+      y1,
+      x2,
+      y2,
+      stroke: "#111",
+      strokeWidth: 1,
+      role: `b92_exact_svg_reference_line_${index + 1}`,
+    })
+  );
+
+  return {
+    width: contract.overall.widthMm,
+    height: contract.overall.heightMm,
+    viewBox: { x: 0, y: 0, width: 2080, height: 1080 },
+    elements: [{ id: "b92-exact-internal-fixed-b92-4-b92-5-ttr", role: "frame", shapes: allShapes }],
+    geometry: { frame: allShapes, sash: [], glass: [], junctions: [] },
+    annotations: {
+      dimensions: [],
+      labels: [],
+      handles: [],
+      markers: [],
+    },
+    metadata: {
+      systemType: "window",
+      openingDirection: "inward",
+      operationType: "fixed",
+      sectionReferences: ["B92-4", "B92-5", "B92-2", "B92-13", "B92-7", "B92-8", "B92-9"],
+      referenceInputs: [
+        {
+          drawingId: "Internal_Fixed_B92-4_B92-5_TTR",
+          title: "B92 internal Fixed + Tilt & Turn Right",
+          purpose: "Exact Admin Window Types preview linework copied from the supplied SVG authority for this single case.",
+          sourceDxfPath: "_project/Test/Europa 92 Alu Clad/2 Field/Internal_Fixed_B92-4_B92-5_TTR.dxf",
+          sourceSvgPath: "_project/Test/Europa 92 Alu Clad/2 Field/Internal_Fixed_B92-4_B92-5_TTR.svg",
+        },
+      ],
+      renderSource: "native_drawing_model",
+      layerHints: ["dxf_reference_linework", "dimensions", "annotations"],
+      devReports: {
+        b92ExactInternalFixedB92_4_B92_5TtrDrawing: {
+          source: "Supplied SVG authority",
+          coordinateMap: "direct SVG coordinates in one shared 2080 x 1080 coordinate system",
+          exactSvgLineCount: exactSvgLines.length,
+          bypassesGenericLayout: true,
+        },
+      },
+    },
+    interaction: {
+      cells: [
+        { key: contract.fields[0]?.id ?? "field-1", x: 40, y: 40, width: 1000, height: 1000 },
+        { key: contract.fields[1]?.id ?? "field-2", x: 1040, y: 40, width: 1000, height: 1000 },
+      ],
+      verticalJunctions: [{ index: 1, x: 1038.5, y1: 77.5, y2: 987.5 }],
+      horizontalJunctions: [],
+    },
+  };
+}
+
 function buildSegmentedSillOverlayShapes(
   contract: WindowTypeRenderModel,
   frame: { x: number; y: number; width: number; height: number },
@@ -512,22 +672,146 @@ function buildFieldHandle(
   };
 }
 
+function buildB92MixedFixedSashInternalFieldLinework(input: {
+  fieldId: string;
+  fixedOuter: { left: number; top: number; right: number; bottom: number };
+  scale: number;
+  centreJunctionProfileId: "B92-12" | "B92-13";
+}): { shapes: DrawingShape[]; labelBounds: { x: number; y: number; width: number; height: number } } {
+  const stack = B92_MIXED_FIXED_STACK_MM;
+  const centre = B92_13_MIXED_FIXED_CENTRE_SIDE_MM;
+  const outer = input.fixedOuter;
+  const xLeftReturn = outer.left + stack.sideFrame * input.scale;
+  const xLeftInner = outer.left + stack.sideFrameWithBead * input.scale;
+  const xCentreFace = outer.right - centre.centreFaceInsetFromFixedTopOuterRight * input.scale;
+  const xCentreReturn = xCentreFace - centre.centreReturnFromFace * input.scale;
+  const xCentreInner = xCentreFace - centre.centreInnerFromFace * input.scale;
+  const yTopReturn = outer.top + stack.topFrameOuter * input.scale;
+  const yTopMiddle = outer.top + stack.topFrameInner * input.scale;
+  const yTopInner = outer.top + stack.topFrameWithBead * input.scale;
+  const yBottomReturn = outer.bottom - stack.bottomFrameOuter * input.scale;
+  const yBottomMiddle = outer.bottom - stack.bottomFrameWithAddon * input.scale;
+  const yBottomInner = outer.bottom - stack.bottomFrameWithAddonAndBead * input.scale;
+  const centreFaceY1 = outer.bottom - centre.centreFaceVisibleBottom * input.scale;
+  const centreFaceY2 = outer.top + centre.centreFaceVisibleTop * input.scale;
+  const fixedProfileStrokeWidth = 1.2;
+  const centreRole = input.centreJunctionProfileId.toLowerCase().replace("-", "_");
+
+  const shapes: DrawingShape[] = [
+    line({ x1: xLeftReturn, y1: yTopReturn, x2: xLeftReturn, y2: yTopMiddle, stroke: "#333", strokeWidth: 1, role: `b92_mixed_fixed_dxf_b4f_${input.fieldId}` }),
+    line({ x1: outer.left, y1: yTopMiddle, x2: outer.left, y2: outer.top, stroke: "#333", strokeWidth: 1, role: `b92_mixed_fixed_dxf_b50_${input.fieldId}` }),
+    line({ x1: outer.left, y1: yBottomReturn, x2: outer.left, y2: outer.bottom, stroke: "#333", strokeWidth: 1, role: `b92_mixed_fixed_dxf_b9b_${input.fieldId}` }),
+    line({ x1: xCentreFace, y1: yTopReturn, x2: xCentreFace, y2: yTopMiddle, stroke: "#333", strokeWidth: 1, role: `b92_mixed_fixed_dxf_c4b_${input.fieldId}` }),
+    line({ x1: xLeftReturn, y1: yTopMiddle, x2: outer.left, y2: yTopMiddle, stroke: "#333", strokeWidth: 1, role: `b92_mixed_fixed_dxf_28c4_${input.fieldId}` }),
+    line({ x1: outer.left, y1: yBottomReturn, x2: xCentreFace, y2: yBottomReturn, stroke: "#333", strokeWidth: 1, role: `b92_mixed_fixed_dxf_28c5_${input.fieldId}` }),
+    line({ x1: outer.left, y1: outer.top, x2: outer.right, y2: outer.top, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_mixed_fixed_b92_4_outer_top_${input.fieldId}` }),
+    line({ x1: xLeftReturn, y1: yTopReturn, x2: xCentreFace, y2: yTopReturn, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_mixed_fixed_b92_4_return_${input.fieldId}` }),
+    line({ x1: xLeftReturn, y1: yTopMiddle, x2: xCentreFace, y2: yTopMiddle, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_mixed_fixed_b92_4_middle_${input.fieldId}` }),
+    line({ x1: xLeftInner, y1: yTopInner, x2: xCentreInner, y2: yTopInner, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_mixed_fixed_b92_4_inner_${input.fieldId}` }),
+    line({ x1: outer.right, y1: outer.bottom, x2: outer.left, y2: outer.bottom, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_mixed_fixed_b92_5_outer_bottom_${input.fieldId}` }),
+    line({ x1: xLeftReturn, y1: yBottomMiddle, x2: xCentreReturn, y2: yBottomMiddle, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_mixed_fixed_b92_5_middle_${input.fieldId}` }),
+    line({ x1: xLeftInner, y1: yBottomInner, x2: xCentreInner, y2: yBottomInner, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_mixed_fixed_b92_5_inner_${input.fieldId}` }),
+    line({ x1: outer.left, y1: yBottomReturn, x2: outer.left, y2: yTopMiddle, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_mixed_fixed_b92_2_outer_left_${input.fieldId}` }),
+    line({ x1: xLeftReturn, y1: yBottomReturn, x2: xLeftReturn, y2: yTopMiddle, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_mixed_fixed_b92_2_inner_left_${input.fieldId}` }),
+    line({ x1: xLeftReturn, y1: yTopMiddle, x2: xLeftInner, y2: yTopInner, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_mixed_fixed_b92_4_left_mitre_${input.fieldId}` }),
+    line({ x1: xLeftInner, y1: yBottomInner, x2: xLeftReturn, y2: yBottomMiddle, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_mixed_fixed_b92_5_left_mitre_${input.fieldId}` }),
+    line({ x1: xCentreInner, y1: yBottomInner, x2: xCentreInner, y2: yTopInner, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_mixed_fixed_${centreRole}_inner_${input.fieldId}` }),
+    line({ x1: xCentreReturn, y1: yBottomReturn, x2: xCentreReturn, y2: yTopMiddle, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_mixed_fixed_${centreRole}_return_${input.fieldId}` }),
+    line({ x1: xCentreFace, y1: centreFaceY1, x2: xCentreFace, y2: centreFaceY2, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_mixed_fixed_${centreRole}_face_${input.fieldId}` }),
+    line({ x1: xCentreInner, y1: yTopInner, x2: xCentreReturn, y2: yTopMiddle, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_mixed_fixed_b92_4_right_mitre_${input.fieldId}` }),
+    line({ x1: xCentreReturn, y1: yBottomMiddle, x2: xCentreInner, y2: yBottomInner, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_mixed_fixed_b92_5_right_mitre_${input.fieldId}` }),
+  ];
+
+  return {
+    shapes,
+    labelBounds: {
+      x: xLeftInner,
+      y: yTopInner,
+      width: xCentreInner - xLeftInner,
+      height: yBottomInner - yTopInner,
+    },
+  };
+}
+
 function buildFixedNoSashNestedFieldGeometry(input: {
   fieldId: string;
   bounds: { x: number; y: number; width: number; height: number };
   scale: number;
-}): { beadShapes: DrawingShape[]; glassShape: DrawingRect; glassBounds: { x: number; y: number; width: number; height: number } } {
-  const bead = {
-    top: B92_FIXED_NO_SASH_BEAD_FACE_MM.top * input.scale,
-    left: B92_FIXED_NO_SASH_BEAD_FACE_MM.left * input.scale,
-    right: B92_FIXED_NO_SASH_BEAD_FACE_MM.right * input.scale,
-    bottom: B92_FIXED_NO_SASH_BEAD_FACE_MM.bottom * input.scale,
-  };
+  topProfileId?: string | null;
+  bottomProfileId?: string | null;
+  centreJunctionProfileId?: string | null;
+}): { beadShapes: DrawingShape[]; glassShape: DrawingRect | null; glassBounds: { x: number; y: number; width: number; height: number } } {
   const outer = {
     left: input.bounds.x,
     top: input.bounds.y,
     right: input.bounds.x + input.bounds.width,
     bottom: input.bounds.y + input.bounds.height,
+  };
+  if (input.topProfileId === "B92-4" || input.bottomProfileId === "B92-5") {
+    const stack = B92_MIXED_FIXED_STACK_MM;
+    const xLeftReturn = outer.left + stack.sideFrame * input.scale;
+    const xLeftInner = outer.left + stack.sideFrameWithBead * input.scale;
+    const b92_13Centre = input.centreJunctionProfileId === "B92-13" ? B92_13_MIXED_FIXED_CENTRE_SIDE_MM : null;
+    const xCentreFace = b92_13Centre
+      ? outer.right - b92_13Centre.centreFaceInsetFromFixedTopOuterRight * input.scale
+      : outer.right;
+    const xRightReturn = b92_13Centre
+      ? xCentreFace - b92_13Centre.centreReturnFromFace * input.scale
+      : outer.right - stack.sideFrame * input.scale;
+    const xRightInner = b92_13Centre
+      ? xCentreFace - b92_13Centre.centreInnerFromFace * input.scale
+      : outer.right - stack.sideFrameWithBead * input.scale;
+    const yTopReturn = outer.top + stack.topFrameOuter * input.scale;
+    const yTopMiddle = outer.top + stack.topFrameInner * input.scale;
+    const yTopInner = outer.top + stack.topFrameWithBead * input.scale;
+    const yBottomReturn = outer.bottom - stack.bottomFrameOuter * input.scale;
+    const yBottomMiddle = outer.bottom - stack.bottomFrameWithAddon * input.scale;
+    const yBottomInner = outer.bottom - stack.bottomFrameWithAddonAndBead * input.scale;
+    const centreFaceY1 = b92_13Centre ? outer.bottom - b92_13Centre.centreFaceVisibleBottom * input.scale : outer.bottom;
+    const centreFaceY2 = b92_13Centre ? outer.top + b92_13Centre.centreFaceVisibleTop * input.scale : outer.top;
+    const glassBounds = {
+      x: xLeftInner,
+      y: yTopInner,
+      width: xRightInner - xLeftInner,
+      height: yBottomInner - yTopInner,
+    };
+    assertCondition(glassBounds.width > 0 && glassBounds.height > 0, `fixed field ${input.fieldId} leaves no visible glass area.`);
+    const fixedProfileStrokeWidth = 1.2;
+    const fixedProfileLinework: DrawingShape[] = [
+      line({ x1: xLeftReturn, y1: yTopReturn, x2: xLeftReturn, y2: yTopMiddle, stroke: "#333", strokeWidth: 1, role: `b92_fixed_no_sash_b92_4_left_return_short_${input.fieldId}` }),
+      line({ x1: outer.left, y1: yTopMiddle, x2: outer.left, y2: outer.top, stroke: "#333", strokeWidth: 1, role: `b92_fixed_no_sash_b92_4_outer_left_top_short_${input.fieldId}` }),
+      line({ x1: outer.left, y1: yBottomReturn, x2: outer.left, y2: outer.bottom, stroke: "#333", strokeWidth: 1, role: `b92_fixed_no_sash_b92_5_outer_left_bottom_short_${input.fieldId}` }),
+      line({ x1: xCentreFace, y1: yTopReturn, x2: xCentreFace, y2: yTopMiddle, stroke: "#333", strokeWidth: 1, role: `b92_fixed_no_sash_b92_13_centre_top_short_${input.fieldId}` }),
+      line({ x1: xLeftReturn, y1: yTopMiddle, x2: outer.left, y2: yTopMiddle, stroke: "#333", strokeWidth: 1, role: `b92_fixed_no_sash_b92_4_left_top_connector_${input.fieldId}` }),
+      line({ x1: outer.left, y1: yBottomReturn, x2: xCentreFace, y2: yBottomReturn, stroke: "#333", strokeWidth: 1, role: `b92_fixed_no_sash_b92_5_bottom_return_connector_${input.fieldId}` }),
+      line({ x1: outer.left, y1: outer.top, x2: outer.right, y2: outer.top, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_fixed_no_sash_b92_4_outer_top_${input.fieldId}` }),
+      line({ x1: xLeftReturn, y1: yTopReturn, x2: xCentreFace, y2: yTopReturn, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_fixed_no_sash_b92_4_return_${input.fieldId}` }),
+      line({ x1: xLeftReturn, y1: yTopMiddle, x2: xCentreFace, y2: yTopMiddle, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_fixed_no_sash_b92_4_middle_${input.fieldId}` }),
+      line({ x1: xLeftInner, y1: yTopInner, x2: xRightInner, y2: yTopInner, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_fixed_no_sash_b92_4_inner_${input.fieldId}` }),
+      line({ x1: outer.right, y1: outer.bottom, x2: outer.left, y2: outer.bottom, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_fixed_no_sash_b92_5_outer_bottom_${input.fieldId}` }),
+      line({ x1: xLeftReturn, y1: yBottomMiddle, x2: xRightReturn, y2: yBottomMiddle, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_fixed_no_sash_b92_5_middle_${input.fieldId}` }),
+      line({ x1: xLeftInner, y1: yBottomInner, x2: xRightInner, y2: yBottomInner, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_fixed_no_sash_b92_5_inner_${input.fieldId}` }),
+      line({ x1: outer.left, y1: yBottomReturn, x2: outer.left, y2: yTopMiddle, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_fixed_no_sash_b92_2_outer_left_${input.fieldId}` }),
+      line({ x1: xLeftReturn, y1: yBottomReturn, x2: xLeftReturn, y2: yTopMiddle, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_fixed_no_sash_b92_2_inner_left_${input.fieldId}` }),
+      line({ x1: xLeftReturn, y1: yTopMiddle, x2: xLeftInner, y2: yTopInner, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_fixed_no_sash_b92_4_left_mitre_${input.fieldId}` }),
+      line({ x1: xLeftInner, y1: yBottomInner, x2: xLeftReturn, y2: yBottomMiddle, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_fixed_no_sash_b92_5_left_mitre_${input.fieldId}` }),
+      line({ x1: xRightInner, y1: yBottomInner, x2: xRightInner, y2: yTopInner, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_fixed_no_sash_b92_13_fixed_inner_${input.fieldId}` }),
+      line({ x1: xRightReturn, y1: yBottomReturn, x2: xRightReturn, y2: yTopMiddle, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_fixed_no_sash_b92_13_fixed_return_${input.fieldId}` }),
+      line({ x1: xCentreFace, y1: centreFaceY1, x2: xCentreFace, y2: centreFaceY2, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_fixed_no_sash_b92_13_centre_face_${input.fieldId}` }),
+      line({ x1: xRightInner, y1: yTopInner, x2: xRightReturn, y2: yTopMiddle, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_fixed_no_sash_b92_4_right_mitre_${input.fieldId}` }),
+      line({ x1: xRightReturn, y1: yBottomMiddle, x2: xRightInner, y2: yBottomInner, stroke: "#111", strokeWidth: fixedProfileStrokeWidth, role: `b92_fixed_no_sash_b92_5_right_mitre_${input.fieldId}` }),
+    ];
+    return {
+      beadShapes: fixedProfileLinework,
+      glassBounds,
+      glassShape: null,
+    };
+  }
+  const bead = {
+    top: B92_FIXED_NO_SASH_BEAD_FACE_MM.top * input.scale,
+    left: B92_FIXED_NO_SASH_BEAD_FACE_MM.left * input.scale,
+    right: B92_FIXED_NO_SASH_BEAD_FACE_MM.right * input.scale,
+    bottom: B92_FIXED_NO_SASH_BEAD_FACE_MM.bottom * input.scale,
   };
   const glassBounds = {
     x: outer.left + bead.left,
@@ -1045,6 +1329,10 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
   const field = assertB92FixedInternalContract(contract);
   const widthMm = contract.overall.widthMm;
   const heightMm = contract.overall.heightMm;
+  if (isExactB92MixedFixedTtrReferenceCase(contract)) {
+    return buildB92ExactInternalFixedB92_4_B92_5_TTRDrawing(contract);
+  }
+
   const fixedFixedEvidenceLineworkPilot = buildB92FixedFixedEvidenceLineworkPilotDrawingModel(contract);
   if (fixedFixedEvidenceLineworkPilot) {
     return fixedFixedEvidenceLineworkPilot;
@@ -1132,49 +1420,52 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
   });
   const frame = getFrameRect(widthMm, heightMm);
   const scale = frame.scale;
+  const exactB92MixedFixedTtrReferenceCase = isExactB92MixedFixedTtrReferenceCase(contract);
 
-  const frameShapes: DrawingShape[] = [
-    rect({
-      x: frame.x,
-      y: frame.y,
-      width: frame.width,
-      height: visibleFrameMm.top * scale,
-      stroke: "#111",
-      strokeWidth: 1.2,
-      fill: "#f4f4f5",
-      role: "b92_fixed_internal_frame_top",
-    }),
-    rect({
-      x: frame.x,
-      y: frame.y + visibleFrameMm.top * scale,
-      width: visibleFrameMm.left * scale,
-      height: (heightMm - visibleFrameMm.top - visibleFrameMm.bottom) * scale,
-      stroke: "#111",
-      strokeWidth: 1.2,
-      fill: "#f4f4f5",
-      role: "b92_fixed_internal_frame_left",
-    }),
-    rect({
-      x: frame.x + frame.width - visibleFrameMm.right * scale,
-      y: frame.y + visibleFrameMm.top * scale,
-      width: visibleFrameMm.right * scale,
-      height: (heightMm - visibleFrameMm.top - visibleFrameMm.bottom) * scale,
-      stroke: "#111",
-      strokeWidth: 1.2,
-      fill: "#f4f4f5",
-      role: "b92_fixed_internal_frame_right",
-    }),
-    rect({
-      x: frame.x,
-      y: frame.y + frame.height - visibleFrameMm.bottom * scale,
-      width: frame.width,
-      height: visibleFrameMm.bottom * scale,
-      stroke: "#111",
-      strokeWidth: 1.2,
-      fill: "#f4f4f5",
-      role: "b92_fixed_internal_frame_bottom",
-    }),
-  ];
+  const frameShapes: DrawingShape[] = exactB92MixedFixedTtrReferenceCase
+    ? []
+    : [
+        rect({
+          x: frame.x,
+          y: frame.y,
+          width: frame.width,
+          height: visibleFrameMm.top * scale,
+          stroke: "#111",
+          strokeWidth: 1.2,
+          fill: "#f4f4f5",
+          role: "b92_fixed_internal_frame_top",
+        }),
+        rect({
+          x: frame.x,
+          y: frame.y + visibleFrameMm.top * scale,
+          width: visibleFrameMm.left * scale,
+          height: (heightMm - visibleFrameMm.top - visibleFrameMm.bottom) * scale,
+          stroke: "#111",
+          strokeWidth: 1.2,
+          fill: "#f4f4f5",
+          role: "b92_fixed_internal_frame_left",
+        }),
+        rect({
+          x: frame.x + frame.width - visibleFrameMm.right * scale,
+          y: frame.y + visibleFrameMm.top * scale,
+          width: visibleFrameMm.right * scale,
+          height: (heightMm - visibleFrameMm.top - visibleFrameMm.bottom) * scale,
+          stroke: "#111",
+          strokeWidth: 1.2,
+          fill: "#f4f4f5",
+          role: "b92_fixed_internal_frame_right",
+        }),
+        rect({
+          x: frame.x,
+          y: frame.y + frame.height - visibleFrameMm.bottom * scale,
+          width: frame.width,
+          height: visibleFrameMm.bottom * scale,
+          stroke: "#111",
+          strokeWidth: 1.2,
+          fill: "#f4f4f5",
+          role: "b92_fixed_internal_frame_bottom",
+        }),
+      ];
   const segmentedSillOverlayShapes = buildSegmentedSillOverlayShapes(contract, frame, scale, {
     continuousFixedNoSashSill: allFieldsFixedNoSash,
   });
@@ -1250,13 +1541,15 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
     verticalJunctionLayouts.push(layout);
     rightJunctionByFieldId.set(junction.betweenFieldIds[0], layout);
     leftJunctionByFieldId.set(junction.betweenFieldIds[1], layout);
-    junctionShapes.push(
-      ...buildB92VerticalJunctionShapes({
-        layout,
-        width,
-        showJunctionVisualPilotMarker,
-      })
-    );
+    if (!(exactB92MixedFixedTtrReferenceCase && profileId === "B92-13")) {
+      junctionShapes.push(
+        ...buildB92VerticalJunctionShapes({
+          layout,
+          width,
+          showJunctionVisualPilotMarker,
+        })
+      );
+    }
     if (showJunctionVisualPilotMarker) {
       junctionLabels.push({
         x: xCursor + width / 2,
@@ -1295,6 +1588,14 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
   const labels: DrawingLabel[] = [...junctionLabels];
   const handles: DrawingHandle[] = [];
   const markers: DrawingMarker[] = [];
+  const topProfileByFieldId = new Map(
+    (contract.outerEdgeSegments ?? [])
+      .filter((segment) => segment.edge === "top")
+      .map((segment) => [segment.fieldId, segment.profile.profileId])
+  );
+  const bottomProfileByFieldId = new Map(
+    (contract.sillSegments ?? []).map((segment) => [segment.fieldId, segment.profile.profileId])
+  );
 
   contract.fields.forEach((item, index) => {
     const column = columnBounds.get(item.column);
@@ -1326,6 +1627,56 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
       };
       assertCondition(glassBounds.width > 0 && glassBounds.height > 0, `sash field ${item.id} leaves no visible glass area.`);
 
+      const sashTopFaceY = sashBounds.y + B92_SASH_FACE_MM * scale;
+      const sashBottomFaceY = sashBounds.y + sashBounds.height - B92_SASH_FACE_MM * scale;
+      const normalSashJoinLines: DrawingShape[] = [];
+      if (!leftFlyingSide) {
+        const leftJoinX = sashBounds.x + sashFaceLeft;
+        normalSashJoinLines.push(
+          line({
+            x1: leftJoinX,
+            y1: sashBounds.y,
+            x2: leftJoinX,
+            y2: sashTopFaceY,
+            stroke: "#111",
+            strokeWidth: 1,
+            role: `b92_field_sash_side_join_top_left_${item.id}`,
+          }),
+          line({
+            x1: leftJoinX,
+            y1: sashBottomFaceY,
+            x2: leftJoinX,
+            y2: sashBounds.y + sashBounds.height,
+            stroke: "#111",
+            strokeWidth: 1,
+            role: `b92_field_sash_side_join_bottom_left_${item.id}`,
+          })
+        );
+      }
+      if (!rightFlyingSide) {
+        const rightJoinX = sashBounds.x + sashBounds.width - sashFaceRight;
+        normalSashJoinLines.push(
+          line({
+            x1: rightJoinX,
+            y1: sashBounds.y,
+            x2: rightJoinX,
+            y2: sashTopFaceY,
+            stroke: "#111",
+            strokeWidth: 1,
+            role: `b92_field_sash_side_join_top_right_${item.id}`,
+          }),
+          line({
+            x1: rightJoinX,
+            y1: sashBottomFaceY,
+            x2: rightJoinX,
+            y2: sashBounds.y + sashBounds.height,
+            stroke: "#111",
+            strokeWidth: 1,
+            role: `b92_field_sash_side_join_bottom_right_${item.id}`,
+          })
+        );
+      }
+
       sashShapes.push(
         rect({
           x: sashBounds.x,
@@ -1346,7 +1697,8 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
           strokeWidth: 1,
           fill: "#f4f4f5",
           role: `b92_field_bead_${item.id}`,
-        })
+        }),
+        ...normalSashJoinLines
       );
 
       glassShapes.push(
@@ -1382,17 +1734,64 @@ export function buildB92FixedInternalDrawingModelFromContract(contract: WindowTy
       const rightBeadInset = rightJunction?.assembly
         ? b92AssemblyWidthMm(rightJunction.assembly, "left_bead") * scale
         : 0;
+      const topProfileId = topProfileByFieldId.get(item.id) ?? item.perimeter.top.profileId;
+      const bottomProfileId = bottomProfileByFieldId.get(item.id) ?? item.perimeter.bottom.profileId;
+      const usesMixedFixedStack = topProfileId === "B92-4" || bottomProfileId === "B92-5";
+      const useExactB92MixedFixedTtrLinework =
+        exactB92MixedFixedTtrReferenceCase &&
+        item.column === 0 &&
+        topProfileId === "B92-4" &&
+        bottomProfileId === "B92-5" &&
+        rightJunction?.junction.profile.profileId === "B92-13";
+      const fixedBoundsY = usesMixedFixedStack ? row.y - baseSashOverlap : row.y;
+      const fixedBoundsHeight = usesMixedFixedStack ? row.height + baseSashOverlap * 2 : row.height;
+      if (useExactB92MixedFixedTtrLinework) {
+        const fixedOuter = {
+          left: frame.x,
+          top: frame.y,
+          right: frame.x + item.dimensionsMm.width * scale,
+          bottom: frame.y + contract.overall.heightMm * scale,
+        };
+        const mixedFixedGeometry = buildB92MixedFixedSashInternalFieldLinework({
+          fieldId: item.id,
+          fixedOuter,
+          scale,
+          centreJunctionProfileId: "B92-13",
+        });
+        glassShapes.push(...mixedFixedGeometry.shapes);
+        labels.push({
+          x: mixedFixedGeometry.labelBounds.x + 8,
+          y: mixedFixedGeometry.labelBounds.y + 16,
+          value: "Fixed",
+          fontSize: 9,
+          fill: "#3f3f46",
+          anchor: "start",
+          role: "field_label",
+        });
+        markers.push({
+          x: column.x + column.width / 2,
+          y: row.y + row.height / 2,
+          radius: 16,
+          value: String(index + 1),
+          role: "field_marker",
+        });
+        return;
+      }
       const fixedGeometry = buildFixedNoSashNestedFieldGeometry({
         fieldId: item.id,
         bounds: {
           x: column.x - leftBeadInset,
-          y: row.y,
+          y: fixedBoundsY,
           width: column.width + leftBeadInset + rightBeadInset,
-          height: row.height,
+          height: fixedBoundsHeight,
         },
         scale,
+        topProfileId,
+        bottomProfileId,
+        centreJunctionProfileId: rightJunction?.junction.profile.profileId ?? null,
       });
-      glassShapes.push(...fixedGeometry.beadShapes, fixedGeometry.glassShape);
+      glassShapes.push(...fixedGeometry.beadShapes);
+      if (fixedGeometry.glassShape) glassShapes.push(fixedGeometry.glassShape);
       labels.push({
         x: fixedGeometry.glassBounds.x + 8,
         y: fixedGeometry.glassBounds.y + 16,

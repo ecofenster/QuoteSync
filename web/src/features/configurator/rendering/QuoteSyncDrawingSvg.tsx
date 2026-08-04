@@ -59,6 +59,15 @@ function renderHandle(handle: DrawingHandle, key: string) {
   return <line key={key} x1={handle.x} y1={handle.y - size} x2={handle.x} y2={handle.y + size} stroke="#111" strokeWidth={1.6} strokeLinecap="round" />;
 }
 
+function parseCellKey(key: string) {
+  const separator = key.includes(",") ? "," : ":";
+  const [col, row] = key.split(separator).map((value) => Number(value));
+  return {
+    col,
+    row,
+  };
+}
+
 type Props = {
   model: DrawingModel;
   selectedCellKey?: string;
@@ -136,7 +145,7 @@ export default function QuoteSyncDrawingSvg(props: Props) {
       ))}
 
       {model.interaction.cells.map((cell) => {
-        const [col, row] = cell.key.split(",").map((value) => Number(value));
+        const { col, row } = parseCellKey(cell.key);
         const isSelected = selectedCellKey === cell.key;
         return (
           <g key={`cell-hit-${cell.key}`}>
@@ -146,7 +155,8 @@ export default function QuoteSyncDrawingSvg(props: Props) {
               width={cell.width}
               height={cell.height}
               fill="transparent"
-              style={{ cursor: onSelectCell ? "pointer" : "default" }}
+              pointerEvents="all"
+              style={{ cursor: onSelectCell || onCellContextMenu ? "pointer" : "default" }}
               onClick={() => onSelectCell?.({ col, row })}
               onContextMenu={(event) => {
                 if (!onCellContextMenu) return;

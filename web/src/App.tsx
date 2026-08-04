@@ -1,4 +1,3 @@
-console.log("FULL import.meta.env", import.meta.env);
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch, ApiRequestError } from "./services/api/apiClient";
 
@@ -71,10 +70,10 @@ async function purgeEstimateAPI(id: string) {
     method: "DELETE",
   });
 }
-import GridEditor from "./components/GridEditor";
 import EstimatePickerFeature, { type EstimatePickerFeatureHandle } from "./features/estimatePicker/EstimatePickerFeature";
 import { DEFAULT_CUSTOMER_ADDRESS, makeDefaultClients } from "./features/clients/defaultClients";
 import "./features/clients/ClientsView.css";
+import "./App.css";
 import * as Models from "./models/types";
 import type { Address, Client, Estimate, Position, EstimateDefaults, ClientType } from "./models/types";
 import { emptyAddress, parseAddressString, buildAddressString, resolveStructuredAddress, addressTuple } from "./domain/address";
@@ -113,6 +112,8 @@ import { getInstallers } from "./data/installers";
 import { addFollowUpForEstimate as addFollowUpForEstimateService } from "./services/followups/followupService";
 import { buildSendEmailText as buildSendEmailTextService, openMailClient as openMailClientService } from "./services/email/emailService";
 import { printEstimatePdf as printEstimatePdfService, downloadEstimateWordDoc as downloadEstimateWordDocService } from "./services/documents/estimateDocumentService";
+import { getConfiguredPositionContract } from "./features/configurator/configuredPositionContract.utils";
+import { positionDescriptionForDisplay } from "./domain/positions/positionPresentation";
 import { loadSettings, saveSettings } from "./system/settings";
 import { CURRENT_APP_USER } from "./system/currentUser";
 import { getPreference, setPreference } from "./utils/userPreferences";
@@ -219,8 +220,23 @@ const CLIENT_DB_PREF_KEYS = {
   sortField: "quotesync:sortField:clients",
 } as const;
 
+const PROTECTED_CLIENT_REFS = new Set([
+  "EF-CL-001",
+  "EF-CL-002",
+  "EF-CL-003",
+  "EF-CL-004",
+  "EF-CL-005",
+  "EF-CL-006",
+  "EF-CL-007",
+  "EF-CL-008",
+]);
+
 function isEstimateCollectionViewMode(value: unknown): value is EstimateCollectionViewMode {
   return value === "list" || value === "grid";
+}
+
+function isProtectedClientRef(value: unknown) {
+  return PROTECTED_CLIENT_REFS.has(String(value || "").trim().toUpperCase());
 }
 
 function isCreatorFilter(value: unknown): value is "mine" | "all" {
@@ -622,10 +638,11 @@ function Card({ children, style }: { children: React.ReactNode; style?: React.CS
     <div
       style={{
         borderRadius: 18,
-        border: "1px solid #e4e4e7",
-        background: "#fff",
+        border: "1px solid var(--color-border)",
+        background: "var(--ui-card-background, var(--color-surface))",
         padding: 16,
-        boxShadow: "0 1px 2px rgba(0,0,0,.06)",
+        boxShadow: "var(--shadow-sm)",
+        color: "var(--color-text-primary)",
         ...style,
       }}
     >
@@ -635,15 +652,15 @@ function Card({ children, style }: { children: React.ReactNode; style?: React.CS
 }
 
 function H2({ children }: { children: React.ReactNode }) {
-  return <h2 style={{ fontSize: 16, margin: 0, fontWeight: 800, color: "#18181b" }}>{children}</h2>;
+  return <h2 style={{ fontSize: 16, margin: 0, fontWeight: 800, color: "var(--color-text-primary)" }}>{children}</h2>;
 }
 
 function H3({ children }: { children: React.ReactNode }) {
-  return <h3 style={{ fontSize: 14, margin: 0, fontWeight: 800, color: "#18181b" }}>{children}</h3>;
+  return <h3 style={{ fontSize: 14, margin: 0, fontWeight: 800, color: "var(--color-text-primary)" }}>{children}</h3>;
 }
 
 function Small({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
-  return <div style={{ fontSize: 12, color: "#71717a", ...(style || {}) }}>{children}</div>;
+  return <div style={{ fontSize: 12, color: "var(--color-text-muted)", ...(style || {}) }}>{children}</div>;
 }
 
 function Button({
@@ -667,9 +684,9 @@ function Button({
       onClick={onClick}
       style={{
         borderRadius: 18,
-        border: isPrimary ? "none" : "1px solid #e4e4e7",
-        background: isPrimary ? "#18181b" : "#fff",
-        color: isPrimary ? "#fff" : "#3f3f46",
+        border: isPrimary ? "none" : "1px solid var(--color-border)",
+        background: isPrimary ? "var(--color-brand-primary)" : "var(--ui-control-background, var(--color-surface))",
+        color: isPrimary ? "var(--color-brand-on-primary)" : "var(--color-text-secondary)",
         padding: "10px 14px",
         fontSize: 14,
         fontWeight: 800,
@@ -715,9 +732,11 @@ function Input({
       style={{
         width: "100%",
         borderRadius: 12,
-        border: "1px solid #e4e4e7",
+        border: "1px solid var(--color-border)",
         padding: "10px 12px",
         fontSize: 14,
+        background: "var(--ui-control-background, var(--color-surface))",
+        color: "var(--color-text-primary)",
         outline: "none",
       }}
     />
@@ -753,10 +772,11 @@ function ModalOverlay({
           maxHeight: "92vh",
           overflow: "auto",
           borderRadius: 18,
-          border: "1px solid #e4e4e7",
-          background: "#fff",
+          border: "1px solid var(--color-border)",
+          background: "var(--ui-card-background, var(--color-surface))",
+          color: "var(--color-text-primary)",
           padding: 16,
-          boxShadow: "0 20px 50px rgba(0,0,0,0.22)",
+          boxShadow: "var(--shadow-lg)",
           display: "grid",
           gap: 12,
         }}
@@ -778,9 +798,9 @@ function Pill({ children }: { children: React.ReactNode }) {
         padding: "4px 10px",
         fontSize: 12,
         fontWeight: 800,
-        background: "#f4f4f5",
-        color: "#18181b",
-        border: "1px solid #e4e4e7",
+        background: "var(--color-surface-muted)",
+        color: "var(--color-text-primary)",
+        border: "1px solid var(--color-border)",
       }}
     >
       {children}
@@ -797,8 +817,8 @@ function SidebarItem({ label, active, onClick }: { label: string; active?: boole
         padding: "10px 12px",
         marginBottom: 6,
         cursor: "pointer",
-        background: active ? "#18181b" : "transparent",
-        color: active ? "#fff" : "#3f3f46",
+        background: active ? "var(--color-brand-primary)" : "transparent",
+        color: active ? "var(--color-brand-on-primary)" : "var(--color-text-secondary)",
         fontSize: 14,
         fontWeight: active ? 800 : 600,
       }}
@@ -808,9 +828,18 @@ function SidebarItem({ label, active, onClick }: { label: string; active?: boole
   );
 }
 
-const labelStyle: React.CSSProperties = { fontSize: 13, color: "#3f3f46", fontWeight: 700, marginBottom: 6 };
+const labelStyle: React.CSSProperties = { fontSize: 13, color: "var(--color-text-secondary)", fontWeight: 700, marginBottom: 6 };
 
-type TopShellPage = "app" | "tools" | "admin" | "client_portal" | "settings" | "help";
+type TopShellPage =
+  | "app"
+  | "tools"
+  | "admin"
+  | "window_types_render_preview"
+  | "configurator_render"
+  | "b92_configurator"
+  | "client_portal"
+  | "settings"
+  | "help";
 
 function TopShellPlaceholder({
   title,
@@ -829,14 +858,14 @@ function TopShellPlaceholder({
         <div
           style={{
             borderRadius: 16,
-            border: "1px solid #e4e4e7",
-            background: "#fff",
+            border: "1px solid var(--color-border)",
+            background: "var(--ui-card-background, var(--color-surface))",
             padding: 16,
             display: "grid",
             gap: 10,
           }}
         >
-          <div style={{ fontSize: 14, fontWeight: 900, color: "#18181b" }}>Placeholder</div>
+          <div style={{ fontSize: 14, fontWeight: 900, color: "var(--color-text-primary)" }}>Placeholder</div>
           <Small>This section is now wired into the live shell and ready for the next implementation phase.</Small>
         </div>
       </div>
@@ -871,20 +900,9 @@ function ToolsHubPage() {
     const active = tabs.find((tab) => tab.key === activeTool);
 
     return (
-      <div
-        style={{
-          borderRadius: 16,
-          border: "1px solid #e4e4e7",
-          background: "#fff",
-          padding: 16,
-          minHeight: 300,
-          display: "grid",
-          gap: 8,
-          alignContent: "start",
-        }}
-      >
-        <div style={{ fontWeight: 700, marginBottom: 4 }}>{active?.label}</div>
-        <div style={{ fontSize: 13, color: "#555" }}>
+      <div className="tools-hub__placeholder">
+        <div className="tools-hub__placeholder-title">{active?.label}</div>
+        <div className="tools-hub__placeholder-copy">
           Tool placeholder — integration coming next.
         </div>
       </div>
@@ -893,20 +911,13 @@ function ToolsHubPage() {
 
   return (
     <Card style={{ minHeight: 520 }}>
-      <div style={{ display: "grid", gap: 16 }}>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <div className="tools-hub">
+        <div className="tools-hub__tabs">
           {tabs.map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTool(tab.key)}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 8,
-                border: activeTool === tab.key ? "2px solid #000" : "1px solid #ccc",
-                background: activeTool === tab.key ? "#f4f4f5" : "#fff",
-                cursor: "pointer",
-                fontWeight: 600,
-              }}
+              className={`tools-hub__tab${activeTool === tab.key ? " tools-hub__tab--active" : ""}`}
             >
               {tab.label}
             </button>
@@ -992,7 +1003,7 @@ function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => void })
   const [i1, i2, i3, it, ic, ico, ip] = addressTuple(invoiceStructured);
 
   return (
-    <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", padding: 12, background: "#fff" }}>
+    <div className="legacy-surface-card" style={{ padding: 12 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <H3>Client contact information</H3>
         <Button variant="secondary" onClick={onEdit}>Edit</Button>
@@ -1002,7 +1013,7 @@ function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => void })
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <input type="checkbox" checked={c.type === "Business"} disabled />
-            <span style={{ fontSize: 12, fontWeight: 800, color: "#3f3f46" }}>Business customer</span>
+            <span className="legacy-checkbox-label" style={{ fontSize: 12, fontWeight: 800 }}>Business customer</span>
           </label>
           <Small>Type: {c.type}</Small>
         </div>
@@ -1041,7 +1052,7 @@ function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => void })
           <Input value={c.home || ""} onChange={() => {}} disabled />
         </div>
 
-        <div style={{ marginTop: 10, borderTop: "1px solid #e4e4e7", paddingTop: 10 }}>
+        <div className="legacy-section-divider" style={{ marginTop: 10, paddingTop: 10 }}>
           <button
             type="button"
             onClick={() => setCustomerAddressOpen((prev) => !prev)}
@@ -1055,8 +1066,8 @@ function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => void })
               alignItems: "center",
               gap: 8,
               font: "inherit",
-              color: "#18181b",
             }}
+            className="legacy-section-toggle"
           >
             <H3>{customerAddressOpen ? "▼" : "▶"} Customer address</H3>
           </button>
@@ -1104,7 +1115,7 @@ function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => void })
           )}
         </div>
 
-        <div style={{ marginTop: 10, borderTop: "1px solid #e4e4e7", paddingTop: 10 }}>
+        <div className="legacy-section-divider" style={{ marginTop: 10, paddingTop: 10 }}>
           <button
             type="button"
             onClick={() => setInvoiceAddressOpen((prev) => !prev)}
@@ -1118,8 +1129,8 @@ function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => void })
               alignItems: "center",
               gap: 8,
               font: "inherit",
-              color: "#18181b",
             }}
+            className="legacy-section-toggle"
           >
             <H3>{invoiceAddressOpen ? "▼" : "▶"} Invoice address</H3>
           </button>
@@ -1265,7 +1276,13 @@ function ClientsListView({
   return (
     <div className="clients-surface-list" role="list">
       {items.map((item) => (
-        <article key={item.client.id} className="clients-surface-row" role="listitem">
+        <article
+          key={item.client.id}
+          className="clients-surface-row"
+          role="listitem"
+          data-testid="client-database-row"
+          data-client-ref={item.client.clientRef}
+        >
           <div className="clients-surface-row__primary">
             <div className="clients-surface-row__headline">
               <div className="clients-surface-row__title">
@@ -1323,7 +1340,12 @@ function ClientsGridView({
   return (
     <div className="clients-surface-grid">
       {items.map((item) => (
-        <article key={item.client.id} className="clients-surface-card">
+        <article
+          key={item.client.id}
+          className="clients-surface-card"
+          data-testid="client-database-row"
+          data-client-ref={item.client.clientRef}
+        >
           <div className="clients-surface-card__header">
             <div className="clients-surface-card__title">
               <H3>{item.displayName}</H3>
@@ -1357,7 +1379,7 @@ function ClientSummary({ c }: { c: Client }) {
   const sub = c.type === "Business" ? (c.contactPerson ? `Contact: ${c.contactPerson}` : "Contact: ") : "Individual";
 
   return (
-    <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 12, background: "#fff" }}>
+    <div className="legacy-surface-card" style={{ padding: 12 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div style={{ display: "grid", gap: 4 }}>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -1405,11 +1427,13 @@ export default function App() {
   const [estimateCounter, setEstimateCounter] = useState(1);
 
 
-const [clients, setClients] = useState<Client[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [clientsLoaded, setClientsLoaded] = useState(false);
+  const [demoClientsLoaded, setDemoClientsLoaded] = useState(false);
+  const [demoModeWarning, setDemoModeWarning] = useState("");
 
 
-  const [clientCounter, setClientCounter] = useState(() => (systemSettings.loadDemoClients ? 33 : 1));
+  const [clientCounter, setClientCounter] = useState(1);
 
   async function refreshClientsFromApi() {
     const activeClientRows = await loadClientsAPI();
@@ -1465,10 +1489,16 @@ const [clients, setClients] = useState<Client[]>([]);
     setClients(nextClients);
     setDeletedEstimatesByClientId(nextDeletedEstimatesByClientId);
     setDeletedClientsById(nextDeletedClientsById);
+    setDemoClientsLoaded(false);
 
     const maxRef = maxClientRefNumber(activeRows);
     setClientCounter(Math.max(1, maxRef + 1));
     setClientsLoaded(true);
+
+    return {
+      clientCount: nextClients.length,
+      protectedClientCount: nextClients.filter((client) => isProtectedClientRef(client.clientRef)).length,
+    };
   }
 
 
@@ -1489,34 +1519,52 @@ const [clients, setClients] = useState<Client[]>([]);
   useEffect(() => {
     async function syncClientsForSettings() {
       setClientsLoaded(false);
+      setDemoModeWarning("");
 
-      if (systemSettings.loadDemoClients || systemSettings.loadDemoEstimates) {
-        const freshClients = makeDefaultClients({
-          uid,
-          nextClientRef,
-          loadDemoClients: systemSettings.loadDemoClients,
-          loadDemoEstimates: systemSettings.loadDemoEstimates,
-        });
+      try {
+        const apiResult = await refreshClientsFromApi();
+        if (apiResult.clientCount > 0) {
+          if (systemSettings.loadDemoClients || systemSettings.loadDemoEstimates) {
+            setDemoModeWarning(
+              "Demo data is enabled in local settings, but live database clients were found. Demo clients were not loaded."
+            );
+          }
+        } else if (systemSettings.loadDemoClients) {
+          const freshClients = makeDefaultClients({
+            uid,
+            nextClientRef,
+            loadDemoClients: true,
+            loadDemoEstimates: systemSettings.loadDemoEstimates,
+          });
 
-        seedDemoEstimateOutcomesAndFollowUps(
-          freshClients,
-          systemSettings.loadDemoClients && systemSettings.loadDemoEstimates
-        );
+          seedDemoEstimateOutcomesAndFollowUps(
+            freshClients,
+            systemSettings.loadDemoEstimates
+          );
 
-        setClients(freshClients);
-        setClientCounter(systemSettings.loadDemoClients ? 33 : 1);
-        setClientsLoaded(true);
-      } else {
-        try {
-          await refreshClientsFromApi();
-        } catch (error) {
-          console.error("Failed to load clients from API", error);
-          setClients([]);
+          console.warn("Demo mode active: displaying generated demo clients because no live database clients were returned.");
+          setDemoModeWarning("Demo mode active: generated demo clients are displayed because no live database clients were returned.");
+          setClients(freshClients);
           setDeletedEstimatesByClientId({});
           setDeletedClientsById({});
-          setClientCounter(1);
+          setClientCounter(33);
+          setDemoClientsLoaded(true);
+          setClientsLoaded(true);
+        } else {
+          if (systemSettings.loadDemoEstimates) {
+            setDemoModeWarning("Load Demo Estimates is enabled, but Load Demo Clients is off. Live client loading remains active.");
+          }
+          setDemoClientsLoaded(false);
           setClientsLoaded(true);
         }
+      } catch (error) {
+        console.error("Failed to load clients from API", error);
+        setClients([]);
+        setDeletedEstimatesByClientId({});
+        setDeletedClientsById({});
+        setClientCounter(1);
+        setDemoClientsLoaded(false);
+        setClientsLoaded(true);
       }
 
       setSelectedClientId(null);
@@ -1755,35 +1803,6 @@ const [clients, setClients] = useState<Client[]>([]);
   const [invoiceAddressSectionOpen, setInvoiceAddressSectionOpen] = useState(false);
 
 
-  // Position wizard
-  const [showPositionWizard, setShowPositionWizard] = useState(false);
-
-  const [posStep, setPosStep] = useState<1 | 2 | 3>(1); // 1 Position, 2 Dimensions, 3 Configuration
-
-  const [posDraft, setPosDraft] = useState<Position>(() => ({
-
-    id: Models.asPositionId(uid()),
-    positionRef: "W-001",
-    qty: 1,
-    roomName: "",
-    widthMm: 1000,
-    heightMm: 1200,
-    fieldsX: 1,
-    fieldsY: 1,
-    insertion: "Fixed",
-    cellInsertions: { "0,0": "Fixed" },
-    positionType: "Window",
-    useEstimateDefaults: true,
-    overrides: {},
-  }));
-
-  const [draftSelectedCell, setDraftSelectedCell] = useState<{ col: number; row: number }>({ col: 0, row: 0 });
-
-  const [previewView, setPreviewView] = useState<"Inside" | "Outside">("Inside");
-
-  const [openingStd, setOpeningStd] = useState<"DIN" | "UK">("DIN");
-
-
   const [clientDbSearch, setClientDbSearch] = useState("");
 
   const [clientDbFilter, setClientDbFilter] = useState<"All" | "Open" | "Orders" | "Lost">(() =>
@@ -1795,7 +1814,7 @@ const [clients, setClients] = useState<Client[]>([]);
   );
 
   const [clientDbSortField, setClientDbSortField] = useState<"client_name" | "client_number" | "project_name">(() =>
-    getPreference(CLIENT_DB_PREF_KEYS.sortField, "client_name", isClientDbSortField)
+    getPreference(CLIENT_DB_PREF_KEYS.sortField, "client_number", isClientDbSortField)
   );
   const [clientCollectionViewMode, setClientCollectionViewMode] = useState<ClientCollectionViewMode>(() =>
     getPreference(CLIENT_DB_PREF_KEYS.viewMode, "list", isEstimateCollectionViewMode)
@@ -2133,7 +2152,6 @@ async function handleWhat3WordsMapPick(lat: number, lng: number) {
     setEstimatePickerClientId(null);
     estimatePickerRef.current?.clear();
     setShowAddClient(false);
-    setShowPositionWizard(false);
   }
 
   function handleTopShellMenuClick(key: string) {
@@ -2154,6 +2172,18 @@ if (key === "menu_5") {
       setTopShellPage("admin");
       return;
     }
+    if (key === "window_types_render_preview") {
+      setTopShellPage("window_types_render_preview");
+      return;
+    }
+    if (key === "configurator_render") {
+      setTopShellPage("configurator_render");
+      return;
+    }
+    if (key === "b92_configurator") {
+      setTopShellPage("b92_configurator");
+      return;
+    }
     if (key === "settings") {
       setTopShellPage("settings");
       return;
@@ -2165,11 +2195,10 @@ if (key === "menu_5") {
     setTopShellPage("app");
   }
 
-function openEstimateDefaults(clientId: string, estimateId: string) {
+function openEstimateDefaults(clientId: Models.ClientId, estimateId: Models.EstimateId) {
   setSelectedClientId(clientId);
   setSelectedEstimateId(estimateId);
   setView("estimate_workspace");
-  setShowPositionWizard(false);
 }
 
   
@@ -2529,14 +2558,16 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
   }
 
   function positionDescription(p: Client["estimates"][number]["positions"][number]) {
-    return `${p.positionType} • ${p.insertion} • ${p.widthMm} × ${p.heightMm} mm`;
+    return positionDescriptionForDisplay(p);
   }
 
   function PositionPreview({ position }: { position: Client["estimates"][number]["positions"][number] }) {
+    const contract = getConfiguredPositionContract(position);
     return (
       <div style={{ width: 48, height: 54, borderRadius: 12, border: "1px solid #d4d4d8", background: "#fafafa", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <div style={{ width: position.positionType === "Door" ? 18 : 28, height: 38, borderRadius: 3, border: "2px solid #52525b", position: "relative", background: "#fff" }}>
           <div style={{ position: "absolute", inset: 4, border: "1px solid #a1a1aa", borderRadius: 2 }} />
+          {contract ? <div style={{ position: "absolute", left: -4, right: -4, bottom: -14, fontSize: 8, fontWeight: 800, textAlign: "center", color: "#2563eb" }}>B92</div> : null}
         </div>
       </div>
     );
@@ -2572,88 +2603,6 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
   setEstimatePickerClientId(client.id);
   setView("estimate_picker");
 }
-
-function startAddPosition() {
-    if (!selectedEstimate) return;
-
-    const nextIndex = (selectedEstimate.positions?.length ?? 0) + 1;
-
-    setPosStep(1);
-    setDraftSelectedCell({ col: 0, row: 0 });
-    setPosDraft({
-      id: Models.asPositionId(uid()),
-      positionRef: `W-${pad3(nextIndex)}`,
-      qty: 1,
-      roomName: "",
-      widthMm: 1000,
-      heightMm: 1200,
-      fieldsX: 1,
-      fieldsY: 1,
-      insertion: "Fixed",
-      positionType: "Window",
-      useEstimateDefaults: true,
-      overrides: {},
-      cellInsertions: { "0,0": "Fixed" },
-    });
-    setShowPositionWizard(true);
-  }
-
-  async function savePositionToEstimate(positionInput?: Position | any) {
-    if (!selectedClient || !selectedEstimate) return;
-
-    const sourceDraft = positionInput ?? posDraft;
-    const newPos: Position = {
-      ...sourceDraft,
-      id: Models.asPositionId(uid()),
-      widthMm: clampNum(Math.round(sourceDraft.widthMm || 0), 300, 6000),
-      heightMm: clampNum(Math.round(sourceDraft.heightMm || 0), 300, 6000),
-      fieldsX: clampNum(Math.round(sourceDraft.fieldsX || 1), 1, 16),
-      fieldsY: clampNum(Math.round(sourceDraft.fieldsY || 1), 1, 16),
-      cellInsertions: normalizeCellInsertions(
-        sourceDraft.fieldsX,
-        sourceDraft.fieldsY,
-        sourceDraft.cellInsertions,
-        sourceDraft.insertion
-      ),
-    };
-
-    setClients((prev) => {
-      let updatedEstimate: Estimate | null = null;
-
-      const nextClients = prev.map((c) => {
-        if (c.id !== selectedClient.id) return c;
-        return {
-          ...c,
-          estimates: c.estimates.map((e) => {
-            if (e.id !== selectedEstimate.id) return e;
-            updatedEstimate = { ...e, positions: [newPos, ...e.positions] };
-            return updatedEstimate;
-          }),
-        };
-      });
-
-      if (updatedEstimate) {
-        updateEstimateAPI(selectedEstimate.id, buildDbEstimatePayload(selectedClient.id, updatedEstimate)).catch((error) => {
-          console.error("Failed to save added position", error);
-        });
-      }
-
-      return nextClients;
-    });
-
-    setPosDraft(newPos);
-    setShowPositionWizard(false);
-    setPosStep(1);
-  }
-
-  function stepLabel(s: 1 | 2 | 3) {
-    return s === 1 ? "Position" : s === 2 ? "Dimensions" : "Configuration";
-  }
-
-  function effectiveDefaultsForPosition(est: Estimate, pos: Position): EstimateDefaults {
-    if (pos.useEstimateDefaults) return est.defaults;
-    return { ...est.defaults, ...pos.overrides };
-  }
 
   function setEstimateDefaults(next: EstimateDefaults) {
     if (!selectedClient || !selectedEstimate) return;
@@ -2711,10 +2660,6 @@ function startAddPosition() {
 
       return nextClients;
     });
-  }
-
-  function setPositionDefaultsOverride(next: EstimateDefaults) {
-    setPosDraft((p) => ({ ...p, overrides: { ...next } }));
   }
 
   function resetClientDraftForm() {
@@ -3387,10 +3332,8 @@ function startAddPosition() {
       return recycleClientRows.map(({ clientId, client, deletedAt, deletedEstimateCount }) => (
         <div
           key={`client_${clientId}`}
+          className="operational-card"
           style={{
-            borderRadius: 16,
-            border: "1px solid #e4e4e7",
-            background: "#fff",
             padding: 14,
             display: "grid",
             gap: 10,
@@ -3398,8 +3341,8 @@ function startAddPosition() {
         >
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
             <div style={{ display: "grid", gap: 4 }}>
-              <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a" }}>Client</div>
-              <div style={{ fontSize: 16, fontWeight: 900, color: "#18181b" }}>{clientDisplayName(client)}</div>
+              <div className="operational-eyebrow">Client</div>
+              <div className="operational-title" style={{ fontSize: 16, fontWeight: 900 }}>{clientDisplayName(client)}</div>
               <Small>{client.clientRef} • {client.type}</Small>
             </div>
             <input
@@ -3428,10 +3371,8 @@ function startAddPosition() {
       return recycleEstimateRows.map(({ clientId, client, estimate, deletedAt, selectionKey }) => (
         <div
           key={`estimate_${selectionKey}`}
+          className="operational-card"
           style={{
-            borderRadius: 16,
-            border: "1px solid #e4e4e7",
-            background: "#fff",
             padding: 14,
             display: "grid",
             gap: 10,
@@ -3439,8 +3380,8 @@ function startAddPosition() {
         >
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
             <div style={{ display: "grid", gap: 4 }}>
-              <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a" }}>Estimate</div>
-              <div style={{ fontSize: 16, fontWeight: 900, color: "#18181b" }}>{estimate.estimateRef}</div>
+              <div className="operational-eyebrow">Estimate</div>
+              <div className="operational-title" style={{ fontSize: 16, fontWeight: 900 }}>{estimate.estimateRef}</div>
               <Small>{client ? `${clientDisplayName(client)} • ${client.clientRef}` : "Client removed from active list"}</Small>
             </div>
             <input
@@ -3468,14 +3409,14 @@ function startAddPosition() {
       return (
         <div style={{ display: "grid", gap: 12 }}>
           {showClients && (
-            <div style={{ border: "1px solid #e4e4e7", borderRadius: 14, background: "#fff", overflow: "hidden" }}>
-              <div style={{ padding: 12, borderBottom: "1px solid #e4e4e7" }}>
+            <div className="operational-table-shell">
+              <div className="operational-table-section-header" style={{ padding: 12 }}>
                 <H3>Deleted Clients</H3>
               </div>
               <div style={{ overflow: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 980 }}>
                   <thead>
-                    <tr style={{ background: "#fafafa" }}>
+                    <tr className="operational-table-header">
                       {["", "Client Name", "Client Number", "Project Name", "Deleted", "Restore", "Delete Permanently"].map((label, index) => (
                         <th
                           key={label}
@@ -3483,11 +3424,11 @@ function startAddPosition() {
                             textAlign: index >= 5 ? "right" : "left",
                             padding: 10,
                             fontSize: 12,
-                            borderBottom: "1px solid #e4e4e7",
+                            borderBottom: "1px solid var(--color-border)",
                             position: "sticky",
                             top: 0,
                             zIndex: 2,
-                            background: "#fafafa",
+                            background: "var(--color-surface-subtle)",
                           }}
                         >
                           {label}
@@ -3498,21 +3439,21 @@ function startAddPosition() {
                   <tbody>
                     {recycleClientRows.map(({ clientId, client, deletedAt }) => (
                       <tr key={`client_row_${clientId}`}>
-                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>
+                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top" }}>
                           <input
                             type="checkbox"
                             checked={!!selectedRecycleClientIds[clientId]}
                             onChange={(ev) => toggleRecycleClientSelection(clientId, ev.currentTarget.checked)}
                           />
                         </td>
-                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top", fontWeight: 700 }}>{clientDisplayName(client)}</td>
-                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>{client.clientRef}</td>
-                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>{client.projectName || ""}</td>
-                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>{new Date(deletedAt).toLocaleString()}</td>
-                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top", textAlign: "right" }}>
+                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top", fontWeight: 700 }}>{clientDisplayName(client)}</td>
+                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top" }}>{client.clientRef}</td>
+                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top" }}>{client.projectName || ""}</td>
+                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top" }}>{new Date(deletedAt).toLocaleString()}</td>
+                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top", textAlign: "right" }}>
                           <Button variant="secondary" onClick={() => restoreDeletedClient(clientId)}>Restore</Button>
                         </td>
-                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top", textAlign: "right" }}>
+                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top", textAlign: "right" }}>
                           <Button variant="secondary" onClick={() => purgeDeletedClient(clientId)}>Delete Permanently</Button>
                         </td>
                       </tr>
@@ -3531,14 +3472,14 @@ function startAddPosition() {
           )}
 
           {showEstimates && (
-            <div style={{ border: "1px solid #e4e4e7", borderRadius: 14, background: "#fff", overflow: "hidden" }}>
-              <div style={{ padding: 12, borderBottom: "1px solid #e4e4e7" }}>
+            <div className="operational-table-shell">
+              <div className="operational-table-section-header" style={{ padding: 12 }}>
                 <H3>Deleted Estimates</H3>
               </div>
               <div style={{ overflow: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1100 }}>
                   <thead>
-                    <tr style={{ background: "#fafafa" }}>
+                    <tr className="operational-table-header">
                       {["", "Client Name", "Client Number", "Estimate Ref", "Project Name", "Deleted", "Restore", "Delete Permanently"].map((label, index) => (
                         <th
                           key={label}
@@ -3546,11 +3487,11 @@ function startAddPosition() {
                             textAlign: index >= 6 ? "right" : "left",
                             padding: 10,
                             fontSize: 12,
-                            borderBottom: "1px solid #e4e4e7",
+                            borderBottom: "1px solid var(--color-border)",
                             position: "sticky",
                             top: 0,
                             zIndex: 2,
-                            background: "#fafafa",
+                            background: "var(--color-surface-subtle)",
                           }}
                         >
                           {label}
@@ -3561,22 +3502,22 @@ function startAddPosition() {
                   <tbody>
                     {recycleEstimateRows.map(({ clientId, client, estimate, deletedAt, selectionKey }) => (
                       <tr key={`estimate_row_${selectionKey}`}>
-                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>
+                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top" }}>
                           <input
                             type="checkbox"
                             checked={!!selectedRecycleEstimateKeys[selectionKey]}
                             onChange={(ev) => toggleRecycleEstimateSelection(selectionKey, ev.currentTarget.checked)}
                           />
                         </td>
-                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top", fontWeight: 700 }}>{client ? clientDisplayName(client) : "Unknown client"}</td>
-                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>{client?.clientRef || ""}</td>
-                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>{estimate.estimateRef}</td>
-                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>{client?.projectName || ""}</td>
-                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>{new Date(deletedAt).toLocaleString()}</td>
-                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top", textAlign: "right" }}>
+                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top", fontWeight: 700 }}>{client ? clientDisplayName(client) : "Unknown client"}</td>
+                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top" }}>{client?.clientRef || ""}</td>
+                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top" }}>{estimate.estimateRef}</td>
+                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top" }}>{client?.projectName || ""}</td>
+                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top" }}>{new Date(deletedAt).toLocaleString()}</td>
+                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top", textAlign: "right" }}>
                           <Button variant="secondary" onClick={() => restoreDeletedEstimatesForClient(clientId, [estimate.id])}>Restore</Button>
                         </td>
-                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top", textAlign: "right" }}>
+                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top", textAlign: "right" }}>
                           <Button variant="secondary" onClick={() => purgeDeletedEstimatesForClient(clientId, [estimate.id])}>Delete Permanently</Button>
                         </td>
                       </tr>
@@ -3619,16 +3560,7 @@ function startAddPosition() {
                 key={item.key}
                 type="button"
                 onClick={() => setRecycleBinFilter(item.key)}
-                style={{
-                  borderRadius: 999,
-                  border: recycleBinFilter === item.key ? "none" : "1px solid #e4e4e7",
-                  background: recycleBinFilter === item.key ? "#18181b" : "#fff",
-                  color: recycleBinFilter === item.key ? "#fff" : "#18181b",
-                  padding: "8px 12px",
-                  fontSize: 12,
-                  fontWeight: 800,
-                  cursor: "pointer",
-                }}
+                className={`operational-toggle${recycleBinFilter === item.key ? " operational-toggle--active" : ""}`}
               >
                 {item.label}
               </button>
@@ -3637,17 +3569,17 @@ function startAddPosition() {
 
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(160px, 1fr))", gap: 10, flex: "1 1 480px" }}>
-              <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-                <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Deleted clients</div>
-                <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{recycleClientRows.length}</div>
+              <div className="operational-stat">
+                <div className="operational-stat__label">Deleted clients</div>
+                <div className="operational-stat__value">{recycleClientRows.length}</div>
               </div>
-              <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-                <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Deleted estimates</div>
-                <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{recycleEstimateRows.length}</div>
+              <div className="operational-stat">
+                <div className="operational-stat__label">Deleted estimates</div>
+                <div className="operational-stat__value">{recycleEstimateRows.length}</div>
               </div>
-              <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-                <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Visible items</div>
-                <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{totalVisibleCount}</div>
+              <div className="operational-stat">
+                <div className="operational-stat__label">Visible items</div>
+                <div className="operational-stat__value">{totalVisibleCount}</div>
               </div>
             </div>
 
@@ -3658,16 +3590,7 @@ function startAddPosition() {
                   key={item.key}
                   type="button"
                   onClick={() => setRecycleBinView(item.key)}
-                  style={{
-                    borderRadius: 999,
-                    border: recycleBinView === item.key ? "none" : "1px solid #e4e4e7",
-                    background: recycleBinView === item.key ? "#18181b" : "#fff",
-                    color: recycleBinView === item.key ? "#fff" : "#18181b",
-                    padding: "8px 12px",
-                    fontSize: 12,
-                    fontWeight: 800,
-                    cursor: "pointer",
-                  }}
+                  className={`operational-toggle${recycleBinView === item.key ? " operational-toggle--active" : ""}`}
                 >
                   {item.label}
                 </button>
@@ -3697,7 +3620,7 @@ function startAddPosition() {
                 )}
 
                 {totalVisibleCount === 0 && (
-                  <div style={{ borderRadius: 14, border: "1px dashed #e4e4e7", background: "#fff", padding: 16 }}>
+                  <div className="operational-empty">
                     <Small>No deleted items.</Small>
                   </div>
                 )}
@@ -3787,21 +3710,21 @@ function renderInstallationBoard() {
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(140px, 1fr))", gap: 10 }}>
-            <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-              <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Open installations</div>
-              <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{summary.count}</div>
+            <div className="operational-stat">
+              <div className="operational-stat__label">Open installations</div>
+              <div className="operational-stat__value">{summary.count}</div>
             </div>
-            <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-              <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total mÃƒâ€šÃ‚Â²</div>
-              <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMeasure(summary.totalSquareMetres)}</div>
+            <div className="operational-stat">
+              <div className="operational-stat__label">Total mÃƒâ€šÃ‚Â²</div>
+              <div className="operational-stat__value">{formatMeasure(summary.totalSquareMetres)}</div>
             </div>
-            <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-              <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total quantity</div>
-              <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{summary.totalQty}</div>
+            <div className="operational-stat">
+              <div className="operational-stat__label">Total quantity</div>
+              <div className="operational-stat__value">{summary.totalQty}</div>
             </div>
-            <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-              <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total order value</div>
-              <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMoney(summary.totalCost)}</div>
+            <div className="operational-stat">
+              <div className="operational-stat__label">Total order value</div>
+              <div className="operational-stat__value">{formatMoney(summary.totalCost)}</div>
             </div>
           </div>
 
@@ -3811,17 +3734,15 @@ function renderInstallationBoard() {
                 const isExpanded = installationExpandedEstimateId === estimate.id;
                 const activeTab = installationTabByEstimateId[estimate.id] ?? "key_dates";
                 const totals = estimateCommercialTotals(estimate);
-                const keyDates = estimate.orderMeta ?? {};
+                const keyDates: Models.OrderMeta = estimate.orderMeta ?? { timeline: [] };
                 const headline = clientDisplayName(client);
 
                 return (
                   <div
                     id={`installation-row-${estimate.id}`}
                     key={estimate.id}
+                    className={`operational-card${isExpanded ? " operational-card--expanded" : ""}`}
                     style={{
-                      borderRadius: 16,
-                      border: isExpanded ? "2px solid #18181b" : "1px solid #e4e4e7",
-                      background: "#fff",
                       padding: 12,
                       display: "grid",
                       gap: 12,
@@ -3840,30 +3761,30 @@ function renderInstallationBoard() {
                         <div
                       >
                           <div
-                       style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "#71717a", marginBottom: 4 }}>Client Name</div>
+                       style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-text-muted)", marginBottom: 4 }}>Client Name</div>
                           <div
-                       style={{ fontSize: 14, fontWeight: 900, color: "#18181b", lineHeight: 1.35 }}>{headline}</div>
+                       style={{ fontSize: 14, fontWeight: 900, color: "var(--color-text-primary)", lineHeight: 1.35 }}>{headline}</div>
                         </div>
                         <div
                       >
                           <div
-                       style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "#71717a", marginBottom: 4 }}>Order Ref</div>
+                       style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-text-muted)", marginBottom: 4 }}>Order Ref</div>
                           <div
-                       style={{ fontSize: 14, fontWeight: 800, color: "#18181b", lineHeight: 1.35 }}>{estimate.estimateRef}</div>
+                       style={{ fontSize: 14, fontWeight: 800, color: "var(--color-text-primary)", lineHeight: 1.35 }}>{estimate.estimateRef}</div>
                         </div>
                         <div
                       >
                           <div
-                       style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "#71717a", marginBottom: 4 }}>Project Name</div>
+                       style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-text-muted)", marginBottom: 4 }}>Project Name</div>
                           <div
-                       style={{ fontSize: 14, fontWeight: 700, color: "#18181b", lineHeight: 1.35 }}>{client.projectName || ""}</div>
+                       style={{ fontSize: 14, fontWeight: 700, color: "var(--color-text-primary)", lineHeight: 1.35 }}>{client.projectName || ""}</div>
                         </div>
                         <div
                       >
                           <div
-                       style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "#71717a", marginBottom: 4 }}>Key Dates</div>
+                       style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-text-muted)", marginBottom: 4 }}>Key Dates</div>
                           <div
-                       style={{ fontSize: 12, color: "#3f3f46", lineHeight: 1.55 }}>
+                       style={{ fontSize: 12, color: "var(--color-text-secondary)", lineHeight: 1.55 }}>
                             <div
                       >Dispatch Date<br />{installationKeyDate(keyDates.factoryDispatchDate)}</div>
                             <div
@@ -3873,7 +3794,7 @@ function renderInstallationBoard() {
                           </div>
                         </div>
                         <div
-                       style={{ alignSelf: "center", justifySelf: "end", fontSize: 12, fontWeight: 900, color: "#3f3f46", whiteSpace: "nowrap" }}>
+                       style={{ alignSelf: "center", justifySelf: "end", fontSize: 12, fontWeight: 900, color: "var(--color-text-secondary)", whiteSpace: "nowrap" }}>
                           {isExpanded ? "Hide detail" : "Expand"}
                         </div>
                       </div>
@@ -3881,11 +3802,11 @@ function renderInstallationBoard() {
                       <div
                        style={{ display: "grid", gap: 6 }}>
                         <div
-                       style={{ fontSize: 13, fontWeight: 800, color: "#18181b" }}>
+                       style={{ fontSize: 13, fontWeight: 800, color: "var(--color-text-primary)" }}>
                           Project Address: <span style={{ fontWeight: 700 }}>{installationProjectAddressLabel(client)}</span>
                         </div>
                         <div
-                       style={{ fontSize: 13, fontWeight: 800, color: "#18181b" }}>
+                       style={{ fontSize: 13, fontWeight: 800, color: "var(--color-text-primary)" }}>
                           what3words: <span style={{ fontWeight: 700 }}>{installationWhat3WordsLabel(client)}</span>
                         </div>
                       </div>
@@ -3896,26 +3817,17 @@ function renderInstallationBoard() {
                        style={{ display: "grid", gap: 12 }}>
                         <div
                        style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                          {[
+                          {([
                             ["key_dates", "Key Dates"],
                             ["order_copy", "Confirmed Order"],
-                          ].map(([tabKey, label]) => {
+                          ] as const).map(([tabKey, label]) => {
                             const active = activeTab === tabKey;
                             return (
                               <button
                                 key={tabKey}
                                 type="button"
-                                onClick={() => setInstallationTabByEstimateId((prev) => ({ ...prev, [estimate.id]: tabKey as any }))}
-                                style={{
-                                  borderRadius: 999,
-                                  border: active ? "none" : "1px solid #e4e4e7",
-                                  background: active ? "#18181b" : "#fff",
-                                  color: active ? "#fff" : "#18181b",
-                                  padding: "8px 12px",
-                                  fontSize: 12,
-                                  fontWeight: 800,
-                                  cursor: "pointer",
-                                }}
+                                onClick={() => setInstallationTabByEstimateId((prev) => ({ ...prev, [estimate.id]: tabKey }))}
+                                className={`operational-toggle${active ? " operational-toggle--active" : ""}`}
                               >
                                 {label}
                               </button>
@@ -3924,8 +3836,7 @@ function renderInstallationBoard() {
                         </div>
 
                         {activeTab === "key_dates" && (
-                          <div
-                       style={{ borderRadius: 14, border: "1px solid #e4e4e7", background: "#fafafa", padding: 12, display: "grid", gap: 10 }}>
+                          <div className="operational-surface operational-surface--subtle" style={{ padding: 12, display: "grid", gap: 10 }}>
                             <div
                        style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(160px, 1fr))", gap: 10 }}>
                               {[
@@ -3942,12 +3853,9 @@ function renderInstallationBoard() {
                                 ["Delivery date", keyDates.deliveryDate],
                                 ["Installation date", keyDates.installationDate],
                               ].map(([label, value]) => (
-                                <div
-                       key={String(label)} style={{ borderRadius: 12, border: "1px solid #e4e4e7", background: "#fff", padding: 10 }}>
-                                  <div
-                       style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>{label}</div>
-                                  <div
-                       style={{ fontSize: 14, fontWeight: 800, color: "#18181b" }}>{installationKeyDate(String(value || ""))}</div>
+                                <div key={String(label)} className="operational-surface" style={{ padding: 10 }}>
+                                  <div className="operational-eyebrow">{label}</div>
+                                  <div className="operational-title" style={{ fontSize: 14, fontWeight: 800 }}>{installationKeyDate(String(value || ""))}</div>
                                 </div>
                               ))}
                             </div>
@@ -3955,21 +3863,20 @@ function renderInstallationBoard() {
                         )}
 
                         {activeTab === "order_copy" && (
-                          <div
-                       style={{ borderRadius: 14, border: "1px solid #e4e4e7", background: "#fff", overflow: "hidden" }}>
+                          <div className="operational-table-shell">
                             <div
-                       style={{ padding: 12, borderBottom: "1px solid #e4e4e7", display: "grid", gap: 4 }}>
+                       style={{ padding: 12, borderBottom: "1px solid var(--color-border)", display: "grid", gap: 4 }}>
                               <div
-                       style={{ fontSize: 14, fontWeight: 900, color: "#18181b" }}>Confirmed order copy</div>
+                       style={{ fontSize: 14, fontWeight: 900, color: "var(--color-text-primary)" }}>Confirmed order copy</div>
                               <Small>{estimate.positions.length} position(s) {formatMoney(totals.estimateTotal)}</Small>
                             </div>
                             <div
                        style={{ maxHeight: 320, overflow: "auto" }}>
                               <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 720 }}>
                                 <thead>
-                                  <tr style={{ background: "#fafafa" }}>
+                                  <tr className="operational-table-header">
                                     {["Reference", "Room", "Description", "Qty", "Item price", "Quantity price"].map((label) => (
-                                      <th key={label} style={{ textAlign: label === "Qty" || label === "Item price" || label === "Quantity price" ? "right" : "left", padding: 10, fontSize: 12, borderBottom: "1px solid #e4e4e7", position: "sticky", top: 0, background: "#fafafa" }}>{label}</th>
+                                      <th key={label} style={{ textAlign: label === "Qty" || label === "Item price" || label === "Quantity price" ? "right" : "left", padding: 10, fontSize: 12, borderBottom: "1px solid var(--color-border)", position: "sticky", top: 0, background: "var(--color-surface-subtle)" }}>{label}</th>
                                     ))}
                                   </tr>
                                 </thead>
@@ -3978,12 +3885,12 @@ function renderInstallationBoard() {
                                     const lineTotal = Number(position.itemPrice || 0) * Math.max(1, Number(position.qty || 1));
                                     return (
                                       <tr key={position.id}>
-                                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top", fontWeight: 800 }}>{position.positionRef}</td>
-                                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>{position.roomName || ""}</td>
-                                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top" }}>{position.positionType} {position.heightMm} mm</td>
-                                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top", textAlign: "right" }}>{position.qty}</td>
-                                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top", textAlign: "right" }}>{formatMoney(Number(position.itemPrice || 0))}</td>
-                                        <td style={{ padding: 10, borderBottom: "1px solid #f4f4f5", verticalAlign: "top", textAlign: "right", fontWeight: 800 }}>{formatMoney(lineTotal)}</td>
+                                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top", fontWeight: 800 }}>{position.positionRef}</td>
+                                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top" }}>{position.roomName || ""}</td>
+                                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top" }}>{position.positionType} {position.heightMm} mm</td>
+                                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top", textAlign: "right" }}>{position.qty}</td>
+                                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top", textAlign: "right" }}>{formatMoney(Number(position.itemPrice || 0))}</td>
+                                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top", textAlign: "right", fontWeight: 800 }}>{formatMoney(lineTotal)}</td>
                                       </tr>
                                     );
                                   })}
@@ -3999,19 +3906,19 @@ function renderInstallationBoard() {
               })}
 
               {rows.length === 0 && (
-                <div style={{ borderRadius: 14, border: "1px dashed #e4e4e7", background: "#fff", padding: 16 }}>
+                <div className="operational-empty">
                   <Small>No installation items found.</Small>
                 </div>
               )}
             </div>
 
             <div style={{ minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr", gap: 12 }}>
-              <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", background: "#fff", padding: 12 }}>
-                <div style={{ fontSize: 14, fontWeight: 900, color: "#18181b" }}>Installation Map</div>
+              <div className="operational-surface" style={{ padding: 12 }}>
+                <div className="operational-title" style={{ fontSize: 14, fontWeight: 900 }}>Installation Map</div>
                 <Small>Google Maps view for all open installations using postcode, what3words, or project address fallback.</Small>
               </div>
 
-              <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", background: "#fafafa", padding: 12, minHeight: 0 }}>
+              <div className="operational-surface operational-surface--subtle" style={{ padding: 12, minHeight: 0 }}>
                 <GoogleMapPanel
                   apiKey={googleMapsApiKey}
                   items={mapItems}
@@ -4062,21 +3969,21 @@ function renderEstimateMapBoard() {
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(140px, 1fr))", gap: 10 }}>
-            <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-              <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Mapped estimates</div>
-              <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{mapItems.length}</div>
+            <div className="operational-stat">
+              <div className="operational-stat__label">Mapped estimates</div>
+              <div className="operational-stat__value">{mapItems.length}</div>
             </div>
-            <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-              <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>All estimates</div>
-              <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{rows.length}</div>
+            <div className="operational-stat">
+              <div className="operational-stat__label">All estimates</div>
+              <div className="operational-stat__value">{rows.length}</div>
             </div>
-            <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-              <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total mÃƒâ€šÃ‚Â²</div>
-              <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMeasure(summary.totalSquareMetres)}</div>
+            <div className="operational-stat">
+              <div className="operational-stat__label">Total mÃƒâ€šÃ‚Â²</div>
+              <div className="operational-stat__value">{formatMeasure(summary.totalSquareMetres)}</div>
             </div>
-            <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-              <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total cost</div>
-              <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMoney(summary.totalCost)}</div>
+            <div className="operational-stat">
+              <div className="operational-stat__label">Total cost</div>
+              <div className="operational-stat__value">{formatMoney(summary.totalCost)}</div>
             </div>
           </div>
 
@@ -4094,10 +4001,8 @@ function renderEstimateMapBoard() {
                       setSelectedMapEstimateId(estimate.id);
                       scrollMapRowIntoView("estimate-map-row", estimate.id);
                     }}
+                    className={`operational-card${selected ? " operational-card--selected" : ""}`}
                     style={{
-                      borderRadius: 16,
-                      border: selected ? "2px solid #18181b" : "1px solid #e4e4e7",
-                      background: "#fff",
                       padding: 12,
                       display: "grid",
                       gap: 10,
@@ -4110,7 +4015,7 @@ function renderEstimateMapBoard() {
                       <div
                        style={{ display: "grid", gap: 4 }}>
                         <div
-                       style={{ fontSize: 14, fontWeight: 900, color: "#18181b" }}>{clientDisplayName(client)}</div>
+                       className="operational-title" style={{ fontSize: 14, fontWeight: 900 }}>{clientDisplayName(client)}</div>
                         <Small>{estimate.estimateRef} {client.clientRef}</Small>
                       </div>
                       <Pill>{installerId ? "Installation" : outcome}</Pill>
@@ -4130,16 +4035,7 @@ function renderEstimateMapBoard() {
                           ev.stopPropagation();
                           openEstimateFromGlobalMenu(client.id, estimate.id);
                         }}
-                        style={{
-                          borderRadius: 18,
-                          border: "1px solid #e4e4e7",
-                          background: "#fff",
-                          color: "#3f3f46",
-                          padding: "10px 14px",
-                          fontSize: 14,
-                          fontWeight: 800,
-                          cursor: "pointer",
-                        }}
+                        className="operational-toggle"
                       >
                         Open Estimate
                       </span>
@@ -4149,19 +4045,19 @@ function renderEstimateMapBoard() {
               })}
 
               {rows.length === 0 && (
-                <div style={{ borderRadius: 14, border: "1px dashed #e4e4e7", background: "#fff", padding: 16 }}>
+                <div className="operational-empty">
                   <Small>No estimates available for the map.</Small>
                 </div>
               )}
             </div>
 
             <div style={{ minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr", gap: 12 }}>
-              <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", background: "#fff", padding: 12 }}>
-                <div style={{ fontSize: 14, fontWeight: 900, color: "#18181b" }}>Estimate Map</div>
+              <div className="operational-surface" style={{ padding: 12 }}>
+                <div className="operational-title" style={{ fontSize: 14, fontWeight: 900 }}>Estimate Map</div>
                 <Small>Marker colours reflect estimate outcome and installation allocation.</Small>
               </div>
 
-              <div style={{ borderRadius: 14, border: "1px solid #e4e4e7", background: "#fafafa", padding: 12, minHeight: 0 }}>
+              <div className="operational-surface operational-surface--subtle" style={{ padding: 12, minHeight: 0 }}>
                 <GoogleMapPanel
                   apiKey={googleMapsApiKey}
                   items={mapItems}
@@ -4289,7 +4185,7 @@ function renderEstimateMapBoard() {
                     <select
                       value={globalSortField}
                       onChange={(e) => setGlobalSortField(e.currentTarget.value as GlobalSortField)}
-                      style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14, background: "#fff" }}
+                      className="operational-select"
                     >
                       <option value="client_number">Client Number</option>
                       <option value="client_name">Client Name</option>
@@ -4330,16 +4226,7 @@ function renderEstimateMapBoard() {
                       key={month}
                       type="button"
                       onClick={() => setGlobalMonthFilter(month)}
-                      style={{
-                        borderRadius: 999,
-                        border: isSelected ? "none" : isCurrentMonth ? "2px solid #18181b" : "1px solid #e4e4e7",
-                        background: isSelected ? "#18181b" : "#fff",
-                        color: isSelected ? "#fff" : "#18181b",
-                        padding: "8px 12px",
-                        fontSize: 12,
-                        fontWeight: 800,
-                        cursor: "pointer",
-                      }}
+                      className={`operational-toggle${isSelected ? " operational-toggle--active" : isCurrentMonth ? " operational-toggle--current" : ""}`}
                     >
                       {month}
                     </button>
@@ -4348,37 +4235,37 @@ function renderEstimateMapBoard() {
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(140px, 1fr))", gap: 10 }}>
-                <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-                  <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Items</div>
-                  <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{summary.count}</div>
+                <div className="operational-stat">
+                  <div className="operational-stat__label">Items</div>
+                  <div className="operational-stat__value">{summary.count}</div>
                 </div>
-                <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-                  <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total mÂ²</div>
-                  <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMeasure(summary.totalSquareMetres)}</div>
+                <div className="operational-stat">
+                  <div className="operational-stat__label">Total mÂ²</div>
+                  <div className="operational-stat__value">{formatMeasure(summary.totalSquareMetres)}</div>
                 </div>
-                <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-                  <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Linear metreage</div>
-                  <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMeasure(summary.totalLinearMetres)}</div>
+                <div className="operational-stat">
+                  <div className="operational-stat__label">Linear metreage</div>
+                  <div className="operational-stat__value">{formatMeasure(summary.totalLinearMetres)}</div>
                 </div>
-                <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-                  <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total quantity</div>
-                  <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{summary.totalQty}</div>
+                <div className="operational-stat">
+                  <div className="operational-stat__label">Total quantity</div>
+                  <div className="operational-stat__value">{summary.totalQty}</div>
                 </div>
-                <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-                  <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total cost</div>
-                  <div style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMoney(summary.totalCost)}</div>
+                <div className="operational-stat">
+                  <div className="operational-stat__label">Total cost</div>
+                  <div className="operational-stat__value">{formatMoney(summary.totalCost)}</div>
                 </div>
               </div>
             </div>
 
-            <div style={{ border: "1px solid #e4e4e7", borderRadius: 14, background: "#fff", overflow: "hidden", minHeight: 0 }}>
+            <div className="operational-surface" style={{ overflow: "hidden", minHeight: 0 }}>
               <div style={{ height: "100%", minHeight: 0, overflow: "auto", padding: 12, display: "grid", gap: 12 }}>
                 {menuKey !== "installation" && globalSelectModeByMenu[menuKey] && rows.length > 0 && (
-                  <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", background: "#fafafa", padding: 12, display: "grid", gap: 8 }}>
-                    <div style={{ fontSize: 12, fontWeight: 800, color: "#3f3f46" }}>Bulk selection</div>
+                  <div className="operational-surface operational-surface--subtle" style={{ padding: 12, display: "grid", gap: 8 }}>
+                    <div className="operational-copy" style={{ fontSize: 12, fontWeight: 800 }}>Bulk selection</div>
                     <div style={{ display: "grid", gap: 8 }}>
                       {rows.map(({ client, estimate }) => (
-                        <label key={`select_${estimate.id}`} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14, color: "#18181b" }}>
+                        <label key={`select_${estimate.id}`} className="operational-title" style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14 }}>
                           <input
                             type="checkbox"
                             checked={!!(globalSelectedEstimateIdsByMenu[menuKey] ?? {})[estimate.id]}
@@ -4535,7 +4422,7 @@ function renderEstimateMapBoard() {
                       </Button>
                     </div>
 
-                    <Small style={{ color: "#6b7280" }}>
+                    <Small style={{ color: "var(--color-text-muted)" }}>
                       Use “Print PDF” to generate the customer-facing estimate PDF, then attach that PDF in your email app. Direct file attachment from the browser send flow is not wired yet.
                     </Small>
                   </div>
@@ -4568,7 +4455,7 @@ function renderEstimateMapBoard() {
                       </label>
                     </div>
 
-                    <Small style={{ color: "#6b7280" }}>
+                    <Small style={{ color: "var(--color-text-muted)" }}>
                       Follow-ups are saved to the database and appear in Customers - Follow Ups on the scheduled due date.
                     </Small>
                   </div>
@@ -4625,6 +4512,16 @@ function renderEstimateMapBoard() {
 <AppShell title="QuoteSync" onMenuClick={handleTopShellMenuClick}>
   { topShellPage === "admin" ? (
     <AdminPlaceholderPage />
+  ) : topShellPage === "window_types_render_preview" ? (
+    <AdminPlaceholderPage
+      initialSection="configurator_controls"
+      initialConfiguratorTab="windowTypes"
+      initialWindowTypesCategory="windows"
+    />
+  ) : topShellPage === "configurator_render" ? (
+    <AdminPlaceholderPage initialSection="configurator_controls" initialConfiguratorTab="configuratorRender" />
+  ) : topShellPage === "b92_configurator" ? (
+    <AdminPlaceholderPage initialSection="configurator_controls" initialConfiguratorTab="b92Configurator" />
   ) : topShellPage === "client_portal" ? (
     <ClientPortalPlaceholderPage />
   ) : topShellPage === "settings" ? (
@@ -4638,11 +4535,11 @@ function renderEstimateMapBoard() {
           summary="Future-ready help area placeholder. This will later host support content, onboarding, and documentation."
         />
       ) : (
-        <div style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif", background: "#f4f4f5", minHeight: "calc(100vh - 84px)", height: "calc(100vh - 84px)", overflow: "hidden" }}>
+        <div style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif", background: "var(--app-shell-main-bg)", color: "var(--color-text-primary)", minHeight: "calc(100vh - 84px)", height: "calc(100vh - 84px)", overflow: "hidden" }}>
           <div style={{ width: "100%", margin: "0", padding: 0, height: "100%" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 16, height: "calc(100vh - 32px)", alignItems: "start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 16, height: "100%", minHeight: 0, alignItems: "stretch" }}>
           {/* Sidebar */}
-          <Card style={{ padding: 12, position: "sticky", top: 16, alignSelf: "start", height: "calc(100vh - 32px)", overflowY: "auto" }}>
+          <Card style={{ padding: 12, position: "sticky", top: 16, alignSelf: "stretch", height: "100%", minHeight: 0, overflowY: "auto" }}>
             <div style={{ padding: "6px 6px 12px 6px" }}>
             </div>
 
@@ -4677,9 +4574,21 @@ function renderEstimateMapBoard() {
           </Card>
 
           {/* Main */}
-          <div style={{ display: "grid", gap: 16, minHeight: 0, height: "calc(100vh - 32px)", overflowY: "auto", paddingRight: 4, alignContent: "start" }}>
+          <div style={{ display: "grid", gap: menu === "dashboard" && view === "customers" ? 10 : 16, minHeight: 0, height: "100%", overflowY: "auto", paddingRight: 4, alignContent: "start" }}>
+            {demoClientsLoaded && (
+              <div className="demo-mode-banner" role="status">
+                <strong>Demo mode active</strong>
+                <span>{demoModeWarning || "Generated demo clients are currently displayed."}</span>
+              </div>
+            )}
+            {!demoClientsLoaded && demoModeWarning && (
+              <div className="demo-mode-banner demo-mode-banner--warning" role="status">
+                <strong>Demo data not loaded</strong>
+                <span>{demoModeWarning}</span>
+              </div>
+            )}
             {topShellPage === "tools" && <ToolsHubPage />}
-            {topShellPage !== "tools" && !(view === "estimate_workspace" && showPositionWizard) && (
+            {topShellPage !== "tools" && menu !== "dashboard" && view !== "estimate_workspace" && (
               <Card style={{ padding: 14 }}>
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                   <div>
@@ -4718,15 +4627,13 @@ function renderEstimateMapBoard() {
     }}
   >
     <div
+      className="legacy-modal-surface"
       style={{
         width: "min(1100px, 96vw)",
         maxHeight: "92vh",
         overflow: "auto",
         borderRadius: 18,
-        border: "1px solid #e4e4e7",
-        background: "#fff",
         padding: 16,
-        boxShadow: "0 20px 50px rgba(0,0,0,0.22)",
         display: "grid",
         gap: 12,
       }}
@@ -4748,13 +4655,13 @@ function renderEstimateMapBoard() {
       </div>
 
       {what3WordsPickerError ? (
-        <div style={{ borderRadius: 12, border: "1px solid #fecaca", background: "#fef2f2", padding: 12, color: "#991b1b", fontSize: 13, fontWeight: 700 }}>
+        <div className="legacy-error-callout" style={{ borderRadius: 12, padding: 12, fontSize: 13, fontWeight: 700 }}>
           {what3WordsPickerError}
         </div>
       ) : null}
 
       {what3WordsPickerLoading ? (
-        <div style={{ borderRadius: 12, border: "1px solid #e4e4e7", background: "#fafafa", padding: 12 }}>
+        <div className="legacy-modal-status" style={{ borderRadius: 12, padding: 12 }}>
           <Small>Resolving what3words for the selected map point...</Small>
         </div>
       ) : null}
@@ -4799,7 +4706,7 @@ function renderEstimateMapBoard() {
               checked={draftClientType === "Business"}
               onChange={(e) => setDraftClientType(e.currentTarget.checked ? "Business" : "Individual")}
             />
-            <span style={{ fontSize: 12, fontWeight: 800, color: "#3f3f46" }}>Business customer</span>
+            <span className="legacy-checkbox-label" style={{ fontSize: 12, fontWeight: 800 }}>Business customer</span>
           </label>
 
           <Small>Type: {draftClientType}</Small>
@@ -4846,7 +4753,7 @@ function renderEstimateMapBoard() {
         <Input value={draftProjectName} onChange={setDraftProjectName} placeholder="Project name" />
       </div>
 
-      <div style={{ marginTop: 10, borderTop: "1px solid #e4e4e7", paddingTop: 10 }}>
+      <div className="legacy-section-divider" style={{ marginTop: 10, paddingTop: 10 }}>
         <button
           type="button"
           onClick={() => setCustomerAddressSectionOpen((prev) => !prev)}
@@ -4860,8 +4767,8 @@ function renderEstimateMapBoard() {
             alignItems: "center",
             gap: 8,
             font: "inherit",
-            color: "#18181b",
           }}
+          className="legacy-section-toggle"
         >
           <H3>{customerAddressSectionOpen ? "▼" : "▶"} Customer address</H3>
         </button>
@@ -4909,7 +4816,7 @@ function renderEstimateMapBoard() {
         )}
       </div>
 
-      <div style={{ marginTop: 10, borderTop: "1px solid #e4e4e7", paddingTop: 10 }}>
+      <div className="legacy-section-divider" style={{ marginTop: 10, paddingTop: 10 }}>
         <button
           type="button"
           onClick={() => setInvoiceAddressSectionOpen((prev) => !prev)}
@@ -4923,8 +4830,8 @@ function renderEstimateMapBoard() {
             alignItems: "center",
             gap: 8,
             font: "inherit",
-            color: "#18181b",
           }}
+          className="legacy-section-toggle"
         >
           <H3>{invoiceAddressSectionOpen ? "▼" : "▶"} Invoice address</H3>
         </button>
@@ -5034,7 +4941,7 @@ function renderEstimateMapBoard() {
 
     {!clientsLoaded ? (
       <div style={{ display: "grid", gap: 12 }}>
-        <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", background: "#fafafa", padding: 16, display: "grid", gap: 8 }}>
+        <div className="legacy-modal-status" style={{ borderRadius: 16, padding: 16, display: "grid", gap: 8 }}>
           <H3>Loading clients</H3>
           <Small>Checking the live client list before starting estimate creation.</Small>
         </div>
@@ -5047,7 +4954,7 @@ function renderEstimateMapBoard() {
       </div>
     ) : clients.length === 0 ? (
       <div style={{ display: "grid", gap: 12 }}>
-        <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", background: "#fafafa", padding: 16, display: "grid", gap: 8 }}>
+        <div className="legacy-modal-status" style={{ borderRadius: 16, padding: 16, display: "grid", gap: 8 }}>
           <H3>No clients yet</H3>
           <Small>Add a client first, then continue straight into estimate creation.</Small>
         </div>
@@ -5068,7 +4975,7 @@ function renderEstimateMapBoard() {
           <select
             value={createEstimateClientId}
             onChange={(event) => setCreateEstimateClientId(event.currentTarget.value)}
-            style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14, background: "#fff" }}
+            className="operational-select"
           >
             {clients.map((client) => (
               <option key={client.id} value={client.id}>
@@ -5079,7 +4986,7 @@ function renderEstimateMapBoard() {
         </div>
 
         {selectedCreateEstimateClient && (
-          <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", background: "#fafafa", padding: 16, display: "grid", gap: 8 }}>
+          <div className="legacy-modal-status" style={{ borderRadius: 16, padding: 16, display: "grid", gap: 8 }}>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <Pill>{selectedCreateEstimateClient.clientRef || "No client ref"}</Pill>
               <Pill>{selectedCreateEstimateClient.projectName || "No project name"}</Pill>
@@ -5105,16 +5012,7 @@ function renderEstimateMapBoard() {
             {/* CUSTOMERS LIST */}
             {menu === "client_database" && view === "customers" && (
   <Card style={{ minHeight: 0, height: "100%", display: "flex", flexDirection: "column", minWidth: 0, overflow: "auto" }}>
-    <div
-      style={{
-        position: "sticky",
-        top: 0,
-        zIndex: 20,
-        background: "#fff",
-        paddingBottom: 12,
-        borderBottom: "1px solid #e4e4e7",
-      }}
-    >
+    <div className="clients-surface-header">
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div>
           <H2>Client Database</H2>
@@ -5158,7 +5056,7 @@ function renderEstimateMapBoard() {
               <select
                 value={clientDbSortField}
                 onChange={(e) => setClientDbSortField(e.currentTarget.value as "client_name" | "client_number" | "project_name")}
-                style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: "10px 12px", fontSize: 14, background: "#fff" }}
+                className="clients-surface-sort-select"
               >
                 <option value="client_name">Client Name</option>
                 <option value="client_number">Client Number</option>
@@ -5182,7 +5080,7 @@ function renderEstimateMapBoard() {
 
                 {/* Customers list */}
                 <div className="clients-surface-shell">
-                  {clientCollectionItems.length === 0 && <div style={{ fontSize: 13, color: "#71717a" }}>No clients yet.</div>}
+                  {clientCollectionItems.length === 0 && <div className="clients-surface-empty">No clients yet.</div>}
 
                   {clientCollectionItems.length > 0 &&
                     (clientCollectionViewMode === "list" ? (
@@ -5305,19 +5203,6 @@ function renderEstimateMapBoard() {
 
             {/* ESTIMATE WORKSPACE */}
             {view === "estimate_workspace" && selectedClient && selectedEstimate && (
-              showPositionWizard ? (
-                <Card style={{ minHeight: 520, padding: 12 }}>
-                  <div style={{ display: "grid", gap: 12 }}>
-                    <H2>Estimate Configurator Disabled</H2>
-                    <Small>{DISABLED_ESTIMATE_CONFIGURATOR_MESSAGE}</Small>
-                    <div>
-                      <Button variant="secondary" onClick={() => setShowPositionWizard(false)}>
-                        Back to Estimate
-                      </Button>
-                    </div>
-                  </div>
-                </Card>
-              ) : (
                 <Card style={{ minHeight: 520, display: "flex", flexDirection: "column" }}>
                   <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
                     <div>
@@ -5343,17 +5228,18 @@ function renderEstimateMapBoard() {
                   </div>
 
                   <div style={{ marginTop: 16 }}>
-                    <Button variant="primary" onClick={startAddPosition} style={{ width: "100%" }}>
-                      Add Position
+                    <Button variant="secondary" disabled style={{ width: "100%" }}>
+                      Add Position Disabled
                     </Button>
+                    <Small>{DISABLED_ESTIMATE_CONFIGURATOR_MESSAGE}</Small>
                   </div>
 
-                  <div style={{ marginTop: 16, borderTop: "1px solid #e4e4e7", paddingTop: 12, flex: 1 }}>
+                  <div className="legacy-section-divider" style={{ marginTop: 16, paddingTop: 12, flex: 1 }}>
                     <H3>Positions</H3>
                     <Small>Positions added to this estimate appear below.</Small>
 
                     <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-                      {selectedEstimate.positions.length === 0 && <div style={{ fontSize: 13, color: "#71717a" }}>No positions yet.</div>}
+                      {selectedEstimate.positions.length === 0 && <div style={{ fontSize: 13, color: "var(--color-text-muted)" }}>No positions yet.</div>}
 
                       {(() => {
                       const totals = estimateCommercialTotals(selectedEstimate);
@@ -5368,33 +5254,21 @@ function renderEstimateMapBoard() {
                               gap: 10,
                             }}
                           >
-                            <div
-                         style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-                              <div
-                         style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total mÂ²</div>
-                              <div
-                         style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMeasure(totals.totalSquareMetres)}</div>
+                            <div className="operational-stat">
+                              <div className="operational-stat__label">Total mÂ²</div>
+                              <div className="operational-stat__value">{formatMeasure(totals.totalSquareMetres)}</div>
                             </div>
-                            <div
-                         style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-                              <div
-                         style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Linear metreage</div>
-                              <div
-                         style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMeasure(totals.totalLinearMetres)}</div>
+                            <div className="operational-stat">
+                              <div className="operational-stat__label">Linear metreage</div>
+                              <div className="operational-stat__value">{formatMeasure(totals.totalLinearMetres)}</div>
                             </div>
-                            <div
-                         style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-                              <div
-                         style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Total quantity</div>
-                              <div
-                         style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{totals.totalQty}</div>
+                            <div className="operational-stat">
+                              <div className="operational-stat__label">Total quantity</div>
+                              <div className="operational-stat__value">{totals.totalQty}</div>
                             </div>
-                            <div
-                         style={{ borderRadius: 12, border: "1px solid #e4e4e7", padding: 12, background: "#fafafa" }}>
-                              <div
-                         style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "#71717a", marginBottom: 4 }}>Estimate total</div>
-                              <div
-                         style={{ fontSize: 20, fontWeight: 900, color: "#18181b" }}>{formatMoney(totals.estimateTotal)}</div>
+                            <div className="operational-stat">
+                              <div className="operational-stat__label">Estimate total</div>
+                              <div className="operational-stat__value">{formatMoney(totals.estimateTotal)}</div>
                             </div>
                           </div>
 
@@ -5404,18 +5278,18 @@ function renderEstimateMapBoard() {
                               const lineTotal = Number(p.itemPrice || 0) * Math.max(1, Number(p.qty || 1));
                               return (
                                 <div
-                         key={p.id} style={{ borderRadius: 14, border: "1px solid #e4e4e7", padding: 10, background: "#fff" }}>
+                         key={p.id} className="operational-surface" style={{ padding: 10 }}>
                                   <div
                          style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                                     <div
                          style={{ fontWeight: 900, fontSize: 13 }}>{p.positionRef}</div>
                                     <div
-                         style={{ fontSize: 12, color: "#71717a" }}>
+                         style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
                                       Qty {p.qty} {p.fieldsY}
                                     </div>
                                   </div>
                                   <div
-                         style={{ marginTop: 4, fontSize: 12, color: "#71717a" }}>
+                         style={{ marginTop: 4, fontSize: 12, color: "var(--color-text-muted)" }}>
                                     {p.roomName || (p.useEstimateDefaults ? "Using estimate defaults" : "Overrides")}
                                   </div>
 
@@ -5447,13 +5321,12 @@ function renderEstimateMapBoard() {
                                         style={{
                                           width: "100%",
                                           borderRadius: 12,
-                                          border: "1px solid #e4e4e7",
                                           padding: "10px 12px",
                                           fontSize: 14,
-                                          background: "#fafafa",
                                           fontWeight: 800,
                                           textAlign: "right",
                                         }}
+                                        className="legacy-modal-status"
                                       >
                                         {formatMoney(lineTotal)}
                                       </div>
@@ -5469,7 +5342,6 @@ function renderEstimateMapBoard() {
                   </div>
                 </div>
                 </Card>
-              )
             )}
 
             {/* CLIENT DATABASE VIEW FALLBACK (Phase 4F) */}
@@ -5496,16 +5368,7 @@ function renderEstimateMapBoard() {
                     <Small>Configure default loading behaviour for QuoteSync.</Small>
                   </div>
 
-                  <div
-                    style={{
-                      borderRadius: 16,
-                      border: "1px solid #e4e4e7",
-                      background: "#fff",
-                      padding: 16,
-                      display: "grid",
-                      gap: 12,
-                    }}
-                  >
+                  <div className="legacy-surface-card" style={{ padding: 16, display: "grid", gap: 12 }}>
                     <div
                        style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                       <div
@@ -5529,7 +5392,7 @@ function renderEstimateMapBoard() {
                     </div>
 
 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-  <span style={{ fontSize: 14, fontWeight: 700, color: "#18181b" }}>Load Demo Clients</span>
+  <span className="legacy-setting-label" style={{ fontSize: 14, fontWeight: 700 }}>Load Demo Clients</span>
   <Toggle
     value={systemSettings.loadDemoClients}
     onChange={(checked) =>
@@ -5542,7 +5405,7 @@ function renderEstimateMapBoard() {
 </div>
 
 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-  <span style={{ fontSize: 14, fontWeight: 700, color: "#18181b" }}>Load Demo Estimates</span>
+  <span className="legacy-setting-label" style={{ fontSize: 14, fontWeight: 700 }}>Load Demo Estimates</span>
   <Toggle
     value={systemSettings.loadDemoEstimates}
     onChange={(checked) =>
@@ -5556,7 +5419,7 @@ function renderEstimateMapBoard() {
 
                     <div
                        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-  <span style={{ fontSize: 14, fontWeight: 700, color: "#18181b" }}>Load Demo Forecast</span>
+  <span className="legacy-setting-label" style={{ fontSize: 14, fontWeight: 700 }}>Load Demo Forecast</span>
   <Toggle
     value={systemSettings.loadDemoForecast}
     onChange={(checked) =>

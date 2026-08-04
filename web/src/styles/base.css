@@ -2,14 +2,29 @@ html {
   font-family: var(--font-family-base);
   line-height: var(--line-height-base);
   color: var(--color-text-primary);
-  background: var(--color-surface);
+  background: var(--app-shell-background);
 }
 
 body {
   font-family: var(--font-family-base);
   line-height: var(--line-height-base);
   color: var(--color-text-primary);
-  background: var(--color-surface);
+  background: var(--app-shell-background);
+}
+
+:root[data-qs-theme="light"] h1,
+:root[data-qs-theme="light"] h2,
+:root[data-qs-theme="light"] h3,
+:root[data-qs-theme="light"] h4,
+:root[data-qs-theme="light"] h5,
+:root[data-qs-theme="light"] h6,
+:root[data-qs-theme="dark"] h1,
+:root[data-qs-theme="dark"] h2,
+:root[data-qs-theme="dark"] h3,
+:root[data-qs-theme="dark"] h4,
+:root[data-qs-theme="dark"] h5,
+:root[data-qs-theme="dark"] h6 {
+  color: var(--color-text-primary);
 }
 
 a {
@@ -22,6 +37,17 @@ input,
 select,
 textarea {
   font: inherit;
+}
+
+input,
+select,
+textarea {
+  color: var(--color-text-primary);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-text-muted);
 }
 
 img,
@@ -44,5 +70,5 @@ button {
 }
 
 ::selection {
-  background: rgba(85, 185, 72, 0.2);
+  background: color-mix(in srgb, var(--color-brand-primary) 24%, transparent);
 }
