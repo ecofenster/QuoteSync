@@ -8,6 +8,9 @@ import followupsRoute from './routes/followups.js';
 import notesRoute from './routes/notes.js';
 import settingsRoute from './routes/settings.js';
 import configuratorCatalogRoute from './routes/configuratorCatalog.js';
+import { createSupplierQuotesRouter } from './routes/supplierQuotes.js';
+import { createSupplierImportLabRouter } from './routes/supplierImportLab.js';
+import { dbPromise } from './db.js';
 
 const app = express();
 
@@ -22,6 +25,8 @@ app.use('/api/followups', followupsRoute);
 app.use('/api/notes', notesRoute);
 app.use('/api/settings', settingsRoute);
 app.use('/api/configurator-catalog', configuratorCatalogRoute);
+app.use('/api/estimates', await createSupplierQuotesRouter({ dbPromise }));
+app.use('/api/admin/supplier-import-lab', await createSupplierImportLabRouter({ dbPromise }));
 
 app.get('/api/fx-rate', async (req, res) => {
   const from = String(req.query.from || 'EUR').trim() || 'EUR';

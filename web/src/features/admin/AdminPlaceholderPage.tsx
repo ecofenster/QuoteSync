@@ -5,6 +5,7 @@ import { apiFetch } from "../../services/api/apiClient";
 import type { GroupedSystemSettings, SystemSettingRecord } from "../../types/systemSettings";
 import { H3, Small } from "../estimatePicker/tabs/shared";
 import AdminConfiguratorCatalogWorkspace from "./AdminConfiguratorCatalogWorkspace";
+import AdminSupplierQuoteImportBeta from "./AdminSupplierQuoteImportBeta";
 import "./AdminPlaceholderPage.css";
 
 type AdminSectionKey =
@@ -451,10 +452,7 @@ export default function AdminPlaceholderPage(props: {
         </div>
       </div>
     ) : activeSection === "feature_controls" ? (
-      <AdminSectionPlaceholder
-        title="Feature Controls"
-        description="Dedicated feature access and capability controls will live here. This phase keeps the main settings section active first."
-      />
+      <AdminSupplierQuoteImportBeta />
     ) : activeSection === "configurator_controls" ? (
       <AdminConfiguratorCatalogWorkspace
         initialTab={props.initialConfiguratorTab}

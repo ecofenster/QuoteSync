@@ -28,6 +28,15 @@ export function generateManagedStorageKey({ estimateId, revisionId, attachmentId
   return ['estimates', safe[0], 'supplier-quotes', safe[1], safe[2]].join('/');
 }
 
+export function generateLabManagedStorageKey({ sessionId, attachmentId = randomUUID(), fileKey = randomUUID() }) {
+  const safe = [sessionId, attachmentId, fileKey].map((segment) => {
+    const value = String(segment || '');
+    if (!/^[A-Za-z0-9_-]+$/.test(value)) throw new Error('Managed storage key IDs contain unsafe characters.');
+    return value;
+  });
+  return ['lab', safe[0], safe[1], safe[2]].join('/');
+}
+
 export function resolveManagedPath(storageKey, root = resolveAttachmentRoot()) {
   if (typeof storageKey !== 'string' || !storageKey.trim()) throw new Error('Storage key is required.');
   if (path.isAbsolute(storageKey) || /^[A-Za-z]:[\\/]/.test(storageKey)) throw new Error('Absolute storage keys are forbidden.');

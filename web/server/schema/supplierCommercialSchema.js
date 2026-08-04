@@ -1,4 +1,31 @@
 const tables = [
+  `CREATE TABLE IF NOT EXISTS supplier_import_lab_sessions (
+    id TEXT PRIMARY KEY,
+    supplier_code TEXT,
+    supplier_name TEXT NOT NULL CHECK (length(trim(supplier_name)) > 0),
+    supplier_quotation_number TEXT,
+    supplier_revision TEXT,
+    full_quotation_reference TEXT,
+    quotation_date TEXT,
+    currency TEXT NOT NULL CHECK (length(currency) = 3 AND currency = upper(currency)),
+    status TEXT NOT NULL CHECK (status IN ('draft','uploaded','extraction_pending','extracted','failed','archived')),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    archived_at TEXT
+  )`,
+  `CREATE TABLE IF NOT EXISTS supplier_import_lab_attachments (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('original_quote','supporting_document','supplier_drawing')),
+    original_file_name TEXT NOT NULL,
+    media_type TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL CHECK (size_bytes >= 0),
+    sha256 TEXT NOT NULL CHECK (length(sha256) = 64 AND sha256 = lower(sha256)),
+    storage_key TEXT NOT NULL UNIQUE,
+    parser_eligible INTEGER NOT NULL CHECK (parser_eligible IN (0,1)),
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES supplier_import_lab_sessions(id) ON DELETE CASCADE
+  )`,
   `CREATE TABLE IF NOT EXISTS supplier_quotes (
     id TEXT PRIMARY KEY,
     estimate_id TEXT NOT NULL,
@@ -286,6 +313,10 @@ const tables = [
 ];
 
 const indexes = [
+  'CREATE INDEX IF NOT EXISTS idx_supplier_import_lab_sessions_status ON supplier_import_lab_sessions(status)',
+  'CREATE INDEX IF NOT EXISTS idx_supplier_import_lab_sessions_created ON supplier_import_lab_sessions(created_at)',
+  'CREATE INDEX IF NOT EXISTS idx_supplier_import_lab_sessions_archive ON supplier_import_lab_sessions(archived_at)',
+  'CREATE INDEX IF NOT EXISTS idx_supplier_import_lab_attachments_session ON supplier_import_lab_attachments(session_id, created_at)',
   'CREATE INDEX IF NOT EXISTS idx_supplier_quotes_estimate ON supplier_quotes(estimate_id, archived_at)',
   'CREATE INDEX IF NOT EXISTS idx_supplier_revisions_quote ON supplier_quote_revisions(estimate_id, supplier_quote_id, revision_sequence)',
   'CREATE INDEX IF NOT EXISTS idx_supplier_revisions_lifecycle ON supplier_quote_revisions(estimate_id, lifecycle_status)',
@@ -312,6 +343,7 @@ export async function initializeSupplierCommercialSchema(db) {
 }
 
 export const supplierCommercialTableNames = Object.freeze([
+  'supplier_import_lab_sessions', 'supplier_import_lab_attachments',
   'supplier_quotes', 'supplier_quote_revisions', 'supplier_quote_attachments',
   'supplier_quote_import_runs', 'supplier_quote_import_run_attachments',
   'supplier_quote_positions', 'supplier_specification_items', 'supplier_quote_extras',
