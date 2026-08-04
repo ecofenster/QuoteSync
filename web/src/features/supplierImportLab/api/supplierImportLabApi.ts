@@ -1,5 +1,5 @@
 import { apiFetch, apiUrl, extractApiErrorMessage } from "../../../services/api/apiClient";
-import type { SupplierImportLabAttachment, SupplierImportLabAttachmentRole, SupplierImportLabExtractedRow, SupplierImportLabExtractionRun, SupplierImportLabSession } from "../domain/supplierImportLab.types";
+import type { SupplierImportLabAttachment, SupplierImportLabAttachmentRole, SupplierImportLabExtractedRow, SupplierImportLabExtractionRun, SupplierImportLabRowDraft, SupplierImportLabSession } from "../domain/supplierImportLab.types";
 
 const base = "/api/admin/supplier-import-lab/sessions";
 export type CreateLabSessionInput = { supplierName: string; supplierCode?: string; supplierQuotationNumber?: string; supplierRevision?: string; fullQuotationReference?: string; quotationDate?: string; currency: string };
@@ -19,4 +19,5 @@ export const supplierImportLabApi = {
   listExtractedRows: (sessionId: string, runId: string) => apiFetch(`${base}/${encodeURIComponent(sessionId)}/extraction-runs/${encodeURIComponent(runId)}/rows`) as Promise<SupplierImportLabExtractedRow[]>,
   selectExtractionRun: (sessionId: string, runId: string) => apiFetch(`${base}/${encodeURIComponent(sessionId)}/extraction-runs/${encodeURIComponent(runId)}/select`, { method: "POST" }) as Promise<SupplierImportLabExtractionRun>,
   correctExtractedRow: (sessionId: string, rowId: string, input: Pick<SupplierImportLabExtractedRow, "displayReference" | "widthMm" | "heightMm" | "quantity" | "unitPrice" | "totalPrice">) => apiFetch(`${base}/${encodeURIComponent(sessionId)}/extracted-rows/${encodeURIComponent(rowId)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) }) as Promise<SupplierImportLabExtractedRow>,
+  bulkCorrectExtractedRows: (sessionId: string, rows: SupplierImportLabRowDraft[]) => apiFetch(`${base}/${encodeURIComponent(sessionId)}/extracted-rows`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rows }) }) as Promise<{ rows: SupplierImportLabExtractedRow[] }>,
 };

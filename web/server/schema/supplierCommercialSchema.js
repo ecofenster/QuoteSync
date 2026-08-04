@@ -78,6 +78,8 @@ const tables = [
       created_at TEXT NOT NULL,
       corrected_at TEXT,
       corrected_by TEXT,
+      review_warnings_json TEXT NOT NULL DEFAULT '[]',
+      selected_for_future_use INTEGER NOT NULL DEFAULT 1 CHECK (selected_for_future_use IN (0,1)),
       original_extracted_snapshot_json TEXT NOT NULL,
       FOREIGN KEY (session_id) REFERENCES supplier_import_lab_sessions(id) ON DELETE CASCADE,
       FOREIGN KEY (extraction_run_id) REFERENCES supplier_import_lab_extraction_runs(id) ON DELETE CASCADE,
@@ -401,6 +403,9 @@ const indexes = [
 export async function initializeSupplierCommercialSchema(db) {
   await db.exec('PRAGMA foreign_keys = ON');
   for (const statement of tables) await db.exec(statement);
+  const labRowColumns = await db.all('PRAGMA table_info(supplier_import_lab_extracted_rows)');
+  if (!labRowColumns.some((column) => column.name === 'review_warnings_json')) await db.exec("ALTER TABLE supplier_import_lab_extracted_rows ADD COLUMN review_warnings_json TEXT NOT NULL DEFAULT '[]'");
+  if (!labRowColumns.some((column) => column.name === 'selected_for_future_use')) await db.exec('ALTER TABLE supplier_import_lab_extracted_rows ADD COLUMN selected_for_future_use INTEGER NOT NULL DEFAULT 1 CHECK (selected_for_future_use IN (0,1))');
   for (const statement of indexes) await db.exec(statement);
 }
 
