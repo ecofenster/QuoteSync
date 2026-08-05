@@ -6,6 +6,7 @@ import type { GroupedSystemSettings, SystemSettingRecord } from "../../types/sys
 import { H3, Small } from "../estimatePicker/tabs/shared";
 import AdminConfiguratorCatalogWorkspace from "./AdminConfiguratorCatalogWorkspace";
 import AdminSupplierQuoteImportBeta from "./AdminSupplierQuoteImportBeta";
+import AdminIntegrationsPanel from "./AdminIntegrationsPanel";
 import "./AdminPlaceholderPage.css";
 
 type AdminSectionKey =
@@ -465,10 +466,7 @@ export default function AdminPlaceholderPage(props: {
         description="Brand identity, logo management, and document branding will be implemented here in a later phase."
       />
     ) : activeSection === "integrations" ? (
-      <AdminSectionPlaceholder
-        title="Integrations"
-        description="Third-party and API integration management will move here once the first settings-driven controls are in place."
-      />
+      <AdminIntegrationsPanel />
     ) : (
       <AdminSectionPlaceholder
         title="Supplier / Product Defaults"

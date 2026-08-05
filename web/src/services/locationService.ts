@@ -124,6 +124,10 @@ async function convertWhat3Words(words: string, apiKey: string) {
   }
 }
 
+export async function resolveWhat3WordsCoordinates(words: string, apiKey: string) {
+  return convertWhat3Words(normalizeWhat3Words(words), apiKey);
+}
+
 export async function convertCoordinatesToWhat3Words(lat: number, lng: number, apiKey: string) {
   if (!apiKey) return "";
   try {

@@ -10,6 +10,7 @@ import settingsRoute from './routes/settings.js';
 import configuratorCatalogRoute from './routes/configuratorCatalog.js';
 import { createSupplierQuotesRouter } from './routes/supplierQuotes.js';
 import { createSupplierImportLabRouter } from './routes/supplierImportLab.js';
+import { createProjectCalculatorLabRouter } from './routes/projectCalculatorLab.js';
 import { dbPromise } from './db.js';
 
 const app = express();
@@ -27,6 +28,7 @@ app.use('/api/settings', settingsRoute);
 app.use('/api/configurator-catalog', configuratorCatalogRoute);
 app.use('/api/estimates', await createSupplierQuotesRouter({ dbPromise }));
 app.use('/api/admin/supplier-import-lab', await createSupplierImportLabRouter({ dbPromise }));
+app.use('/api/admin/project-calculator-lab', await createProjectCalculatorLabRouter({ dbPromise }));
 
 app.get('/api/fx-rate', async (req, res) => {
   const from = String(req.query.from || 'EUR').trim() || 'EUR';

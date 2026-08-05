@@ -428,6 +428,88 @@ const tables = [
     FOREIGN KEY (calculator_id, estimate_id) REFERENCES project_calculators(id, estimate_id) ON DELETE CASCADE,
     FOREIGN KEY (scenario_id, estimate_id) REFERENCES pricing_scenarios(id, estimate_id) ON DELETE CASCADE
   )`,
+  `CREATE TABLE IF NOT EXISTS project_calculator_lab_scenarios (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+    currency TEXT NOT NULL CHECK (length(currency) = 3 AND currency = upper(currency)),
+    package_code TEXT NOT NULL CHECK (package_code IN ('supply_only','support','full_installation')),
+    import_lab_session_id TEXT NOT NULL,
+    extraction_run_id TEXT NOT NULL,
+    source_attachment_id TEXT NOT NULL,
+    installation_opening_count INTEGER NOT NULL DEFAULT 0 CHECK (installation_opening_count >= 0),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (import_lab_session_id) REFERENCES supplier_import_lab_sessions(id),
+    FOREIGN KEY (extraction_run_id) REFERENCES supplier_import_lab_extraction_runs(id),
+    FOREIGN KEY (source_attachment_id) REFERENCES supplier_import_lab_attachments(id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS project_calculator_lab_product_rows (
+    id TEXT PRIMARY KEY,
+    scenario_id TEXT NOT NULL,
+    source_row_id TEXT NOT NULL,
+    source_snapshot_json TEXT NOT NULL,
+    display_reference TEXT NOT NULL,
+    product_class TEXT NOT NULL,
+    quantity INTEGER NOT NULL CHECK (quantity > 0),
+    width_mm INTEGER NOT NULL CHECK (width_mm > 0),
+    height_mm INTEGER NOT NULL CHECK (height_mm > 0),
+    total_price_amount TEXT,
+    currency TEXT NOT NULL,
+    area_square_metres TEXT NOT NULL,
+    frame_perimeter_metres TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (scenario_id, source_row_id),
+    FOREIGN KEY (scenario_id) REFERENCES project_calculator_lab_scenarios(id) ON DELETE CASCADE,
+    FOREIGN KEY (source_row_id) REFERENCES supplier_import_lab_extracted_rows(id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS project_calculator_lab_supplier_costs (
+    id TEXT PRIMARY KEY,
+    scenario_id TEXT NOT NULL,
+    source_additional_cost_id TEXT NOT NULL,
+    source_snapshot_json TEXT NOT NULL,
+    category TEXT NOT NULL,
+    label TEXT NOT NULL,
+    amount TEXT,
+    currency TEXT,
+    created_at TEXT NOT NULL,
+    UNIQUE (scenario_id, source_additional_cost_id),
+    FOREIGN KEY (scenario_id) REFERENCES project_calculator_lab_scenarios(id) ON DELETE CASCADE,
+    FOREIGN KEY (source_additional_cost_id) REFERENCES supplier_import_lab_additional_cost_items(id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS project_calculator_lab_package_items (
+    id TEXT PRIMARY KEY,
+    scenario_id TEXT NOT NULL,
+    package_code TEXT NOT NULL,
+    catalogue_code TEXT NOT NULL,
+    label TEXT NOT NULL,
+    included INTEGER NOT NULL CHECK (included IN (0,1)),
+    unit_cost_amount TEXT,
+    currency TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (scenario_id) REFERENCES project_calculator_lab_scenarios(id) ON DELETE CASCADE
+  )`,
+  `CREATE TABLE IF NOT EXISTS project_calculator_lab_route_snapshots (
+    id TEXT PRIMARY KEY,
+    scenario_id TEXT NOT NULL,
+    direction TEXT NOT NULL CHECK (direction IN ('office_to_site','site_to_office')),
+    origin_label TEXT NOT NULL,
+    destination_label TEXT NOT NULL,
+    origin_lat TEXT NOT NULL,
+    origin_lng TEXT NOT NULL,
+    destination_lat TEXT NOT NULL,
+    destination_lng TEXT NOT NULL,
+    distance_km TEXT,
+    duration_minutes INTEGER,
+    traffic_duration_minutes INTEGER,
+    calculated_at TEXT NOT NULL,
+    integration TEXT NOT NULL,
+    manually_overridden INTEGER NOT NULL CHECK (manually_overridden IN (0,1)),
+    override_reason TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (scenario_id) REFERENCES project_calculator_lab_scenarios(id) ON DELETE CASCADE
+  )`,
 ];
 
 const indexes = [
@@ -459,6 +541,11 @@ const indexes = [
   'CREATE INDEX IF NOT EXISTS idx_project_cost_items_supplier_source ON project_cost_items(estimate_id, supplier_quote_revision_id, supplier_position_id)',
   'CREATE INDEX IF NOT EXISTS idx_pricing_scenarios_calculator ON pricing_scenarios(estimate_id, calculator_id, status)',
   'CREATE INDEX IF NOT EXISTS idx_calculator_snapshots_scenario ON calculator_snapshots(estimate_id, scenario_id, created_at)',
+  'CREATE INDEX IF NOT EXISTS idx_calculator_lab_scenarios_run ON project_calculator_lab_scenarios(import_lab_session_id, extraction_run_id)',
+  'CREATE INDEX IF NOT EXISTS idx_calculator_lab_rows_scenario ON project_calculator_lab_product_rows(scenario_id)',
+  'CREATE INDEX IF NOT EXISTS idx_calculator_lab_costs_scenario ON project_calculator_lab_supplier_costs(scenario_id)',
+  'CREATE INDEX IF NOT EXISTS idx_calculator_lab_package_scenario ON project_calculator_lab_package_items(scenario_id, package_code)',
+  'CREATE INDEX IF NOT EXISTS idx_calculator_lab_routes_scenario ON project_calculator_lab_route_snapshots(scenario_id, direction, calculated_at)',
 ];
 
 export async function initializeSupplierCommercialSchema(db) {
@@ -480,4 +567,7 @@ export const supplierCommercialTableNames = Object.freeze([
   'supplier_position_match_proposals', 'supplier_quote_review_decisions',
   'supplier_position_applications', 'project_calculators', 'project_cost_items',
   'pricing_scenarios', 'calculator_snapshots',
+  'project_calculator_lab_scenarios', 'project_calculator_lab_product_rows',
+  'project_calculator_lab_supplier_costs', 'project_calculator_lab_package_items',
+  'project_calculator_lab_route_snapshots',
 ]);
