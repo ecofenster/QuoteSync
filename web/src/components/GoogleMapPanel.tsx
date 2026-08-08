@@ -18,18 +18,22 @@ declare global {
   }
 }
 
+function resolvedToken(name: string) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
 function markerColor(variant: GoogleMapMarkerVariant | undefined) {
-  if (variant === "installation") return "#2563eb";
-  if (variant === "order") return "#16a34a";
-  if (variant === "lost") return "#dc2626";
-  return "#18181b";
+  if (variant === "installation") return resolvedToken("--qs-operational-installations");
+  if (variant === "order") return resolvedToken("--qs-semantic-success");
+  if (variant === "lost") return resolvedToken("--qs-semantic-error");
+  return resolvedToken("--qs-theme-text");
 }
 
 function markerIcon(variant: GoogleMapMarkerVariant | undefined) {
   const fill = markerColor(variant);
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 34 34">
-      <circle cx="17" cy="17" r="11" fill="${fill}" stroke="#ffffff" stroke-width="4" />
+      <circle cx="17" cy="17" r="11" fill="${fill}" stroke="${resolvedToken("--qs-brand-white")}" stroke-width="4" />
     </svg>
   `;
   return {
@@ -92,6 +96,22 @@ export default function GoogleMapPanel({
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
   const [loadError, setLoadError] = useState<string>("");
 
+  const buildInfoWindowContent = (item: GoogleMapMarkerItem) => {
+    const content = document.createElement("div");
+    content.className = "google-map-panel__info";
+    const title = document.createElement("div");
+    title.className = "google-map-panel__info-title";
+    title.textContent = item.title;
+    content.appendChild(title);
+    if (item.subtitle) {
+      const subtitle = document.createElement("div");
+      subtitle.className = "google-map-panel__info-subtitle";
+      subtitle.textContent = item.subtitle;
+      content.appendChild(subtitle);
+    }
+    return content;
+  };
+
   useEffect(() => {
     let cancelled = false;
 
@@ -146,12 +166,7 @@ loadGoogleMaps(apiKey)
 
     const openInfoWindow = (item: GoogleMapMarkerItem, marker: google.maps.Marker) => {
       if (!infoWindowRef.current) return;
-      const subtitleHtml = item.subtitle
-        ? `<div style="margin-top:4px;color:#52525b;font-size:12px;line-height:1.4;">${item.subtitle}</div>`
-        : "";
-      infoWindowRef.current.setContent(
-        `<div style="min-width:220px;padding:2px 4px;"><div style="font-weight:800;color:#18181b;font-size:13px;line-height:1.35;">${item.title}</div>${subtitleHtml}</div>`
-      );
+      infoWindowRef.current.setContent(buildInfoWindowContent(item) as unknown as string);
       infoWindowRef.current.open({
         map: mapRef.current!,
         anchor: marker,
@@ -197,12 +212,7 @@ loadGoogleMaps(apiKey)
     const selectedMarker = markersRef.current.find((entry) => entry.id === selectedId)?.marker;
     if (!selectedMarker || !infoWindowRef.current) return;
 
-    const subtitleHtml = selected.subtitle
-      ? `<div style="margin-top:4px;color:#52525b;font-size:12px;line-height:1.4;">${selected.subtitle}</div>`
-      : "";
-    infoWindowRef.current.setContent(
-      `<div style="min-width:220px;padding:2px 4px;"><div style="font-weight:800;color:#18181b;font-size:13px;line-height:1.35;">${selected.title}</div>${subtitleHtml}</div>`
-    );
+    infoWindowRef.current.setContent(buildInfoWindowContent(selected) as unknown as string);
     infoWindowRef.current.open({
       map: mapRef.current,
       anchor: selectedMarker,
@@ -211,49 +221,23 @@ loadGoogleMaps(apiKey)
 
   if (loadError) {
     return (
-      <div style={{ borderRadius: 14, border: "1px dashed var(--color-border)", background: "var(--color-surface)", minHeight: height, padding: 16 }}>
-        <div style={{ fontSize: 14, fontWeight: 800, color: "var(--color-text-primary)" }}>Google Maps unavailable</div>
-        <div style={{ marginTop: 6, fontSize: 12, color: "var(--color-text-secondary)" }}>{loadError}</div>
+      <div className="google-map-panel google-map-panel--error" data-height={height >= 900 ? "tall" : "standard"}>
+        <div className="qs-migrated-118">Google Maps unavailable</div>
+        <div className="qs-migrated-119">{loadError}</div>
       </div>
     );
   }
 
   return (
-    <div style={{ position: "relative", width: "100%", minHeight: height }}>
+    <div className="google-map-panel" data-height={height >= 900 ? "tall" : "standard"}>
       <div
         ref={mapElementRef}
-        style={{
-          width: "100%",
-          minHeight: height,
-          borderRadius: 14,
-          overflow: "hidden",
-          border: "1px solid var(--color-border)",
-          background: "var(--color-surface)",
-        }}
+        className="google-map-panel__canvas"
       />
       {!items.length && (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            textAlign: "center",
-            pointerEvents: "none",
-            padding: 16,
-          }}
+        <div className="qs-migrated-120"
         >
-          <div
-            style={{
-              fontSize: 13,
-              fontWeight: 700,
-              color: "var(--color-text-secondary)",
-              background: "var(--ui-popover-background, var(--color-surface))",
-              border: "1px solid var(--color-border)",
-              borderRadius: 12,
-              padding: "10px 14px",
-            }}
+          <div className="qs-migrated-121"
           >
             {emptyText}
           </div>

@@ -58,8 +58,7 @@ export default function WindowRenderer(props: Props) {
     <svg
       viewBox={`0 0 ${drawing.viewW} ${drawing.viewH}`}
       width="100%"
-      height="100%"
-      style={{ display: "block", width: "100%", height: "100%" }}
+      height="100%" className="qs-migrated-228"
       aria-label={alt}
       role="img"
     >

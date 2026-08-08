@@ -1,6 +1,7 @@
 @import "./styles/tokens.css";
 @import "./styles/base.css";
 @import "./styles/utilities.css";
+@import "./styles/migrated-inline.css";
 @import "./styles/ui.css";
 
 /* QuoteSync baseline: theme-neutral mount point + prevent horizontal overflow */

@@ -142,26 +142,21 @@ function Button({
   onClick,
   variant = "primary",
   disabled,
-  style,
+  className = "",
 }: {
   children: React.ReactNode;
   onClick?: () => void;
   variant?: "primary" | "secondary" | "outline";
   disabled?: boolean;
-  style?: React.CSSProperties;
+  className?: string;
 }) {
-  const className = `ep-button ${variant === "primary" ? "ep-button--primary" : variant === "outline" ? "ep-button--outline" : "ep-button--secondary"}`;
+  const variantClassName = `ep-button ${variant === "primary" ? "ep-button--primary" : variant === "outline" ? "ep-button--outline" : "ep-button--secondary"}`;
   return (
     <button
       type="button"
       disabled={!!disabled}
       onClick={onClick}
-      className={className}
-      style={{
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.55 : 1,
-        ...style,
-      }}
+      className={`${variantClassName} ${className}`.trim()}
     >
       {children}
     </button>
@@ -169,16 +164,16 @@ function Button({
 }
 
 function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  const { style, disabled, ...rest } = props;
-  return <input {...rest} className="ep-shared-input" disabled={disabled} style={style} />;
+  const { disabled, className = "", ...rest } = props;
+  return <input {...rest} className={`ep-shared-input ${className}`.trim()} disabled={disabled} />;
 }
 
 function Pill({ children }: { children: React.ReactNode }) {
   return <span className="ep-pill-base">{children}</span>;
 }
 
-function Small({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
-  return <div className="ep-small" style={style}>{children}</div>;
+function Small({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <div className={`ep-small ${className}`.trim()}>{children}</div>;
 }
 
 function H3({ children }: { children: React.ReactNode }) {
@@ -189,28 +184,6 @@ function noteCategoryLabel(category: "general" | "follow_up" | "service" | "inst
   if (category === "follow_up") return "Follow Up";
   if (category === "client_request") return "Client Request";
   return category.charAt(0).toUpperCase() + category.slice(1);
-}
-
-function noteCategoryPillStyle(category: "general" | "follow_up" | "service" | "installer" | "client_request"): React.CSSProperties {
-  if (category === "follow_up") return { background: "#eef2ff", color: "#3730a3", border: "1px solid #c7d2fe" };
-  if (category === "service") return { background: "#ecfeff", color: "#155e75", border: "1px solid #a5f3fc" };
-  if (category === "installer") return { background: "#f0fdf4", color: "#166534", border: "1px solid #bbf7d0" };
-  if (category === "client_request") return { background: "#fff7ed", color: "#9a3412", border: "1px solid #fed7aa" };
-  return { background: "var(--color-surface-muted)", color: "var(--color-text-primary)", border: "1px solid var(--color-border)" };
-}
-
-const labelStyle: React.CSSProperties = {
-  fontSize: 12,
-  fontWeight: 800,
-  color: "var(--color-text-secondary)",
-  marginBottom: 6,
-};
-
-function qsOutcomeStyle(outcome: string): React.CSSProperties {
-  const o = (outcome || "").toLowerCase();
-  if (o === "order") return { background: "#22c55e", color: "#000", fontWeight: 800, border: "1px solid #22c55e" };
-  if (o === "lost") return { background: "#ef4444", color: "#fff", fontWeight: 800, border: "1px solid #ef4444" };
-  return { background: "#f59e0b", color: "#000", fontWeight: 800, border: "1px solid #f59e0b" };
 }
 
 function ensureOrderMeta(e: any) {
@@ -244,9 +217,7 @@ function OrderTimelineBar({ timeline }: { timeline: any[] }) {
         <div className="ep-timeline-label">Order timeline</div>
         <div className="ep-timeline-label">{completedCount}/{timeline.length} complete ({percent}%)</div>
       </div>
-      <div className="ep-timeline-progress">
-        <div style={{ width: `${percent}%`, height: "100%", background: "#22c55e" }} />
-      </div>
+      <progress className="ep-timeline-progress" max={100} value={percent} aria-label="Order timeline progress" />
       <div className="ep-timeline-grid">
         {timeline.map((t, i) => (
           <div key={i} className={`ep-timeline-item ep-timeline-item--${t.completed ? "complete" : "pending"}`}>
@@ -272,14 +243,14 @@ function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => void })
 
   return (
     <div className="ep-pane-card ep-client-details-card">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+      <div className="qs-migrated-7">
         <H3>Client contact information</H3>
         <Button variant="secondary" onClick={onEdit}>Edit</Button>
       </div>
 
-      <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div className="qs-migrated-8">
+        <div className="qs-migrated-9">
+          <label className="qs-migrated-10">
             <input type="checkbox" checked={c.type === "Business"} disabled />
             <span className="ep-client-details-checkbox-label">Business customer</span>
           </label>
@@ -289,93 +260,81 @@ function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => void })
         {c.type === "Business" ? (
           <>
             <div>
-              <div style={labelStyle}>Business name</div>
+              <div className="qs-migrated-243">Business name</div>
               <Input value={c.businessName || c.clientName || ""} onChange={() => {}} disabled />
             </div>
             <div>
-              <div style={labelStyle}>Contact name</div>
+              <div className="qs-migrated-243">Contact name</div>
               <Input value={c.contactPerson || ""} onChange={() => {}} disabled />
             </div>
           </>
         ) : (
           <div>
-            <div style={labelStyle}>Client name</div>
+            <div className="qs-migrated-243">Client name</div>
             <Input value={c.clientName || ""} onChange={() => {}} disabled />
           </div>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div className="qs-migrated-13">
           <div>
-            <div style={labelStyle}>Email</div>
+            <div className="qs-migrated-243">Email</div>
             <Input value={c.email || ""} onChange={() => {}} disabled />
           </div>
           <div>
-            <div style={labelStyle}>Mobile</div>
+            <div className="qs-migrated-243">Mobile</div>
             <Input value={c.mobile || ""} onChange={() => {}} disabled />
           </div>
         </div>
 
         <div>
-          <div style={labelStyle}>Home</div>
+          <div className="qs-migrated-243">Home</div>
           <Input value={c.home || ""} onChange={() => {}} disabled />
         </div>
 
         <div className="ep-client-details-section">
           <button
             type="button"
-            onClick={() => setCustomerAddressOpen((prev) => !prev)}
-            style={{
-              border: "none",
-              background: "transparent",
-              padding: 0,
-              margin: 0,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              font: "inherit",
-              color: "var(--color-text-primary)",
-            }}
+            onClick={() => setCustomerAddressOpen((prev) => !prev)} className="qs-migrated-244"
           >
             <H3>{customerAddressOpen ? "▼" : "▶"} Customer address</H3>
           </button>
 
           {customerAddressOpen && (
-            <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div className="qs-migrated-16">
+              <div className="qs-migrated-13">
                 <div>
-                  <div style={labelStyle}>Address line 1</div>
+                  <div className="qs-migrated-243">Address line 1</div>
                   <Input value={ca1} onChange={() => {}} disabled />
                 </div>
                 <div>
-                  <div style={labelStyle}>Address line 2</div>
+                  <div className="qs-migrated-243">Address line 2</div>
                   <Input value={ca2} onChange={() => {}} disabled />
                 </div>
               </div>
 
               <div>
-                <div style={labelStyle}>Address line 3</div>
+                <div className="qs-migrated-243">Address line 3</div>
                 <Input value={ca3} onChange={() => {}} disabled />
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="qs-migrated-13">
                 <div>
-                  <div style={labelStyle}>Town</div>
+                  <div className="qs-migrated-243">Town</div>
                   <Input value={ct} onChange={() => {}} disabled />
                 </div>
                 <div>
-                  <div style={labelStyle}>City</div>
+                  <div className="qs-migrated-243">City</div>
                   <Input value={cc} onChange={() => {}} disabled />
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="qs-migrated-13">
                 <div>
-                  <div style={labelStyle}>County/District</div>
+                  <div className="qs-migrated-243">County/District</div>
                   <Input value={cco} onChange={() => {}} disabled />
                 </div>
                 <div>
-                  <div style={labelStyle}>Postcode</div>
+                  <div className="qs-migrated-243">Postcode</div>
                   <Input value={cp} onChange={() => {}} disabled />
                 </div>
               </div>
@@ -386,59 +345,47 @@ function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => void })
         <div className="ep-client-details-section">
           <button
             type="button"
-            onClick={() => setInvoiceAddressOpen((prev) => !prev)}
-            style={{
-              border: "none",
-              background: "transparent",
-              padding: 0,
-              margin: 0,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              font: "inherit",
-              color: "var(--color-text-primary)",
-            }}
+            onClick={() => setInvoiceAddressOpen((prev) => !prev)} className="qs-migrated-244"
           >
             <H3>{invoiceAddressOpen ? "▼" : "▶"} Invoice address</H3>
           </button>
 
           {invoiceAddressOpen && (
-            <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div className="qs-migrated-16">
+              <div className="qs-migrated-13">
                 <div>
-                  <div style={labelStyle}>Address line 1</div>
+                  <div className="qs-migrated-243">Address line 1</div>
                   <Input value={i1} onChange={() => {}} disabled />
                 </div>
                 <div>
-                  <div style={labelStyle}>Address line 2</div>
+                  <div className="qs-migrated-243">Address line 2</div>
                   <Input value={i2} onChange={() => {}} disabled />
                 </div>
               </div>
 
               <div>
-                <div style={labelStyle}>Address line 3</div>
+                <div className="qs-migrated-243">Address line 3</div>
                 <Input value={i3} onChange={() => {}} disabled />
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="qs-migrated-13">
                 <div>
-                  <div style={labelStyle}>Town</div>
+                  <div className="qs-migrated-243">Town</div>
                   <Input value={it} onChange={() => {}} disabled />
                 </div>
                 <div>
-                  <div style={labelStyle}>City</div>
+                  <div className="qs-migrated-243">City</div>
                   <Input value={ic} onChange={() => {}} disabled />
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="qs-migrated-13">
                 <div>
-                  <div style={labelStyle}>County/District</div>
+                  <div className="qs-migrated-243">County/District</div>
                   <Input value={ico} onChange={() => {}} disabled />
                 </div>
                 <div>
-                  <div style={labelStyle}>Postcode</div>
+                  <div className="qs-migrated-243">Postcode</div>
                   <Input value={ip} onChange={() => {}} disabled />
                 </div>
               </div>
@@ -694,10 +641,10 @@ export default function EstimatePickerTabs(props: Props) {
   function PositionPreview({ position }: { position: Client["estimates"][number]["positions"][number] }) {
     const contract = getConfiguredPositionContract(position);
     return (
-      <div style={{ width: 48, height: 54, borderRadius: 12, border: "1px solid #d4d4d8", background: "#fafafa", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ width: position.positionType === "Door" ? 18 : 28, height: 38, borderRadius: 3, border: "2px solid #52525b", position: "relative", background: "#fff" }}>
-          <div style={{ position: "absolute", inset: 4, border: "1px solid #a1a1aa", borderRadius: 2 }} />
-          {contract ? <div style={{ position: "absolute", left: -4, right: -4, bottom: -14, fontSize: 8, fontWeight: 800, textAlign: "center", color: "#2563eb" }}>B92</div> : null}
+      <div className="qs-migrated-20">
+        <div className={`ep-position-glyph ${position.positionType === "Door" ? "ep-position-glyph--door" : "ep-position-glyph--window"}`}>
+          <div className="qs-migrated-21" />
+          {contract ? <div className="qs-migrated-22">B92</div> : null}
         </div>
       </div>
     );
@@ -819,7 +766,7 @@ export default function EstimatePickerTabs(props: Props) {
 
   return (
     <>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+      <div className="qs-migrated-36">
         <div className="ep-tab-list">
           <Button variant={estimatePickerTab === "client_info" ? "primary" : "secondary"} onClick={() => setEstimatePickerTab("client_info")}>
             Client Info
@@ -976,17 +923,7 @@ export default function EstimatePickerTabs(props: Props) {
       )}
 
       {sendModalOpen && sendModalEstimateId && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.35)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-            zIndex: 9999,
-          }}
+        <div className="qs-migrated-245"
         >
           <div className="ep-send-modal-card">
             <div className="ep-send-modal-header">
@@ -1053,7 +990,7 @@ export default function EstimatePickerTabs(props: Props) {
                     </Button>
                   </div>
 
-                  <Small style={{ color: "var(--color-text-muted)" }}>
+                  <Small className="qs-migrated-82">
                     Use “Print PDF” to generate the customer-facing estimate PDF, then attach that PDF in your email app. Direct file attachment from the browser send flow is not wired yet.
                   </Small>
                 </div>
@@ -1062,7 +999,7 @@ export default function EstimatePickerTabs(props: Props) {
               <div className="ep-send-section">
                 <div className="ep-send-section-title">Add follow up</div>
 
-                <div className="ep-send-stack" style={{ gap: 10 }}>
+                <div className="ep-send-stack qs-migrated-83">
                   <label className="ep-send-checkbox">
                     <input type="checkbox" checked={sendModalAddFollowUp} onChange={(e) => setSendModalAddFollowUp(e.currentTarget.checked)} />
                     <span className="ep-send-checkbox-text">
@@ -1086,7 +1023,7 @@ export default function EstimatePickerTabs(props: Props) {
                     </label>
                   </div>
 
-                  <Small style={{ color: "var(--color-text-muted)" }}>
+                  <Small className="qs-migrated-82">
                     Follow-ups are saved to the database and appear in Customers - Follow Ups on the scheduled due date.
                   </Small>
                 </div>

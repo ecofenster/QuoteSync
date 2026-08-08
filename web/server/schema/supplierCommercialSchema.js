@@ -1,6 +1,9 @@
+import {CALCULATOR_CATALOGUE_DEFAULTS,CALCULATION_RULE_DEFAULTS,PACKAGE_RULE_DEFAULTS} from '../features/projectCalculatorLab/calculatorCatalogueDefaults.js';
+
 const tables = [
   `CREATE TABLE IF NOT EXISTS supplier_import_lab_sessions (
     id TEXT PRIMARY KEY,
+    estimate_id TEXT,
     supplier_code TEXT,
     supplier_name TEXT NOT NULL CHECK (length(trim(supplier_name)) > 0),
     supplier_quotation_number TEXT,
@@ -13,7 +16,7 @@ const tables = [
     updated_at TEXT NOT NULL,
     archived_at TEXT
   )`,
-    `CREATE TABLE IF NOT EXISTS supplier_import_lab_attachments (
+  `CREATE TABLE IF NOT EXISTS supplier_import_lab_attachments (
     id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL,
     role TEXT NOT NULL CHECK (role IN ('original_quote','supporting_document','supplier_drawing')),
@@ -24,6 +27,7 @@ const tables = [
     storage_key TEXT NOT NULL UNIQUE,
     parser_eligible INTEGER NOT NULL CHECK (parser_eligible IN (0,1)),
     created_at TEXT NOT NULL,
+    upload_order INTEGER NOT NULL DEFAULT 0,
       FOREIGN KEY (session_id) REFERENCES supplier_import_lab_sessions(id) ON DELETE CASCADE
     )`,
     `CREATE TABLE IF NOT EXISTS supplier_import_lab_extraction_runs (
@@ -430,18 +434,29 @@ const tables = [
   )`,
   `CREATE TABLE IF NOT EXISTS project_calculator_lab_scenarios (
     id TEXT PRIMARY KEY,
+    estimate_id TEXT,
     name TEXT NOT NULL CHECK (length(trim(name)) > 0),
     currency TEXT NOT NULL CHECK (length(currency) = 3 AND currency = upper(currency)),
     package_code TEXT NOT NULL CHECK (package_code IN ('supply_only','support','full_installation')),
-    import_lab_session_id TEXT NOT NULL,
-    extraction_run_id TEXT NOT NULL,
-    source_attachment_id TEXT NOT NULL,
+    origin TEXT NOT NULL DEFAULT 'supplier_import' CHECK (origin IN ('supplier_import','estimate','manual','mixed')),
+    import_lab_session_id TEXT,
+    extraction_run_id TEXT,
+    source_attachment_id TEXT,
+    source_revision TEXT,
+    revision_number INTEGER NOT NULL DEFAULT 1,
     installation_opening_count INTEGER NOT NULL DEFAULT 0 CHECK (installation_opening_count >= 0),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY (import_lab_session_id) REFERENCES supplier_import_lab_sessions(id),
     FOREIGN KEY (extraction_run_id) REFERENCES supplier_import_lab_extraction_runs(id),
     FOREIGN KEY (source_attachment_id) REFERENCES supplier_import_lab_attachments(id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS estimate_commercial_settings (
+    estimate_id TEXT PRIMARY KEY,
+    pricing_source TEXT CHECK (pricing_source IN ('quotesync_generated','supplier_quotation_import')),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (estimate_id) REFERENCES estimates(id) ON DELETE CASCADE
   )`,
   `CREATE TABLE IF NOT EXISTS project_calculator_lab_product_rows (
     id TEXT PRIMARY KEY,
@@ -457,6 +472,7 @@ const tables = [
     currency TEXT NOT NULL,
     area_square_metres TEXT NOT NULL,
     frame_perimeter_metres TEXT NOT NULL,
+    markup_override_percent TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     UNIQUE (scenario_id, source_row_id),
@@ -476,6 +492,49 @@ const tables = [
     UNIQUE (scenario_id, source_additional_cost_id),
     FOREIGN KEY (scenario_id) REFERENCES project_calculator_lab_scenarios(id) ON DELETE CASCADE,
     FOREIGN KEY (source_additional_cost_id) REFERENCES supplier_import_lab_additional_cost_items(id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS project_calculator_estimate_product_rows (
+    id TEXT PRIMARY KEY,
+    scenario_id TEXT NOT NULL,
+    source_position_id TEXT NOT NULL,
+    source_attachment_id TEXT NOT NULL,
+    source_revision_id TEXT NOT NULL,
+    source_snapshot_json TEXT NOT NULL,
+    display_reference TEXT NOT NULL,
+    product_class TEXT NOT NULL,
+    quantity INTEGER NOT NULL CHECK (quantity > 0),
+    width_mm INTEGER NOT NULL CHECK (width_mm > 0),
+    height_mm INTEGER NOT NULL CHECK (height_mm > 0),
+    total_price_amount TEXT,
+    currency TEXT NOT NULL,
+    area_square_metres TEXT NOT NULL,
+    frame_perimeter_metres TEXT NOT NULL,
+    markup_override_percent TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (scenario_id, source_position_id),
+    FOREIGN KEY (scenario_id) REFERENCES project_calculator_lab_scenarios(id) ON DELETE CASCADE,
+    FOREIGN KEY (source_position_id) REFERENCES supplier_quote_positions(id),
+    FOREIGN KEY (source_attachment_id) REFERENCES supplier_quote_attachments(id),
+    FOREIGN KEY (source_revision_id) REFERENCES supplier_quote_revisions(id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS project_calculator_estimate_supplier_costs (
+    id TEXT PRIMARY KEY,
+    scenario_id TEXT NOT NULL,
+    source_extra_id TEXT NOT NULL,
+    source_attachment_id TEXT NOT NULL,
+    source_revision_id TEXT NOT NULL,
+    source_snapshot_json TEXT NOT NULL,
+    category TEXT NOT NULL,
+    label TEXT NOT NULL,
+    amount TEXT,
+    currency TEXT,
+    created_at TEXT NOT NULL,
+    UNIQUE (scenario_id, source_extra_id),
+    FOREIGN KEY (scenario_id) REFERENCES project_calculator_lab_scenarios(id) ON DELETE CASCADE,
+    FOREIGN KEY (source_extra_id) REFERENCES supplier_quote_extras(id),
+    FOREIGN KEY (source_attachment_id) REFERENCES supplier_quote_attachments(id),
+    FOREIGN KEY (source_revision_id) REFERENCES supplier_quote_revisions(id)
   )`,
   `CREATE TABLE IF NOT EXISTS project_calculator_lab_package_items (
     id TEXT PRIMARY KEY,
@@ -509,6 +568,104 @@ const tables = [
     override_reason TEXT,
     created_at TEXT NOT NULL,
     FOREIGN KEY (scenario_id) REFERENCES project_calculator_lab_scenarios(id) ON DELETE CASCADE
+  )`,
+  `CREATE TABLE IF NOT EXISTS project_calculator_lab_manual_product_rows (
+    id TEXT PRIMARY KEY,
+    scenario_id TEXT NOT NULL,
+    reference TEXT NOT NULL,
+    product_class TEXT NOT NULL,
+    width_mm INTEGER NOT NULL CHECK (width_mm > 0),
+    height_mm INTEGER NOT NULL CHECK (height_mm > 0),
+    quantity INTEGER NOT NULL CHECK (quantity > 0),
+    installation_opening_count INTEGER NOT NULL CHECK (installation_opening_count >= 0),
+    unit_supply_cost_amount TEXT,
+    total_supply_cost_amount TEXT,
+    currency TEXT NOT NULL,
+    evidence_origin TEXT NOT NULL DEFAULT 'manual' CHECK (evidence_origin = 'manual'),
+    markup_override_percent TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (scenario_id) REFERENCES project_calculator_lab_scenarios(id) ON DELETE CASCADE
+  )`,
+  `CREATE TABLE IF NOT EXISTS project_calculator_lab_manual_cost_lines (
+    id TEXT PRIMARY KEY,
+    scenario_id TEXT NOT NULL,
+    category TEXT NOT NULL CHECK (category IN ('discount','extras','delivery','survey','materials','labour','plant','travel','accommodation','admin','other')),
+    label TEXT NOT NULL,
+    amount TEXT NOT NULL,
+    currency TEXT NOT NULL,
+    evidence_origin TEXT NOT NULL DEFAULT 'manual' CHECK (evidence_origin = 'manual'),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (scenario_id) REFERENCES project_calculator_lab_scenarios(id) ON DELETE CASCADE
+  )`,
+  `CREATE TABLE IF NOT EXISTS project_calculator_lab_exchange_rate_snapshots (
+    id TEXT PRIMARY KEY,
+    scenario_id TEXT NOT NULL,
+    scenario_revision INTEGER NOT NULL,
+    from_currency TEXT NOT NULL,
+    to_currency TEXT NOT NULL DEFAULT 'GBP',
+    provider TEXT NOT NULL,
+    provider_timestamp TEXT NOT NULL,
+    raw_rate TEXT NOT NULL,
+    inverse_rate TEXT,
+    rounded_up_rate TEXT NOT NULL,
+    uplift_amount TEXT NOT NULL,
+    calculated_adjusted_rate TEXT NOT NULL,
+    adjusted_rate TEXT NOT NULL,
+    adjustment_enabled INTEGER NOT NULL CHECK (adjustment_enabled IN (0,1)),
+    manually_overridden INTEGER NOT NULL DEFAULT 0 CHECK (manually_overridden IN (0,1)),
+    override_reason TEXT,
+    overridden_at TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (scenario_id) REFERENCES project_calculator_lab_scenarios(id) ON DELETE CASCADE
+  )`,
+  `CREATE TABLE IF NOT EXISTS project_calculator_lab_markup_rules (
+    scenario_id TEXT PRIMARY KEY,
+    product_percent TEXT NOT NULL DEFAULT '0',
+    extras_percent TEXT NOT NULL DEFAULT '0',
+    transport_percent TEXT NOT NULL DEFAULT '0',
+    equipment_percent TEXT NOT NULL DEFAULT '0',
+    installation_percent TEXT NOT NULL DEFAULT '0',
+    materials_percent TEXT NOT NULL DEFAULT '0',
+    duties_percent TEXT NOT NULL DEFAULT '0',
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (scenario_id) REFERENCES project_calculator_lab_scenarios(id) ON DELETE CASCADE
+  )`,
+  `CREATE TABLE IF NOT EXISTS project_calculator_lab_revisions (
+    id TEXT PRIMARY KEY,
+    scenario_id TEXT NOT NULL,
+    version_number INTEGER NOT NULL,
+    reason TEXT NOT NULL,
+    snapshot_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE (scenario_id, version_number),
+    FOREIGN KEY (scenario_id) REFERENCES project_calculator_lab_scenarios(id) ON DELETE CASCADE
+  )`,
+  `CREATE TABLE IF NOT EXISTS project_calculator_admin_catalogue_items (
+    id TEXT PRIMARY KEY, category TEXT NOT NULL, label TEXT NOT NULL, rate_type TEXT NOT NULL,
+    price_amount TEXT, currency TEXT NOT NULL DEFAULT 'GBP', variant_json TEXT NOT NULL DEFAULT '{}',
+    supplier TEXT, notes TEXT, active INTEGER NOT NULL DEFAULT 1 CHECK(active IN(0,1)), version INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS project_calculator_admin_rules (
+    rule_key TEXT PRIMARY KEY, rule_value_json TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS project_calculator_admin_package_rules (
+    package_code TEXT PRIMARY KEY CHECK(package_code IN('supply_only','support','full_installation')),
+    inclusions_json TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS project_calculator_lab_catalogue_snapshots (
+    id TEXT PRIMARY KEY, scenario_id TEXT NOT NULL, scenario_revision INTEGER NOT NULL,
+    catalogue_json TEXT NOT NULL, rules_json TEXT NOT NULL, package_rules_json TEXT NOT NULL, created_at TEXT NOT NULL,
+    FOREIGN KEY(scenario_id) REFERENCES project_calculator_lab_scenarios(id) ON DELETE CASCADE
+  )`,
+  `CREATE TABLE IF NOT EXISTS project_calculator_lab_options (
+    scenario_id TEXT PRIMARY KEY, project_type TEXT NOT NULL DEFAULT 'new_build', crew_size INTEGER NOT NULL DEFAULT 2,
+    use_illbruck INTEGER NOT NULL DEFAULT 0, brackets_required INTEGER NOT NULL DEFAULT 0, stay_away INTEGER NOT NULL DEFAULT 0,
+    transport_customer_amount TEXT, transport_allocate_difference INTEGER NOT NULL DEFAULT 0,
+    transport_allocation_method TEXT NOT NULL DEFAULT 'proportional_value', options_json TEXT NOT NULL DEFAULT '{}', updated_at TEXT NOT NULL,
+    FOREIGN KEY(scenario_id) REFERENCES project_calculator_lab_scenarios(id) ON DELETE CASCADE
   )`,
 ];
 
@@ -544,16 +701,81 @@ const indexes = [
   'CREATE INDEX IF NOT EXISTS idx_calculator_lab_scenarios_run ON project_calculator_lab_scenarios(import_lab_session_id, extraction_run_id)',
   'CREATE INDEX IF NOT EXISTS idx_calculator_lab_rows_scenario ON project_calculator_lab_product_rows(scenario_id)',
   'CREATE INDEX IF NOT EXISTS idx_calculator_lab_costs_scenario ON project_calculator_lab_supplier_costs(scenario_id)',
+  'CREATE INDEX IF NOT EXISTS idx_calculator_estimate_rows_scenario ON project_calculator_estimate_product_rows(scenario_id, source_attachment_id)',
+  'CREATE INDEX IF NOT EXISTS idx_calculator_estimate_costs_scenario ON project_calculator_estimate_supplier_costs(scenario_id, source_attachment_id)',
   'CREATE INDEX IF NOT EXISTS idx_calculator_lab_package_scenario ON project_calculator_lab_package_items(scenario_id, package_code)',
   'CREATE INDEX IF NOT EXISTS idx_calculator_lab_routes_scenario ON project_calculator_lab_route_snapshots(scenario_id, direction, calculated_at)',
+  'CREATE INDEX IF NOT EXISTS idx_calculator_lab_manual_rows_scenario ON project_calculator_lab_manual_product_rows(scenario_id, created_at)',
+  'CREATE INDEX IF NOT EXISTS idx_calculator_lab_manual_costs_scenario ON project_calculator_lab_manual_cost_lines(scenario_id, created_at)',
+  'CREATE INDEX IF NOT EXISTS idx_calculator_lab_fx_scenario ON project_calculator_lab_exchange_rate_snapshots(scenario_id, created_at)',
+  'CREATE INDEX IF NOT EXISTS idx_calculator_lab_revisions_scenario ON project_calculator_lab_revisions(scenario_id, version_number)',
+  'CREATE INDEX IF NOT EXISTS idx_calculator_admin_catalogue_category ON project_calculator_admin_catalogue_items(category, active)',
+  'CREATE INDEX IF NOT EXISTS idx_calculator_lab_catalogue_snapshot ON project_calculator_lab_catalogue_snapshots(scenario_id, scenario_revision)',
 ];
 
 export async function initializeSupplierCommercialSchema(db) {
   await db.exec('PRAGMA foreign_keys = ON');
   for (const statement of tables) await db.exec(statement);
+  const calculatorScenarioColumns = await db.all('PRAGMA table_info(project_calculator_lab_scenarios)');
+  const legacyRequiredSource = calculatorScenarioColumns.some((column) => column.name === 'import_lab_session_id' && column.notnull === 1);
+  if (legacyRequiredSource) {
+    await db.exec('PRAGMA foreign_keys = OFF');
+    try {
+      await db.exec(`BEGIN IMMEDIATE;
+        CREATE TABLE project_calculator_lab_scenarios_new (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+          currency TEXT NOT NULL CHECK (length(currency) = 3 AND currency = upper(currency)),
+          package_code TEXT NOT NULL CHECK (package_code IN ('supply_only','support','full_installation')),
+          origin TEXT NOT NULL DEFAULT 'supplier_import' CHECK (origin IN ('supplier_import','estimate','manual','mixed')),
+          import_lab_session_id TEXT,
+          extraction_run_id TEXT,
+          source_attachment_id TEXT,
+          source_revision TEXT,
+          revision_number INTEGER NOT NULL DEFAULT 1,
+          installation_opening_count INTEGER NOT NULL DEFAULT 0 CHECK (installation_opening_count >= 0),
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (import_lab_session_id) REFERENCES supplier_import_lab_sessions(id),
+          FOREIGN KEY (extraction_run_id) REFERENCES supplier_import_lab_extraction_runs(id),
+          FOREIGN KEY (source_attachment_id) REFERENCES supplier_import_lab_attachments(id)
+        );
+        INSERT INTO project_calculator_lab_scenarios_new(id,name,currency,package_code,origin,import_lab_session_id,extraction_run_id,source_attachment_id,source_revision,revision_number,installation_opening_count,created_at,updated_at)
+          SELECT id,name,currency,package_code,'supplier_import',import_lab_session_id,extraction_run_id,source_attachment_id,NULL,1,installation_opening_count,created_at,updated_at FROM project_calculator_lab_scenarios;
+        DROP TABLE project_calculator_lab_scenarios;
+        ALTER TABLE project_calculator_lab_scenarios_new RENAME TO project_calculator_lab_scenarios;
+        COMMIT;`);
+    } catch (error) {
+      await db.exec('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      await db.exec('PRAGMA foreign_keys = ON');
+    }
+  }
+  if (!legacyRequiredSource && !calculatorScenarioColumns.some((column) => column.name === 'source_revision')) await db.exec('ALTER TABLE project_calculator_lab_scenarios ADD COLUMN source_revision TEXT');
+  if (!legacyRequiredSource && !calculatorScenarioColumns.some((column) => column.name === 'revision_number')) await db.exec('ALTER TABLE project_calculator_lab_scenarios ADD COLUMN revision_number INTEGER NOT NULL DEFAULT 1');
+  const calculatorMarkupColumns = await db.all('PRAGMA table_info(project_calculator_lab_markup_rules)');
+  for (const column of ['equipment_percent','materials_percent','duties_percent']) if (!calculatorMarkupColumns.some((item) => item.name === column)) await db.exec(`ALTER TABLE project_calculator_lab_markup_rules ADD COLUMN ${column} TEXT NOT NULL DEFAULT '0'`);
+  for (const table of ['project_calculator_lab_product_rows','project_calculator_lab_manual_product_rows']) {
+    const columns = await db.all(`PRAGMA table_info(${table})`);
+    if (!columns.some((column) => column.name === 'markup_override_percent')) await db.exec(`ALTER TABLE ${table} ADD COLUMN markup_override_percent TEXT`);
+  }
+  const calculatorRateColumns=await db.all('PRAGMA table_info(project_calculator_lab_exchange_rate_snapshots)');
+  if(!calculatorRateColumns.some(column=>column.name==='inverse_rate'))await db.exec('ALTER TABLE project_calculator_lab_exchange_rate_snapshots ADD COLUMN inverse_rate TEXT');
+  const importSessionColumns=await db.all('PRAGMA table_info(supplier_import_lab_sessions)');
+  if(!importSessionColumns.some(column=>column.name==='estimate_id'))await db.exec('ALTER TABLE supplier_import_lab_sessions ADD COLUMN estimate_id TEXT');
+  const importAttachmentColumns=await db.all('PRAGMA table_info(supplier_import_lab_attachments)');
+  if(!importAttachmentColumns.some(column=>column.name==='upload_order'))await db.exec('ALTER TABLE supplier_import_lab_attachments ADD COLUMN upload_order INTEGER NOT NULL DEFAULT 0');
+  const calculatorScenarioOwnershipColumns=await db.all('PRAGMA table_info(project_calculator_lab_scenarios)');
+  if(!calculatorScenarioOwnershipColumns.some(column=>column.name==='estimate_id'))await db.exec('ALTER TABLE project_calculator_lab_scenarios ADD COLUMN estimate_id TEXT');
   const labRowColumns = await db.all('PRAGMA table_info(supplier_import_lab_extracted_rows)');
   if (!labRowColumns.some((column) => column.name === 'review_warnings_json')) await db.exec("ALTER TABLE supplier_import_lab_extracted_rows ADD COLUMN review_warnings_json TEXT NOT NULL DEFAULT '[]'");
   if (!labRowColumns.some((column) => column.name === 'selected_for_future_use')) await db.exec('ALTER TABLE supplier_import_lab_extracted_rows ADD COLUMN selected_for_future_use INTEGER NOT NULL DEFAULT 1 CHECK (selected_for_future_use IN (0,1))');
+  const now=new Date().toISOString();
+  for(const [id,category,label,rateType,price,variant] of CALCULATOR_CATALOGUE_DEFAULTS)await db.run('INSERT OR IGNORE INTO project_calculator_admin_catalogue_items(id,category,label,rate_type,price_amount,currency,variant_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)',id,category,label,rateType,price,'GBP',JSON.stringify(variant||{}),now,now);
+  await db.run("UPDATE project_calculator_admin_catalogue_items SET active=0,updated_at=? WHERE id='me508_unconfigured' AND price_amount IS NULL",now);
+  for(const [key,value] of Object.entries(CALCULATION_RULE_DEFAULTS))await db.run('INSERT OR IGNORE INTO project_calculator_admin_rules(rule_key,rule_value_json,updated_at) VALUES(?,?,?)',key,JSON.stringify(value),now);
+  for(const [code,inclusions] of Object.entries(PACKAGE_RULE_DEFAULTS))await db.run('INSERT OR IGNORE INTO project_calculator_admin_package_rules(package_code,inclusions_json,updated_at) VALUES(?,?,?)',code,JSON.stringify(inclusions),now);
   for (const statement of indexes) await db.exec(statement);
 }
 
@@ -568,6 +790,12 @@ export const supplierCommercialTableNames = Object.freeze([
   'supplier_position_applications', 'project_calculators', 'project_cost_items',
   'pricing_scenarios', 'calculator_snapshots',
   'project_calculator_lab_scenarios', 'project_calculator_lab_product_rows',
+  'project_calculator_estimate_product_rows', 'project_calculator_estimate_supplier_costs',
   'project_calculator_lab_supplier_costs', 'project_calculator_lab_package_items',
   'project_calculator_lab_route_snapshots',
+  'project_calculator_lab_manual_product_rows', 'project_calculator_lab_manual_cost_lines',
+  'project_calculator_lab_exchange_rate_snapshots', 'project_calculator_lab_markup_rules',
+  'project_calculator_lab_revisions',
+  'project_calculator_admin_catalogue_items','project_calculator_admin_rules','project_calculator_admin_package_rules',
+  'project_calculator_lab_catalogue_snapshots','project_calculator_lab_options',
 ]);

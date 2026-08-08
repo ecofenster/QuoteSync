@@ -10,29 +10,24 @@ export function Button({
   onClick,
   variant = "primary",
   disabled,
-  style,
+  className = "",
   "data-testid": dataTestId,
 }: {
   children: React.ReactNode;
   onClick?: () => void;
   variant?: "primary" | "secondary" | "outline";
   disabled?: boolean;
-  style?: React.CSSProperties;
+  className?: string;
   "data-testid"?: string;
 }) {
-  const className = `ep-button ${variant === "primary" ? "ep-button--primary" : variant === "outline" ? "ep-button--outline" : "ep-button--secondary"}`;
+  const variantClassName = `ep-button ${variant === "primary" ? "ep-button--primary" : variant === "outline" ? "ep-button--outline" : "ep-button--secondary"}`;
   return (
     <button
       type="button"
       disabled={!!disabled}
       onClick={onClick}
-      className={className}
+      className={`${variantClassName} ${className}`.trim()}
       data-testid={dataTestId}
-      style={{
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.55 : 1,
-        ...style,
-      }}
     >
       {children}
     </button>
@@ -40,16 +35,16 @@ export function Button({
 }
 
 export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  const { style, disabled, ...rest } = props;
-  return <input {...rest} className="ep-shared-input" disabled={disabled} style={style} />;
+  const { disabled, className = "", ...rest } = props;
+  return <input {...rest} className={`ep-shared-input ${className}`.trim()} disabled={disabled} />;
 }
 
 export function Pill({ children }: { children: React.ReactNode }) {
   return <span className="ep-pill-base">{children}</span>;
 }
 
-export function Small({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
-  return <div className="ep-small" style={style}>{children}</div>;
+export function Small({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <div className={`ep-small ${className}`.trim()}>{children}</div>;
 }
 
 export function H3({ children }: { children: React.ReactNode }) {
@@ -67,13 +62,6 @@ export function noteCategoryPillClassName(category: "general" | "follow_up" | "s
   if (category === "client_request") return "ep-note-pill--client-request";
   return category === "general" ? "" : `ep-note-pill--${category}`;
 }
-
-export const labelStyle: React.CSSProperties = {
-  fontSize: 12,
-  fontWeight: 800,
-  color: "var(--color-text-secondary)",
-  marginBottom: 6,
-};
 
 export function qsOutcomeClassName(outcome: string) {
   const normalized = (outcome || "").toLowerCase();
@@ -113,9 +101,7 @@ export function OrderTimelineBar({ timeline }: { timeline: any[] }) {
         <div className="ep-timeline-label">Order timeline</div>
         <div className="ep-timeline-label">{completedCount}/{timeline.length} complete ({percent}%)</div>
       </div>
-      <div className="ep-timeline-progress">
-        <div style={{ width: `${percent}%`, height: "100%", background: "#22c55e" }} />
-      </div>
+      <progress className="ep-timeline-progress" max={100} value={percent} aria-label="Order timeline progress" />
       <div className="ep-timeline-grid">
         {timeline.map((t, i) => (
           <div key={i} className={`ep-timeline-item ep-timeline-item--${t.completed ? "complete" : "pending"}`}>
@@ -142,7 +128,7 @@ export function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => 
 
   return (
     <div className="ep-pane-card ep-client-details-card">
-      <div className="ep-pane-header" style={{ gap: 12 }}>
+      <div className="ep-pane-header qs-migrated-259">
         <H3>Client contact information</H3>
         <Button variant="secondary" onClick={onEdit}>Edit</Button>
       </div>
@@ -159,34 +145,34 @@ export function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => 
         {c.type === "Business" ? (
           <>
             <div>
-              <div style={labelStyle}>Business name</div>
+              <div className="qs-migrated-243">Business name</div>
               <Input value={c.businessName || c.clientName || ""} onChange={() => {}} disabled />
             </div>
             <div>
-              <div style={labelStyle}>Contact name</div>
+              <div className="qs-migrated-243">Contact name</div>
               <Input value={c.contactPerson || ""} onChange={() => {}} disabled />
             </div>
           </>
         ) : (
           <div>
-            <div style={labelStyle}>Client name</div>
+            <div className="qs-migrated-243">Client name</div>
             <Input value={c.clientName || ""} onChange={() => {}} disabled />
           </div>
         )}
 
         <div className="ep-row">
           <div>
-            <div style={labelStyle}>Email</div>
+            <div className="qs-migrated-243">Email</div>
             <Input value={c.email || ""} onChange={() => {}} disabled />
           </div>
           <div>
-            <div style={labelStyle}>Mobile</div>
+            <div className="qs-migrated-243">Mobile</div>
             <Input value={c.mobile || ""} onChange={() => {}} disabled />
           </div>
         </div>
 
         <div>
-          <div style={labelStyle}>Home</div>
+          <div className="qs-migrated-243">Home</div>
           <Input value={c.home || ""} onChange={() => {}} disabled />
         </div>
 
@@ -201,17 +187,17 @@ export function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => 
           {customerAddressOpen && (
             <div className="ep-client-details-section-body">
               <div className="ep-row">
-                <div><div style={labelStyle}>Address line 1</div><Input value={ca1} onChange={() => {}} disabled /></div>
-                <div><div style={labelStyle}>Address line 2</div><Input value={ca2} onChange={() => {}} disabled /></div>
+                <div><div className="qs-migrated-243">Address line 1</div><Input value={ca1} onChange={() => {}} disabled /></div>
+                <div><div className="qs-migrated-243">Address line 2</div><Input value={ca2} onChange={() => {}} disabled /></div>
               </div>
-              <div><div style={labelStyle}>Address line 3</div><Input value={ca3} onChange={() => {}} disabled /></div>
+              <div><div className="qs-migrated-243">Address line 3</div><Input value={ca3} onChange={() => {}} disabled /></div>
               <div className="ep-row">
-                <div><div style={labelStyle}>Town</div><Input value={ct} onChange={() => {}} disabled /></div>
-                <div><div style={labelStyle}>City</div><Input value={cc} onChange={() => {}} disabled /></div>
+                <div><div className="qs-migrated-243">Town</div><Input value={ct} onChange={() => {}} disabled /></div>
+                <div><div className="qs-migrated-243">City</div><Input value={cc} onChange={() => {}} disabled /></div>
               </div>
               <div className="ep-row">
-                <div><div style={labelStyle}>County/District</div><Input value={cco} onChange={() => {}} disabled /></div>
-                <div><div style={labelStyle}>Postcode</div><Input value={cp} onChange={() => {}} disabled /></div>
+                <div><div className="qs-migrated-243">County/District</div><Input value={cco} onChange={() => {}} disabled /></div>
+                <div><div className="qs-migrated-243">Postcode</div><Input value={cp} onChange={() => {}} disabled /></div>
               </div>
             </div>
           )}
@@ -228,17 +214,17 @@ export function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => 
           {invoiceAddressOpen && (
             <div className="ep-client-details-section-body">
               <div className="ep-row">
-                <div><div style={labelStyle}>Address line 1</div><Input value={i1} onChange={() => {}} disabled /></div>
-                <div><div style={labelStyle}>Address line 2</div><Input value={i2} onChange={() => {}} disabled /></div>
+                <div><div className="qs-migrated-243">Address line 1</div><Input value={i1} onChange={() => {}} disabled /></div>
+                <div><div className="qs-migrated-243">Address line 2</div><Input value={i2} onChange={() => {}} disabled /></div>
               </div>
-              <div><div style={labelStyle}>Address line 3</div><Input value={i3} onChange={() => {}} disabled /></div>
+              <div><div className="qs-migrated-243">Address line 3</div><Input value={i3} onChange={() => {}} disabled /></div>
               <div className="ep-row">
-                <div><div style={labelStyle}>Town</div><Input value={it} onChange={() => {}} disabled /></div>
-                <div><div style={labelStyle}>City</div><Input value={ic} onChange={() => {}} disabled /></div>
+                <div><div className="qs-migrated-243">Town</div><Input value={it} onChange={() => {}} disabled /></div>
+                <div><div className="qs-migrated-243">City</div><Input value={ic} onChange={() => {}} disabled /></div>
               </div>
               <div className="ep-row">
-                <div><div style={labelStyle}>County/District</div><Input value={ico} onChange={() => {}} disabled /></div>
-                <div><div style={labelStyle}>Postcode</div><Input value={ip} onChange={() => {}} disabled /></div>
+                <div><div className="qs-migrated-243">County/District</div><Input value={ico} onChange={() => {}} disabled /></div>
+                <div><div className="qs-migrated-243">Postcode</div><Input value={ip} onChange={() => {}} disabled /></div>
               </div>
             </div>
           )}

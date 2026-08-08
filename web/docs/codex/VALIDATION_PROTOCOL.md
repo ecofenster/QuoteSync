@@ -5,22 +5,23 @@ Use relevant focused checks while iterating. Run the complete applicable protoco
 ## Standard suite
 
 1. JavaScript and TypeScript syntax checks for changed executable files.
-2. TypeScript typecheck.
-3. ESLint, distinguishing errors from known warnings.
-4. Existing unit tests.
-5. Tests for every applicable completed and current project stage.
-6. Fresh database schema initialization and repeated/idempotent initialization when schema or persistence is affected.
-7. Existing-database upgrade against a verified temporary copy when schema is affected.
-8. SQLite integrity checks and protected-record comparisons where applicable.
-9. Production build.
-10. Phase 6 E2E.
-11. Confirmation that the E2E Chrome profile was created outside the repository and removed after completion.
-12. A bounded Vite development smoke test on a free local port, confirming no `EBUSY` error.
-13. `git diff --check`.
-14. `git diff --cached --check` when a checkpoint is staged.
-15. Exact manifest and unsafe-path scan.
-16. Secret and credential scan of the proposed or staged boundary.
-17. Binary, database, supplier-document, attachment, archive, screenshot, and environment-file exclusion scan.
+2. `npm run check:design-system` whenever live UI, theme, or visual styling is changed.
+3. TypeScript typecheck.
+4. ESLint, distinguishing errors from known warnings.
+5. Existing unit tests.
+6. Tests for every applicable completed and current project stage.
+7. Fresh database schema initialization and repeated/idempotent initialization when schema or persistence is affected.
+8. Existing-database upgrade against a verified temporary copy when schema is affected.
+9. SQLite integrity checks and protected-record comparisons where applicable.
+10. Production build.
+11. Phase 6 E2E.
+12. Confirmation that the E2E Chrome profile was created outside the repository and removed after completion.
+13. A bounded Vite development smoke test on a free local port, confirming no `EBUSY` error.
+14. `git diff --check`.
+15. `git diff --cached --check` when a checkpoint is staged.
+16. Exact manifest and unsafe-path scan.
+17. Secret and credential scan of the proposed or staged boundary.
+18. Binary, database, supplier-document, attachment, archive, screenshot, and environment-file exclusion scan.
 
 ## Application
 

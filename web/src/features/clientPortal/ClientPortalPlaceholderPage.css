@@ -2,19 +2,19 @@
   display: grid;
   gap: 12px;
   padding: 20px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--qs-border-standard);
   border-radius: 16px;
-  background: var(--ui-card-background, var(--color-surface));
-  color: var(--color-text-primary);
+  background: var(--qs-bg-card, var(--qs-bg-surface));
+  color: var(--qs-theme-text);
 }
 
 .client-portal-placeholder__title {
-  color: var(--color-text-primary);
+  color: var(--qs-theme-text);
   font-size: 20px;
   font-weight: 900;
 }
 
 .client-portal-placeholder__copy {
-  color: var(--color-text-secondary);
+  color: var(--qs-theme-text-secondary);
   font-size: 14px;
 }

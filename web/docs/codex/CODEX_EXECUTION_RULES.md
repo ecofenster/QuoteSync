@@ -34,6 +34,10 @@ When `web/src/App.tsx` appears modified but has no visible diff, compare its wor
 
 Use the [validation protocol](VALIDATION_PROTOCOL.md) before checkpoints and the [checkpoint process](CHECKPOINT_PROCESS.md) for any authorised commit.
 
+## Application styling
+
+Normal QuoteSync application UI must not use inline CSS or hard-coded visual/theme values. UI appearance is defined through the canonical QuoteSync design tokens and shared stylesheet/component primitives. Product/render geometry and document-output styling are separate explicit domains.
+
 ## Reporting
 
 - Do not repeat unchanged architecture or instructions.

@@ -490,10 +490,9 @@ function buildLacquerPatternShapes(
 }
 
 function Swatch(props: { fill: string; label: string; lacquer?: TeknosLacquerOption | null }) {
-  const background = props.lacquer ? `url(${props.lacquer.url}) center / cover` : props.fill;
   return (
-    <span style={{ display: "inline-flex", gap: 6, alignItems: "center", color: "#475569", fontSize: 11, fontWeight: 700 }}>
-      <span style={{ width: 24, height: 18, borderRadius: 4, border: "1px solid #94a3b8", background }} />
+    <span className="qs-migrated-181">
+      {props.lacquer ? <img className="window-type-finish-swatch" src={props.lacquer.url} alt="" /> : <svg className="window-type-finish-swatch" aria-hidden="true"><rect width="100%" height="100%" fill={props.fill} /></svg>}
       {props.label}
     </span>
   );
@@ -542,7 +541,7 @@ function LacquerPicker(props: { value: string; onChange: (value: string) => void
   }
 
   return (
-    <div style={{ display: "grid", gap: 6 }}>
+    <div className="qs-migrated-57">
       <select className="admin-input" value={props.value} onChange={(event) => props.onChange(event.currentTarget.value)}>
         {TEKNOS_LACQUER_OPTIONS.map((option) => (
           <option key={option.id} value={option.id}>
@@ -550,7 +549,7 @@ function LacquerPicker(props: { value: string; onChange: (value: string) => void
           </option>
         ))}
       </select>
-      <div style={{ display: "flex", gap: 4, overflowX: "auto", paddingBottom: 2 }}>
+      <div className="qs-migrated-182">
         {TEKNOS_LACQUER_OPTIONS.map((option) => {
           const selected = option.id === props.value;
           return (
@@ -560,17 +559,9 @@ function LacquerPicker(props: { value: string; onChange: (value: string) => void
               title={option.label}
               aria-label={option.label}
               onClick={() => props.onChange(option.id)}
-              style={{
-                width: 28,
-                height: 22,
-                flex: "0 0 auto",
-                borderRadius: 4,
-                border: selected ? "2px solid #0f766e" : "1px solid #94a3b8",
-                background: `url(${option.url}) center / cover`,
-                boxShadow: selected ? "0 0 0 2px rgba(15, 118, 110, 0.18)" : "none",
-                cursor: "pointer",
-              }}
-            />
+              className="window-type-lacquer-swatch"
+              data-state={selected ? "selected" : "idle"}
+            ><img src={option.url} alt="" /></button>
           );
         })}
       </div>
@@ -598,8 +589,7 @@ function LacquerPatternOverlay(props: { model: DrawingModel; shapes: DrawingShap
     <svg
       viewBox={`0 0 ${props.model.viewBox.width} ${props.model.viewBox.height}`}
       width="100%"
-      height="100%"
-      style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "visible" }}
+      height="100%" className="qs-migrated-183"
       aria-hidden="true"
     >
       <defs>
@@ -747,22 +737,13 @@ export default function B92ProfileSectionAssemblyPreview(props: Props) {
         : null;
 
   return (
-    <div style={{ padding: 14, display: "grid", gap: 12, minHeight: 0 }}>
+    <div className="qs-migrated-184">
       <RalDatalist />
-      <div style={{ display: "flex", gap: 12, alignItems: "start", justifyContent: "space-between", flexWrap: "wrap" }}>
-        <div style={{ display: "grid", gap: 4 }}>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+      <div className="qs-migrated-185">
+        <div className="qs-migrated-17">
+          <div className="qs-migrated-18">
             <div className="admin-group-title">B92 profile-section assembly proof</div>
-            <span
-              style={{
-                border: "1px solid rgba(34, 197, 94, 0.3)",
-                background: "rgba(34, 197, 94, 0.1)",
-                color: "#166534",
-                borderRadius: 999,
-                padding: "3px 8px",
-                fontSize: 11,
-                fontWeight: 800,
-              }}
+            <span className="qs-migrated-186"
             >
               {statusLabel}
             </span>
@@ -772,7 +753,7 @@ export default function B92ProfileSectionAssemblyPreview(props: Props) {
           </div>
         </div>
         {hideFamilySelector ? null : (
-          <label style={{ display: "grid", gap: 5, minWidth: 300 }}>
+          <label className="qs-migrated-187">
             <span className="admin-setting-label">Proof family</span>
             <select
               className="admin-input"
@@ -791,17 +772,11 @@ export default function B92ProfileSectionAssemblyPreview(props: Props) {
       </div>
 
       {hideFinishControls ? null : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: 10,
-            alignItems: "end",
-          }}
+        <div className="qs-migrated-188"
         >
-        <div style={{ display: "grid", gap: 5 }}>
+        <div className="qs-migrated-189">
           <span className="admin-setting-label">Internal finish</span>
-          <div style={{ display: "grid", gridTemplateColumns: "0.9fr 1fr", gap: 6 }}>
+          <div className="qs-migrated-190">
             <FinishModeSelect value={internalMode} onChange={setInternalModeValue} />
             {internalMode === "native" ? (
               <Swatch fill={NATIVE_FRAME_FILL} label="Native Render" />
@@ -824,9 +799,9 @@ export default function B92ProfileSectionAssemblyPreview(props: Props) {
           />
         </div>
 
-        <div style={{ display: "grid", gap: 5 }}>
+        <div className="qs-migrated-189">
           <span className="admin-setting-label">External reveal finish</span>
-          <div style={{ display: "grid", gridTemplateColumns: "0.9fr 1fr", gap: 6 }}>
+          <div className="qs-migrated-190">
             <FinishModeSelect value={externalRevealMode} onChange={setExternalRevealModeValue} />
             {externalRevealMode === "native" ? (
               <Swatch fill={NATIVE_FRAME_FILL} label="Native Render" />
@@ -849,9 +824,9 @@ export default function B92ProfileSectionAssemblyPreview(props: Props) {
           />
         </div>
 
-        <div style={{ display: "grid", gap: 5 }}>
+        <div className="qs-migrated-189">
           <span className="admin-setting-label">External cladding finish</span>
-          <div style={{ display: "grid", gridTemplateColumns: "0.9fr 1fr", gap: 6 }}>
+          <div className="qs-migrated-190">
             <CladdingFinishModeSelect value={externalCladdingMode} onChange={setExternalCladdingModeValue} />
             {externalCladdingMode === "native" ? (
               <Swatch fill={NATIVE_FRAME_FILL} label="Native Render" />
@@ -868,17 +843,8 @@ export default function B92ProfileSectionAssemblyPreview(props: Props) {
       )}
 
       {selectedFamily && previewModel && proofGeometry ? (
-        <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              flexWrap: "wrap",
-              alignItems: "center",
-              color: "#475569",
-              fontSize: 11,
-              fontWeight: 700,
-            }}
+        <div className="qs-migrated-191">
+          <div className="qs-migrated-192"
           >
             <span>{selectedFamily.label}</span>
             <span>{view === "external" ? "External" : "Internal"} view</span>
@@ -896,7 +862,7 @@ export default function B92ProfileSectionAssemblyPreview(props: Props) {
           </div>
         </div>
       ) : (
-        <div className="admin-placeholder-box" style={{ margin: 0 }}>
+        <div className="admin-placeholder-box qs-migrated-180">
           No approved B92 proof is mapped to this selected design. Choose an approved proof family above to inspect the
           approved proof geometry in the native preview surface.
         </div>

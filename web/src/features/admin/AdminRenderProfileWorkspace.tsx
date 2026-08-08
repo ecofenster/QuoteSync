@@ -20,23 +20,6 @@ type Props = {
   selectedWindowTypeId: string;
 };
 
-const inputStyle: React.CSSProperties = {
-  height: 40,
-  borderRadius: 12,
-  border: "1px solid var(--color-border)",
-  padding: "0 12px",
-  background: "var(--color-surface)",
-  color: "var(--color-text-primary)",
-};
-
-const textareaStyle: React.CSSProperties = {
-  ...inputStyle,
-  minHeight: 96,
-  height: 96,
-  padding: "10px 12px",
-  resize: "vertical",
-};
-
 const defaultBootstrap: ConfiguratorCatalogBootstrap = {
   manufacturers: [],
   products: [],
@@ -96,7 +79,7 @@ function blankForm(context: { manufacturerId: string; productId: string; windowT
 
 function FormField(props: { label: string; children: React.ReactNode }) {
   return (
-    <label style={{ display: "grid", gap: 6 }}>
+    <label className="qs-migrated-57">
       <span className="admin-setting-label">{props.label}</span>
       {props.children}
     </label>
@@ -401,9 +384,9 @@ export default function AdminRenderProfileWorkspace(props: Props) {
   }, [formState, showDimensions]);
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "320px minmax(0, 1fr)", gap: 16 }}>
-      <div className="admin-card ui-card" style={{ padding: 14, display: "grid", gap: 12, alignContent: "start" }}>
-        <div style={{ display: "grid", gap: 8 }}>
+    <div className="qs-migrated-131">
+      <div className="admin-card ui-card qs-migrated-146">
+        <div className="qs-migrated-80">
           <H3>Render Profile Dimensions</H3>
           <Small>
             Manual inside-view render dimensions for fixed and tilt & turn profiles. These values drive the native preview and are the next bridge into accurate profile-based rendering.
@@ -425,7 +408,7 @@ export default function AdminRenderProfileWorkspace(props: Props) {
           New
         </Button>
 
-        <div style={{ display: "grid", gap: 8 }}>
+        <div className="qs-migrated-80">
           {records.map((record) => (
             <button
               key={record.id}
@@ -443,13 +426,13 @@ export default function AdminRenderProfileWorkspace(props: Props) {
         </div>
       </div>
 
-      <div style={{ display: "grid", gap: 16 }}>
+      <div className="qs-migrated-122">
         {isLoading ? <div className="admin-card ui-card admin-status-card">Loading render profiles…</div> : null}
         {errorMessage ? <div className="admin-card ui-card admin-status-card admin-status-card--error">{errorMessage}</div> : null}
 
         {!isLoading && (
           <>
-            <div className="admin-card ui-card" style={{ padding: 18, display: "grid", gap: 14 }}>
+            <div className="admin-card ui-card qs-migrated-147">
               <div>
                 <div className="admin-group-title">{selectedRecordId ? "Edit render profile" : "New render profile"}</div>
                 <div className="admin-body-copy">
@@ -457,55 +440,55 @@ export default function AdminRenderProfileWorkspace(props: Props) {
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+              <div className="qs-migrated-142">
                 <FormField label="Manufacturer">
-                  <select value={formState.manufacturer_id ?? ""} onChange={(event) => setField("manufacturer_id", event.currentTarget.value || null)} style={inputStyle}>
+                  <select value={formState.manufacturer_id ?? ""} onChange={(event) => setField("manufacturer_id", event.currentTarget.value || null)} className="qs-migrated-127">
                     <option value="">Any manufacturer</option>
                     {bootstrap.manufacturers.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
                   </select>
                 </FormField>
                 <FormField label="Product">
-                  <select value={formState.product_id ?? ""} onChange={(event) => setField("product_id", event.currentTarget.value || null)} style={inputStyle}>
+                  <select value={formState.product_id ?? ""} onChange={(event) => setField("product_id", event.currentTarget.value || null)} className="qs-migrated-127">
                     <option value="">Any product</option>
                     {filteredProducts.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
                   </select>
                 </FormField>
                 <FormField label="Window type">
-                  <select value={formState.window_type_id ?? ""} onChange={(event) => setField("window_type_id", event.currentTarget.value || null)} style={inputStyle}>
+                  <select value={formState.window_type_id ?? ""} onChange={(event) => setField("window_type_id", event.currentTarget.value || null)} className="qs-migrated-127">
                     <option value="">Any window type</option>
                     {filteredWindowTypes.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
                   </select>
                 </FormField>
                 <FormField label="Name">
-                  <input value={formState.name} onChange={(event) => setField("name", event.currentTarget.value)} style={inputStyle} />
+                  <input value={formState.name} onChange={(event) => setField("name", event.currentTarget.value)} className="qs-migrated-127" />
                 </FormField>
                 <FormField label="Code">
-                  <input value={formState.code} onChange={(event) => setField("code", event.currentTarget.value)} style={inputStyle} />
+                  <input value={formState.code} onChange={(event) => setField("code", event.currentTarget.value)} className="qs-migrated-127" />
                 </FormField>
                 <FormField label="Window type selection">
-                  <select value={formState.operation_type} onChange={(event) => setField("operation_type", event.currentTarget.value)} style={inputStyle}>
+                  <select value={formState.operation_type} onChange={(event) => setField("operation_type", event.currentTarget.value)} className="qs-migrated-127">
                     <option value="fixed">Fixed window</option>
                     <option value="tilt_turn">Tilt & Turn window</option>
                   </select>
                 </FormField>
                 <FormField label="View">
-                  <select value={formState.view_logic} onChange={(event) => setField("view_logic", event.currentTarget.value)} style={inputStyle}>
+                  <select value={formState.view_logic} onChange={(event) => setField("view_logic", event.currentTarget.value)} className="qs-migrated-127">
                     <option value="inside">Inside</option>
                     <option value="outside">Outside</option>
                     <option value="both">Both</option>
                   </select>
                 </FormField>
                 <FormField label="Preview width (mm)">
-                  <input type="number" value={formState.preview_width_mm ?? ""} onChange={(event) => setField("preview_width_mm", Number(event.currentTarget.value || 0))} style={inputStyle} />
+                  <input type="number" value={formState.preview_width_mm ?? ""} onChange={(event) => setField("preview_width_mm", Number(event.currentTarget.value || 0))} className="qs-migrated-127" />
                 </FormField>
                 <FormField label="Preview height (mm)">
-                  <input type="number" value={formState.preview_height_mm ?? ""} onChange={(event) => setField("preview_height_mm", Number(event.currentTarget.value || 0))} style={inputStyle} />
+                  <input type="number" value={formState.preview_height_mm ?? ""} onChange={(event) => setField("preview_height_mm", Number(event.currentTarget.value || 0))} className="qs-migrated-127" />
                 </FormField>
               </div>
 
-              <div style={{ display: "grid", gap: 10 }}>
+              <div className="qs-migrated-41">
                 <div className="admin-setting-label">Visible fixed frame width (mm)</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
+                <div className="qs-migrated-148">
                   {[
                     ["frame_top_visible_mm", "Top"],
                     ["frame_left_visible_mm", "Left"],
@@ -513,15 +496,15 @@ export default function AdminRenderProfileWorkspace(props: Props) {
                     ["frame_bottom_visible_mm", "Bottom"],
                   ].map(([key, label]) => (
                     <FormField key={key} label={label}>
-                      <input type="number" value={(formState as any)[key] ?? ""} onChange={(event) => setField(key as keyof ConfiguratorRenderProfileRecord, Number(event.currentTarget.value || 0) as any)} style={inputStyle} />
+                      <input type="number" value={(formState as any)[key] ?? ""} onChange={(event) => setField(key as keyof ConfiguratorRenderProfileRecord, Number(event.currentTarget.value || 0) as any)} className="qs-migrated-127" />
                     </FormField>
                   ))}
                 </div>
               </div>
 
-              <div style={{ display: "grid", gap: 10 }}>
+              <div className="qs-migrated-41">
                 <div className="admin-setting-label">Visible sash width (mm)</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
+                <div className="qs-migrated-148">
                   {[
                     ["sash_top_visible_mm", "Top"],
                     ["sash_left_visible_mm", "Left"],
@@ -529,15 +512,15 @@ export default function AdminRenderProfileWorkspace(props: Props) {
                     ["sash_bottom_visible_mm", "Bottom"],
                   ].map(([key, label]) => (
                     <FormField key={key} label={label}>
-                      <input type="number" value={(formState as any)[key] ?? ""} onChange={(event) => setField(key as keyof ConfiguratorRenderProfileRecord, numericOrNull(event.currentTarget.value) as any)} style={inputStyle} />
+                      <input type="number" value={(formState as any)[key] ?? ""} onChange={(event) => setField(key as keyof ConfiguratorRenderProfileRecord, numericOrNull(event.currentTarget.value) as any)} className="qs-migrated-127" />
                     </FormField>
                   ))}
                 </div>
               </div>
 
-              <div style={{ display: "grid", gap: 10 }}>
+              <div className="qs-migrated-41">
                 <div className="admin-setting-label">Visible glazing bead width (mm)</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
+                <div className="qs-migrated-148">
                   {[
                     ["bead_top_visible_mm", "Top"],
                     ["bead_left_visible_mm", "Left"],
@@ -545,35 +528,35 @@ export default function AdminRenderProfileWorkspace(props: Props) {
                     ["bead_bottom_visible_mm", "Bottom"],
                   ].map(([key, label]) => (
                     <FormField key={key} label={label}>
-                      <input type="number" value={(formState as any)[key] ?? ""} onChange={(event) => setField(key as keyof ConfiguratorRenderProfileRecord, numericOrNull(event.currentTarget.value) as any)} style={inputStyle} />
+                      <input type="number" value={(formState as any)[key] ?? ""} onChange={(event) => setField(key as keyof ConfiguratorRenderProfileRecord, numericOrNull(event.currentTarget.value) as any)} className="qs-migrated-127" />
                     </FormField>
                   ))}
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 12 }}>
+              <div className="qs-migrated-149">
                 <FormField label="Handle axis offset (mm)">
-                  <input type="number" value={formState.handle_axis_offset_mm ?? ""} onChange={(event) => setField("handle_axis_offset_mm", numericOrNull(event.currentTarget.value))} style={inputStyle} />
+                  <input type="number" value={formState.handle_axis_offset_mm ?? ""} onChange={(event) => setField("handle_axis_offset_mm", numericOrNull(event.currentTarget.value))} className="qs-migrated-127" />
                 </FormField>
                 <FormField label="Handle height (mm)">
-                  <input type="number" value={formState.handle_height_mm ?? ""} onChange={(event) => setField("handle_height_mm", numericOrNull(event.currentTarget.value))} style={inputStyle} />
+                  <input type="number" value={formState.handle_height_mm ?? ""} onChange={(event) => setField("handle_height_mm", numericOrNull(event.currentTarget.value))} className="qs-migrated-127" />
                 </FormField>
                 <FormField label="Hinge pivot offset (mm)">
-                  <input type="number" value={formState.hinge_pivot_offset_mm ?? ""} onChange={(event) => setField("hinge_pivot_offset_mm", numericOrNull(event.currentTarget.value))} style={inputStyle} />
+                  <input type="number" value={formState.hinge_pivot_offset_mm ?? ""} onChange={(event) => setField("hinge_pivot_offset_mm", numericOrNull(event.currentTarget.value))} className="qs-migrated-127" />
                 </FormField>
                 <FormField label="External frame cladding">
-                  <input value={formState.external_frame_cladding_colour} onChange={(event) => setField("external_frame_cladding_colour", event.currentTarget.value)} style={inputStyle} />
+                  <input value={formState.external_frame_cladding_colour} onChange={(event) => setField("external_frame_cladding_colour", event.currentTarget.value)} className="qs-migrated-127" />
                 </FormField>
                 <FormField label="External sash cladding">
-                  <input value={formState.external_sash_cladding_colour} onChange={(event) => setField("external_sash_cladding_colour", event.currentTarget.value)} style={inputStyle} />
+                  <input value={formState.external_sash_cladding_colour} onChange={(event) => setField("external_sash_cladding_colour", event.currentTarget.value)} className="qs-migrated-127" />
                 </FormField>
               </div>
 
               <FormField label="Notes">
-                <textarea value={formState.notes} onChange={(event) => setField("notes", event.currentTarget.value)} style={textareaStyle} />
+                <textarea value={formState.notes} onChange={(event) => setField("notes", event.currentTarget.value)} className="qs-migrated-128" />
               </FormField>
 
-              <label className="admin-flex-row" style={{ fontWeight: 700, color: "var(--color-text-primary)" }}>
+              <label className="admin-flex-row qs-migrated-129">
                 <input type="checkbox" checked={!!formState.is_active} onChange={(event) => setField("is_active", event.currentTarget.checked)} />
                 <span>Active</span>
               </label>
@@ -588,18 +571,18 @@ export default function AdminRenderProfileWorkspace(props: Props) {
               </div>
             </div>
 
-            <div className="admin-card ui-card" style={{ padding: 18, display: "grid", gap: 12 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div className="admin-card ui-card qs-migrated-150">
+              <div className="qs-migrated-7">
                 <div>
                   <div className="admin-group-title">Native preview</div>
                   <div className="admin-body-copy">Manual profile dimensions → resolved geometry values → native drawing model → live render.</div>
                 </div>
-                <label className="admin-flex-row" style={{ fontWeight: 700, color: "var(--color-text-primary)" }}>
+                <label className="admin-flex-row qs-migrated-129">
                   <input type="checkbox" checked={showDimensions} onChange={(event) => setShowDimensions(event.currentTarget.checked)} />
                   <span>Show dimensions</span>
                 </label>
               </div>
-              <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", background: "#fff", minHeight: 520, padding: 12 }}>
+              <div className="qs-migrated-151">
                 <QuoteSyncDrawingSvg model={previewModel} />
               </div>
             </div>

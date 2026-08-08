@@ -99,7 +99,7 @@ function getPaneConfigs(panes: PaneState[]) {
 function ShapeIcon({ shape }: { shape: ShapeType }) {
   const common = { fill: "#e3f2fd", stroke: "#555", strokeWidth: 1.5 };
   return (
-    <svg viewBox="0 0 40 40" style={{ width: 80, height: 80, display: "block" }}>
+    <svg viewBox="0 0 40 40" className="qs-migrated-260">
       {shape === "rectangle" && <rect x="6" y="9" width="28" height="22" {...common} />}
       {shape === "circle" && <circle cx="20" cy="20" r="12" {...common} />}
       {shape === "triangle" && <polygon points="7,29 33,29 20,9" {...common} />}
@@ -113,7 +113,7 @@ function ShapeIcon({ shape }: { shape: ShapeType }) {
 
 function IGUDiagram({ glazing }: { glazing: GlazingType }) {
   return (
-    <svg viewBox="0 0 420 260" style={{ width: "100%", maxWidth: 420, height: "auto" }}>
+    <svg viewBox="0 0 420 260" className="qs-migrated-261">
       <defs>
         <linearGradient id="gFront" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#d7eef9" />

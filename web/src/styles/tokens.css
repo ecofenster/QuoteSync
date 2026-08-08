@@ -1,61 +1,69 @@
-:root {
+/*
+ * QuoteSync theme hierarchy
+ * 1. Resilient Ecofenster startup values and company-theme inputs.
+ * 2. Canonical --qs-* design tokens consumed by current UI.
+ * Runtime Branding values from themes.ts replace the company-theme inputs.
+ */
+
+:root,
+:root[data-qs-theme="light"] {
   color-scheme: light;
 
-  /* Brand */
+  /* Resilient startup brand and company-theme inputs. */
   --qs-brand-black: #231f20;
   --qs-brand-green: #55b948;
   --qs-brand-light-green: #b5da9c;
   --qs-brand-white: #ffffff;
-  --color-brand-black: var(--qs-brand-black);
-  --color-brand-green: var(--qs-brand-green);
-  --color-brand-light-green: var(--qs-brand-light-green);
-  --color-brand-white: var(--qs-brand-white);
-  --color-brand-primary: var(--qs-brand-green);
-  --color-brand-primary-soft: var(--qs-brand-light-green);
-  --color-brand-primary-strong: #3f9f36;
-  --color-brand-on-primary: var(--qs-brand-white);
-  --color-brand-light: var(--qs-brand-light-green);
+  --qs-theme-page: #f4f7f2;
+  --qs-theme-surface: #ffffff;
+  --qs-theme-elevated: #f7f8f7;
+  --qs-theme-card: #f7f8f7;
+  --qs-theme-border: #d7ded2;
+  --qs-theme-border-strong: #55b948;
+  --qs-theme-text: #231f20;
+  --qs-theme-text-secondary: #6b6768;
+  --qs-theme-text-muted: #6b6768;
+  --qs-theme-input: #ffffff;
+  --qs-theme-button: #f7f8f7;
+  --qs-theme-button-hover: #b5da9c;
+  --qs-theme-primary: #55b948;
+  --qs-theme-accent: #b5da9c;
+  --qs-theme-selling: #55b948;
+  --qs-semantic-success: #55b948;
+  --qs-semantic-warning: #f1b84b;
+  --qs-semantic-error: #f87171;
+  --qs-semantic-attention: #f87171;
+  --qs-semantic-info: #60a5fa;
+  --qs-operational-quotes: #6b9f3d;
+  --qs-operational-installations: #2563eb;
+  --qs-operational-orders: #dc2626;
+  --qs-operational-invoices: #7c3aed;
+  --qs-pipeline-leads: #6b9f3d;
+  --qs-pipeline-quoted: #2563eb;
+  --qs-pipeline-negotiation: #7c3aed;
+  --qs-pipeline-won: #3f9f36;
 
-  /* Core surfaces */
-  --color-surface: var(--qs-brand-white);
-  --color-surface-alt: #f7f8f7;
-  --color-surface-muted: #eef3ea;
-  --color-surface-subtle: #fafafa;
-  --color-surface-inverse: var(--qs-brand-black);
-  --color-surface-glass: var(--qs-brand-white);
-
-  /* Text */
-  --color-text-primary: var(--qs-brand-black);
-  --color-text-secondary: #3a3637;
-  --color-text-muted: #6b6768;
-  --color-text-on-inverse: var(--qs-brand-white);
-  --color-text-on-dark: var(--color-text-on-inverse);
-
-  /* Borders */
-  --color-border: #d7ded2;
-  --color-border-strong: #b7c7ae;
-  --color-divider: #e7ece3;
-
-  /* State */
-  --color-success: var(--qs-brand-green);
-  --color-warning: #c68a12;
-  --color-danger: #b42318;
-  --color-info: #1d4f91;
-
-  /* Focus */
-  --color-focus-ring: rgba(85, 185, 72, 0.35);
-
-  /* Typography */
-  --font-family-base: "Segoe UI", Arial, Helvetica, sans-serif;
+  /* Typography roles. themes.ts owns the runtime company font. */
+  --qs-font-family: "Segoe UI", Arial, Helvetica, sans-serif;
+  --qs-type-page-title: 1.375rem;
+  --qs-type-section-title: 1.125rem;
+  --qs-type-important: 1rem;
+  --qs-type-body: 0.875rem;
+  --qs-type-meta: 0.8125rem;
+  --qs-type-dashboard-hero: clamp(1.75rem, 3vw, 2.625rem);
   --font-size-xs: 0.75rem;
   --font-size-sm: 0.875rem;
   --font-size-md: 1rem;
   --font-size-lg: 1.125rem;
   --font-size-xl: 1.25rem;
   --font-size-2xl: 1.5rem;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --font-weight-extrabold: 800;
+  --font-weight-black: 900;
   --line-height-base: 1.5;
 
-  /* Spacing */
+  /* Spacing, geometry and elevation. */
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -65,85 +73,117 @@
   --space-8: 2rem;
   --space-10: 2.5rem;
   --space-12: 3rem;
-
-  /* Radius */
+  --space-component-y: 10px;
+  --space-component-x: 14px;
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;
   --radius-xl: 1rem;
   --radius-pill: 999px;
-
-  /* Shadow */
+  --radius-control: 0.625rem;
+  --radius-button: 0.625rem;
+  --radius-card: 0.875rem;
+  --radius-dialog: 1rem;
+  --control-height-sm: 2rem;
+  --qs-technical-canvas-bg: var(--qs-brand-white);
   --shadow-sm: 0 1px 2px rgba(35, 31, 32, 0.06);
   --shadow-md: 0 8px 24px rgba(35, 31, 32, 0.08);
   --shadow-lg: 0 16px 40px rgba(35, 31, 32, 0.12);
-
-  /* Theme surfaces */
-  --app-background: #f4f7f2;
-  --app-shell-background: var(--app-background);
-  --app-shell-header-bg: var(--qs-brand-white);
-  --app-shell-header-border: #d9e2d4;
-  --app-shell-main-bg: transparent;
-  --ui-backdrop-filter: none;
-  --ui-card-background: var(--qs-brand-white);
-  --ui-control-background: var(--qs-brand-white);
-  --ui-control-background-hover: #f7faf5;
-  --ui-control-background-disabled: var(--color-surface-muted);
-  --ui-control-border: #d9e2d4;
-  --ui-table-header-background: var(--color-surface-subtle);
-  --ui-table-row-hover-background: var(--color-surface-alt);
-  --ui-popover-background: var(--qs-brand-white);
-  --ui-popover-border: var(--ui-control-border);
-
-  /* Layout */
+  --motion-fast: 140ms;
+  --motion-standard: 180ms;
   --container-max-width: 1440px;
   --sidebar-width: 280px;
   --header-height: 72px;
 }
 
-:root[data-qs-theme="light"] {
-  color-scheme: light;
-}
-
 :root[data-qs-theme="dark"] {
   color-scheme: dark;
-  --color-brand-primary: #55b948;
-  --color-brand-primary-soft: #b5da9c;
-  --color-brand-primary-strong: #6fd35f;
-  --color-brand-on-primary: #231f20;
-  --color-surface: #1d1a1b;
-  --color-surface-alt: #292526;
-  --color-surface-muted: #332f30;
-  --color-surface-subtle: #242122;
-  --color-surface-inverse: #ffffff;
-  --color-surface-glass: #231f20;
-  --color-text-primary: #ffffff;
-  --color-text-secondary: #e4eadf;
-  --color-text-muted: #b6c1b0;
-  --color-text-on-inverse: #231f20;
-  --color-border: rgba(181, 218, 156, 0.22);
-  --color-border-strong: rgba(85, 185, 72, 0.5);
-  --color-divider: rgba(255, 255, 255, 0.12);
-  --color-warning: #f1b84b;
-  --color-danger: #ff8a7a;
-  --color-info: #9bc4ff;
-  --color-focus-ring: rgba(85, 185, 72, 0.42);
+  --qs-theme-page: #181b19;
+  --qs-theme-surface: #1e211f;
+  --qs-theme-elevated: #292e2a;
+  --qs-theme-card: #292e2a;
+  --qs-theme-border: #363d38;
+  --qs-theme-border-strong: #55b948;
+  --qs-theme-text: #f4f7f4;
+  --qs-theme-text-secondary: #aeb7b0;
+  --qs-theme-text-muted: #aeb7b0;
+  --qs-theme-input: #1e211f;
+  --qs-theme-button: #292e2a;
+  --qs-theme-button-hover: #344b34;
+  --qs-operational-quotes: #b5da9c;
+  --qs-operational-installations: #60a5fa;
+  --qs-operational-orders: #f87171;
+  --qs-operational-invoices: #a78bfa;
+  --qs-pipeline-leads: #b5da9c;
+  --qs-pipeline-quoted: #60a5fa;
+  --qs-pipeline-negotiation: #a78bfa;
+  --qs-pipeline-won: #55b948;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
   --shadow-md: 0 14px 34px rgba(0, 0, 0, 0.34);
   --shadow-lg: 0 26px 64px rgba(0, 0, 0, 0.42);
-  --app-background: #231f20;
-  --app-shell-background: var(--app-background);
-  --app-shell-header-bg: #231f20;
-  --app-shell-header-border: rgba(85, 185, 72, 0.34);
-  --app-shell-main-bg: transparent;
-  --ui-backdrop-filter: none;
-  --ui-card-background: #2d292a;
-  --ui-control-background: rgba(255, 255, 255, 0.06);
-  --ui-control-background-hover: rgba(85, 185, 72, 0.16);
-  --ui-control-background-disabled: rgba(255, 255, 255, 0.04);
-  --ui-control-border: rgba(181, 218, 156, 0.24);
-  --ui-table-header-background: #242122;
-  --ui-table-row-hover-background: #292526;
-  --ui-popover-background: #2d292a;
-  --ui-popover-border: rgba(181, 218, 156, 0.24);
+}
+
+/* Canonical QuoteSync design tokens. */
+:root {
+  --qs-bg-page: var(--qs-theme-page);
+  --qs-bg-surface: var(--qs-theme-surface);
+  --qs-bg-surface-elevated: var(--qs-theme-elevated);
+  --qs-bg-card: var(--qs-theme-card);
+  --qs-bg-control: var(--qs-theme-input);
+  --qs-bg-control-disabled: color-mix(in srgb, var(--qs-theme-text) 5%, var(--qs-bg-surface));
+  --qs-bg-hover: var(--qs-theme-button-hover);
+  --qs-bg-selected: color-mix(in srgb, var(--qs-theme-primary) 14%, var(--qs-theme-surface));
+  --qs-border-subtle: color-mix(in srgb, var(--qs-theme-border) 62%, transparent);
+  --qs-border-standard: var(--qs-theme-border);
+  --qs-border-strong: var(--qs-theme-border-strong);
+  --qs-border-focus: var(--qs-theme-primary);
+  --qs-border-width: 1px;
+  --qs-border-width-strong: 2px;
+  --qs-focus-ring: color-mix(in srgb, var(--qs-theme-primary) 38%, transparent);
+  --qs-overlay-scrim: color-mix(in srgb, #000 54%, transparent);
+  --qs-backdrop-filter: none;
+  --qs-text-on-primary: #231f20;
+  --shadow-card: var(--shadow-sm);
+  --shadow-elevated: var(--shadow-md);
+  --shadow-overlay: var(--shadow-lg);
+  --qs-gradient-surface: linear-gradient(180deg, color-mix(in srgb, var(--qs-bg-card) 96%, var(--qs-theme-text) 4%), var(--qs-bg-card));
+  --qs-gradient-brand: linear-gradient(135deg, var(--qs-theme-primary), color-mix(in srgb, var(--qs-theme-primary) 72%, var(--qs-theme-accent)));
+
+  --qs-success-surface: color-mix(in srgb, var(--qs-semantic-success) 12%, var(--qs-bg-surface));
+  --qs-success-border: color-mix(in srgb, var(--qs-semantic-success) 42%, var(--qs-border-standard));
+  --qs-warning-surface: color-mix(in srgb, var(--qs-semantic-warning) 12%, var(--qs-bg-surface));
+  --qs-warning-border: color-mix(in srgb, var(--qs-semantic-warning) 42%, var(--qs-border-standard));
+  --qs-error-surface: color-mix(in srgb, var(--qs-semantic-error) 12%, var(--qs-bg-surface));
+  --qs-error-border: color-mix(in srgb, var(--qs-semantic-error) 42%, var(--qs-border-standard));
+  --qs-info-surface: color-mix(in srgb, var(--qs-semantic-info) 12%, var(--qs-bg-surface));
+  --qs-info-border: color-mix(in srgb, var(--qs-semantic-info) 42%, var(--qs-border-standard));
+
+  --qs-operational-quotes-surface: color-mix(in srgb, var(--qs-operational-quotes) 11%, var(--qs-bg-card));
+  --qs-operational-quotes-border: color-mix(in srgb, var(--qs-operational-quotes) 48%, var(--qs-border-standard));
+  --qs-operational-installations-surface: color-mix(in srgb, var(--qs-operational-installations) 11%, var(--qs-bg-card));
+  --qs-operational-installations-border: color-mix(in srgb, var(--qs-operational-installations) 48%, var(--qs-border-standard));
+  --qs-operational-orders-surface: color-mix(in srgb, var(--qs-operational-orders) 11%, var(--qs-bg-card));
+  --qs-operational-orders-border: color-mix(in srgb, var(--qs-operational-orders) 52%, var(--qs-border-standard));
+  --qs-operational-invoices-surface: color-mix(in srgb, var(--qs-operational-invoices) 11%, var(--qs-bg-card));
+  --qs-operational-invoices-border: color-mix(in srgb, var(--qs-operational-invoices) 48%, var(--qs-border-standard));
+  --qs-operational-success-surface: color-mix(in srgb, var(--qs-semantic-success) 11%, var(--qs-bg-card));
+  --qs-operational-success-border: color-mix(in srgb, var(--qs-semantic-success) 48%, var(--qs-border-standard));
+
+  --qs-commercial-surface: color-mix(in srgb, var(--qs-bg-card) 97%, var(--qs-theme-primary) 3%);
+  --qs-commercial-surface-elevated: color-mix(in srgb, var(--qs-bg-surface-elevated) 94%, var(--qs-theme-primary) 6%);
+  --qs-commercial-border: color-mix(in srgb, var(--qs-border-standard) 82%, var(--qs-theme-primary) 18%);
+  --qs-commercial-positive-surface: color-mix(in srgb, var(--qs-theme-selling) 14%, var(--qs-bg-surface));
+  --qs-commercial-positive-border: color-mix(in srgb, var(--qs-theme-selling) 38%, var(--qs-border-standard));
+}
+
+:root[data-qs-density="compact"] { --space-component-y: 8px; --space-component-x: 10px; }
+:root[data-qs-density="comfortable"] { --space-component-y: 12px; --space-component-x: 16px; }
+:root[data-qs-corners="square-ish"] { --radius-control: 4px; --radius-button: 5px; --radius-card: 8px; --radius-dialog: 10px; }
+:root[data-qs-corners="rounded"] { --radius-control: 12px; --radius-button: 14px; --radius-card: 18px; --radius-dialog: 22px; }
+:root[data-qs-elevation="minimal"] { --shadow-card: none; --shadow-elevated: var(--shadow-sm); --shadow-overlay: var(--shadow-md); }
+:root[data-qs-elevation="enhanced"] { --shadow-card: var(--shadow-md); --shadow-elevated: var(--shadow-lg); --shadow-overlay: 0 30px 80px color-mix(in srgb, var(--qs-theme-text) 24%, transparent); }
+:root[data-qs-motion="reduced"] { --motion-fast: 0ms; --motion-standard: 0ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --motion-fast: 0ms; --motion-standard: 0ms; }
 }

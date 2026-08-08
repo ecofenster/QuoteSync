@@ -128,7 +128,7 @@ export default function NotesTab(props: {
         ) : (
           <>
             <textarea
-              className="ep-textarea"
+              className="ep-textarea qs-migrated-258"
               value={activeNoteDraft}
               onChange={(e) => {
                 if (isEstimateNotesScope) props.setEstimateNoteDraft(e.currentTarget.value);
@@ -136,7 +136,6 @@ export default function NotesTab(props: {
               }}
               placeholder={isEstimateNotesScope ? "Write a new estimate note..." : "Write a new account note..."}
               dir="ltr"
-              style={{ direction: "ltr", unicodeBidi: "plaintext" }}
             />
 
             <div className="ep-note-save-row">

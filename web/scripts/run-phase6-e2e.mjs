@@ -6,9 +6,11 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { cleanupPhase6Profile, createPhase6ProfileDirectory, terminateOwnedChrome } from "./e2e-chrome-profile.mjs";
+import { terminateOwnedProcessTrees } from "./e2e-owned-process.mjs";
 
 const APP_URL = process.env.QS_E2E_APP_URL ?? "http://localhost:4173";
 const API_URL = process.env.QS_E2E_API_URL ?? "http://localhost:3001";
+const APP_ENDPOINT = new URL(APP_URL);
 const DEBUG_PORT = Number(process.env.QS_E2E_DEBUG_PORT ?? 9236);
 const PROTECTED_REFS = new Set(["EF-CL-001", "EF-CL-002", "EF-CL-003", "EF-CL-004", "EF-CL-005", "EF-CL-006", "EF-CL-007", "EF-CL-008"]);
 const tempEstimateId = `phase6_e2e_${Date.now()}_${Math.random().toString(16).slice(2)}`;
@@ -49,7 +51,7 @@ function spawnOwned(command, args, options = {}) {
   const child = spawn(command, args, {
     cwd: resolve("."),
     stdio: "ignore",
-    shell: platform() === "win32",
+    shell: false,
     ...options,
   });
   ownedProcesses.push(child);
@@ -58,11 +60,11 @@ function spawnOwned(command, args, options = {}) {
 
 async function ensureServices() {
   if (!(await isReachable(`${API_URL}/api/clients`))) {
-    spawnOwned("node", ["server/index.js"]);
+    spawnOwned(process.execPath, ["server/index.js"]);
   }
 
   if (!(await isReachable(APP_URL))) {
-    spawnOwned("npm", ["run", "preview", "--", "--host", "127.0.0.1", "--port", "4173"]);
+    spawnOwned(process.execPath, ["node_modules/vite/bin/vite.js", "preview", "--host", APP_ENDPOINT.hostname, "--port", APP_ENDPOINT.port || "4173"]);
   }
 
   await waitForAsync(async () => isReachable(`${API_URL}/api/clients`), "API did not become reachable");
@@ -476,8 +478,10 @@ run()
     console.error(error);
     process.exitCode = 1;
   })
-  .finally(() => {
-    for (const child of ownedProcesses) {
-      if (!child.killed) child.kill();
+  .finally(async () => {
+    const results = await terminateOwnedProcessTrees(ownedProcesses);
+    if (results.some((result) => !result.exited)) {
+      console.error("Phase 6 E2E owned-process cleanup did not complete.");
+      process.exitCode = 1;
     }
   });

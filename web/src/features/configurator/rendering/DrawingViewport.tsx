@@ -145,7 +145,7 @@ function DrawingViewport(
   }, [contentHeight, contentWidth, pan]);
 
   return (
-    <div style={{ display: "grid", gap: 10 }}>
+    <div className="qs-migrated-41">
       {showToolbar ? (
         <DrawingPreviewToolbar
           scalePreset={scalePreset}
@@ -249,34 +249,14 @@ function DrawingViewport(
           setZoomMultiplier((current) =>
             clampZoomMultiplier(event.deltaY < 0 ? current * 1.1 : current / 1.1)
           );
-        }}
-        style={{
-          width: "100%",
-          minHeight: "880px",
-          aspectRatio: "16 / 9",
-          overflow: "auto",
-          background: "#ffffff",
-          borderRadius: "12px",
-          display: "grid",
-          placeItems: "center",
-          cursor: "default",
-          userSelect: "none",
-          maxWidth: "100%",
-          maxHeight: "900px",
-          justifySelf: "center",
-          height: "880px",
-        }}
+        }} className="qs-migrated-237"
       >
         <div
           ref={contentRef}
-          style={{
-            width: contentWidth,
-            height: contentHeight,
-            flex: "0 0 auto",
-            pointerEvents: tool === "pan" || tool === "measure" ? "none" : "auto",
-            position: "relative",
-            overflow: "visible",
-          }}
+          className="drawing-viewport__content"
+          data-width={contentWidth}
+          data-height={contentHeight}
+          data-interaction={tool === "pan" || tool === "measure" ? "disabled" : "enabled"}
         >
           <QuoteSyncDrawingSvg
             model={model}
@@ -291,7 +271,8 @@ function DrawingViewport(
             viewBox={`0 0 ${model.viewBox.width} ${model.viewBox.height}`}
             width="100%"
             height="100%"
-            style={{ position: "absolute", inset: 0, pointerEvents: tool === "measure" ? "auto" : "none", overflow: "visible" }}
+            className="drawing-viewport__measurement-layer"
+            data-interaction={tool === "measure" ? "enabled" : "disabled"}
           >
             {measurements.map((measurement) => (
               <g
@@ -306,7 +287,7 @@ function DrawingViewport(
                   y2={measurement.end.model.y}
                   stroke="transparent"
                   strokeWidth={14}
-                  style={{ cursor: tool === "measure" ? "pointer" : "default" }}
+                  className={tool === "measure" ? "technical-hit-target technical-hit-target--interactive" : "technical-hit-target"}
                   onClick={(event) => {
                     if (tool !== "measure") return;
                     event.stopPropagation();
@@ -353,8 +334,7 @@ function DrawingViewport(
                       start: measurement.start,
                       end: measurement.end,
                       viewBox: model.viewBox,
-                    }).y - 10})`}
-                    style={{ cursor: "pointer" }}
+                    }).y - 10})`} className="qs-migrated-218"
                     onClick={(event) => {
                       event.stopPropagation();
                       setMeasurements((current) => current.filter((entry) => entry.id !== measurement.id));
@@ -374,8 +354,7 @@ function DrawingViewport(
             <svg
               viewBox={`0 0 ${model.viewBox.width} ${model.viewBox.height}`}
               width="100%"
-              height="100%"
-              style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "visible" }}
+              height="100%" className="qs-migrated-183"
             >
               <line
                 x1={measurementStart.model.x}

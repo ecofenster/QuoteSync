@@ -126,7 +126,7 @@ export default function SectionMappingPanel(props: Props) {
   }
 
   return (
-    <div className="admin-card ui-card" style={{ padding: 16, display: "grid", gap: 12 }}>
+    <div className="admin-card ui-card qs-migrated-114">
       <div className="admin-group-title">Section Mapping</div>
       <div className="admin-body-copy">
         Local section-mapping rules for:
@@ -140,7 +140,7 @@ export default function SectionMappingPanel(props: Props) {
         Internal and external preview will use the same section references.
       </div>
       {loadError ? <div className="admin-placeholder-box">{loadError}</div> : null}
-      <div style={{ display: "grid", gap: 10 }}>
+      <div className="qs-migrated-41">
         {mappingRows.map((row) => (
           <SectionReferencePicker
             key={`${row.profile_role}-${row.variant_condition}-${row.operation_context}`}
@@ -160,7 +160,7 @@ export default function SectionMappingPanel(props: Props) {
           />
         ))}
       </div>
-      <div className="admin-body-copy" style={{ fontSize: 12 }}>
+      <div className="admin-body-copy qs-migrated-194">
         {isLoading
           ? "Loading Section Library references…"
           : `${sectionOptions.length} section references available in the current catalog.`}

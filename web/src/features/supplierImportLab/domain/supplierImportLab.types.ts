@@ -5,6 +5,7 @@ export type SupplierImportLabAttachmentRole = "original_quote" | "supporting_doc
 
 export type SupplierImportLabSession = {
   id: string;
+  estimateId?: string | null;
   supplierCode: string | null;
   supplierName: string;
   supplierQuotationNumber: string | null;
@@ -37,6 +38,7 @@ export type SupplierImportLabAttachment = {
   sizeBytes: number;
   sha256: string;
   parserEligible: boolean;
+  uploadOrder?: number;
   createdAt: ISODateTime;
 };
 

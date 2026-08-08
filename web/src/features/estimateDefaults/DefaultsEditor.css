@@ -3,31 +3,31 @@
   gap: 12px;
   align-content: start;
   padding: 12px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--qs-border-standard);
   border-radius: 14px;
-  background: var(--color-surface);
+  background: var(--qs-bg-surface);
 }
 
 .defaults-editor-heading {
   margin: 0;
   font-size: 14px;
   font-weight: 800;
-  color: var(--color-text-primary);
+  color: var(--qs-theme-text);
 }
 
 .defaults-editor-small {
   font-size: 12px;
-  color: var(--color-text-muted);
+  color: var(--qs-theme-text-muted);
 }
 
 .defaults-editor-input,
 .defaults-editor-select {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--qs-border-standard);
   border-radius: 12px;
   font-size: 14px;
-  background: var(--color-surface);
+  background: var(--qs-bg-surface);
   box-sizing: border-box;
   outline: none;
 }
@@ -36,7 +36,7 @@
   margin-bottom: 6px;
   font-size: 13px;
   font-weight: 700;
-  color: var(--color-text-secondary);
+  color: var(--qs-theme-text-secondary);
 }
 
 .defaults-editor-accordion {
@@ -48,7 +48,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--color-text-primary);
+  color: var(--qs-theme-text);
   text-align: left;
   font: inherit;
   cursor: pointer;
@@ -56,9 +56,9 @@
 
 .defaults-editor-section {
   padding: 12px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--qs-border-standard);
   border-radius: 14px;
-  background: var(--color-surface);
+  background: var(--qs-bg-surface);
 }
 
 .defaults-editor-section-body {
@@ -72,9 +72,9 @@
 
 .defaults-editor-card {
   padding: 12px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--qs-border-standard);
   border-radius: 14px;
-  background: var(--color-surface);
+  background: var(--qs-bg-surface);
 }
 
 .defaults-editor-card-body {
@@ -125,10 +125,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--qs-border-standard);
   border-radius: 12px;
-  background: var(--color-surface-subtle, #fafafa);
-  color: var(--color-text-muted);
+  background: var(--qs-bg-surface-elevated);
+  color: var(--qs-theme-text-muted);
   font-size: 12px;
   font-weight: 800;
 }
@@ -147,5 +147,5 @@
 .defaults-editor-toggle-label {
   font-size: 14px;
   font-weight: 700;
-  color: var(--color-text-primary);
+  color: var(--qs-theme-text);
 }

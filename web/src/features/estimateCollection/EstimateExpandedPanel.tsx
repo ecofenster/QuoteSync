@@ -171,8 +171,8 @@ function EstimateExpandedPanelContent(props: Props) {
 
   if (configuredEstimate && configuredPosition) {
     return (
-      <div style={{ display: "grid", gap: 12 }}>
-        <div style={{ fontSize: 22, fontWeight: 800, color: "#18181b" }}>Estimate Configurator Disabled</div>
+      <div className="qs-migrated-26">
+        <div className="qs-migrated-240">Estimate Configurator Disabled</div>
         <Small>{DISABLED_ESTIMATE_CONFIGURATOR_MESSAGE}</Small>
         <div>
           <Button variant="secondary" onClick={() => clearConfigurationTarget()}>

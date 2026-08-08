@@ -190,32 +190,9 @@ const defaultBootstrap: ConfiguratorCatalogBootstrap = {
   glass: [],
 };
 
-const inputStyle: React.CSSProperties = {
-  height: 40,
-  borderRadius: 12,
-  border: "1px solid var(--color-border)",
-  padding: "0 12px",
-  background: "var(--color-surface)",
-  color: "var(--color-text-primary)",
-};
-
-const textareaStyle: React.CSSProperties = {
-  ...inputStyle,
-  minHeight: 96,
-  height: 96,
-  padding: "10px 12px",
-  resize: "vertical",
-};
-
-const denseCardStyle: React.CSSProperties = {
-  padding: 16,
-  display: "grid",
-  gap: 12,
-};
-
 function FormField(props: { label: string; children: React.ReactNode }) {
   return (
-    <label style={{ display: "grid", gap: 6 }}>
+    <label className="qs-migrated-57">
       <span className="admin-setting-label">{props.label}</span>
       {props.children}
     </label>
@@ -224,10 +201,10 @@ function FormField(props: { label: string; children: React.ReactNode }) {
 
 function SectionShell(props: { title: string; description: string; children: React.ReactNode }) {
   return (
-    <div style={{ display: "grid", gap: 16 }}>
-      <div className="admin-card ui-card" style={{ padding: 20, display: "grid", gap: 8 }}>
+    <div className="qs-migrated-122">
+      <div className="admin-card ui-card qs-migrated-123">
         <div className="admin-page-title">{props.title}</div>
-        <div className="admin-body-copy" style={{ maxWidth: 980 }}>{props.description}</div>
+        <div className="admin-body-copy qs-migrated-124">{props.description}</div>
       </div>
       {props.children}
     </div>
@@ -236,7 +213,7 @@ function SectionShell(props: { title: string; description: string; children: Rea
 
 function PlaceholderGroup(props: { label: string }) {
   return (
-    <div className="admin-card ui-card" style={{ padding: 20, display: "grid", gap: 8 }}>
+    <div className="admin-card ui-card qs-migrated-123">
       <div className="admin-group-title">{props.label}</div>
       <div className="admin-body-copy">
         This product-group render definition surface is prepared in the new admin structure, but the live dimension-driven editor in this pass is focused on Windows first.
@@ -547,13 +524,13 @@ function ManufacturersPanel(props: {
       title="Manufacturers"
       description="Manufacturers contain products/systems. No render geometry lives here; this layer is only the commercial/system catalog source."
     >
-      <div style={{ display: "grid", gridTemplateColumns: "300px 1fr 1fr", gap: 16 }}>
-        <div className="admin-card ui-card" style={denseCardStyle}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+      <div className="qs-migrated-125">
+        <div className="admin-card ui-card qs-migrated-114">
+          <div className="qs-migrated-126">
             <H3>Manufacturers</H3>
             <Button variant="secondary" onClick={() => setSelectedManufacturerId("")}>New</Button>
           </div>
-          <div style={{ display: "grid", gap: 8 }}>
+          <div className="qs-migrated-80">
             {bootstrap.manufacturers.map((row) => (
               <button
                 key={row.id}
@@ -574,18 +551,18 @@ function ManufacturersPanel(props: {
           </div>
         </div>
 
-        <div className="admin-card ui-card" style={denseCardStyle}>
+        <div className="admin-card ui-card qs-migrated-114">
           <div className="admin-group-title">{selectedManufacturerId ? "Edit manufacturer" : "New manufacturer"}</div>
           <FormField label="Name">
-            <input value={manufacturerDraft.name} onChange={(event) => setManufacturerDraft((previous) => ({ ...previous, name: event.currentTarget.value }))} style={inputStyle} />
+            <input value={manufacturerDraft.name} onChange={(event) => setManufacturerDraft((previous) => ({ ...previous, name: event.currentTarget.value }))} className="qs-migrated-127" />
           </FormField>
           <FormField label="Code">
-            <input value={manufacturerDraft.code} onChange={(event) => setManufacturerDraft((previous) => ({ ...previous, code: event.currentTarget.value }))} style={inputStyle} />
+            <input value={manufacturerDraft.code} onChange={(event) => setManufacturerDraft((previous) => ({ ...previous, code: event.currentTarget.value }))} className="qs-migrated-127" />
           </FormField>
           <FormField label="Notes">
-            <textarea value={manufacturerDraft.notes} onChange={(event) => setManufacturerDraft((previous) => ({ ...previous, notes: event.currentTarget.value }))} style={textareaStyle} />
+            <textarea value={manufacturerDraft.notes} onChange={(event) => setManufacturerDraft((previous) => ({ ...previous, notes: event.currentTarget.value }))} className="qs-migrated-128" />
           </FormField>
-          <label className="admin-flex-row" style={{ fontWeight: 700, color: "var(--color-text-primary)" }}>
+          <label className="admin-flex-row qs-migrated-129">
             <input type="checkbox" checked={!!manufacturerDraft.is_active} onChange={(event) => setManufacturerDraft((previous) => ({ ...previous, is_active: event.currentTarget.checked }))} />
             <span>Active</span>
           </label>
@@ -595,8 +572,8 @@ function ManufacturersPanel(props: {
           </div>
         </div>
 
-        <div className="admin-card ui-card" style={denseCardStyle}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <div className="admin-card ui-card qs-migrated-114">
+          <div className="qs-migrated-126">
             <div>
               <div className="admin-group-title">Products / Systems</div>
               <div className="admin-body-copy">Selected manufacturer: {selectedManufacturer?.name || "None"}</div>
@@ -605,7 +582,7 @@ function ManufacturersPanel(props: {
           </div>
           {selectedManufacturerId ? (
             <>
-              <div style={{ display: "grid", gap: 8 }}>
+              <div className="qs-migrated-80">
                 {productsForManufacturer.map((row) => (
                   <button
                     key={row.id}
@@ -622,18 +599,18 @@ function ManufacturersPanel(props: {
                 {productsForManufacturer.length === 0 ? <div className="admin-placeholder-box">No products for this manufacturer yet.</div> : null}
               </div>
 
-              <div style={{ display: "grid", gap: 10 }}>
+              <div className="qs-migrated-41">
                 <FormField label="Product / system name">
-                  <input value={productDraft.name} onChange={(event) => setProductDraft((previous) => ({ ...previous, name: event.currentTarget.value, manufacturer_id: selectedManufacturerId }))} style={inputStyle} />
+                  <input value={productDraft.name} onChange={(event) => setProductDraft((previous) => ({ ...previous, name: event.currentTarget.value, manufacturer_id: selectedManufacturerId }))} className="qs-migrated-127" />
                 </FormField>
                 <FormField label="Code">
-                  <input value={productDraft.code} onChange={(event) => setProductDraft((previous) => ({ ...previous, code: event.currentTarget.value, manufacturer_id: selectedManufacturerId }))} style={inputStyle} />
+                  <input value={productDraft.code} onChange={(event) => setProductDraft((previous) => ({ ...previous, code: event.currentTarget.value, manufacturer_id: selectedManufacturerId }))} className="qs-migrated-127" />
                 </FormField>
                 <FormField label="Product family">
-                  <input value={productDraft.product_family} onChange={(event) => setProductDraft((previous) => ({ ...previous, product_family: event.currentTarget.value, manufacturer_id: selectedManufacturerId }))} style={inputStyle} />
+                  <input value={productDraft.product_family} onChange={(event) => setProductDraft((previous) => ({ ...previous, product_family: event.currentTarget.value, manufacturer_id: selectedManufacturerId }))} className="qs-migrated-127" />
                 </FormField>
                 <FormField label="Notes">
-                  <textarea value={productDraft.notes} onChange={(event) => setProductDraft((previous) => ({ ...previous, notes: event.currentTarget.value, manufacturer_id: selectedManufacturerId }))} style={textareaStyle} />
+                  <textarea value={productDraft.notes} onChange={(event) => setProductDraft((previous) => ({ ...previous, notes: event.currentTarget.value, manufacturer_id: selectedManufacturerId }))} className="qs-migrated-128" />
                 </FormField>
                 <div className="admin-flex-row">
                   <Button variant="primary" onClick={() => void saveProduct()} disabled={isSaving || !selectedManufacturerId}>{isSaving ? "Saving..." : "Save"}</Button>
@@ -717,13 +694,13 @@ function WindowTypesPanel(props: {
       title="Window Types"
       description="Window Types define opening behaviours only. Geometry and render dimensions are handled separately in Configurator Render."
     >
-      <div style={{ display: "grid", gridTemplateColumns: "340px minmax(0, 1fr)", gap: 16 }}>
-        <div className="admin-card ui-card" style={denseCardStyle}>
+      <div className="qs-migrated-130">
+        <div className="admin-card ui-card qs-migrated-114">
           <div className="admin-group-title">Behaviour library</div>
-          <div style={{ display: "grid", gap: 12 }}>
-            <div style={{ display: "grid", gap: 8 }}>
+          <div className="qs-migrated-26">
+            <div className="qs-migrated-80">
               <div className="admin-setting-label">Inward</div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <div className="qs-migrated-19">
                 {WINDOW_TYPE_CHOOSER.inward.map((item) => (
                   <button key={item.operation} type="button" onClick={() => chooseTemplate("inward", item.operation)} className="admin-nav-button">
                     <span className="admin-nav-button-label">{item.label}</span>
@@ -731,9 +708,9 @@ function WindowTypesPanel(props: {
                 ))}
               </div>
             </div>
-            <div style={{ display: "grid", gap: 8 }}>
+            <div className="qs-migrated-80">
               <div className="admin-setting-label">Outward</div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <div className="qs-migrated-19">
                 {WINDOW_TYPE_CHOOSER.outward.map((item) => (
                   <button key={item.operation} type="button" onClick={() => chooseTemplate("outward", item.operation)} className="admin-nav-button">
                     <span className="admin-nav-button-label">{item.label}</span>
@@ -747,12 +724,12 @@ function WindowTypesPanel(props: {
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "320px minmax(0, 1fr)", gap: 16 }}>
-          <div className="admin-card ui-card" style={denseCardStyle}>
+        <div className="qs-migrated-131">
+          <div className="admin-card ui-card qs-migrated-114">
             <div className="admin-group-title">Defined window types</div>
-            <div style={{ display: "grid", gap: 8 }}>
+            <div className="qs-migrated-80">
               {[{ title: "Inward", rows: inwardTypes }, { title: "Outward", rows: outwardTypes }].map((group) => (
-                <div key={group.title} style={{ display: "grid", gap: 8 }}>
+                <div key={group.title} className="qs-migrated-80">
                   <div className="admin-setting-label">{group.title}</div>
                   {group.rows.map((row) => (
                     <button
@@ -773,29 +750,29 @@ function WindowTypesPanel(props: {
             </div>
           </div>
 
-          <div className="admin-card ui-card" style={denseCardStyle}>
+          <div className="admin-card ui-card qs-migrated-114">
             <div className="admin-group-title">{selectedWindowTypeId ? "Edit window type" : "New window type"}</div>
             <FormField label="Product / system">
-              <select value={windowTypeDraft.product_id} onChange={(event) => setWindowTypeDraft((previous) => ({ ...previous, product_id: event.currentTarget.value }))} style={inputStyle}>
+              <select value={windowTypeDraft.product_id} onChange={(event) => setWindowTypeDraft((previous) => ({ ...previous, product_id: event.currentTarget.value }))} className="qs-migrated-127">
                 <option value="">Select product / system</option>
                 {bootstrap.products.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
               </select>
             </FormField>
             <FormField label="Name">
-              <input value={windowTypeDraft.name} onChange={(event) => setWindowTypeDraft((previous) => ({ ...previous, name: event.currentTarget.value }))} style={inputStyle} />
+              <input value={windowTypeDraft.name} onChange={(event) => setWindowTypeDraft((previous) => ({ ...previous, name: event.currentTarget.value }))} className="qs-migrated-127" />
             </FormField>
             <FormField label="Code">
-              <input value={windowTypeDraft.code} onChange={(event) => setWindowTypeDraft((previous) => ({ ...previous, code: event.currentTarget.value }))} style={inputStyle} />
+              <input value={windowTypeDraft.code} onChange={(event) => setWindowTypeDraft((previous) => ({ ...previous, code: event.currentTarget.value }))} className="qs-migrated-127" />
             </FormField>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+            <div className="qs-migrated-132">
               <FormField label="Opening direction">
-                <select value={windowTypeDraft.opening_direction} onChange={(event) => setWindowTypeDraft((previous) => ({ ...previous, opening_direction: event.currentTarget.value }))} style={inputStyle}>
+                <select value={windowTypeDraft.opening_direction} onChange={(event) => setWindowTypeDraft((previous) => ({ ...previous, opening_direction: event.currentTarget.value }))} className="qs-migrated-127">
                   <option value="inward">Inward</option>
                   <option value="outward">Outward</option>
                 </select>
               </FormField>
               <FormField label="Operation type">
-                <select value={windowTypeDraft.operation_type} onChange={(event) => setWindowTypeDraft((previous) => ({ ...previous, operation_type: event.currentTarget.value }))} style={inputStyle}>
+                <select value={windowTypeDraft.operation_type} onChange={(event) => setWindowTypeDraft((previous) => ({ ...previous, operation_type: event.currentTarget.value }))} className="qs-migrated-127">
                   {windowTypeDraft.opening_direction === "inward"
                     ? WINDOW_TYPE_CHOOSER.inward.map((item) => <option key={item.operation} value={item.operation}>{item.label}</option>)
                     : WINDOW_TYPE_CHOOSER.outward.map((item) => <option key={item.operation} value={item.operation}>{item.label}</option>)}
@@ -803,7 +780,7 @@ function WindowTypesPanel(props: {
               </FormField>
             </div>
             <FormField label="Notes">
-              <textarea value={windowTypeDraft.notes} onChange={(event) => setWindowTypeDraft((previous) => ({ ...previous, notes: event.currentTarget.value }))} style={textareaStyle} />
+              <textarea value={windowTypeDraft.notes} onChange={(event) => setWindowTypeDraft((previous) => ({ ...previous, notes: event.currentTarget.value }))} className="qs-migrated-128" />
             </FormField>
             <div className="admin-flex-row">
               <Button variant="primary" onClick={() => void saveWindowType()} disabled={isSaving || !windowTypeDraft.product_id}>{isSaving ? "Saving..." : "Save"}</Button>
@@ -1246,8 +1223,8 @@ function ConfiguratorRenderPanel(props: {
       title="Configurator Render"
       description="This replaces the old admin configurator UI. It is a render-definition system: manual profile dimensions resolve geometry values, then the native renderer draws the technical output."
     >
-      <div className="admin-card ui-card" style={{ padding: 16, display: "grid", gap: 12 }}>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <div className="admin-card ui-card qs-migrated-114">
+        <div className="qs-migrated-19">
           {PRODUCT_GROUP_TABS.map((tab) => (
             <button
               key={tab.key}
@@ -1265,8 +1242,8 @@ function ConfiguratorRenderPanel(props: {
         <PlaceholderGroup label={PRODUCT_GROUP_TABS.find((tab) => tab.key === productGroup)?.label || "Product group"} />
       ) : (
         <>
-          <div className="admin-card ui-card" style={{ padding: 16, display: "grid", gap: 12 }}>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="admin-card ui-card qs-migrated-114">
+            <div className="qs-migrated-19">
               {WINDOW_RENDER_TABS.map((tab) => (
                 <button
                   key={tab.key}
@@ -1281,16 +1258,16 @@ function ConfiguratorRenderPanel(props: {
           </div>
 
           {windowTab === "2field" ? (
-            <div style={{ display: "grid", gridTemplateColumns: "340px minmax(0, 1fr)", gap: 16 }}>
-              <div className="admin-card ui-card" style={{ ...denseCardStyle, alignContent: "start" }}>
-                <div style={{ display: "grid", gap: 8 }}>
+            <div className="qs-migrated-130">
+              <div className="admin-card ui-card qs-migrated-133">
+                <div className="qs-migrated-80">
                   <H3>2 Field Preview</H3>
                   <div className="admin-body-copy">
                     Preview-only schema-driven test using the shared layout definition and existing renderer pipeline. No 2-field save/edit flow is enabled in this pass.
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gap: 10 }}>
+                <div className="qs-migrated-41">
                   <div className="admin-setting-label">Layout</div>
                   <div className="admin-placeholder-box">
                     1 row × 2 columns
@@ -1301,7 +1278,7 @@ function ConfiguratorRenderPanel(props: {
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gap: 10 }}>
+                <div className="qs-migrated-41">
                   <div className="admin-setting-label">Junction type</div>
                   <select
                     value={twoFieldJunctionType}
@@ -1315,7 +1292,7 @@ function ConfiguratorRenderPanel(props: {
                   </select>
                 </div>
 
-                <div style={{ display: "grid", gap: 10 }}>
+                <div className="qs-migrated-41">
                   <div className="admin-setting-label">Renderer adapter</div>
                   <div className="admin-placeholder-box">
                     fieldsX: {twoFieldRendererInput.fieldsX}
@@ -1331,7 +1308,7 @@ function ConfiguratorRenderPanel(props: {
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gap: 10 }}>
+                <div className="qs-migrated-41">
                   <div className="admin-setting-label">Mullion override</div>
                   <div className="admin-placeholder-box">
                     Resolved mullion width: {twoFieldResolvedProfiles?.mullion.visibleFaceWidthMm ?? "n/a"}mm
@@ -1339,29 +1316,29 @@ function ConfiguratorRenderPanel(props: {
                 </div>
               </div>
 
-              <div className="admin-card ui-card" style={{ padding: 18, display: "grid", gap: 16, alignContent: "start" }}>
-                <div style={{ display: "grid", gap: 2 }}>
+              <div className="admin-card ui-card qs-migrated-134">
+                <div className="qs-migrated-135">
                   <div className="admin-group-title">2 Field • Fixed / Fixed • Internal preview</div>
                   <div className="admin-body-copy">
                     This branch reuses the existing native renderer. The layout comes from `ConfiguratorLayoutDefinitionV2`; the static mullion width is applied through resolved profile override only.
                   </div>
                 </div>
-                <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", background: "#fff", padding: 12 }}>
+                <div className="qs-migrated-136">
                   <DrawingViewport model={visibleTwoFieldInternalModel} minHeight={360} aspectRatio="16 / 9" />
                 </div>
               </div>
             </div>
           ) : windowTab === "3field" ? (
-            <div style={{ display: "grid", gridTemplateColumns: "340px minmax(0, 1fr)", gap: 16 }}>
-              <div className="admin-card ui-card" style={{ ...denseCardStyle, alignContent: "start" }}>
-                <div style={{ display: "grid", gap: 8 }}>
+            <div className="qs-migrated-130">
+              <div className="admin-card ui-card qs-migrated-133">
+                <div className="qs-migrated-80">
                   <H3>3 Field Preview</H3>
                   <div className="admin-body-copy">
                     Preview-only schema-driven test using the shared layout definition and existing renderer pipeline. No 3-field save/edit flow is enabled in this pass.
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gap: 10 }}>
+                <div className="qs-migrated-41">
                   <div className="admin-setting-label">Layout</div>
                   <div className="admin-placeholder-box">
                     1 row × 3 columns
@@ -1372,7 +1349,7 @@ function ConfiguratorRenderPanel(props: {
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gap: 10 }}>
+                <div className="qs-migrated-41">
                   <div className="admin-setting-label">Renderer adapter</div>
                   <div className="admin-placeholder-box">
                     fieldsX: {threeFieldRendererInput.fieldsX}
@@ -1383,7 +1360,7 @@ function ConfiguratorRenderPanel(props: {
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gap: 10 }}>
+                <div className="qs-migrated-41">
                   <div className="admin-setting-label">Mullion override</div>
                   <div className="admin-placeholder-box">
                     Resolved mullion width: {threeFieldResolvedProfiles?.mullion.visibleFaceWidthMm ?? "n/a"}mm
@@ -1391,29 +1368,29 @@ function ConfiguratorRenderPanel(props: {
                 </div>
               </div>
 
-              <div className="admin-card ui-card" style={{ padding: 18, display: "grid", gap: 16, alignContent: "start" }}>
-                <div style={{ display: "grid", gap: 2 }}>
+              <div className="admin-card ui-card qs-migrated-134">
+                <div className="qs-migrated-135">
                   <div className="admin-group-title">3 Field • Fixed / Fixed / Fixed • Internal preview</div>
                   <div className="admin-body-copy">
                     This branch reuses the existing native renderer. The layout comes from `ConfiguratorLayoutDefinitionV2`; static mullion width is applied through resolved profile override only.
                   </div>
                 </div>
-                <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", background: "#fff", padding: 12 }}>
+                <div className="qs-migrated-136">
                   <DrawingViewport model={visibleThreeFieldInternalModel} minHeight={360} aspectRatio="16 / 9" />
                 </div>
               </div>
             </div>
           ) : windowTab === "4field" ? (
-            <div style={{ display: "grid", gridTemplateColumns: "340px minmax(0, 1fr)", gap: 16 }}>
-              <div className="admin-card ui-card" style={{ ...denseCardStyle, alignContent: "start" }}>
-                <div style={{ display: "grid", gap: 8 }}>
+            <div className="qs-migrated-130">
+              <div className="admin-card ui-card qs-migrated-133">
+                <div className="qs-migrated-80">
                   <H3>4 Field Preview</H3>
                   <div className="admin-body-copy">
                     Preview-only schema-driven test using the shared layout definition and existing renderer pipeline. No 4-field save/edit flow is enabled in this pass.
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gap: 10 }}>
+                <div className="qs-migrated-41">
                   <div className="admin-setting-label">Layout</div>
                   <div className="admin-placeholder-box">
                     1 row × 4 columns
@@ -1424,7 +1401,7 @@ function ConfiguratorRenderPanel(props: {
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gap: 10 }}>
+                <div className="qs-migrated-41">
                   <div className="admin-setting-label">Renderer adapter</div>
                   <div className="admin-placeholder-box">
                     fieldsX: {fourFieldRendererInput.fieldsX}
@@ -1435,7 +1412,7 @@ function ConfiguratorRenderPanel(props: {
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gap: 10 }}>
+                <div className="qs-migrated-41">
                   <div className="admin-setting-label">Mullion override</div>
                   <div className="admin-placeholder-box">
                     Resolved mullion width: {fourFieldResolvedProfiles?.mullion.visibleFaceWidthMm ?? "n/a"}mm
@@ -1443,14 +1420,14 @@ function ConfiguratorRenderPanel(props: {
                 </div>
               </div>
 
-              <div className="admin-card ui-card" style={{ padding: 18, display: "grid", gap: 16, alignContent: "start" }}>
-                <div style={{ display: "grid", gap: 2 }}>
+              <div className="admin-card ui-card qs-migrated-134">
+                <div className="qs-migrated-135">
                   <div className="admin-group-title">4 Field • Fixed / Fixed / Fixed / Fixed • Internal preview</div>
                   <div className="admin-body-copy">
                     This branch reuses the existing native renderer. The layout comes from `ConfiguratorLayoutDefinitionV2`; static mullion width is applied through resolved profile override only.
                   </div>
                 </div>
-                <div style={{ borderRadius: 16, border: "1px solid #e4e4e7", background: "#fff", padding: 12 }}>
+                <div className="qs-migrated-136">
                   <DrawingViewport model={visibleFourFieldInternalModel} minHeight={360} aspectRatio="16 / 9" />
                 </div>
               </div>
@@ -1458,16 +1435,16 @@ function ConfiguratorRenderPanel(props: {
           ) : windowTab !== "1field" ? (
             <PlaceholderGroup label={WINDOW_RENDER_TABS.find((tab) => tab.key === windowTab)?.label || "Window render mode"} />
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "340px minmax(0, 1fr)", gap: 16 }}>
-              <div className="admin-card ui-card" style={{ ...denseCardStyle, alignContent: "start" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+            <div className="qs-migrated-130">
+              <div className="admin-card ui-card qs-migrated-133">
+                <div className="qs-migrated-126">
                   <H3>1 Field Render Definition</H3>
                   <Button variant="secondary" onClick={() => setSelectedRenderProfileId("")}>New</Button>
                 </div>
 
-                <div style={{ display: "grid", gap: 10 }}>
+                <div className="qs-migrated-41">
                   <div className="admin-setting-label">View</div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <div className="qs-migrated-19">
                     {([
                       { code: "IV", label: "Internal View" },
                       { code: "EV", label: "External View" },
@@ -1487,9 +1464,9 @@ function ConfiguratorRenderPanel(props: {
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gap: 10 }}>
+                <div className="qs-migrated-41">
                   <div className="admin-setting-label">Opening behaviour</div>
-                  <div style={{ display: "grid", gap: 8 }}>
+                  <div className="qs-migrated-80">
                     {openingOptionsForWindowTab.map((item) => (
                       <button
                         key={item.operation}
@@ -1516,9 +1493,9 @@ function ConfiguratorRenderPanel(props: {
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gap: 10 }}>
+                <div className="qs-migrated-41">
                   <div className="admin-setting-label">Saved definitions for this selection</div>
-                  <div style={{ display: "grid", gap: 8 }}>
+                  <div className="qs-migrated-80">
                     {renderProfiles.map((row) => (
                       <button
                         key={row.id}
@@ -1542,58 +1519,38 @@ function ConfiguratorRenderPanel(props: {
                 </div>
               </div>
 
-              <div style={{ display: "grid", gap: 16 }}>
+              <div className="qs-migrated-122">
                 {previewNotice ? <div className="admin-card ui-card admin-status-card">{previewNotice}</div> : null}
-                <div className="admin-card ui-card" style={{ padding: 18, display: "grid", gap: 16, alignContent: "start" }}>
-                  <div style={{ display: "grid", gap: 2 }}>
+                <div className="admin-card ui-card qs-migrated-134">
+                  <div className="qs-migrated-135">
                     <div className="admin-group-title">{WINDOW_RENDER_TABS.find((tab) => tab.key === windowTab)?.label || "Window"} • {selectedOpeningLabel} • {selectedViewLabel}</div>
                     <div className="admin-body-copy">Both previews stay visible for comparison, but only the selected view definition is active in the editor below.</div>
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(320px, 1fr))", gap: 16, alignItems: "start" }}>
-                    <div style={{ display: "grid", gap: 8, alignContent: "start" }}>
+                  <div className="qs-migrated-137">
+                    <div className="qs-migrated-138">
                       <div className="admin-setting-label">Internal view</div>
-                      <div className="admin-placeholder-box" style={{ padding: "10px 12px", fontWeight: 700 }}>{internalPreviewDraft.code || generatedInternalCode}</div>
-                      <div
-                        style={{
-                          borderRadius: 16,
-                          border: renderViewCode === "IV" ? "2px solid var(--color-primary)" : "1px solid #e4e4e7",
-                          background: "#fff",
-                          padding: 12,
-                          display: "grid",
-                          alignContent: "start",
-                          boxShadow: renderViewCode === "IV" ? "0 0 0 2px rgba(59,130,246,0.12)" : "none",
-                        }}
-                      >
+                      <div className="admin-placeholder-box qs-migrated-139">{internalPreviewDraft.code || generatedInternalCode}</div>
+                      <div className="admin-technical-preview" data-state={renderViewCode === "IV" ? "active" : "idle"}>
                         <DrawingViewport model={visibleInternalModel} minHeight={320} aspectRatio="16 / 9" />
                       </div>
                     </div>
-                    <div style={{ display: "grid", gap: 8, alignContent: "start" }}>
+                    <div className="qs-migrated-138">
                       <div className="admin-setting-label">External view</div>
-                      <div className="admin-placeholder-box" style={{ padding: "10px 12px", fontWeight: 700 }}>{externalPreviewDraft.code || generatedExternalCode}</div>
-                      <div
-                        style={{
-                          borderRadius: 16,
-                          border: renderViewCode === "EV" ? "2px solid var(--color-primary)" : "1px solid #e4e4e7",
-                          background: "#fff",
-                          padding: 12,
-                          display: "grid",
-                          alignContent: "start",
-                          boxShadow: renderViewCode === "EV" ? "0 0 0 2px rgba(59,130,246,0.12)" : "none",
-                        }}
-                      >
+                      <div className="admin-placeholder-box qs-migrated-139">{externalPreviewDraft.code || generatedExternalCode}</div>
+                      <div className="admin-technical-preview" data-state={renderViewCode === "EV" ? "active" : "idle"}>
                         <DrawingViewport model={visibleExternalModel} minHeight={320} aspectRatio="16 / 9" />
                       </div>
                     </div>
                   </div>
                 </div>
 
-                <div className="admin-card ui-card" style={{ padding: 18, display: "grid", gap: 14, alignContent: "start" }}>
-                  <div style={{ display: "grid", gap: 2 }}>
+                <div className="admin-card ui-card qs-migrated-140">
+                  <div className="qs-migrated-135">
                     <div className="admin-group-title">{selectedViewLabel} definition editor</div>
                     <div className="admin-body-copy">Grouped values below edit only the selected {selectedViewLabel.toLowerCase()} definition.</div>
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+                  <div className="qs-migrated-132">
                     {renderViewCode === "IV" ? (
                       <>
                         <FormField label="Frame visible standard">
@@ -1608,8 +1565,7 @@ function ConfiguratorRenderPanel(props: {
                                 frame_left_visible_mm: value,
                                 frame_right_visible_mm: value,
                               }));
-                            }}
-                            style={inputStyle}
+                            }} className="qs-migrated-127"
                           />
                         </FormField>
                         <FormField label="Frame visible bottom">
@@ -1619,8 +1575,7 @@ function ConfiguratorRenderPanel(props: {
                             onChange={(event) => {
                               const value = numericOrNull(event.currentTarget.value);
                               setRenderDraft((previous) => ({ ...previous, frame_bottom_visible_mm: value }));
-                            }}
-                            style={inputStyle}
+                            }} className="qs-migrated-127"
                           />
                         </FormField>
                         {selectedOpeningOperation !== "fixed" ? (
@@ -1637,8 +1592,7 @@ function ConfiguratorRenderPanel(props: {
                                   sash_right_visible_mm: value,
                                   sash_bottom_visible_mm: value,
                                 }));
-                              }}
-                              style={inputStyle}
+                              }} className="qs-migrated-127"
                             />
                           </FormField>
                         ) : null}
@@ -1655,8 +1609,7 @@ function ConfiguratorRenderPanel(props: {
                                 bead_right_visible_mm: value,
                                 bead_bottom_visible_mm: value,
                               }));
-                            }}
-                            style={inputStyle}
+                            }} className="qs-migrated-127"
                           />
                         </FormField>
                       </>
@@ -1674,8 +1627,7 @@ function ConfiguratorRenderPanel(props: {
                                 frame_left_visible_mm: value,
                                 frame_right_visible_mm: value,
                               }));
-                            }}
-                            style={inputStyle}
+                            }} className="qs-migrated-127"
                           />
                         </FormField>
                         <FormField label="Outer frame bottom">
@@ -1685,8 +1637,7 @@ function ConfiguratorRenderPanel(props: {
                             onChange={(event) => {
                               const value = numericOrNull(event.currentTarget.value);
                               setRenderDraft((previous) => ({ ...previous, frame_bottom_visible_mm: value }));
-                            }}
-                            style={inputStyle}
+                            }} className="qs-migrated-127"
                           />
                         </FormField>
                         {selectedOpeningOperation !== "fixed" ? (
@@ -1703,8 +1654,7 @@ function ConfiguratorRenderPanel(props: {
                                     sash_left_visible_mm: value,
                                     sash_right_visible_mm: value,
                                   }));
-                                }}
-                                style={inputStyle}
+                                }} className="qs-migrated-127"
                               />
                             </FormField>
                             <FormField label="Outer alu cladding bottom">
@@ -1714,8 +1664,7 @@ function ConfiguratorRenderPanel(props: {
                                 onChange={(event) => {
                                   const value = numericOrNull(event.currentTarget.value);
                                   setRenderDraft((previous) => ({ ...previous, sash_bottom_visible_mm: value }));
-                                }}
-                                style={inputStyle}
+                                }} className="qs-migrated-127"
                               />
                             </FormField>
                           </>
@@ -1727,8 +1676,7 @@ function ConfiguratorRenderPanel(props: {
                             onChange={(event) => {
                               const value = numericOrNull(event.currentTarget.value);
                               setRenderDraft((previous) => ({ ...previous, external_cladding_inset_mm: value }));
-                            }}
-                            style={inputStyle}
+                            }} className="qs-migrated-127"
                           />
                         </FormField>
                       </>
@@ -1740,8 +1688,7 @@ function ConfiguratorRenderPanel(props: {
                         onChange={(event) => {
                           const value = numericOrNull(event.currentTarget.value);
                           setRenderDraft((previous) => ({ ...previous, preview_width_mm: value }));
-                        }}
-                        style={inputStyle}
+                        }} className="qs-migrated-127"
                       />
                     </FormField>
                     <FormField label="Render height">
@@ -1751,22 +1698,21 @@ function ConfiguratorRenderPanel(props: {
                         onChange={(event) => {
                           const value = numericOrNull(event.currentTarget.value);
                           setRenderDraft((previous) => ({ ...previous, preview_height_mm: value }));
-                        }}
-                        style={inputStyle}
+                        }} className="qs-migrated-127"
                       />
                     </FormField>
                   </div>
 
                   {selectedOpeningDirection === "inward" ? (
-                    <div className="admin-card ui-card" style={{ padding: 16, display: "grid", gap: 12, alignContent: "start" }}>
-                      <div style={{ display: "grid", gap: 2 }}>
+                    <div className="admin-card ui-card qs-migrated-133">
+                      <div className="qs-migrated-135">
                         <div className="admin-group-title">Trickle vent definition</div>
                         <div className="admin-body-copy">
                           Stored on the render definition and resolved into the shared drawing model. Confirmed geometry only; canopy remains out of scope.
                         </div>
                       </div>
 
-                      <label className="admin-flex-row" style={{ fontWeight: 700, color: "var(--color-text-primary)" }}>
+                      <label className="admin-flex-row qs-migrated-129">
                         <input
                           type="checkbox"
                           checked={!!renderDraft.trickle_vent_enabled}
@@ -1782,7 +1728,7 @@ function ConfiguratorRenderPanel(props: {
                         <span>Enable trickle vent</span>
                       </label>
 
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+                      <div className="qs-migrated-132">
                         <FormField label="EA layout">
                           <select
                             value={renderDraft.trickle_vent_ea_value ?? ""}
@@ -1790,8 +1736,7 @@ function ConfiguratorRenderPanel(props: {
                               const value = event.currentTarget.value as ConfiguratorTrickleVentEaValue | "";
                               setRenderDraft((previous) => applyTrickleVentPreset(previous, value));
                             }}
-                            disabled={!renderDraft.trickle_vent_enabled}
-                            style={inputStyle}
+                            disabled={!renderDraft.trickle_vent_enabled} className="qs-migrated-127"
                           >
                             <option value="">Select EA</option>
                             {Object.entries(TRICKLE_VENT_PRESETS).map(([value, preset]) => (
@@ -1802,36 +1747,31 @@ function ConfiguratorRenderPanel(props: {
                         <FormField label="Head visible with vent">
                           <input
                             value={renderDraft.trickle_vent_head_visible_mm ?? ""}
-                            readOnly
-                            style={{ ...inputStyle, background: "var(--color-surface-muted)" }}
+                            readOnly className="qs-migrated-141"
                           />
                         </FormField>
                         <FormField label="Top of head to top of slot">
                           <input
                             value={renderDraft.trickle_vent_slot_top_offset_mm ?? ""}
-                            readOnly
-                            style={{ ...inputStyle, background: "var(--color-surface-muted)" }}
+                            readOnly className="qs-migrated-141"
                           />
                         </FormField>
                         <FormField label="Slot height">
                           <input
                             value={renderDraft.trickle_vent_slot_height_mm ?? ""}
-                            readOnly
-                            style={{ ...inputStyle, background: "var(--color-surface-muted)" }}
+                            readOnly className="qs-migrated-141"
                           />
                         </FormField>
                         <FormField label="Bottom of slot to lower head line">
                           <input
                             value={renderDraft.trickle_vent_slot_bottom_offset_mm ?? ""}
-                            readOnly
-                            style={{ ...inputStyle, background: "var(--color-surface-muted)" }}
+                            readOnly className="qs-migrated-141"
                           />
                         </FormField>
                         <FormField label="Slot assembly">
                           <input
                             value={formatTrickleVentLayout(renderDraft)}
-                            readOnly
-                            style={{ ...inputStyle, background: "var(--color-surface-muted)" }}
+                            readOnly className="qs-migrated-141"
                           />
                         </FormField>
                       </div>
@@ -1843,7 +1783,7 @@ function ConfiguratorRenderPanel(props: {
                   ) : null}
 
                   {selectedOpeningOperation !== "fixed" && selectedOpeningOperation !== "fixed_sash" ? (
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+                    <div className="qs-migrated-142">
                       <FormField label="Handle axis offset">
                         <input
                           type="number"
@@ -1851,8 +1791,7 @@ function ConfiguratorRenderPanel(props: {
                           onChange={(event) => {
                             const value = numericOrNull(event.currentTarget.value);
                             setRenderDraft((previous) => ({ ...previous, handle_axis_offset_mm: value }));
-                          }}
-                          style={inputStyle}
+                          }} className="qs-migrated-127"
                         />
                       </FormField>
                       <FormField label="Handle height">
@@ -1862,8 +1801,7 @@ function ConfiguratorRenderPanel(props: {
                           onChange={(event) => {
                             const value = numericOrNull(event.currentTarget.value);
                             setRenderDraft((previous) => ({ ...previous, handle_height_mm: value }));
-                          }}
-                          style={inputStyle}
+                          }} className="qs-migrated-127"
                         />
                       </FormField>
                       <FormField label="Hinge pivot offset">
@@ -1873,22 +1811,20 @@ function ConfiguratorRenderPanel(props: {
                           onChange={(event) => {
                             const value = numericOrNull(event.currentTarget.value);
                             setRenderDraft((previous) => ({ ...previous, hinge_pivot_offset_mm: value }));
-                          }}
-                          style={inputStyle}
+                          }} className="qs-migrated-127"
                         />
                       </FormField>
                     </div>
                   ) : null}
 
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+                  <div className="qs-migrated-132">
                     <FormField label="External frame cladding colour">
                       <input
                         value={renderDraft.external_frame_cladding_colour}
                         onChange={(event) => {
                           const value = event.currentTarget.value;
                           setRenderDraft((previous) => ({ ...previous, external_frame_cladding_colour: value }));
-                        }}
-                        style={inputStyle}
+                        }} className="qs-migrated-127"
                       />
                     </FormField>
                     {selectedOpeningOperation !== "fixed" ? (
@@ -1898,22 +1834,21 @@ function ConfiguratorRenderPanel(props: {
                           onChange={(event) => {
                             const value = event.currentTarget.value;
                             setRenderDraft((previous) => ({ ...previous, external_sash_cladding_colour: value }));
-                          }}
-                          style={inputStyle}
+                          }} className="qs-migrated-127"
                         />
                       </FormField>
                     ) : null}
                   </div>
 
-                  <label className="admin-flex-row" style={{ fontWeight: 700, color: "var(--color-text-primary)" }}>
+                  <label className="admin-flex-row qs-migrated-129">
                     <input type="checkbox" checked={showDimensions} onChange={(event) => setShowDimensions(event.currentTarget.checked)} />
                     <span>Show dimensions</span>
                   </label>
 
                   <details>
-                    <summary style={{ cursor: "pointer", fontWeight: 700, color: "var(--color-text-primary)" }}>Advanced code override</summary>
-                    <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-                      <label className="admin-flex-row" style={{ fontWeight: 700, color: "var(--color-text-primary)" }}>
+                    <summary className="qs-migrated-143">Advanced code override</summary>
+                    <div className="qs-migrated-144">
+                      <label className="admin-flex-row qs-migrated-129">
                         <input
                           type="checkbox"
                           checked={manualCodeOverride}
@@ -1936,10 +1871,8 @@ function ConfiguratorRenderPanel(props: {
                             setRenderDraft((previous) => ({ ...previous, code: value, name: value }));
                           }}
                           readOnly={!manualCodeOverride}
-                          style={{
-                            ...inputStyle,
-                            background: manualCodeOverride ? "var(--color-surface)" : "var(--color-surface-muted)",
-                          }}
+                          className="admin-input"
+                          data-state={manualCodeOverride ? "editable" : "readonly"}
                         />
                       </FormField>
                       <FormField label="Notes">
@@ -1948,8 +1881,7 @@ function ConfiguratorRenderPanel(props: {
                           onChange={(event) => {
                             const value = event.currentTarget.value;
                             setRenderDraft((previous) => ({ ...previous, notes: value }));
-                          }}
-                          style={textareaStyle}
+                          }} className="qs-migrated-128"
                         />
                       </FormField>
                       <Small>Format: <code>[PRODUCT]_[VIEW]_[VARIANT]</code></Small>
@@ -2015,9 +1947,9 @@ export default function AdminConfiguratorCatalogWorkspace(props: {
   }, []);
 
   return (
-    <div style={{ display: "grid", gap: activeTab === "windowTypes" ? 8 : 16 }}>
-      <div className="admin-card ui-card" style={{ padding: 16, display: "grid", gap: 12 }}>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+    <div className="admin-catalog-workspace" data-density={activeTab === "windowTypes" ? "compact" : "standard"}>
+      <div className="admin-card ui-card qs-migrated-114">
+        <div className="qs-migrated-19">
           {TOP_TABS.map((tab) => (
             <button
               key={tab.key}

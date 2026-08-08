@@ -166,10 +166,6 @@ export default function DefaultsEditor({
                   onChange={(e) => onChange({ ...value, product: e.target.value })}
                   disabled={!value.supplier}
                   className="defaults-editor-select"
-                  style={{
-                    background: !value.supplier ? "#fafafa" : "#fff",
-                    color: !value.supplier ? "#a1a1aa" : "#18181b",
-                  }}
                 >
                   <option value="">{value.supplier ? "Select product…" : "Select supplier first…"}</option>
                   {allProductsForSupplier(value.supplier).map((p) => (

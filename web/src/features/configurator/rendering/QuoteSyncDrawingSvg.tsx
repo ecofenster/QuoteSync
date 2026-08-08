@@ -84,7 +84,7 @@ export default function QuoteSyncDrawingSvg(props: Props) {
   const { model, selectedCellKey, onSelectCell, onCellContextMenu, onRemoveVerticalJunction, onRemoveHorizontalJunction } = props;
 
   return (
-    <svg viewBox={`0 0 ${model.viewBox.width} ${model.viewBox.height}`} width="100%" height="100%" style={{ display: "block" }}>
+    <svg viewBox={`0 0 ${model.viewBox.width} ${model.viewBox.height}`} width="100%" height="100%" className="qs-migrated-238">
       <rect x={0} y={0} width={model.viewBox.width} height={model.viewBox.height} fill="#ffffff" />
 
       {model.elements.flatMap((element) => element.shapes.map((shape, index) => renderShape(shape, `${element.id}-${index}`)))}
@@ -125,7 +125,7 @@ export default function QuoteSyncDrawingSvg(props: Props) {
           y2={junction.y2}
           stroke="transparent"
           strokeWidth={16}
-          style={{ cursor: onRemoveVerticalJunction ? "pointer" : "default" }}
+          className={onRemoveVerticalJunction ? "technical-hit-target technical-hit-target--interactive" : "technical-hit-target"}
           onClick={() => onRemoveVerticalJunction?.(junction.index)}
         />
       ))}
@@ -139,7 +139,7 @@ export default function QuoteSyncDrawingSvg(props: Props) {
           y2={junction.y}
           stroke="transparent"
           strokeWidth={16}
-          style={{ cursor: onRemoveHorizontalJunction ? "pointer" : "default" }}
+          className={onRemoveHorizontalJunction ? "technical-hit-target technical-hit-target--interactive" : "technical-hit-target"}
           onClick={() => onRemoveHorizontalJunction?.(junction.index)}
         />
       ))}
@@ -156,7 +156,7 @@ export default function QuoteSyncDrawingSvg(props: Props) {
               height={cell.height}
               fill="transparent"
               pointerEvents="all"
-              style={{ cursor: onSelectCell || onCellContextMenu ? "pointer" : "default" }}
+              className={onSelectCell || onCellContextMenu ? "technical-hit-target technical-hit-target--interactive" : "technical-hit-target"}
               onClick={() => onSelectCell?.({ col, row })}
               onContextMenu={(event) => {
                 if (!onCellContextMenu) return;

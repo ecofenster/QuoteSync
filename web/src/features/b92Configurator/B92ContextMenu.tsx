@@ -79,10 +79,8 @@ export default function B92ContextMenu(props: Props) {
       />
       <div
         className="b92-context-menu__panel"
-        style={{
-          left: props.x,
-          top: props.y,
-        }}
+        data-x={`${Math.round(props.x)}px`}
+        data-y={`${Math.round(props.y)}px`}
       >
         <div className="b92-context-menu__header">
           <div className="b92-context-menu__title">Opening shortcut</div>

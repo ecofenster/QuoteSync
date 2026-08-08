@@ -48,42 +48,28 @@ export default function FieldOperationContextMenu(props: Props) {
   return createPortal(
     <div
       ref={menuRef}
-      className="admin-card ui-card"
-      style={{
-        position: "fixed",
-        top: y,
-        left: x,
-        zIndex: 1000,
-        minWidth: 230,
-        maxWidth: 280,
-        padding: 10,
-        display: "grid",
-        gap: 8,
-        boxShadow: "0 18px 45px rgba(15, 23, 42, 0.18)",
-      }}
+      className="admin-card ui-card window-types-context-menu"
+      data-x={`${Math.round(x)}px`}
+      data-y={`${Math.round(y)}px`}
       role="menu"
       aria-label={`Field operation menu for field ${field.key}`}
     >
-      <div style={{ display: "grid", gap: 2 }}>
+      <div className="qs-migrated-135">
         <div className="admin-setting-label">Field operation</div>
         <div className="admin-body-copy">
           Field {field.key} · row {field.row}, column {field.column}
         </div>
       </div>
-      <div style={{ display: "grid", gap: 4 }}>
+      <div className="qs-migrated-17">
         {availableOperations.map((option) => (
           <button
             key={`${option.operation}-${option.label}`}
             type="button"
-            className="admin-nav-button"
+            className="admin-nav-button qs-migrated-193"
             role="menuitem"
             onClick={() => {
               onSelectOperation(option.operation);
               onClose();
-            }}
-            style={{
-              justifyContent: "flex-start",
-              cursor: "pointer",
             }}
           >
             <span className="admin-nav-button-label">{option.label}</span>

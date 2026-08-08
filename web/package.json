@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --noEmit",
+    "check:design-system": "node scripts/check-design-system-compliance.mjs",
     "lint": "eslint .",
     "test": "npm run test:phase5",
     "test:phase5": "node scripts/run-phase5-tests.mjs",

@@ -1,15 +1,15 @@
 html {
-  font-family: var(--font-family-base);
+  font-family: var(--qs-font-family);
   line-height: var(--line-height-base);
-  color: var(--color-text-primary);
-  background: var(--app-shell-background);
+  color: var(--qs-theme-text);
+  background: var(--qs-bg-page);
 }
 
 body {
-  font-family: var(--font-family-base);
+  font-family: var(--qs-font-family);
   line-height: var(--line-height-base);
-  color: var(--color-text-primary);
-  background: var(--app-shell-background);
+  color: var(--qs-theme-text);
+  background: var(--qs-bg-page);
 }
 
 :root[data-qs-theme="light"] h1,
@@ -24,7 +24,7 @@ body {
 :root[data-qs-theme="dark"] h4,
 :root[data-qs-theme="dark"] h5,
 :root[data-qs-theme="dark"] h6 {
-  color: var(--color-text-primary);
+  color: var(--qs-theme-text);
 }
 
 a {
@@ -42,12 +42,12 @@ textarea {
 input,
 select,
 textarea {
-  color: var(--color-text-primary);
+  color: var(--qs-theme-text);
 }
 
 input::placeholder,
 textarea::placeholder {
-  color: var(--color-text-muted);
+  color: var(--qs-theme-text-muted);
 }
 
 img,
@@ -64,11 +64,11 @@ button {
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-brand-primary);
+  outline: 2px solid var(--qs-theme-primary);
   outline-offset: 2px;
-  box-shadow: 0 0 0 4px var(--color-focus-ring);
+  box-shadow: 0 0 0 4px var(--qs-focus-ring);
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--color-brand-primary) 24%, transparent);
+  background: color-mix(in srgb, var(--qs-theme-primary) 24%, transparent);
 }

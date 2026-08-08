@@ -119,7 +119,7 @@ export default function EstimateCollectionView(props: Props) {
             <div className="ep-stat-card">
               <div className="ep-stat-label">Total cost</div>
               <div className="ep-stat-value">{formatMoney(sectionTotals.totalCost)}</div>
-              <Small style={{ marginTop: 4 }}>{items.length} estimate(s) in this section</Small>
+              <Small className="qs-migrated-239">{items.length} estimate(s) in this section</Small>
             </div>
           </div>
         </>
@@ -134,9 +134,7 @@ export default function EstimateCollectionView(props: Props) {
             <div
               key={item.id}
               className={`ep-estimate-card ep-estimate-card--${viewMode} ${isExpanded ? "ep-estimate-card--expanded" : ""}`}
-              style={{
-                gridColumn: viewMode === "grid" && isExpanded ? "1 / -1" : undefined,
-              }}
+              data-span={viewMode === "grid" && isExpanded ? "full" : "normal"}
             >
               <EstimateCollectionRow
                 item={item}
@@ -190,7 +188,7 @@ export default function EstimateCollectionView(props: Props) {
         })}
 
         {items.length === 0 && (
-          <div className="ep-empty-state" style={{ gridColumn: viewMode === "grid" ? "1 / -1" : undefined }}>
+          <div className="ep-empty-state" data-span={viewMode === "grid" ? "full" : "normal"}>
             <Small>{emptyText}</Small>
           </div>
         )}

@@ -15,15 +15,6 @@ type Props = {
   onSelect: (id: string | null) => void;
 };
 
-const inputStyle: React.CSSProperties = {
-  height: 34,
-  borderRadius: 10,
-  border: "1px solid var(--color-border)",
-  padding: "0 10px",
-  background: "var(--color-surface)",
-  color: "var(--color-text-primary)",
-};
-
 export default function SectionReferencePicker(props: Props) {
   const { roleLabel, conditionLabel, contextLabel, options, selectedId, onSelect } = props;
   const [query, setQuery] = useState("");
@@ -40,32 +31,30 @@ export default function SectionReferencePicker(props: Props) {
   const selectedOption = options.find((option) => option.id === selectedId) ?? null;
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "140px minmax(0, 1fr)", gap: 10, alignItems: "start" }}>
-      <div style={{ display: "grid", gap: 4 }}>
+    <div className="qs-migrated-195">
+      <div className="qs-migrated-17">
         <div className="admin-setting-label">{roleLabel}</div>
         {(conditionLabel || contextLabel) ? (
-          <div className="admin-body-copy" style={{ fontSize: 12 }}>
+          <div className="admin-body-copy qs-migrated-194">
             {[conditionLabel, contextLabel].filter(Boolean).join(" • ")}
           </div>
         ) : null}
         {selectedOption ? (
-          <div className="admin-body-copy" style={{ fontSize: 12 }}>
+          <div className="admin-body-copy qs-migrated-194">
             {selectedOption.referenceLabel}
           </div>
         ) : null}
       </div>
 
-      <div style={{ display: "grid", gap: 6 }}>
+      <div className="qs-migrated-57">
         <input
           value={query}
           onChange={(event) => setQuery(event.currentTarget.value)}
-          placeholder="Search section refs"
-          style={inputStyle}
+          placeholder="Search section refs" className="qs-migrated-196"
         />
         <select
           value={selectedId ?? ""}
-          onChange={(event) => onSelect(event.currentTarget.value || null)}
-          style={inputStyle}
+          onChange={(event) => onSelect(event.currentTarget.value || null)} className="qs-migrated-196"
         >
           <option value="">Unmapped</option>
           {filteredOptions.map((option) => (

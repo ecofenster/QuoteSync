@@ -15,14 +15,6 @@ type Props = {
   onClearMeasurements?: () => void;
 };
 
-const controlStyle: React.CSSProperties = {
-  height: 32,
-  borderRadius: 10,
-  border: "1px solid #d4d4d8",
-  background: "#fff",
-  color: "#18181b",
-};
-
 export default function DrawingPreviewToolbar(props: Props) {
   const {
     scalePreset,
@@ -38,26 +30,24 @@ export default function DrawingPreviewToolbar(props: Props) {
   } = props;
 
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: "#52525b" }}>Tool</span>
+    <div className="qs-migrated-229">
+      <div className="qs-migrated-230">
+        <label className="qs-migrated-10">
+          <span className="qs-migrated-231">Tool</span>
           <select
             value={tool}
-            onChange={(event) => onToolChange(event.currentTarget.value as DrawingViewportTool)}
-            style={{ ...controlStyle, minWidth: 96, padding: "0 10px" }}
+            onChange={(event) => onToolChange(event.currentTarget.value as DrawingViewportTool)} className="qs-migrated-232"
           >
             <option value="select">Select</option>
             <option value="pan">Pan</option>
             <option value="measure">Measure</option>
           </select>
         </label>
-        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: "#52525b" }}>Scale</span>
+        <label className="qs-migrated-10">
+          <span className="qs-migrated-231">Scale</span>
           <select
             value={scalePreset}
-            onChange={(event) => onScalePresetChange(event.currentTarget.value as DrawingScalePreset)}
-            style={{ ...controlStyle, minWidth: 112, padding: "0 10px" }}
+            onChange={(event) => onScalePresetChange(event.currentTarget.value as DrawingScalePreset)} className="qs-migrated-233"
           >
             {DRAWING_SCALE_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -66,27 +56,26 @@ export default function DrawingPreviewToolbar(props: Props) {
             ))}
           </select>
         </label>
-        <button type="button" onClick={onZoomOut} style={{ ...controlStyle, width: 32, fontSize: 18, fontWeight: 700 }}>
+        <button type="button" onClick={onZoomOut} className="qs-migrated-234">
           -
         </button>
-        <button type="button" onClick={onZoomIn} style={{ ...controlStyle, width: 32, fontSize: 18, fontWeight: 700 }}>
+        <button type="button" onClick={onZoomIn} className="qs-migrated-234">
           +
         </button>
-        <button type="button" onClick={onResetZoom} style={{ ...controlStyle, padding: "0 10px", fontWeight: 600 }}>
+        <button type="button" onClick={onResetZoom} className="qs-migrated-235">
           Reset
         </button>
         {tool === "measure" ? (
           <button
             type="button"
-            onClick={onClearMeasurements}
-            style={{ ...controlStyle, padding: "0 10px", fontWeight: 600 }}
+            onClick={onClearMeasurements} className="qs-migrated-235"
             disabled={!measurementCount}
           >
             Clear Measurements
           </button>
         ) : null}
       </div>
-      <div style={{ fontSize: 12, fontWeight: 600, color: "#71717a" }}>
+      <div className="qs-migrated-236">
         {tool === "measure" ? `Measurements ${measurementCount} • ` : ""}Zoom {(zoomMultiplier * 100).toFixed(0)}%
       </div>
     </div>

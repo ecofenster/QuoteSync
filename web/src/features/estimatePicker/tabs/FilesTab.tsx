@@ -66,7 +66,7 @@ export default function FilesTab(props: {
             <div className="ep-files-card-header">
               <div className="ep-files-card-main">
                 <div className="ep-files-card-title">{f.label}</div>
-                <Small style={{ wordBreak: "break-all" }}>{f.url}</Small>
+                <Small className="qs-migrated-257">{f.url}</Small>
               </div>
               <div className="ep-files-card-meta">
                 <Small>{new Date(f.addedAt).toLocaleString()}</Small>

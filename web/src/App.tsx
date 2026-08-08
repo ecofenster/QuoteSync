@@ -71,6 +71,7 @@ async function purgeEstimateAPI(id: string) {
   });
 }
 import EstimatePickerFeature, { type EstimatePickerFeatureHandle } from "./features/estimatePicker/EstimatePickerFeature";
+import EstimateCommercialWorkspace from "./features/estimateCommercial/EstimateCommercialWorkspace";
 import { DEFAULT_CUSTOMER_ADDRESS, makeDefaultClients } from "./features/clients/defaultClients";
 import "./features/clients/ClientsView.css";
 import "./App.css";
@@ -630,37 +631,27 @@ function seedDemoEstimateOutcomesAndFollowUps(clients: Client[], enabled: boolea
 }
 
 /* =========================
-   UI primitives (inline only)
+   Shared application primitives
 ========================= */
 
-function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <div
-      style={{
-        borderRadius: 18,
-        border: "1px solid var(--color-border)",
-        background: "var(--ui-card-background, var(--color-surface))",
-        padding: 16,
-        boxShadow: "var(--shadow-sm)",
-        color: "var(--color-text-primary)",
-        ...style,
-      }}
-    >
+    <div className={`app-card ui-card ${className}`.trim()}>
       {children}
     </div>
   );
 }
 
 function H2({ children }: { children: React.ReactNode }) {
-  return <h2 style={{ fontSize: 16, margin: 0, fontWeight: 800, color: "var(--color-text-primary)" }}>{children}</h2>;
+  return <h2 className="app-heading app-heading--section">{children}</h2>;
 }
 
 function H3({ children }: { children: React.ReactNode }) {
-  return <h3 style={{ fontSize: 14, margin: 0, fontWeight: 800, color: "var(--color-text-primary)" }}>{children}</h3>;
+  return <h3 className="app-heading app-heading--minor">{children}</h3>;
 }
 
-function Small({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
-  return <div style={{ fontSize: 12, color: "var(--color-text-muted)", ...(style || {}) }}>{children}</div>;
+function Small({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <div className={`app-meta ${className}`.trim()}>{children}</div>;
 }
 
 function Button({
@@ -668,32 +659,20 @@ function Button({
   onClick,
   variant = "primary",
   disabled,
-  style,
+  className = "",
 }: {
   children: React.ReactNode;
   onClick?: () => void;
   variant?: "primary" | "secondary";
   disabled?: boolean;
-  style?: React.CSSProperties;
+  className?: string;
 }) {
-  const isPrimary = variant === "primary";
   return (
     <button
       type="button"
       disabled={!!disabled}
       onClick={onClick}
-      style={{
-        borderRadius: 18,
-        border: isPrimary ? "none" : "1px solid var(--color-border)",
-        background: isPrimary ? "var(--color-brand-primary)" : "var(--ui-control-background, var(--color-surface))",
-        color: isPrimary ? "var(--color-brand-on-primary)" : "var(--color-text-secondary)",
-        padding: "10px 14px",
-        fontSize: 14,
-        fontWeight: 800,
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.55 : 1,
-        ...style,
-      }}
+      className={`ui-button${variant === "primary" ? " ui-button--primary" : ""} ${className}`.trim()}
     >
       {children}
     </button>
@@ -729,16 +708,7 @@ function Input({
       readOnly={readOnly}
       autoComplete={autoComplete}
       onChange={(e) => onChange(e.target.value)}
-      style={{
-        width: "100%",
-        borderRadius: 12,
-        border: "1px solid var(--color-border)",
-        padding: "10px 12px",
-        fontSize: 14,
-        background: "var(--ui-control-background, var(--color-surface))",
-        color: "var(--color-text-primary)",
-        outline: "none",
-      }}
+      className="ui-input"
     />
   );
 }
@@ -753,33 +723,9 @@ function ModalOverlay({
   onClose?: () => void;
 }) {
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 9998,
-        background: "rgba(24,24,27,0.55)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 16,
-      }}
-      onClick={() => onClose?.()}
-    >
+    <div className="app-modal-scrim ui-scrim" onClick={() => onClose?.()}>
       <div
-        style={{
-          width,
-          maxHeight: "92vh",
-          overflow: "auto",
-          borderRadius: 18,
-          border: "1px solid var(--color-border)",
-          background: "var(--ui-card-background, var(--color-surface))",
-          color: "var(--color-text-primary)",
-          padding: 16,
-          boxShadow: "var(--shadow-lg)",
-          display: "grid",
-          gap: 12,
-        }}
+        className={`app-modal ui-dialog ${width.includes("720px") ? "app-modal--medium" : "app-modal--wide"}`}
         onClick={(event) => event.stopPropagation()}
       >
         {children}
@@ -790,18 +736,7 @@ function ModalOverlay({
 
 function Pill({ children }: { children: React.ReactNode }) {
   return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        borderRadius: 999,
-        padding: "4px 10px",
-        fontSize: 12,
-        fontWeight: 800,
-        background: "var(--color-surface-muted)",
-        color: "var(--color-text-primary)",
-        border: "1px solid var(--color-border)",
-      }}
+    <span className="qs-migrated-1"
     >
       {children}
     </span>
@@ -812,23 +747,13 @@ function SidebarItem({ label, active, onClick }: { label: string; active?: boole
   return (
     <div
       onClick={onClick}
-      style={{
-        borderRadius: 14,
-        padding: "10px 12px",
-        marginBottom: 6,
-        cursor: "pointer",
-        background: active ? "var(--color-brand-primary)" : "transparent",
-        color: active ? "var(--color-brand-on-primary)" : "var(--color-text-secondary)",
-        fontSize: 14,
-        fontWeight: active ? 800 : 600,
-      }}
+      className="app-sidebar-item"
+      data-state={active ? "active" : "idle"}
     >
       {label}
     </div>
   );
 }
-
-const labelStyle: React.CSSProperties = { fontSize: 13, color: "var(--color-text-secondary)", fontWeight: 700, marginBottom: 6 };
 
 type TopShellPage =
   | "app"
@@ -849,23 +774,15 @@ function TopShellPlaceholder({
   summary: string;
 }) {
   return (
-    <Card style={{ minHeight: 520 }}>
-      <div style={{ display: "grid", gap: 12, maxWidth: 920 }}>
+    <Card className="qs-migrated-2">
+      <div className="qs-migrated-3">
         <div>
           <H2>{title}</H2>
           <Small>{summary}</Small>
         </div>
-        <div
-          style={{
-            borderRadius: 16,
-            border: "1px solid var(--color-border)",
-            background: "var(--ui-card-background, var(--color-surface))",
-            padding: 16,
-            display: "grid",
-            gap: 10,
-          }}
+        <div className="qs-migrated-4"
         >
-          <div style={{ fontSize: 14, fontWeight: 900, color: "var(--color-text-primary)" }}>Placeholder</div>
+          <div className="qs-migrated-5">Placeholder</div>
           <Small>This section is now wired into the live shell and ready for the next implementation phase.</Small>
         </div>
       </div>
@@ -910,7 +827,7 @@ function ToolsHubPage() {
   }
 
   return (
-    <Card style={{ minHeight: 520 }}>
+    <Card className="qs-migrated-2">
       <div className="tools-hub">
         <div className="tools-hub__tabs">
           {tabs.map((tab) => (
@@ -1003,17 +920,17 @@ function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => void })
   const [i1, i2, i3, it, ic, ico, ip] = addressTuple(invoiceStructured);
 
   return (
-    <div className="legacy-surface-card" style={{ padding: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+    <div className="legacy-surface-card qs-migrated-6">
+      <div className="qs-migrated-7">
         <H3>Client contact information</H3>
         <Button variant="secondary" onClick={onEdit}>Edit</Button>
       </div>
 
-      <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div className="qs-migrated-8">
+        <div className="qs-migrated-9">
+          <label className="qs-migrated-10">
             <input type="checkbox" checked={c.type === "Business"} disabled />
-            <span className="legacy-checkbox-label" style={{ fontSize: 12, fontWeight: 800 }}>Business customer</span>
+            <span className="legacy-checkbox-label qs-migrated-11">Business customer</span>
           </label>
           <Small>Type: {c.type}</Small>
         </div>
@@ -1021,93 +938,82 @@ function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => void })
         {c.type === "Business" ? (
           <>
             <div>
-              <div style={labelStyle}>Business name</div>
+              <div className="qs-migrated-12">Business name</div>
               <Input value={c.businessName || c.clientName || ""} onChange={() => {}} disabled />
             </div>
             <div>
-              <div style={labelStyle}>Contact name</div>
+              <div className="qs-migrated-12">Contact name</div>
               <Input value={c.contactPerson || ""} onChange={() => {}} disabled />
             </div>
           </>
         ) : (
           <div>
-            <div style={labelStyle}>Client name</div>
+            <div className="qs-migrated-12">Client name</div>
             <Input value={c.clientName || ""} onChange={() => {}} disabled />
           </div>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div className="qs-migrated-13">
           <div>
-            <div style={labelStyle}>Email</div>
+            <div className="qs-migrated-12">Email</div>
             <Input value={c.email || ""} onChange={() => {}} disabled />
           </div>
           <div>
-            <div style={labelStyle}>Mobile</div>
+            <div className="qs-migrated-12">Mobile</div>
             <Input value={c.mobile || ""} onChange={() => {}} disabled />
           </div>
         </div>
 
         <div>
-          <div style={labelStyle}>Home</div>
+          <div className="qs-migrated-12">Home</div>
           <Input value={c.home || ""} onChange={() => {}} disabled />
         </div>
 
-        <div className="legacy-section-divider" style={{ marginTop: 10, paddingTop: 10 }}>
+        <div className="legacy-section-divider qs-migrated-14">
           <button
             type="button"
             onClick={() => setCustomerAddressOpen((prev) => !prev)}
-            style={{
-              border: "none",
-              background: "transparent",
-              padding: 0,
-              margin: 0,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              font: "inherit",
-            }}
-            className="legacy-section-toggle"
+            className="legacy-section-toggle qs-migrated-15"
           >
             <H3>{customerAddressOpen ? "▼" : "▶"} Customer address</H3>
           </button>
 
           {customerAddressOpen && (
-            <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div className="qs-migrated-16">
+              <div className="qs-migrated-13">
                 <div>
-                  <div style={labelStyle}>Address line 1</div>
+                  <div className="qs-migrated-12">Address line 1</div>
                   <Input value={ca1} onChange={() => {}} disabled />
                 </div>
                 <div>
-                  <div style={labelStyle}>Address line 2</div>
+                  <div className="qs-migrated-12">Address line 2</div>
                   <Input value={ca2} onChange={() => {}} disabled />
                 </div>
               </div>
 
               <div>
-                <div style={labelStyle}>Address line 3</div>
+                <div className="qs-migrated-12">Address line 3</div>
                 <Input value={ca3} onChange={() => {}} disabled />
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="qs-migrated-13">
                 <div>
-                  <div style={labelStyle}>Town</div>
+                  <div className="qs-migrated-12">Town</div>
                   <Input value={ct} onChange={() => {}} disabled />
                 </div>
                 <div>
-                  <div style={labelStyle}>City</div>
+                  <div className="qs-migrated-12">City</div>
                   <Input value={cc} onChange={() => {}} disabled />
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="qs-migrated-13">
                 <div>
-                  <div style={labelStyle}>County/District</div>
+                  <div className="qs-migrated-12">County/District</div>
                   <Input value={cco} onChange={() => {}} disabled />
                 </div>
                 <div>
-                  <div style={labelStyle}>Postcode</div>
+                  <div className="qs-migrated-12">Postcode</div>
                   <Input value={cp} onChange={() => {}} disabled />
                 </div>
               </div>
@@ -1115,62 +1021,51 @@ function ClientDetailsReadonly({ c, onEdit }: { c: Client; onEdit: () => void })
           )}
         </div>
 
-        <div className="legacy-section-divider" style={{ marginTop: 10, paddingTop: 10 }}>
+        <div className="legacy-section-divider qs-migrated-14">
           <button
             type="button"
             onClick={() => setInvoiceAddressOpen((prev) => !prev)}
-            style={{
-              border: "none",
-              background: "transparent",
-              padding: 0,
-              margin: 0,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              font: "inherit",
-            }}
-            className="legacy-section-toggle"
+            className="legacy-section-toggle qs-migrated-15"
           >
             <H3>{invoiceAddressOpen ? "▼" : "▶"} Invoice address</H3>
           </button>
 
           {invoiceAddressOpen && (
-            <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div className="qs-migrated-16">
+              <div className="qs-migrated-13">
                 <div>
-                  <div style={labelStyle}>Address line 1</div>
+                  <div className="qs-migrated-12">Address line 1</div>
                   <Input value={i1} onChange={() => {}} disabled />
                 </div>
                 <div>
-                  <div style={labelStyle}>Address line 2</div>
+                  <div className="qs-migrated-12">Address line 2</div>
                   <Input value={i2} onChange={() => {}} disabled />
                 </div>
               </div>
 
               <div>
-                <div style={labelStyle}>Address line 3</div>
+                <div className="qs-migrated-12">Address line 3</div>
                 <Input value={i3} onChange={() => {}} disabled />
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="qs-migrated-13">
                 <div>
-                  <div style={labelStyle}>Town</div>
+                  <div className="qs-migrated-12">Town</div>
                   <Input value={it} onChange={() => {}} disabled />
                 </div>
                 <div>
-                  <div style={labelStyle}>City</div>
+                  <div className="qs-migrated-12">City</div>
                   <Input value={ic} onChange={() => {}} disabled />
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="qs-migrated-13">
                 <div>
-                  <div style={labelStyle}>County/District</div>
+                  <div className="qs-migrated-12">County/District</div>
                   <Input value={ico} onChange={() => {}} disabled />
                 </div>
                 <div>
-                  <div style={labelStyle}>Postcode</div>
+                  <div className="qs-migrated-12">Postcode</div>
                   <Input value={ip} onChange={() => {}} disabled />
                 </div>
               </div>
@@ -1379,10 +1274,10 @@ function ClientSummary({ c }: { c: Client }) {
   const sub = c.type === "Business" ? (c.contactPerson ? `Contact: ${c.contactPerson}` : "Contact: ") : "Individual";
 
   return (
-    <div className="legacy-surface-card" style={{ padding: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <div style={{ display: "grid", gap: 4 }}>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+    <div className="legacy-surface-card qs-migrated-6">
+      <div className="qs-migrated-7">
+        <div className="qs-migrated-17">
+          <div className="qs-migrated-18">
             <H3>{headline}</H3>
             <Pill>{c.clientRef}</Pill>
             <Small>{c.type}</Small>
@@ -1390,7 +1285,7 @@ function ClientSummary({ c }: { c: Client }) {
           <Small>{sub}</Small>
         </div>
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div className="qs-migrated-19">
           {c.email ? <Pill>{c.email}</Pill> : <Pill>Email: </Pill>}
           {c.mobile ? <Pill>Mob: {c.mobile}</Pill> : <Pill>Mob: </Pill>}
           {c.home ? <Pill>Home: {c.home}</Pill> : null}
@@ -2564,10 +2459,10 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
   function PositionPreview({ position }: { position: Client["estimates"][number]["positions"][number] }) {
     const contract = getConfiguredPositionContract(position);
     return (
-      <div style={{ width: 48, height: 54, borderRadius: 12, border: "1px solid #d4d4d8", background: "#fafafa", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ width: position.positionType === "Door" ? 18 : 28, height: 38, borderRadius: 3, border: "2px solid #52525b", position: "relative", background: "#fff" }}>
-          <div style={{ position: "absolute", inset: 4, border: "1px solid #a1a1aa", borderRadius: 2 }} />
-          {contract ? <div style={{ position: "absolute", left: -4, right: -4, bottom: -14, fontSize: 8, fontWeight: 800, textAlign: "center", color: "#2563eb" }}>B92</div> : null}
+      <div className="qs-migrated-20">
+        <div className={`app-position-glyph ${position.positionType === "Door" ? "app-position-glyph--door" : "app-position-glyph--window"}`}>
+          <div className="qs-migrated-21" />
+          {contract ? <div className="qs-migrated-22">B92</div> : null}
         </div>
       </div>
     );
@@ -3332,17 +3227,12 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
       return recycleClientRows.map(({ clientId, client, deletedAt, deletedEstimateCount }) => (
         <div
           key={`client_${clientId}`}
-          className="operational-card"
-          style={{
-            padding: 14,
-            display: "grid",
-            gap: 10,
-          }}
+          className="operational-card qs-migrated-23"
         >
-          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
-            <div style={{ display: "grid", gap: 4 }}>
+          <div className="qs-migrated-24">
+            <div className="qs-migrated-17">
               <div className="operational-eyebrow">Client</div>
-              <div className="operational-title" style={{ fontSize: 16, fontWeight: 900 }}>{clientDisplayName(client)}</div>
+              <div className="operational-title qs-migrated-25">{clientDisplayName(client)}</div>
               <Small>{client.clientRef} • {client.type}</Small>
             </div>
             <input
@@ -3352,14 +3242,14 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
             />
           </div>
 
-          <div style={{ display: "grid", gap: 4 }}>
+          <div className="qs-migrated-17">
             <Small>Project: {client.projectName || "Not set"}</Small>
             <Small>Active estimates on client record: {client.estimates.length}</Small>
             <Small>Previously deleted estimates linked to this client: {deletedEstimateCount}</Small>
             <Small>Deleted: {new Date(deletedAt).toLocaleString()}</Small>
           </div>
 
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="qs-migrated-19">
             <Button variant="secondary" onClick={() => restoreDeletedClient(clientId)}>Restore Client</Button>
             <Button variant="secondary" onClick={() => purgeDeletedClient(clientId)}>Delete Permanently</Button>
           </div>
@@ -3371,17 +3261,12 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
       return recycleEstimateRows.map(({ clientId, client, estimate, deletedAt, selectionKey }) => (
         <div
           key={`estimate_${selectionKey}`}
-          className="operational-card"
-          style={{
-            padding: 14,
-            display: "grid",
-            gap: 10,
-          }}
+          className="operational-card qs-migrated-23"
         >
-          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
-            <div style={{ display: "grid", gap: 4 }}>
+          <div className="qs-migrated-24">
+            <div className="qs-migrated-17">
               <div className="operational-eyebrow">Estimate</div>
-              <div className="operational-title" style={{ fontSize: 16, fontWeight: 900 }}>{estimate.estimateRef}</div>
+              <div className="operational-title qs-migrated-25">{estimate.estimateRef}</div>
               <Small>{client ? `${clientDisplayName(client)} • ${client.clientRef}` : "Client removed from active list"}</Small>
             </div>
             <input
@@ -3391,13 +3276,13 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
             />
           </div>
 
-          <div style={{ display: "grid", gap: 4 }}>
+          <div className="qs-migrated-17">
             <Small>Status: {(estimate as any).outcome ?? "Open"}</Small>
             <Small>Forecast: {monthYearLabel(estimate.estimatedOrderMonth || "", estimate.estimatedOrderYear || 0)}</Small>
             <Small>Deleted: {new Date(deletedAt).toLocaleString()}</Small>
           </div>
 
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="qs-migrated-19">
             <Button variant="secondary" onClick={() => restoreDeletedEstimatesForClient(clientId, [estimate.id])}>Restore Estimate</Button>
             <Button variant="secondary" onClick={() => purgeDeletedEstimatesForClient(clientId, [estimate.id])}>Delete Permanently</Button>
           </div>
@@ -3407,29 +3292,20 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
 
     function renderListTables() {
       return (
-        <div style={{ display: "grid", gap: 12 }}>
+        <div className="qs-migrated-26">
           {showClients && (
             <div className="operational-table-shell">
-              <div className="operational-table-section-header" style={{ padding: 12 }}>
+              <div className="operational-table-section-header qs-migrated-6">
                 <H3>Deleted Clients</H3>
               </div>
-              <div style={{ overflow: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 980 }}>
+              <div className="qs-migrated-27">
+                <table className="qs-migrated-28">
                   <thead>
                     <tr className="operational-table-header">
                       {["", "Client Name", "Client Number", "Project Name", "Deleted", "Restore", "Delete Permanently"].map((label, index) => (
                         <th
                           key={label}
-                          style={{
-                            textAlign: index >= 5 ? "right" : "left",
-                            padding: 10,
-                            fontSize: 12,
-                            borderBottom: "1px solid var(--color-border)",
-                            position: "sticky",
-                            top: 0,
-                            zIndex: 2,
-                            background: "var(--color-surface-subtle)",
-                          }}
+                          className={index >= 5 ? "app-table-heading app-table-heading--numeric" : "app-table-heading"}
                         >
                           {label}
                         </th>
@@ -3439,28 +3315,28 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
                   <tbody>
                     {recycleClientRows.map(({ clientId, client, deletedAt }) => (
                       <tr key={`client_row_${clientId}`}>
-                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top" }}>
+                        <td className="qs-migrated-29">
                           <input
                             type="checkbox"
                             checked={!!selectedRecycleClientIds[clientId]}
                             onChange={(ev) => toggleRecycleClientSelection(clientId, ev.currentTarget.checked)}
                           />
                         </td>
-                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top", fontWeight: 700 }}>{clientDisplayName(client)}</td>
-                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top" }}>{client.clientRef}</td>
-                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top" }}>{client.projectName || ""}</td>
-                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top" }}>{new Date(deletedAt).toLocaleString()}</td>
-                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top", textAlign: "right" }}>
+                        <td className="qs-migrated-30">{clientDisplayName(client)}</td>
+                        <td className="qs-migrated-29">{client.clientRef}</td>
+                        <td className="qs-migrated-29">{client.projectName || ""}</td>
+                        <td className="qs-migrated-29">{new Date(deletedAt).toLocaleString()}</td>
+                        <td className="qs-migrated-31">
                           <Button variant="secondary" onClick={() => restoreDeletedClient(clientId)}>Restore</Button>
                         </td>
-                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top", textAlign: "right" }}>
+                        <td className="qs-migrated-31">
                           <Button variant="secondary" onClick={() => purgeDeletedClient(clientId)}>Delete Permanently</Button>
                         </td>
                       </tr>
                     ))}
                     {recycleClientRows.length === 0 && (
                       <tr>
-                        <td colSpan={7} style={{ padding: 16 }}>
+                        <td colSpan={7} className="qs-migrated-32">
                           <Small>No deleted clients.</Small>
                         </td>
                       </tr>
@@ -3473,26 +3349,17 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
 
           {showEstimates && (
             <div className="operational-table-shell">
-              <div className="operational-table-section-header" style={{ padding: 12 }}>
+              <div className="operational-table-section-header qs-migrated-6">
                 <H3>Deleted Estimates</H3>
               </div>
-              <div style={{ overflow: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1100 }}>
+              <div className="qs-migrated-27">
+                <table className="qs-migrated-33">
                   <thead>
                     <tr className="operational-table-header">
                       {["", "Client Name", "Client Number", "Estimate Ref", "Project Name", "Deleted", "Restore", "Delete Permanently"].map((label, index) => (
                         <th
                           key={label}
-                          style={{
-                            textAlign: index >= 6 ? "right" : "left",
-                            padding: 10,
-                            fontSize: 12,
-                            borderBottom: "1px solid var(--color-border)",
-                            position: "sticky",
-                            top: 0,
-                            zIndex: 2,
-                            background: "var(--color-surface-subtle)",
-                          }}
+                          className={index >= 6 ? "app-table-heading app-table-heading--numeric" : "app-table-heading"}
                         >
                           {label}
                         </th>
@@ -3502,29 +3369,29 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
                   <tbody>
                     {recycleEstimateRows.map(({ clientId, client, estimate, deletedAt, selectionKey }) => (
                       <tr key={`estimate_row_${selectionKey}`}>
-                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top" }}>
+                        <td className="qs-migrated-29">
                           <input
                             type="checkbox"
                             checked={!!selectedRecycleEstimateKeys[selectionKey]}
                             onChange={(ev) => toggleRecycleEstimateSelection(selectionKey, ev.currentTarget.checked)}
                           />
                         </td>
-                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top", fontWeight: 700 }}>{client ? clientDisplayName(client) : "Unknown client"}</td>
-                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top" }}>{client?.clientRef || ""}</td>
-                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top" }}>{estimate.estimateRef}</td>
-                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top" }}>{client?.projectName || ""}</td>
-                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top" }}>{new Date(deletedAt).toLocaleString()}</td>
-                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top", textAlign: "right" }}>
+                        <td className="qs-migrated-30">{client ? clientDisplayName(client) : "Unknown client"}</td>
+                        <td className="qs-migrated-29">{client?.clientRef || ""}</td>
+                        <td className="qs-migrated-29">{estimate.estimateRef}</td>
+                        <td className="qs-migrated-29">{client?.projectName || ""}</td>
+                        <td className="qs-migrated-29">{new Date(deletedAt).toLocaleString()}</td>
+                        <td className="qs-migrated-31">
                           <Button variant="secondary" onClick={() => restoreDeletedEstimatesForClient(clientId, [estimate.id])}>Restore</Button>
                         </td>
-                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top", textAlign: "right" }}>
+                        <td className="qs-migrated-31">
                           <Button variant="secondary" onClick={() => purgeDeletedEstimatesForClient(clientId, [estimate.id])}>Delete Permanently</Button>
                         </td>
                       </tr>
                     ))}
                     {recycleEstimateRows.length === 0 && (
                       <tr>
-                        <td colSpan={8} style={{ padding: 16 }}>
+                        <td colSpan={8} className="qs-migrated-32">
                           <Small>No deleted estimates.</Small>
                         </td>
                       </tr>
@@ -3539,21 +3406,21 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
     }
 
     return (
-      <Card style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
-        <div style={{ display: "grid", gap: 12, minHeight: 0, gridTemplateRows: "auto auto auto 1fr" }}>
-          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+      <Card className="qs-migrated-34">
+        <div className="qs-migrated-35">
+          <div className="qs-migrated-36">
             <div>
               <H2>Recycle Bin</H2>
               <Small>Deleted clients and estimates are held here for up to 30 days unless purged sooner.</Small>
             </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div className="qs-migrated-19">
               <Button variant="secondary" onClick={restoreSelectedRecycleItems} disabled={!hasSelection}>Restore Selected</Button>
               <Button variant="secondary" onClick={purgeSelectedRecycleItems} disabled={!hasSelection}>Delete Selected</Button>
               <Button variant="secondary" onClick={clearRecycleSelection} disabled={!hasSelection}>Clear Selection</Button>
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <div className="qs-migrated-37">
             <Small>Filter</Small>
             {filterButtons.map((item) => (
               <button
@@ -3567,8 +3434,8 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
             ))}
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(160px, 1fr))", gap: 10, flex: "1 1 480px" }}>
+          <div className="qs-migrated-7">
+            <div className="qs-migrated-38">
               <div className="operational-stat">
                 <div className="operational-stat__label">Deleted clients</div>
                 <div className="operational-stat__value">{recycleClientRows.length}</div>
@@ -3583,7 +3450,7 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <div className="qs-migrated-37">
               <Small>View</Small>
               {viewButtons.map((item) => (
                 <button
@@ -3598,22 +3465,22 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
             </div>
           </div>
 
-          <div style={{ minHeight: 0, overflow: "auto" }}>
+          <div className="qs-migrated-39">
             {recycleBinView === "grid" ? (
-              <div style={{ display: "grid", gap: 12, alignContent: "start" }}>
+              <div className="qs-migrated-40">
                 {showClients && (
-                  <div style={{ display: "grid", gap: 10 }}>
+                  <div className="qs-migrated-41">
                     <H3>Deleted Clients</H3>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
+                    <div className="qs-migrated-42">
                       {renderClientCards()}
                     </div>
                   </div>
                 )}
 
                 {showEstimates && (
-                  <div style={{ display: "grid", gap: 10 }}>
+                  <div className="qs-migrated-41">
                     <H3>Deleted Estimates</H3>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
+                    <div className="qs-migrated-42">
                       {renderEstimateCards()}
                     </div>
                   </div>
@@ -3702,14 +3569,14 @@ function renderInstallationBoard() {
     });
 
     return (
-      <Card style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
-        <div style={{ display: "grid", gap: 12, minHeight: 0, height: "100%", gridTemplateRows: "auto auto 1fr" }}>
+      <Card className="qs-migrated-34">
+        <div className="qs-migrated-43">
           <div>
             <H2>Installation</H2>
             <Small>Operational installation view with expandable project detail on the left and live map on the right.</Small>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(140px, 1fr))", gap: 10 }}>
+          <div className="qs-migrated-44">
             <div className="operational-stat">
               <div className="operational-stat__label">Open installations</div>
               <div className="operational-stat__value">{summary.count}</div>
@@ -3728,8 +3595,8 @@ function renderInstallationBoard() {
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, minHeight: 0 }}>
-            <div style={{ minHeight: 0, overflow: "auto", display: "grid", gap: 10, alignContent: "start", paddingRight: 4 }}>
+          <div className="qs-migrated-45">
+            <div className="qs-migrated-46">
               {rows.map(({ client, estimate }) => {
                 const isExpanded = installationExpandedEstimateId === estimate.id;
                 const activeTab = installationTabByEstimateId[estimate.id] ?? "key_dates";
@@ -3741,82 +3608,59 @@ function renderInstallationBoard() {
                   <div
                     id={`installation-row-${estimate.id}`}
                     key={estimate.id}
-                    className={`operational-card${isExpanded ? " operational-card--expanded" : ""}`}
-                    style={{
-                      padding: 12,
-                      display: "grid",
-                      gap: 12,
-                    }}
+                    className={[`operational-card${isExpanded ? " operational-card--expanded" : ""}`, "qs-migrated-47"].filter(Boolean).join(" ")}
                   >
                     <div
                       
                       onClick={() => {
                         setSelectedMapEstimateId(estimate.id);
                         setInstallationExpandedEstimateId((prev) => (prev === estimate.id ? null : estimate.id));
-                      }}
-                      style={{ cursor: "pointer", display: "grid", gap: 10 }}
+                      }} className="qs-migrated-48"
                     >
-                      <div
-                       style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr 1.15fr 1.2fr 88px", gap: 16, alignItems: "start" }}>
+                      <div className="qs-migrated-49">
                         <div
                       >
-                          <div
-                       style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-text-muted)", marginBottom: 4 }}>Client Name</div>
-                          <div
-                       style={{ fontSize: 14, fontWeight: 900, color: "var(--color-text-primary)", lineHeight: 1.35 }}>{headline}</div>
+                          <div className="qs-migrated-50">Client Name</div>
+                          <div className="qs-migrated-51">{headline}</div>
                         </div>
                         <div
                       >
-                          <div
-                       style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-text-muted)", marginBottom: 4 }}>Order Ref</div>
-                          <div
-                       style={{ fontSize: 14, fontWeight: 800, color: "var(--color-text-primary)", lineHeight: 1.35 }}>{estimate.estimateRef}</div>
+                          <div className="qs-migrated-50">Order Ref</div>
+                          <div className="qs-migrated-52">{estimate.estimateRef}</div>
                         </div>
                         <div
                       >
-                          <div
-                       style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-text-muted)", marginBottom: 4 }}>Project Name</div>
-                          <div
-                       style={{ fontSize: 14, fontWeight: 700, color: "var(--color-text-primary)", lineHeight: 1.35 }}>{client.projectName || ""}</div>
+                          <div className="qs-migrated-50">Project Name</div>
+                          <div className="qs-migrated-53">{client.projectName || ""}</div>
                         </div>
                         <div
                       >
-                          <div
-                       style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-text-muted)", marginBottom: 4 }}>Key Dates</div>
-                          <div
-                       style={{ fontSize: 12, color: "var(--color-text-secondary)", lineHeight: 1.55 }}>
+                          <div className="qs-migrated-50">Key Dates</div>
+                          <div className="qs-migrated-54">
                             <div
                       >Dispatch Date<br />{installationKeyDate(keyDates.factoryDispatchDate)}</div>
-                            <div
-                       style={{ marginTop: 6 }}>Delivery Date<br />{installationKeyDate(keyDates.deliveryDate)}</div>
-                            <div
-                       style={{ marginTop: 6 }}>Installation Date<br />{installationKeyDate(keyDates.installationDate)}</div>
+                            <div className="qs-migrated-55">Delivery Date<br />{installationKeyDate(keyDates.deliveryDate)}</div>
+                            <div className="qs-migrated-55">Installation Date<br />{installationKeyDate(keyDates.installationDate)}</div>
                           </div>
                         </div>
-                        <div
-                       style={{ alignSelf: "center", justifySelf: "end", fontSize: 12, fontWeight: 900, color: "var(--color-text-secondary)", whiteSpace: "nowrap" }}>
+                        <div className="qs-migrated-56">
                           {isExpanded ? "Hide detail" : "Expand"}
                         </div>
                       </div>
 
-                      <div
-                       style={{ display: "grid", gap: 6 }}>
-                        <div
-                       style={{ fontSize: 13, fontWeight: 800, color: "var(--color-text-primary)" }}>
-                          Project Address: <span style={{ fontWeight: 700 }}>{installationProjectAddressLabel(client)}</span>
+                      <div className="qs-migrated-57">
+                        <div className="qs-migrated-58">
+                          Project Address: <span className="qs-migrated-59">{installationProjectAddressLabel(client)}</span>
                         </div>
-                        <div
-                       style={{ fontSize: 13, fontWeight: 800, color: "var(--color-text-primary)" }}>
-                          what3words: <span style={{ fontWeight: 700 }}>{installationWhat3WordsLabel(client)}</span>
+                        <div className="qs-migrated-58">
+                          what3words: <span className="qs-migrated-59">{installationWhat3WordsLabel(client)}</span>
                         </div>
                       </div>
                     </div>
 
                     {isExpanded && (
-                      <div
-                       style={{ display: "grid", gap: 12 }}>
-                        <div
-                       style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <div className="qs-migrated-26">
+                        <div className="qs-migrated-19">
                           {([
                             ["key_dates", "Key Dates"],
                             ["order_copy", "Confirmed Order"],
@@ -3836,9 +3680,8 @@ function renderInstallationBoard() {
                         </div>
 
                         {activeTab === "key_dates" && (
-                          <div className="operational-surface operational-surface--subtle" style={{ padding: 12, display: "grid", gap: 10 }}>
-                            <div
-                       style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(160px, 1fr))", gap: 10 }}>
+                          <div className="operational-surface operational-surface--subtle qs-migrated-60">
+                            <div className="qs-migrated-61">
                               {[
                                 ["Client sign-off sent", keyDates.clientSignoffSentDate],
                                 ["Client sign-off received", keyDates.clientSignoffReceivedDate],
@@ -3853,9 +3696,9 @@ function renderInstallationBoard() {
                                 ["Delivery date", keyDates.deliveryDate],
                                 ["Installation date", keyDates.installationDate],
                               ].map(([label, value]) => (
-                                <div key={String(label)} className="operational-surface" style={{ padding: 10 }}>
+                                <div key={String(label)} className="operational-surface qs-migrated-62">
                                   <div className="operational-eyebrow">{label}</div>
-                                  <div className="operational-title" style={{ fontSize: 14, fontWeight: 800 }}>{installationKeyDate(String(value || ""))}</div>
+                                  <div className="operational-title qs-migrated-63">{installationKeyDate(String(value || ""))}</div>
                                 </div>
                               ))}
                             </div>
@@ -3864,19 +3707,16 @@ function renderInstallationBoard() {
 
                         {activeTab === "order_copy" && (
                           <div className="operational-table-shell">
-                            <div
-                       style={{ padding: 12, borderBottom: "1px solid var(--color-border)", display: "grid", gap: 4 }}>
-                              <div
-                       style={{ fontSize: 14, fontWeight: 900, color: "var(--color-text-primary)" }}>Confirmed order copy</div>
+                            <div className="qs-migrated-64">
+                              <div className="qs-migrated-5">Confirmed order copy</div>
                               <Small>{estimate.positions.length} position(s) {formatMoney(totals.estimateTotal)}</Small>
                             </div>
-                            <div
-                       style={{ maxHeight: 320, overflow: "auto" }}>
-                              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 720 }}>
+                            <div className="qs-migrated-65">
+                              <table className="qs-migrated-66">
                                 <thead>
                                   <tr className="operational-table-header">
                                     {["Reference", "Room", "Description", "Qty", "Item price", "Quantity price"].map((label) => (
-                                      <th key={label} style={{ textAlign: label === "Qty" || label === "Item price" || label === "Quantity price" ? "right" : "left", padding: 10, fontSize: 12, borderBottom: "1px solid var(--color-border)", position: "sticky", top: 0, background: "var(--color-surface-subtle)" }}>{label}</th>
+                                      <th key={label} className={label === "Qty" || label === "Item price" || label === "Quantity price" ? "app-table-heading app-table-heading--numeric" : "app-table-heading"}>{label}</th>
                                     ))}
                                   </tr>
                                 </thead>
@@ -3885,12 +3725,12 @@ function renderInstallationBoard() {
                                     const lineTotal = Number(position.itemPrice || 0) * Math.max(1, Number(position.qty || 1));
                                     return (
                                       <tr key={position.id}>
-                                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top", fontWeight: 800 }}>{position.positionRef}</td>
-                                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top" }}>{position.roomName || ""}</td>
-                                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top" }}>{position.positionType} {position.heightMm} mm</td>
-                                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top", textAlign: "right" }}>{position.qty}</td>
-                                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top", textAlign: "right" }}>{formatMoney(Number(position.itemPrice || 0))}</td>
-                                        <td style={{ padding: 10, borderBottom: "1px solid var(--color-border)", verticalAlign: "top", textAlign: "right", fontWeight: 800 }}>{formatMoney(lineTotal)}</td>
+                                        <td className="qs-migrated-67">{position.positionRef}</td>
+                                        <td className="qs-migrated-29">{position.roomName || ""}</td>
+                                        <td className="qs-migrated-29">{position.positionType} {position.heightMm} mm</td>
+                                        <td className="qs-migrated-31">{position.qty}</td>
+                                        <td className="qs-migrated-31">{formatMoney(Number(position.itemPrice || 0))}</td>
+                                        <td className="qs-migrated-68">{formatMoney(lineTotal)}</td>
                                       </tr>
                                     );
                                   })}
@@ -3912,13 +3752,13 @@ function renderInstallationBoard() {
               )}
             </div>
 
-            <div style={{ minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr", gap: 12 }}>
-              <div className="operational-surface" style={{ padding: 12 }}>
-                <div className="operational-title" style={{ fontSize: 14, fontWeight: 900 }}>Installation Map</div>
+            <div className="qs-migrated-69">
+              <div className="operational-surface qs-migrated-6">
+                <div className="operational-title qs-migrated-70">Installation Map</div>
                 <Small>Google Maps view for all open installations using postcode, what3words, or project address fallback.</Small>
               </div>
 
-              <div className="operational-surface operational-surface--subtle" style={{ padding: 12, minHeight: 0 }}>
+              <div className="operational-surface operational-surface--subtle qs-migrated-71">
                 <GoogleMapPanel
                   apiKey={googleMapsApiKey}
                   items={mapItems}
@@ -3961,14 +3801,14 @@ function renderEstimateMapBoard() {
     });
 
     return (
-      <Card style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
-        <div style={{ display: "grid", gap: 12, minHeight: 0, height: "100%", gridTemplateRows: "auto auto 1fr" }}>
+      <Card className="qs-migrated-34">
+        <div className="qs-migrated-43">
           <div>
             <H2>Estimate Map</H2>
             <Small>All estimates plotted on Google Maps using postcode, what3words, or address fallback.</Small>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(140px, 1fr))", gap: 10 }}>
+          <div className="qs-migrated-44">
             <div className="operational-stat">
               <div className="operational-stat__label">Mapped estimates</div>
               <div className="operational-stat__value">{mapItems.length}</div>
@@ -3987,8 +3827,8 @@ function renderEstimateMapBoard() {
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, minHeight: 0 }}>
-            <div style={{ minHeight: 0, overflow: "auto", display: "grid", gap: 10, alignContent: "start", paddingRight: 4 }}>
+          <div className="qs-migrated-45">
+            <div className="qs-migrated-46">
               {rows.map(({ client, estimate, outcome, installerId }) => {
                 const selected = selectedMapEstimateId === estimate.id;
                 const totals = estimateCommercialTotals(estimate);
@@ -4001,35 +3841,24 @@ function renderEstimateMapBoard() {
                       setSelectedMapEstimateId(estimate.id);
                       scrollMapRowIntoView("estimate-map-row", estimate.id);
                     }}
-                    className={`operational-card${selected ? " operational-card--selected" : ""}`}
-                    style={{
-                      padding: 12,
-                      display: "grid",
-                      gap: 10,
-                      textAlign: "left",
-                      cursor: "pointer",
-                    }}
+                    className={[`operational-card${selected ? " operational-card--selected" : ""}`, "qs-migrated-72"].filter(Boolean).join(" ")}
                   >
-                    <div
-                       style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "start" }}>
-                      <div
-                       style={{ display: "grid", gap: 4 }}>
+                    <div className="qs-migrated-73">
+                      <div className="qs-migrated-17">
                         <div
-                       className="operational-title" style={{ fontSize: 14, fontWeight: 900 }}>{clientDisplayName(client)}</div>
+                       className="operational-title qs-migrated-70">{clientDisplayName(client)}</div>
                         <Small>{estimate.estimateRef} {client.clientRef}</Small>
                       </div>
                       <Pill>{installerId ? "Installation" : outcome}</Pill>
                     </div>
-                    <div
-                       style={{ display: "grid", gap: 4 }}>
+                    <div className="qs-migrated-17">
                       <Small>{client.projectName || "No project name"}</Small>
                       <Small>{monthYearLabel(estimate.estimatedOrderMonth || "", estimate.estimatedOrderYear || 0)}</Small>
                       <Small>{estimateProjectAddressLabel(estimate)}</Small>
                       <Small>{estimateLocationLabel(estimate)}</Small>
                       <Small>{formatMeasure(totals.totalSquareMetres)} m {formatMoney(totals.estimateTotal)}</Small>
                     </div>
-                    <div
-                       style={{ display: "flex", justifyContent: "flex-start" }}>
+                    <div className="qs-migrated-74">
                       <span
                         onClick={(ev) => {
                           ev.stopPropagation();
@@ -4051,13 +3880,13 @@ function renderEstimateMapBoard() {
               )}
             </div>
 
-            <div style={{ minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr", gap: 12 }}>
-              <div className="operational-surface" style={{ padding: 12 }}>
-                <div className="operational-title" style={{ fontSize: 14, fontWeight: 900 }}>Estimate Map</div>
+            <div className="qs-migrated-69">
+              <div className="operational-surface qs-migrated-6">
+                <div className="operational-title qs-migrated-70">Estimate Map</div>
                 <Small>Marker colours reflect estimate outcome and installation allocation.</Small>
               </div>
 
-              <div className="operational-surface operational-surface--subtle" style={{ padding: 12, minHeight: 0 }}>
+              <div className="operational-surface operational-surface--subtle qs-migrated-71">
                 <GoogleMapPanel
                   apiKey={googleMapsApiKey}
                   items={mapItems}
@@ -4103,15 +3932,15 @@ function renderEstimateMapBoard() {
 
     return (
       <>
-        <Card style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
-          <div style={{ display: "grid", gap: 12, minHeight: 0, height: "100%", gridTemplateRows: "auto auto 1fr" }}>
-            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <Card className="qs-migrated-34">
+          <div className="qs-migrated-43">
+            <div className="qs-migrated-36">
               <div>
                 <H2>{title}</H2>
                 <Small>Status-driven view across all clients and projects.</Small>
               </div>
               {menuKey !== "installation" && (
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <div className="qs-migrated-19">
                   {!globalSelectModeByMenu[menuKey] ? (
                     <Button variant="secondary" onClick={() => toggleGlobalSelectMode(menuKey)}>Select</Button>
                   ) : (
@@ -4130,9 +3959,9 @@ function renderEstimateMapBoard() {
               )}
             </div>
 
-            <div style={{ display: "grid", gap: 10 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                <div style={{ flex: "1 1 320px", maxWidth: 520 }}>
+            <div className="qs-migrated-41">
+              <div className="qs-migrated-7">
+                <div className="qs-migrated-75">
                   <Input
                     value={globalSearch}
                     onChange={setGlobalSearch}
@@ -4216,7 +4045,7 @@ function renderEstimateMapBoard() {
                 </ControlToolbar>
               </div>
 
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <div className="qs-migrated-37">
                 <Small>Forecast month</Small>
                 {monthFilterOptions.map((month) => {
                   const isSelected = globalMonthFilter === month;
@@ -4234,7 +4063,7 @@ function renderEstimateMapBoard() {
                 })}
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(140px, 1fr))", gap: 10 }}>
+              <div className="qs-migrated-76">
                 <div className="operational-stat">
                   <div className="operational-stat__label">Items</div>
                   <div className="operational-stat__value">{summary.count}</div>
@@ -4258,14 +4087,14 @@ function renderEstimateMapBoard() {
               </div>
             </div>
 
-            <div className="operational-surface" style={{ overflow: "hidden", minHeight: 0 }}>
-              <div style={{ height: "100%", minHeight: 0, overflow: "auto", padding: 12, display: "grid", gap: 12 }}>
+            <div className="operational-surface qs-migrated-77">
+              <div className="qs-migrated-78">
                 {menuKey !== "installation" && globalSelectModeByMenu[menuKey] && rows.length > 0 && (
-                  <div className="operational-surface operational-surface--subtle" style={{ padding: 12, display: "grid", gap: 8 }}>
-                    <div className="operational-copy" style={{ fontSize: 12, fontWeight: 800 }}>Bulk selection</div>
-                    <div style={{ display: "grid", gap: 8 }}>
+                  <div className="operational-surface operational-surface--subtle qs-migrated-79">
+                    <div className="operational-copy qs-migrated-11">Bulk selection</div>
+                    <div className="qs-migrated-80">
                       {rows.map(({ client, estimate }) => (
-                        <label key={`select_${estimate.id}`} className="operational-title" style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14 }}>
+                        <label key={`select_${estimate.id}`} className="operational-title qs-migrated-81">
                           <input
                             type="checkbox"
                             checked={!!(globalSelectedEstimateIdsByMenu[menuKey] ?? {})[estimate.id]}
@@ -4333,18 +4162,7 @@ function renderEstimateMapBoard() {
         </Card>
 
         {globalSendModalOpen && sendModalRow && (
-          <div
-            style={{
-              position: "fixed",
-              inset: 0,
-              background: "rgba(0,0,0,0.35)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: 16,
-              zIndex: 9999,
-            }}
-          >
+          <div className="app-modal-scrim app-modal-scrim--top ui-scrim">
             <div className="ep-send-modal-card">
               <div className="ep-send-modal-header">
                 <div>
@@ -4422,7 +4240,7 @@ function renderEstimateMapBoard() {
                       </Button>
                     </div>
 
-                    <Small style={{ color: "var(--color-text-muted)" }}>
+                    <Small className="qs-migrated-82">
                       Use “Print PDF” to generate the customer-facing estimate PDF, then attach that PDF in your email app. Direct file attachment from the browser send flow is not wired yet.
                     </Small>
                   </div>
@@ -4431,7 +4249,7 @@ function renderEstimateMapBoard() {
                 <div className="ep-send-section">
                   <div className="ep-send-section-title">Add follow up</div>
 
-                  <div className="ep-send-stack" style={{ gap: 10 }}>
+                  <div className="ep-send-stack qs-migrated-83">
                     <label className="ep-send-checkbox">
                       <input type="checkbox" checked={globalSendModalAddFollowUp} onChange={(e) => setGlobalSendModalAddFollowUp(e.currentTarget.checked)} />
                       <span className="ep-send-checkbox-text">
@@ -4455,7 +4273,7 @@ function renderEstimateMapBoard() {
                       </label>
                     </div>
 
-                    <Small style={{ color: "var(--color-text-muted)" }}>
+                    <Small className="qs-migrated-82">
                       Follow-ups are saved to the database and appear in Customers - Follow Ups on the scheduled due date.
                     </Small>
                   </div>
@@ -4535,32 +4353,32 @@ function renderEstimateMapBoard() {
           summary="Future-ready help area placeholder. This will later host support content, onboarding, and documentation."
         />
       ) : (
-        <div style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif", background: "var(--app-shell-main-bg)", color: "var(--color-text-primary)", minHeight: "calc(100vh - 84px)", height: "calc(100vh - 84px)", overflow: "hidden" }}>
-          <div style={{ width: "100%", margin: "0", padding: 0, height: "100%" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 16, height: "100%", minHeight: 0, alignItems: "stretch" }}>
+        <div className="app-workspace-shell">
+          <div className="app-workspace-shell__inner">
+        <div className="app-workspace-grid">
           {/* Sidebar */}
-          <Card style={{ padding: 12, position: "sticky", top: 16, alignSelf: "stretch", height: "100%", minHeight: 0, overflowY: "auto" }}>
-            <div style={{ padding: "6px 6px 12px 6px" }}>
+          <Card className="qs-migrated-6">
+            <div className="qs-migrated-84">
             </div>
 
-            <div style={{ marginTop: 14 }}>
+            <div className="qs-migrated-85">
               <H3>Dashboard</H3>
-              <div style={{ marginTop: 8 }}>
+              <div className="qs-migrated-86">
                 <SidebarItem label="Main Dashboard" active={menu === "dashboard"} onClick={() => selectMenu("dashboard")} />
               </div>
             </div>
 
-            <div style={{ marginTop: 14 }}>
+            <div className="qs-migrated-85">
               <H3>Customers</H3>
-              <div style={{ marginTop: 8 }}>
+              <div className="qs-migrated-86">
                 <SidebarItem label="Client Database" active={menu === "client_database"} onClick={() => selectMenu("client_database")} />
                 <SidebarItem label="Follow Ups" active={menu === "follow_ups"} onClick={() => selectMenu("follow_ups")} />
               </div>
             </div>
 
-            <div style={{ marginTop: 14 }}>
+            <div className="qs-migrated-85">
               <H3>Estimate / Order Status</H3>
-              <div style={{ marginTop: 8 }}>
+              <div className="qs-migrated-86">
                 <SidebarItem label="Estimates" active={menu === "estimates"} onClick={() => selectMenu("estimates")} />
                 <SidebarItem label="Orders" active={menu === "orders"} onClick={() => selectMenu("orders")} />
                 <SidebarItem label="Lost" active={menu === "lost"} onClick={() => selectMenu("lost")} />
@@ -4574,7 +4392,7 @@ function renderEstimateMapBoard() {
           </Card>
 
           {/* Main */}
-          <div style={{ display: "grid", gap: menu === "dashboard" && view === "customers" ? 10 : 16, minHeight: 0, height: "100%", overflowY: "auto", paddingRight: 4, alignContent: "start" }}>
+          <div className="app-main-workspace" data-density={menu === "dashboard" && view === "customers" ? "compact" : "standard"}>
             {demoClientsLoaded && (
               <div className="demo-mode-banner" role="status">
                 <strong>Demo mode active</strong>
@@ -4589,14 +4407,14 @@ function renderEstimateMapBoard() {
             )}
             {topShellPage === "tools" && <ToolsHubPage />}
             {topShellPage !== "tools" && menu !== "dashboard" && view !== "estimate_workspace" && (
-              <Card style={{ padding: 14 }}>
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <Card className="qs-migrated-87">
+                <div className="app-cluster app-cluster--between app-cluster--start">
                   <div>
                     <H2>Quick actions</H2>
                     <Small>Start the core workflow from the main page: Client → Estimate → Order → Installation.</Small>
                   </div>
 
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <div className="app-cluster">
                     <Button variant="primary" onClick={openAddClientPanel}>
                       Add Client
                     </Button>
@@ -4614,31 +4432,11 @@ function renderEstimateMapBoard() {
             )}
 
 {what3WordsPickerOpen && (
-  <div
-    style={{
-      position: "fixed",
-      inset: 0,
-      zIndex: 80,
-      background: "rgba(24,24,27,0.55)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      padding: 24,
-    }}
-  >
+  <div className="app-modal-scrim app-modal-scrim--map ui-scrim">
     <div
-      className="legacy-modal-surface"
-      style={{
-        width: "min(1100px, 96vw)",
-        maxHeight: "92vh",
-        overflow: "auto",
-        borderRadius: 18,
-        padding: 16,
-        display: "grid",
-        gap: 12,
-      }}
+      className="legacy-modal-surface app-modal app-modal--wide"
     >
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+      <div className="app-cluster app-cluster--between app-cluster--start">
         <div>
           <H3>Project what3words map picker</H3>
           <Small>Select the estimate project location on the map. The what3words field will auto-fill when available.</Small>
@@ -4655,13 +4453,13 @@ function renderEstimateMapBoard() {
       </div>
 
       {what3WordsPickerError ? (
-        <div className="legacy-error-callout" style={{ borderRadius: 12, padding: 12, fontSize: 13, fontWeight: 700 }}>
+        <div className="legacy-error-callout app-callout">
           {what3WordsPickerError}
         </div>
       ) : null}
 
       {what3WordsPickerLoading ? (
-        <div className="legacy-modal-status" style={{ borderRadius: 12, padding: 12 }}>
+        <div className="legacy-modal-status app-callout">
           <Small>Resolving what3words for the selected map point...</Small>
         </div>
       ) : null}
@@ -4680,7 +4478,7 @@ function renderEstimateMapBoard() {
 
 {showAddClient && (
   <ModalOverlay width="min(1100px, 96vw)" onClose={closeAddClientPanel}>
-    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+    <div className="app-cluster app-cluster--between app-cluster--start">
       <div>
         <H2>{editingClientId ? "Edit client" : "Add client"}</H2>
         <Small>
@@ -4695,18 +4493,18 @@ function renderEstimateMapBoard() {
       </Button>
     </div>
 
-    <div style={{ display: "grid", gap: 10 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+    <div className="app-stack">
+      <div className="app-cluster app-cluster--between">
         <H3>Client contact information</H3>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+        <div className="app-cluster">
+          <label className="app-checkbox-row">
             <input
               type="checkbox"
               checked={draftClientType === "Business"}
               onChange={(e) => setDraftClientType(e.currentTarget.checked ? "Business" : "Individual")}
             />
-            <span className="legacy-checkbox-label" style={{ fontSize: 12, fontWeight: 800 }}>Business customer</span>
+            <span className="legacy-checkbox-label">Business customer</span>
           </label>
 
           <Small>Type: {draftClientType}</Small>
@@ -4716,99 +4514,88 @@ function renderEstimateMapBoard() {
       {draftClientType === "Business" ? (
         <>
           <div>
-            <div style={labelStyle}>Business name</div>
+            <div className="qs-migrated-12">Business name</div>
             <Input value={draftBusinessName} onChange={setDraftBusinessName} placeholder="Company Ltd" />
           </div>
 
           <div>
-            <div style={labelStyle}>Contact name</div>
+            <div className="qs-migrated-12">Contact name</div>
             <Input value={draftContactName} onChange={setDraftContactName} placeholder="Name" />
           </div>
         </>
       ) : (
         <div>
-          <div style={labelStyle}>Client name</div>
+          <div className="qs-migrated-12">Client name</div>
           <Input value={draftClientName} onChange={setDraftClientName} placeholder="Name" />
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div className="qs-migrated-13">
         <div>
-          <div style={labelStyle}>Email</div>
+          <div className="qs-migrated-12">Email</div>
           <Input value={draftEmail} onChange={setDraftEmail} placeholder="email@example.com" />
         </div>
         <div>
-          <div style={labelStyle}>Mobile</div>
+          <div className="qs-migrated-12">Mobile</div>
           <Input value={draftMobile} onChange={setDraftMobile} placeholder="07..." />
         </div>
       </div>
 
       <div>
-        <div style={labelStyle}>Home</div>
+        <div className="qs-migrated-12">Home</div>
         <Input value={draftHome} onChange={setDraftHome} placeholder="01..." />
       </div>
 
       <div>
-        <div style={labelStyle}>Project name</div>
+        <div className="qs-migrated-12">Project name</div>
         <Input value={draftProjectName} onChange={setDraftProjectName} placeholder="Project name" />
       </div>
 
-      <div className="legacy-section-divider" style={{ marginTop: 10, paddingTop: 10 }}>
+      <div className="legacy-section-divider qs-migrated-14">
         <button
           type="button"
           onClick={() => setCustomerAddressSectionOpen((prev) => !prev)}
-          style={{
-            border: "none",
-            background: "transparent",
-            padding: 0,
-            margin: 0,
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            font: "inherit",
-          }}
-          className="legacy-section-toggle"
+          className="legacy-section-toggle qs-migrated-15"
         >
           <H3>{customerAddressSectionOpen ? "▼" : "▶"} Customer address</H3>
         </button>
 
         {customerAddressSectionOpen && (
-          <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="qs-migrated-16">
+            <div className="qs-migrated-13">
               <div>
-                <div style={labelStyle}>Address line 1</div>
+                <div className="qs-migrated-12">Address line 1</div>
                 <Input value={draftCustAddress1} onChange={setDraftCustAddress1} placeholder="Address line 1" />
               </div>
               <div>
-                <div style={labelStyle}>Address line 2</div>
+                <div className="qs-migrated-12">Address line 2</div>
                 <Input value={draftCustAddress2} onChange={setDraftCustAddress2} placeholder="Address line 2" />
               </div>
             </div>
 
             <div>
-              <div style={labelStyle}>Address line 3</div>
+              <div className="qs-migrated-12">Address line 3</div>
               <Input value={draftCustAddress3} onChange={setDraftCustAddress3} placeholder="Address line 3" />
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div className="qs-migrated-13">
               <div>
-                <div style={labelStyle}>Town</div>
+                <div className="qs-migrated-12">Town</div>
                 <Input value={draftCustTown} onChange={setDraftCustTown} placeholder="Town" />
               </div>
               <div>
-                <div style={labelStyle}>City</div>
+                <div className="qs-migrated-12">City</div>
                 <Input value={draftCustCity} onChange={setDraftCustCity} placeholder="City" />
               </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div className="qs-migrated-13">
               <div>
-                <div style={labelStyle}>County/District</div>
+                <div className="qs-migrated-12">County/District</div>
                 <Input value={draftCustCounty} onChange={setDraftCustCounty} placeholder="County/District" />
               </div>
               <div>
-                <div style={labelStyle}>Postcode</div>
+                <div className="qs-migrated-12">Postcode</div>
                 <Input value={draftCustPostcode} onChange={setDraftCustPostcode} placeholder="Postcode" />
               </div>
             </div>
@@ -4816,30 +4603,19 @@ function renderEstimateMapBoard() {
         )}
       </div>
 
-      <div className="legacy-section-divider" style={{ marginTop: 10, paddingTop: 10 }}>
+      <div className="legacy-section-divider qs-migrated-14">
         <button
           type="button"
           onClick={() => setInvoiceAddressSectionOpen((prev) => !prev)}
-          style={{
-            border: "none",
-            background: "transparent",
-            padding: 0,
-            margin: 0,
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            font: "inherit",
-          }}
-          className="legacy-section-toggle"
+          className="legacy-section-toggle qs-migrated-15"
         >
           <H3>{invoiceAddressSectionOpen ? "▼" : "▶"} Invoice address</H3>
         </button>
 
         {invoiceAddressSectionOpen && (
-          <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
-            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700 }}>
+          <div className="qs-migrated-16">
+            <div className="qs-migrated-88">
+              <label className="qs-migrated-89">
                 <input
                   type="radio"
                   name="invoiceAddressMode"
@@ -4848,7 +4624,7 @@ function renderEstimateMapBoard() {
                 />
                 Same as customer address
               </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700 }}>
+              <label className="qs-migrated-89">
                 <input
                   type="radio"
                   name="invoiceAddressMode"
@@ -4860,41 +4636,41 @@ function renderEstimateMapBoard() {
             </div>
 
             {invoiceAddressMode === "custom" && (
-              <div style={{ marginTop: 4, display: "grid", gap: 12 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="qs-migrated-90">
+                <div className="qs-migrated-13">
                   <div>
-                    <div style={labelStyle}>Address line 1</div>
+                    <div className="qs-migrated-12">Address line 1</div>
                     <Input value={draftInvAddress1} onChange={setDraftInvAddress1} placeholder="Address line 1" />
                   </div>
                   <div>
-                    <div style={labelStyle}>Address line 2</div>
+                    <div className="qs-migrated-12">Address line 2</div>
                     <Input value={draftInvAddress2} onChange={setDraftInvAddress2} placeholder="Address line 2" />
                   </div>
                 </div>
 
                 <div>
-                  <div style={labelStyle}>Address line 3</div>
+                  <div className="qs-migrated-12">Address line 3</div>
                   <Input value={draftInvAddress3} onChange={setDraftInvAddress3} placeholder="Address line 3" />
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div className="qs-migrated-13">
                   <div>
-                    <div style={labelStyle}>Town</div>
+                    <div className="qs-migrated-12">Town</div>
                     <Input value={draftInvTown} onChange={setDraftInvTown} placeholder="Town" />
                   </div>
                   <div>
-                    <div style={labelStyle}>City</div>
+                    <div className="qs-migrated-12">City</div>
                     <Input value={draftInvCity} onChange={setDraftInvCity} placeholder="City" />
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div className="qs-migrated-13">
                   <div>
-                    <div style={labelStyle}>County/District</div>
+                    <div className="qs-migrated-12">County/District</div>
                     <Input value={draftInvCounty} onChange={setDraftInvCounty} placeholder="County/District" />
                   </div>
                   <div>
-                    <div style={labelStyle}>Postcode</div>
+                    <div className="qs-migrated-12">Postcode</div>
                     <Input value={draftInvPostcode} onChange={setDraftInvPostcode} placeholder="Postcode" />
                   </div>
                 </div>
@@ -4904,7 +4680,7 @@ function renderEstimateMapBoard() {
         )}
       </div>
 
-      <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+      <div className="qs-migrated-91">
         <Button variant="secondary" onClick={closeAddClientPanel}>
           Cancel
         </Button>
@@ -4928,7 +4704,7 @@ function renderEstimateMapBoard() {
 
 {showAddEstimateModal && (
   <ModalOverlay width="min(720px, 96vw)" onClose={closeAddEstimateModal}>
-    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+    <div className="app-cluster app-cluster--between app-cluster--start">
       <div>
         <H2>Add estimate</H2>
         <Small>Create a new estimate from the main page without leaving the current workflow.</Small>
@@ -4940,26 +4716,26 @@ function renderEstimateMapBoard() {
     </div>
 
     {!clientsLoaded ? (
-      <div style={{ display: "grid", gap: 12 }}>
-        <div className="legacy-modal-status" style={{ borderRadius: 16, padding: 16, display: "grid", gap: 8 }}>
+      <div className="app-stack">
+        <div className="legacy-modal-status app-empty-state">
           <H3>Loading clients</H3>
           <Small>Checking the live client list before starting estimate creation.</Small>
         </div>
 
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+        <div className="app-action-row">
           <Button variant="secondary" onClick={closeAddEstimateModal}>
             Cancel
           </Button>
         </div>
       </div>
     ) : clients.length === 0 ? (
-      <div style={{ display: "grid", gap: 12 }}>
-        <div className="legacy-modal-status" style={{ borderRadius: 16, padding: 16, display: "grid", gap: 8 }}>
+      <div className="app-stack">
+        <div className="legacy-modal-status app-empty-state">
           <H3>No clients yet</H3>
           <Small>Add a client first, then continue straight into estimate creation.</Small>
         </div>
 
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+        <div className="app-action-row">
           <Button variant="secondary" onClick={closeAddEstimateModal}>
             Cancel
           </Button>
@@ -4969,9 +4745,9 @@ function renderEstimateMapBoard() {
         </div>
       </div>
     ) : (
-      <div style={{ display: "grid", gap: 12 }}>
-        <div style={{ display: "grid", gap: 6 }}>
-          <div style={labelStyle}>Client</div>
+      <div className="app-stack">
+        <div className="app-form-label">
+          <div className="qs-migrated-12">Client</div>
           <select
             value={createEstimateClientId}
             onChange={(event) => setCreateEstimateClientId(event.currentTarget.value)}
@@ -4986,8 +4762,8 @@ function renderEstimateMapBoard() {
         </div>
 
         {selectedCreateEstimateClient && (
-          <div className="legacy-modal-status" style={{ borderRadius: 16, padding: 16, display: "grid", gap: 8 }}>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="legacy-modal-status app-empty-state">
+            <div className="app-cluster">
               <Pill>{selectedCreateEstimateClient.clientRef || "No client ref"}</Pill>
               <Pill>{selectedCreateEstimateClient.projectName || "No project name"}</Pill>
             </div>
@@ -4996,7 +4772,7 @@ function renderEstimateMapBoard() {
           </div>
         )}
 
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+        <div className="app-action-row">
           <Button variant="secondary" onClick={closeAddEstimateModal}>
             Cancel
           </Button>
@@ -5011,9 +4787,9 @@ function renderEstimateMapBoard() {
 
             {/* CUSTOMERS LIST */}
             {menu === "client_database" && view === "customers" && (
-  <Card style={{ minHeight: 0, height: "100%", display: "flex", flexDirection: "column", minWidth: 0, overflow: "auto" }}>
+  <Card className="qs-migrated-92">
     <div className="clients-surface-header">
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+      <div className="qs-migrated-36">
         <div>
           <H2>Client Database</H2>
           <Small>Open a client to choose an estimate (or create one).</Small>
@@ -5024,9 +4800,9 @@ function renderEstimateMapBoard() {
         </Button>
       </div>
 
-      <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ flex: "1 1 320px", maxWidth: 520 }}>
+      <div className="qs-migrated-93">
+        <div className="qs-migrated-7">
+          <div className="qs-migrated-75">
             <Input
               value={clientDbSearch}
               onChange={setClientDbSearch}
@@ -5133,7 +4909,7 @@ function renderEstimateMapBoard() {
             {menu === "estimate_map" && view === "customers" && renderEstimateMapBoard()}
 
             {menu === "completed_projects" && view === "customers" && (
-              <Card style={{ minHeight: 520 }}>
+              <Card className="qs-migrated-2">
                 <H2>Completed Projects</H2>
                 <Small>Completed projects workflow will be added in a later phase.</Small>
               </Card>
@@ -5171,12 +4947,11 @@ function renderEstimateMapBoard() {
             )}
             {/* ESTIMATE DEFAULTS */}
             {view === "estimate_defaults" && selectedClient && selectedEstimate && (
-              <Card style={{ minHeight: 520 }}>
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+              <Card className="qs-migrated-2">
+                <div className="qs-migrated-94">
                   <div>
                     <H2>Estimate Configurator Disabled</H2>
-                    <div
-                      style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}
+                    <div className="qs-migrated-95"
                     >
                       <Pill>{selectedClient.clientRef}</Pill>
                       <Pill>{selectedEstimate.estimateRef}</Pill>
@@ -5185,7 +4960,7 @@ function renderEstimateMapBoard() {
                     <Small>{DISABLED_ESTIMATE_CONFIGURATOR_MESSAGE}</Small>
                   </div>
 
-                  <div style={{ display: "flex", gap: 10 }}>
+                  <div className="qs-migrated-96">
                     <Button variant="secondary" onClick={() => setView("customers")}>
                       Back
                     </Button>
@@ -5195,7 +4970,7 @@ function renderEstimateMapBoard() {
                   </div>
                 </div>
 
-                <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
+                <div className="qs-migrated-97">
                   <ClientSummary c={selectedClient} />
                 </div>
               </Card>
@@ -5203,12 +4978,11 @@ function renderEstimateMapBoard() {
 
             {/* ESTIMATE WORKSPACE */}
             {view === "estimate_workspace" && selectedClient && selectedEstimate && (
-                <Card style={{ minHeight: 520, display: "flex", flexDirection: "column" }}>
-                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                <Card className="qs-migrated-98">
+                  <div className="qs-migrated-94">
                     <div>
                       <H2>Estimate</H2>
-                      <div
-                         style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      <div className="qs-migrated-95">
                         <Pill>{selectedClient.clientRef}</Pill>
                         <Pill>{selectedEstimate.estimateRef}</Pill>
                         <Small>{selectedClient.clientName}</Small>
@@ -5216,43 +4990,40 @@ function renderEstimateMapBoard() {
                       <Small>Supplier/Product Defaults are set separately. Add Position starts at Position Configuration.</Small>
                     </div>
 
-                    <div style={{ display: "flex", gap: 10 }}>
+                    <div className="qs-migrated-96">
                       <Button variant="secondary" onClick={() => setView("customers")}>
                         Back
                       </Button>
                     </div>
                   </div>
 
-                  <div style={{ marginTop: 12 }}>
+                  <div className="qs-migrated-99">
+                    <EstimateCommercialWorkspace estimateId={String(selectedEstimate.id)} estimateRef={selectedEstimate.estimateRef} />
+                  </div>
+
+                  <div className="qs-migrated-100">
                     <ClientSummary c={selectedClient} />
                   </div>
 
-                  <div style={{ marginTop: 16 }}>
-                    <Button variant="secondary" disabled style={{ width: "100%" }}>
+                  <div className="qs-migrated-99">
+                    <Button variant="secondary" disabled className="qs-migrated-101">
                       Add Position Disabled
                     </Button>
                     <Small>{DISABLED_ESTIMATE_CONFIGURATOR_MESSAGE}</Small>
                   </div>
 
-                  <div className="legacy-section-divider" style={{ marginTop: 16, paddingTop: 12, flex: 1 }}>
+                  <div className="legacy-section-divider qs-migrated-102">
                     <H3>Positions</H3>
                     <Small>Positions added to this estimate appear below.</Small>
 
-                    <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-                      {selectedEstimate.positions.length === 0 && <div style={{ fontSize: 13, color: "var(--color-text-muted)" }}>No positions yet.</div>}
+                    <div className="qs-migrated-103">
+                      {selectedEstimate.positions.length === 0 && <div className="qs-migrated-104">No positions yet.</div>}
 
                       {(() => {
                       const totals = estimateCommercialTotals(selectedEstimate);
                       return (
                         <>
-                          <div
-                        
-                            style={{
-                              marginTop: 10,
-                              display: "grid",
-                              gridTemplateColumns: "repeat(4, minmax(140px, 1fr))",
-                              gap: 10,
-                            }}
+                          <div className="qs-migrated-105"
                           >
                             <div className="operational-stat">
                               <div className="operational-stat__label">Total mÂ²</div>
@@ -5272,35 +5043,28 @@ function renderEstimateMapBoard() {
                             </div>
                           </div>
 
-                          <div
-                         style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                          <div className="qs-migrated-103">
                             {selectedEstimate.positions.map((p) => {
                               const lineTotal = Number(p.itemPrice || 0) * Math.max(1, Number(p.qty || 1));
                               return (
                                 <div
-                         key={p.id} className="operational-surface" style={{ padding: 10 }}>
-                                  <div
-                         style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                                    <div
-                         style={{ fontWeight: 900, fontSize: 13 }}>{p.positionRef}</div>
-                                    <div
-                         style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
+                         key={p.id} className="operational-surface qs-migrated-62">
+                                  <div className="qs-migrated-106">
+                                    <div className="qs-migrated-107">{p.positionRef}</div>
+                                    <div className="qs-migrated-108">
                                       Qty {p.qty} {p.fieldsY}
                                     </div>
                                   </div>
-                                  <div
-                         style={{ marginTop: 4, fontSize: 12, color: "var(--color-text-muted)" }}>
+                                  <div className="qs-migrated-109">
                                     {p.roomName || (p.useEstimateDefaults ? "Using estimate defaults" : "Overrides")}
                                   </div>
 
-                                  <div
-                         style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 160px 160px", gap: 12, alignItems: "end" }}>
+                                  <div className="qs-migrated-110">
                                     <div
                          />
                                     <div
                         >
-                                      <div
-                         style={labelStyle}>Item price</div>
+                                      <div className="qs-migrated-12">Item price</div>
                                       <Input
                                         type="number"
                                         value={String(p.itemPrice ?? "")}
@@ -5314,19 +5078,9 @@ function renderEstimateMapBoard() {
                                     </div>
                                     <div
                         >
+                                      <div className="qs-migrated-12">Quantity price</div>
                                       <div
-                         style={labelStyle}>Quantity price</div>
-                                      <div
-                        
-                                        style={{
-                                          width: "100%",
-                                          borderRadius: 12,
-                                          padding: "10px 12px",
-                                          fontSize: 14,
-                                          fontWeight: 800,
-                                          textAlign: "right",
-                                        }}
-                                        className="legacy-modal-status"
+                                        className="legacy-modal-status qs-migrated-111"
                                       >
                                         {formatMoney(lineTotal)}
                                       </div>
@@ -5346,14 +5100,14 @@ function renderEstimateMapBoard() {
 
             {/* CLIENT DATABASE VIEW FALLBACK (Phase 4F) */}
             {menu === "client_database" && view !== "customers" && view !== "estimate_picker" && view !== "estimate_defaults" && view !== "estimate_workspace" && (
-              <Card style={{ minHeight: 520 }}>
-                <div style={{ display: "grid", gap: 10 }}>
+              <Card className="qs-migrated-2">
+                <div className="qs-migrated-41">
                   <H2>Client Database</H2>
                   <Small>
                     Main panel is blank because view is not recognised: <b>{String(view)}</b>
                   </Small>
                   <Small>Click reset to return to Customers.</Small>
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <div className="qs-migrated-112">
                     <Button variant="primary" onClick={() => setView("customers")}>Reset to Customers</Button>
                     <Button variant="secondary" onClick={() => { setMenu("client_database"); setView("customers"); }}>Reset Menu + View</Button>
                   </div>
@@ -5361,16 +5115,15 @@ function renderEstimateMapBoard() {
               </Card>
             )}
             {menu === "project_preferences" && (
-              <Card style={{ minHeight: 520 }}>
-                <div style={{ display: "grid", gap: 16, maxWidth: 900 }}>
+              <Card className="qs-migrated-2">
+                <div className="qs-migrated-113">
                   <div>
                     <H2>Project Preferences</H2>
                     <Small>Configure default loading behaviour for QuoteSync.</Small>
                   </div>
 
-                  <div className="legacy-surface-card" style={{ padding: 16, display: "grid", gap: 12 }}>
-                    <div
-                       style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                  <div className="legacy-surface-card qs-migrated-114">
+                    <div className="qs-migrated-36">
                       <div
                       >
                         <H3>Load Defaults</H3>
@@ -5391,8 +5144,8 @@ function renderEstimateMapBoard() {
                       />
                     </div>
 
-<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-  <span className="legacy-setting-label" style={{ fontSize: 14, fontWeight: 700 }}>Load Demo Clients</span>
+<div className="qs-migrated-115">
+  <span className="legacy-setting-label qs-migrated-116">Load Demo Clients</span>
   <Toggle
     value={systemSettings.loadDemoClients}
     onChange={(checked) =>
@@ -5404,8 +5157,8 @@ function renderEstimateMapBoard() {
   />
 </div>
 
-<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-  <span className="legacy-setting-label" style={{ fontSize: 14, fontWeight: 700 }}>Load Demo Estimates</span>
+<div className="qs-migrated-115">
+  <span className="legacy-setting-label qs-migrated-116">Load Demo Estimates</span>
   <Toggle
     value={systemSettings.loadDemoEstimates}
     onChange={(checked) =>
@@ -5417,9 +5170,8 @@ function renderEstimateMapBoard() {
   />
 </div>
 
-                    <div
-                       style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-  <span className="legacy-setting-label" style={{ fontSize: 14, fontWeight: 700 }}>Load Demo Forecast</span>
+                    <div className="qs-migrated-115">
+  <span className="legacy-setting-label qs-migrated-116">Load Demo Forecast</span>
   <Toggle
     value={systemSettings.loadDemoForecast}
     onChange={(checked) =>
@@ -5437,7 +5189,7 @@ function renderEstimateMapBoard() {
 
             {/* Fallback for other menus */}
             {menu !== "dashboard" && menu !== "client_database" && menu !== "follow_ups" && menu !== "estimates" && menu !== "orders" && menu !== "lost" && menu !== "installation" && menu !== "estimate_map" && menu !== "completed_projects" && menu !== "recycle_bin" && menu !== "project_preferences" && (
-              <Card style={{ minHeight: 520 }}>
+              <Card className="qs-migrated-2">
                 <H2>{menu.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase())}</H2>
                 <Small>Placeholder screen.</Small>
               </Card>

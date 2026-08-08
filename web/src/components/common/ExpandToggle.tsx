@@ -9,18 +9,7 @@ export default function ExpandToggle(props: Props) {
 
   return (
     <div
-      aria-hidden="true"
-      style={{
-        width: 22,
-        minWidth: 22,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontSize: 18,
-        fontWeight: 900,
-        color: "#18181b",
-        lineHeight: 1,
-      }}
+      aria-hidden="true" className="qs-migrated-117"
     >
       {expanded ? "▲" : "▼"}
     </div>

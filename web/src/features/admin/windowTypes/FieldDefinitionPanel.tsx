@@ -9,7 +9,7 @@ export default function FieldDefinitionPanel(props: Props) {
   const { selectedDesign } = props;
 
   return (
-    <div className="admin-card ui-card" style={{ padding: 16, display: "grid", gap: 12 }}>
+    <div className="admin-card ui-card qs-migrated-114">
       <div className="admin-group-title">Field Definition</div>
       <div className="admin-body-copy">
         Placeholder ordered field list for the selected design:

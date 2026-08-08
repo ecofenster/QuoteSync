@@ -434,24 +434,18 @@ export default function WindowTypePreviewPanel(props: Props) {
   }
 
   return (
-    <div className="admin-card ui-card" style={{ padding: 14, display: "grid", gap: 10, minHeight: 0 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline", flexWrap: "wrap" }}>
+    <div className="admin-card ui-card qs-migrated-220">
+      <div className="qs-migrated-221">
         <div className="admin-group-title">Preview</div>
         <div className="admin-body-copy">
           {selectedDesign ? selectedDesign.label : "No design selected"}
         </div>
       </div>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(2, minmax(180px, 1fr)) repeat(2, minmax(140px, 0.85fr))",
-          gap: 10,
-          alignItems: "end",
-        }}
+      <div className="qs-migrated-222"
       >
-        <div style={{ display: "grid", gap: 6 }}>
+        <div className="qs-migrated-57">
           <span className="admin-setting-label">Rectangle Geometry (Pilot)</span>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 36 }}>
+          <label className="qs-migrated-223">
             <input
               type="checkbox"
               checked={useRectanglePilot}
@@ -462,9 +456,9 @@ export default function WindowTypePreviewPanel(props: Props) {
           </label>
         </div>
         {showMultiFieldRectanglePilot ? (
-          <div style={{ display: "grid", gap: 6 }}>
+          <div className="qs-migrated-57">
             <span className="admin-setting-label">Multi-field Rectangle Pilot</span>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 36 }}>
+            <label className="qs-migrated-223">
               <input
                 type="checkbox"
                 checked={useMultiFieldRectanglePilot}
@@ -474,9 +468,9 @@ export default function WindowTypePreviewPanel(props: Props) {
             </label>
           </div>
         ) : null}
-        <div style={{ display: "grid", gap: 6 }}>
+        <div className="qs-migrated-57">
           <span className="admin-setting-label">Fixed Sash Geometry (Pilot)</span>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 36 }}>
+          <label className="qs-migrated-223">
             <input
               type="checkbox"
               checked={useFixedSashRectanglePilot}
@@ -486,9 +480,9 @@ export default function WindowTypePreviewPanel(props: Props) {
             <span className="admin-body-copy">Use guarded fixed sash rectangle path</span>
           </label>
         </div>
-        <div style={{ display: "grid", gap: 6 }}>
+        <div className="qs-migrated-57">
           <span className="admin-setting-label">Internal Profile Resolution (Pilot)</span>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 36 }}>
+          <label className="qs-migrated-223">
             <input
               type="checkbox"
               checked={useInternalProfileResolutionPilot}
@@ -498,7 +492,7 @@ export default function WindowTypePreviewPanel(props: Props) {
             <span className="admin-body-copy">Show resolved profile refs for field edges and local junctions</span>
           </label>
         </div>
-        <label style={{ display: "grid", gap: 6 }}>
+        <label className="qs-migrated-57">
           <span className="admin-setting-label">View</span>
           <select
             value={previewView}
@@ -509,7 +503,7 @@ export default function WindowTypePreviewPanel(props: Props) {
             <option value="external">External</option>
           </select>
         </label>
-        <label style={{ display: "grid", gap: 6 }}>
+        <label className="qs-migrated-57">
           <span className="admin-setting-label">Preview source</span>
           <select
             value={previewSourceMode}
@@ -520,7 +514,7 @@ export default function WindowTypePreviewPanel(props: Props) {
             <option value="b92">B92 profile-section assembly proof</option>
           </select>
         </label>
-        <label style={{ display: "grid", gap: 6 }}>
+        <label className="qs-migrated-57">
           <span className="admin-setting-label">Rebate</span>
           <select
             value={rebateMode}
@@ -545,14 +539,14 @@ export default function WindowTypePreviewPanel(props: Props) {
           </select>
         </label>
         {!isFixedSashDesign ? (
-          <div style={{ display: "grid", gap: 8, gridColumn: "1 / -1" }}>
+          <div className="qs-migrated-224">
             <span className="admin-setting-label">Structural splits</span>
-            <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(2, minmax(220px, 1fr))" }}>
-              <div style={{ display: "grid", gap: 6 }}>
+            <div className="qs-migrated-225">
+              <div className="qs-migrated-57">
                 <span className="admin-body-copy">Column widths (mm)</span>
-                <div style={{ display: "grid", gap: 6 }}>
+                <div className="qs-migrated-57">
                   {colWidthsMm.map((value, index) => (
-                    <label key={`col-width-${index}`} style={{ display: "grid", gap: 4 }}>
+                    <label key={`col-width-${index}`} className="qs-migrated-17">
                       <span className="admin-setting-label">Column {index + 1}</span>
                       <input
                         type="number"
@@ -575,11 +569,11 @@ export default function WindowTypePreviewPanel(props: Props) {
                   ))}
                 </div>
               </div>
-              <div style={{ display: "grid", gap: 6 }}>
+              <div className="qs-migrated-57">
                 <span className="admin-body-copy">Row heights (mm)</span>
-                <div style={{ display: "grid", gap: 6 }}>
+                <div className="qs-migrated-57">
                   {rowHeightsMm.map((value, index) => (
-                    <label key={`row-height-${index}`} style={{ display: "grid", gap: 4 }}>
+                    <label key={`row-height-${index}`} className="qs-migrated-17">
                       <span className="admin-setting-label">Row {index + 1}</span>
                       <input
                         type="number"
@@ -604,15 +598,9 @@ export default function WindowTypePreviewPanel(props: Props) {
               </div>
             </div>
             {previewView === "internal" && previewLayout.fieldsX === 2 && previewLayout.fieldsY === 1 ? (
-              <div
-                style={{
-                  display: "grid",
-                  gap: 8,
-                  gridTemplateColumns: "minmax(220px, 1fr) minmax(180px, 220px)",
-                  alignItems: "end",
-                }}
+              <div className="qs-migrated-226"
               >
-                <div style={{ display: "grid", gap: 6 }}>
+                <div className="qs-migrated-57">
                   <span className="admin-setting-label">Division Split (Pilot)</span>
                   <div className="admin-body-copy">Measured across overall width to centreline of mullion</div>
                   <input
@@ -634,7 +622,7 @@ export default function WindowTypePreviewPanel(props: Props) {
                     placeholder="Division centre"
                   />
                 </div>
-                <div style={{ display: "grid", gap: 6 }}>
+                <div className="qs-migrated-57">
                   <span className="admin-setting-label">Equal Glass Split</span>
                   <button type="button" className="admin-nav-button" disabled>
                     <span className="admin-nav-button-label">Coming soon</span>
@@ -646,9 +634,9 @@ export default function WindowTypePreviewPanel(props: Props) {
         ) : null}
         {!isFixedSashDesign && (useRectanglePilot || useMultiFieldRectanglePilot) ? (
           <>
-            <div style={{ display: "grid", gap: 6 }}>
+            <div className="qs-migrated-57">
               <span className="admin-setting-label">Glazing Bars / Astragals (Pilot)</span>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 36 }}>
+              <label className="qs-migrated-223">
                 <input
                   type="checkbox"
                   checked={previewView === "internal" ? useAstragalBars : useExternalAstragalBars}
@@ -661,7 +649,7 @@ export default function WindowTypePreviewPanel(props: Props) {
                 <span className="admin-body-copy">Render glazing bars over visible glass</span>
               </label>
             </div>
-            <label style={{ display: "grid", gap: 6 }}>
+            <label className="qs-migrated-57">
               <span className="admin-setting-label">Glass columns/lites</span>
               <select
                 value={previewView === "internal" ? astragalCols : externalAstragalCols}
@@ -680,7 +668,7 @@ export default function WindowTypePreviewPanel(props: Props) {
                 <option value={6}>6</option>
               </select>
             </label>
-            <label style={{ display: "grid", gap: 6 }}>
+            <label className="qs-migrated-57">
               <span className="admin-setting-label">Glass rows/lites</span>
               <select
                 value={previewView === "internal" ? astragalRows : externalAstragalRows}
@@ -701,7 +689,7 @@ export default function WindowTypePreviewPanel(props: Props) {
             </label>
           </>
         ) : null}
-        <label style={{ display: "grid", gap: 6 }}>
+        <label className="qs-migrated-57">
           <span className="admin-setting-label">Internal Frame RAL</span>
           <select
             value={TEMP_RAL_OPTIONS.some((option) => option.value === internalFrameRal) ? internalFrameRal : ""}
@@ -720,7 +708,7 @@ export default function WindowTypePreviewPanel(props: Props) {
             ))}
           </select>
         </label>
-        <label style={{ display: "grid", gap: 6 }}>
+        <label className="qs-migrated-57">
           <span className="admin-setting-label">Internal Frame RAL Entry</span>
           <input
             value={internalFrameRal}
@@ -730,7 +718,7 @@ export default function WindowTypePreviewPanel(props: Props) {
             disabled={isFixedSashDesign}
           />
         </label>
-        <label style={{ display: "grid", gap: 6 }}>
+        <label className="qs-migrated-57">
           <span className="admin-setting-label">External Cladding RAL</span>
           <select
             value={TEMP_RAL_OPTIONS.some((option) => option.value === externalCladdingRal) ? externalCladdingRal : ""}
@@ -749,7 +737,7 @@ export default function WindowTypePreviewPanel(props: Props) {
             ))}
           </select>
         </label>
-        <label style={{ display: "grid", gap: 6 }}>
+        <label className="qs-migrated-57">
           <span className="admin-setting-label">External Cladding RAL Entry</span>
           <input
             value={externalCladdingRal}
@@ -760,19 +748,10 @@ export default function WindowTypePreviewPanel(props: Props) {
           />
         </label>
       </div>
-      <div className="admin-placeholder-box" style={{ margin: 0 }}>
+      <div className="admin-placeholder-box qs-migrated-180">
         Preview controls live here. DrawingViewport keeps its own tool, pan, zoom, scale, and reset controls inside the render surface.
       </div>
-      <div
-        style={{
-          borderRadius: 16,
-          border: "1px solid #e4e4e7",
-          background: "#fff",
-          padding: 8,
-          minHeight: 620,
-          display: "grid",
-          alignItems: "stretch",
-        }}
+      <div className="qs-migrated-227"
       >
         {previewSourceMode === "b92" ? (
           <B92ProfileSectionAssemblyPreview

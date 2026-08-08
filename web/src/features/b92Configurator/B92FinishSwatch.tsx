@@ -7,10 +7,9 @@ type Props = {
 };
 
 export default function B92FinishSwatch(props: Props) {
-  const background = props.lacquer ? `url(${props.lacquer.url}) center / cover` : props.fill;
   return (
     <span className="b92-finish-swatch">
-      <span className="b92-finish-swatch__sample" style={{ background }} />
+      {props.lacquer ? <img className="b92-finish-swatch__sample" src={props.lacquer.url} alt="" /> : <svg className="b92-finish-swatch__sample" aria-hidden="true"><rect width="100%" height="100%" fill={props.fill} /></svg>}
       {props.label}
     </span>
   );

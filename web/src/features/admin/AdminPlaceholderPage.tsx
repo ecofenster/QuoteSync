@@ -7,6 +7,8 @@ import { H3, Small } from "../estimatePicker/tabs/shared";
 import AdminConfiguratorCatalogWorkspace from "./AdminConfiguratorCatalogWorkspace";
 import AdminSupplierQuoteImportBeta from "./AdminSupplierQuoteImportBeta";
 import AdminIntegrationsPanel from "./AdminIntegrationsPanel";
+import AdminThemeColoursPanel from "./AdminThemeColoursPanel";
+import { QUOTESYNC_THEME_CONFIGURATION_KEY } from "../../theme/themes";
 import "./AdminPlaceholderPage.css";
 
 type AdminSectionKey =
@@ -111,9 +113,9 @@ function AdminSectionPlaceholder({
   description: string;
 }) {
   return (
-    <div className="admin-card ui-card" style={{ padding: 20, display: "grid", gap: 10 }}>
+    <div className="admin-card admin-card--content ui-card">
       <div className="admin-section-title">{title}</div>
-      <div className="admin-body-copy" style={{ maxWidth: 820 }}>{description}</div>
+      <div className="admin-body-copy admin-copy-width">{description}</div>
       <div className="admin-placeholder-box">
         This section is planned, but not being implemented in this phase.
       </div>
@@ -176,7 +178,7 @@ function SettingRow({
 
   return (
     <div className="admin-setting-row">
-      <div style={{ display: "grid", gap: 4 }}>
+      <div className="qs-migrated-17">
         <div className="admin-setting-key">{setting.key}</div>
         <div className="admin-setting-updated">
           Updated: {setting.updated_at || "Unknown"}
@@ -187,10 +189,7 @@ function SettingRow({
 
       {editable && normalizedBoolean ? (
         <div
-          className="admin-flex-row"
-          style={{
-            justifyContent: "space-between",
-          }}
+          className="admin-flex-row qs-migrated-145"
         >
           <div className="admin-setting-label">Enabled</div>
           <Toggle
@@ -217,10 +216,6 @@ function SettingRow({
               }}
               disabled={isSaving}
               className="admin-primary-button admin-primary-button--small ui-button ui-button--primary"
-              style={{
-                cursor: isSaving ? "default" : "pointer",
-                opacity: isSaving ? 0.7 : 1,
-              }}
             >
               {isSaving ? "Repairing..." : "Repair toggle value"}
             </button>
@@ -232,9 +227,9 @@ function SettingRow({
       ) : null}
 
       {editable && setting.key === "configurator.defaultDimensions" && (
-        <div style={{ display: "grid", gap: 12 }}>
+        <div className="qs-migrated-26">
           <div className="admin-dimensions-grid">
-            <label style={{ display: "grid", gap: 6 }}>
+            <label className="qs-migrated-57">
               <span className="admin-setting-label">Default width (mm)</span>
               <input
                 type="number"
@@ -244,7 +239,7 @@ function SettingRow({
               />
             </label>
 
-            <label style={{ display: "grid", gap: 6 }}>
+            <label className="qs-migrated-57">
               <span className="admin-setting-label">Default height (mm)</span>
               <input
                 type="number"
@@ -267,10 +262,6 @@ function SettingRow({
               }}
               disabled={isSaving}
               className="admin-primary-button ui-button ui-button--primary"
-              style={{
-                cursor: isSaving ? "default" : "pointer",
-                opacity: isSaving ? 0.7 : 1,
-              }}
             >
               {isSaving ? "Saving..." : "Save dimensions"}
             </button>
@@ -336,7 +327,10 @@ export default function AdminPlaceholderPage(props: {
   }, []);
 
   const orderedGroups = useMemo(
-    () => Object.entries(settingsByGroup).sort(([a], [b]) => a.localeCompare(b)),
+    () => Object.entries(settingsByGroup)
+      .map(([groupName, settings]) => [groupName, settings.filter((setting) => setting.key !== QUOTESYNC_THEME_CONFIGURATION_KEY)] as const)
+      .filter(([, settings]) => settings.length > 0)
+      .sort(([a], [b]) => a.localeCompare(b)),
     [settingsByGroup]
   );
 
@@ -363,10 +357,10 @@ export default function AdminPlaceholderPage(props: {
 
   const sectionContent =
     activeSection === "settings" ? (
-      <div style={{ display: "grid", gap: 16 }}>
-        <div className="admin-card ui-card" style={{ padding: 20, display: "grid", gap: 6 }}>
+      <div className="admin-page-stack">
+        <div className="admin-card admin-card--content ui-card">
           <div className="admin-page-title">Admin</div>
-          <div className="admin-body-copy" style={{ maxWidth: 900 }}>
+          <div className="admin-body-copy admin-copy-width">
             Proper admin control area. Settings are one part of Admin, and boolean controls use the site toggle component rather than tick boxes.
           </div>
         </div>
@@ -386,16 +380,11 @@ export default function AdminPlaceholderPage(props: {
         ) : null}
 
         {!isLoading && !errorMessage && orderedGroups.length > 0 ? (
-          <div style={{ display: "grid", gap: 16 }}>
+          <div className="admin-page-stack">
             {orderedGroups.map(([groupName, settings]) => (
               <div
                 key={groupName}
-                className="admin-card ui-card"
-                style={{
-                  padding: 18,
-                  display: "grid",
-                  gap: 14,
-                }}
+                className="admin-card admin-card--section ui-card"
               >
                 <div>
                   <div className="admin-group-title">
@@ -406,7 +395,7 @@ export default function AdminPlaceholderPage(props: {
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gap: 10 }}>
+                <div className="admin-page-stack">
                   {settings.map((setting) => (
                     <SettingRow key={setting.key} setting={setting} onSaved={handleSavedSetting} />
                   ))}
@@ -417,19 +406,19 @@ export default function AdminPlaceholderPage(props: {
         ) : null}
       </div>
     ) : activeSection === "project_preferences" ? (
-      <div style={{ display: "grid", gap: 16 }}>
-        <div className="admin-card ui-card" style={{ padding: 20, display: "grid", gap: 6 }}>
+      <div className="admin-page-stack">
+        <div className="admin-card admin-card--content ui-card">
           <div className="admin-page-title">Project Preferences</div>
-          <div className="admin-body-copy" style={{ maxWidth: 900 }}>
+          <div className="admin-body-copy admin-copy-width">
             Configure default loading behaviour for QuoteSync.
           </div>
         </div>
 
-        <div className="admin-card ui-card" style={{ padding: 18, display: "grid", gap: 14, maxWidth: 900 }}>
+        <div className="admin-card admin-card--section admin-copy-width ui-card">
           <div className="admin-project-pref-row">
             <div>
               <div className="admin-group-title">Load Defaults</div>
-              <div className="admin-body-copy" style={{ maxWidth: 720 }}>
+              <div className="admin-body-copy admin-copy-width--narrow">
                 When enabled, new estimates start with the default supplier, product and technical settings. When disabled, new estimates start blank.
               </div>
             </div>
@@ -461,10 +450,7 @@ export default function AdminPlaceholderPage(props: {
         onRenderWorkspaceActive={setConfiguratorRenderWorkspaceActive}
       />
     ) : activeSection === "branding" ? (
-      <AdminSectionPlaceholder
-        title="Branding"
-        description="Brand identity, logo management, and document branding will be implemented here in a later phase."
-      />
+      <AdminThemeColoursPanel />
     ) : activeSection === "integrations" ? (
       <AdminIntegrationsPanel />
     ) : (
@@ -479,12 +465,10 @@ export default function AdminPlaceholderPage(props: {
   return (
     <div
       className="admin-shell"
-      style={{
-        gridTemplateColumns: hideAdminSidebar ? "minmax(0, 1fr)" : "280px minmax(0, 1fr)",
-      }}
+      data-sidebar={hideAdminSidebar ? "hidden" : "visible"}
     >
       {!hideAdminSidebar ? (
-      <div className="admin-card admin-sidebar-card ui-card" style={{ padding: 14, position: "sticky", top: 16 }}>
+      <div className="admin-card admin-sidebar-card ui-card">
         <div className="admin-sidebar-title">
           Admin
         </div>

@@ -103,14 +103,14 @@
 }
 
 .u-token-surface {
-  background: var(--color-surface) !important;
-  color: var(--color-text-primary) !important;
+  background: var(--qs-bg-surface) !important;
+  color: var(--qs-theme-text) !important;
 }
 
 .u-token-muted {
-  color: var(--color-text-muted) !important;
+  color: var(--qs-theme-text-muted) !important;
 }
 
 .u-token-border {
-  border-color: var(--color-border) !important;
+  border-color: var(--qs-border-standard) !important;
 }

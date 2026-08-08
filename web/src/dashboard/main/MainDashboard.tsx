@@ -577,9 +577,7 @@ export default function MainDashboard(props: Props) {
                   <span>{stage.label}</span>
                   <strong>{stage.unavailable ? "N/A" : stage.value}</strong>
                 </div>
-                <div className="qs-pipeline-stage__track">
-                  <span style={{ width: `${Math.max(8, (stage.value / maxPipeline) * 100)}%` }} />
-                </div>
+                <progress className="qs-pipeline-stage__track" max={100} value={Math.max(8, (stage.value / maxPipeline) * 100)} aria-label={`${stage.label} pipeline progress`} />
               </div>
             ))}
           </div>

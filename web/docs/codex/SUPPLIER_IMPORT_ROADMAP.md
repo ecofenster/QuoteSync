@@ -39,3 +39,7 @@ OCR, drawing/image recognition, product and opening-direction recognition, numbe
 This may explore allocation and presentation scenarios while preserving all original supplier evidence. It must not silently change the Import Lab or production estimate-owned domains.
 
 See the [execution rules](CODEX_EXECUTION_RULES.md) before starting a new stage.
+
+## Deferred Admin commercial overview
+
+A future Admin-only **Administration → Commercial Overview / Business Profitability** area may report project gross profit, allocated monthly and annual overheads, business net-profit estimates, corporation-tax and dividend-tax provisions, director salary/PAYE considerations, retained profit, and user-defined cost categories. It must remain separate from Project Costing, use current tax-year rules, and identify tax outputs as planning estimates rather than accountancy advice. Tax calculations are not part of the current calculator stages.

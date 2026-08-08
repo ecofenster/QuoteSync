@@ -4,7 +4,7 @@
   display: grid;
   gap: 24px;
   max-width: 1400px;
-  color: var(--color-text-primary);
+  color: var(--qs-theme-text);
 }
 
 .glass-layout {
@@ -30,7 +30,7 @@
 
 .glass-card-title {
   margin: 0 0 12px;
-  color: var(--color-text-primary);
+  color: var(--qs-theme-text);
 }
 
 .glass-label {
@@ -56,11 +56,11 @@
 }
 
 .glass-pane-card {
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--qs-border-standard);
   padding: 8px 10px;
   border-radius: 6px;
   margin-bottom: 8px;
-  background: var(--color-surface);
+  background: var(--qs-bg-surface);
 }
 
 .glass-pane-list {
@@ -100,13 +100,13 @@
   border: 2px solid transparent;
   border-radius: 10px;
   background: transparent;
-  color: var(--color-text-primary);
+  color: var(--qs-theme-text);
   cursor: pointer;
 }
 
 .glass-shape-option--selected {
-  border-color: var(--color-info);
-  background: color-mix(in srgb, var(--color-info) 10%, var(--color-surface));
+  border-color: var(--qs-semantic-info);
+  background: color-mix(in srgb, var(--qs-semantic-info) 10%, var(--qs-bg-surface));
 }
 
 .glass-shape-option__label {
@@ -126,14 +126,14 @@
 }
 
 .glass-table__head {
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--qs-border-standard);
   padding: 6px 8px;
   text-align: left;
-  background: var(--color-surface-subtle);
+  background: var(--qs-bg-surface-elevated);
 }
 
 .glass-table__cell {
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--qs-border-standard);
   padding: 6px 8px;
 }
 

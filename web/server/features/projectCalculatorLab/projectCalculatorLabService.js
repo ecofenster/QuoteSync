@@ -1,7 +1,14 @@
 import { randomUUID } from 'node:crypto';
+import { applyMarkup, calculateAdjustedRate, convertSupplierAmountToGbp, createProjectCostingFx } from './exchangeRateModel.js';
+import { fetchCentralExchangeRate } from './exchangeRateProvider.js';
+import { snapshotCalculatorAdminConfiguration } from './calculatorAdminService.js';
+import { allocateTransport,calculateMe508 } from './calculatorMath.js';
+import { calculateGgfPvcuFixings } from './fixingRules.js';
 
 export const PRODUCT_CLASSES = Object.freeze(['Window','Single door','French/double door','Door with sidelight','Lift-and-slide','Bifold','Sliding/gliding door','Curtain walling','Other','Needs review']);
 export const PACKAGE_CODES = Object.freeze(['supply_only','support','full_installation']);
+export const SCENARIO_ORIGINS = Object.freeze(['supplier_import','estimate','manual','mixed']);
+export const MANUAL_COST_CATEGORIES = Object.freeze(['discount','extras','delivery','survey','materials','labour','plant','travel','accommodation','admin','other']);
 export const COST_CATALOGUE = Object.freeze([
   ['materials','Materials'],['survey','Survey'],['installation_support','Installation support'],
   ['standard_window_installation','Standard window installation'],['retrofit_installation','Retrofit installation'],
@@ -27,53 +34,120 @@ export function calculateProductGeometry(widthMm, heightMm, quantity) {
 }
 
 const parseJson = (value) => { try { return JSON.parse(value || '{}'); } catch { return {}; } };
-const scenarioMap = (row) => row && ({ id:row.id,name:row.name,currency:row.currency,packageCode:row.package_code,importLabSessionId:row.import_lab_session_id,extractionRunId:row.extraction_run_id,sourceAttachmentId:row.source_attachment_id,installationOpeningCount:row.installation_opening_count,createdAt:row.created_at,updatedAt:row.updated_at });
-const productMap = (row) => ({ id:row.id,scenarioId:row.scenario_id,sourceRowId:row.source_row_id,sourceSnapshot:parseJson(row.source_snapshot_json),displayReference:row.display_reference,productClass:row.product_class,quantity:row.quantity,widthMm:row.width_mm,heightMm:row.height_mm,totalPrice:row.total_price_amount,currency:row.currency,areaSquareMetres:row.area_square_metres,framePerimeterMetres:row.frame_perimeter_metres });
-const costMap = (row) => ({ id:row.id,scenarioId:row.scenario_id,sourceAdditionalCostId:row.source_additional_cost_id,sourceSnapshot:parseJson(row.source_snapshot_json),category:row.category,label:row.label,amount:row.amount,currency:row.currency });
+const scenarioMap = (row) => row && ({ id:row.id,estimateId:row.estimate_id??null,estimateRef:row.estimate_ref??null,name:row.name,currency:row.currency,packageCode:row.package_code,origin:row.origin,importLabSessionId:row.import_lab_session_id,extractionRunId:row.extraction_run_id,sourceAttachmentId:row.source_attachment_id,sourceRevision:row.source_revision,revisionNumber:row.revision_number,installationOpeningCount:row.installation_opening_count,createdAt:row.created_at,updatedAt:row.updated_at });
+const productMap = (row) => {const source=parseJson(row.source_snapshot_json);return { id:row.id,scenarioId:row.scenario_id,sourceRowId:row.source_row_id,sourceSnapshot:source,evidenceOrigin:'supplier_import',displayReference:row.display_reference,productClass:row.product_class,quantity:row.quantity,widthMm:row.width_mm,heightMm:row.height_mm,installationOpeningCount:null,unitSupplyCost:source.unit_price_amount??source.unitPrice??null,totalPrice:row.total_price_amount,currency:row.currency,areaSquareMetres:row.area_square_metres,framePerimeterMetres:row.frame_perimeter_metres,markupOverridePercent:row.markup_override_percent };};
+const estimateProductMap = (row) => {const source=parseJson(row.source_snapshot_json);return { id:row.id,scenarioId:row.scenario_id,sourceRowId:row.source_position_id,sourceSnapshot:source,evidenceOrigin:'supplier_import',displayReference:row.display_reference,productClass:row.product_class,quantity:row.quantity,widthMm:row.width_mm,heightMm:row.height_mm,installationOpeningCount:null,unitSupplyCost:source.unitPrice??null,totalPrice:row.total_price_amount,currency:row.currency,areaSquareMetres:row.area_square_metres,framePerimeterMetres:row.frame_perimeter_metres,markupOverridePercent:row.markup_override_percent };};
+const manualProductMap = (row) => { const geometry=calculateProductGeometry(row.width_mm,row.height_mm,row.quantity); return {id:row.id,scenarioId:row.scenario_id,sourceRowId:null,sourceSnapshot:null,evidenceOrigin:'manual',displayReference:row.reference,productClass:row.product_class,quantity:row.quantity,widthMm:row.width_mm,heightMm:row.height_mm,installationOpeningCount:row.installation_opening_count,unitSupplyCost:row.unit_supply_cost_amount,totalPrice:row.total_supply_cost_amount,currency:row.currency,markupOverridePercent:row.markup_override_percent,...geometry}; };
+const costMap = (row) => ({ id:row.id,scenarioId:row.scenario_id,sourceAdditionalCostId:row.source_additional_cost_id,sourceSnapshot:parseJson(row.source_snapshot_json),evidenceOrigin:'supplier_import',category:row.category,label:row.label,amount:row.amount,currency:row.currency });
+const estimateCostMap = (row) => ({ id:row.id,scenarioId:row.scenario_id,sourceAdditionalCostId:row.source_extra_id,sourceSnapshot:parseJson(row.source_snapshot_json),evidenceOrigin:'supplier_import',category:row.category,label:row.label,amount:row.amount,currency:row.source_currency??row.currency });
+const manualCostMap = (row) => ({id:row.id,scenarioId:row.scenario_id,sourceAdditionalCostId:null,sourceSnapshot:null,evidenceOrigin:'manual',category:row.category,label:row.label,amount:row.amount,currency:row.currency});
 const packageMap = (row) => ({ id:row.id,scenarioId:row.scenario_id,packageCode:row.package_code,catalogueCode:row.catalogue_code,label:row.label,included:!!row.included,unitCost:row.unit_cost_amount,currency:row.currency });
 const routeMap = (row) => ({ id:row.id,scenarioId:row.scenario_id,direction:row.direction,origin:{label:row.origin_label,lat:row.origin_lat,lng:row.origin_lng},destination:{label:row.destination_label,lat:row.destination_lat,lng:row.destination_lng},distanceKm:row.distance_km,durationMinutes:row.duration_minutes,trafficDurationMinutes:row.traffic_duration_minutes,calculatedAt:row.calculated_at,integration:row.integration,manuallyOverridden:!!row.manually_overridden,overrideReason:row.override_reason });
 
-export function createProjectCalculatorLabService(db) {
+export function createProjectCalculatorLabService(db, { exchangeRateProvider = fetchCentralExchangeRate } = {}) {
+  async function appendRevision(scenarioId, reason) {
+    const scenario = await db.get('SELECT * FROM project_calculator_lab_scenarios WHERE id=?', scenarioId);
+    const fx = await db.get('SELECT * FROM project_calculator_lab_exchange_rate_snapshots WHERE scenario_id=? ORDER BY created_at DESC LIMIT 1', scenarioId);
+    const markups = await db.get('SELECT * FROM project_calculator_lab_markup_rules WHERE scenario_id=?', scenarioId);
+    const [supplierProductOverrides,estimateProductOverrides,manualProductOverrides]=await Promise.all([db.all('SELECT id,markup_override_percent FROM project_calculator_lab_product_rows WHERE scenario_id=? ORDER BY id',scenarioId),db.all('SELECT id,markup_override_percent FROM project_calculator_estimate_product_rows WHERE scenario_id=? ORDER BY id',scenarioId),db.all('SELECT id,markup_override_percent FROM project_calculator_lab_manual_product_rows WHERE scenario_id=? ORDER BY id',scenarioId)]);
+    await db.run('INSERT INTO project_calculator_lab_revisions(id,scenario_id,version_number,reason,snapshot_json,created_at) VALUES(?,?,?,?,?,?)', randomUUID(), scenarioId, scenario.revision_number, reason, JSON.stringify({ scenario, exchangeRate: fx, markups, productMarkupOverrides:[...supplierProductOverrides,...estimateProductOverrides,...manualProductOverrides] }), new Date().toISOString());
+  }
+
+  async function createFinancialState(scenarioId, currency, now) {
+    const quote = await exchangeRateProvider(currency);
+    const rates=createProjectCostingFx({supplierToGbpLiveRate:quote.rawRate});
+    await db.run(`INSERT INTO project_calculator_lab_exchange_rate_snapshots(id,scenario_id,scenario_revision,from_currency,to_currency,provider,provider_timestamp,raw_rate,inverse_rate,rounded_up_rate,uplift_amount,calculated_adjusted_rate,adjusted_rate,adjustment_enabled,manually_overridden,created_at)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, randomUUID(), scenarioId, 1, currency, 'GBP', quote.provider, quote.quotedAt, rates.supplierToGbpLiveRate,null,rates.roundedUpRate,rates.upliftAmount,rates.calculatedSellingRate,rates.supplierToGbpSellingRate,1,0,now);
+    await db.run("INSERT INTO project_calculator_lab_markup_rules(scenario_id,product_percent,extras_percent,transport_percent,equipment_percent,installation_percent,materials_percent,duties_percent,updated_at) VALUES(?,?,?,?,?,?,?,?,?)", scenarioId, '0', '0', '0', '0', '0', '0', '0', now);
+    await snapshotCalculatorAdminConfiguration(db,scenarioId,1,now);
+    await db.run("INSERT INTO project_calculator_lab_options(scenario_id,updated_at) VALUES(?,?)",scenarioId,now);
+    await appendRevision(scenarioId, 'created');
+  }
+  async function recordEdit(scenarioId, reason) {
+    await db.run('UPDATE project_calculator_lab_scenarios SET revision_number=revision_number+1,updated_at=? WHERE id=?',new Date().toISOString(),scenarioId);
+    await appendRevision(scenarioId,reason);
+  }
   async function getScenario(id) {
     const row = await db.get('SELECT * FROM project_calculator_lab_scenarios WHERE id = ?', id);
     if (!row) return null;
-    const [products,costs,packageItems,routes,summary] = await Promise.all([
+    const [products,estimateProducts,manualProducts,costs,estimateCosts,manualCosts,packageItems,routes,summary,estimateSummary,exchangeRate,markups,revisions,catalogueSnapshot,options] = await Promise.all([
       db.all('SELECT * FROM project_calculator_lab_product_rows WHERE scenario_id = ? ORDER BY display_reference',id),
+      db.all('SELECT * FROM project_calculator_estimate_product_rows WHERE scenario_id = ? ORDER BY display_reference',id),
+      db.all('SELECT * FROM project_calculator_lab_manual_product_rows WHERE scenario_id = ? ORDER BY created_at',id),
       db.all('SELECT * FROM project_calculator_lab_supplier_costs WHERE scenario_id = ? ORDER BY label',id),
+      db.all('SELECT c.*,r.currency source_currency FROM project_calculator_estimate_supplier_costs c JOIN supplier_quote_revisions r ON r.id=c.source_revision_id WHERE c.scenario_id = ? ORDER BY c.label',id),
+      db.all('SELECT * FROM project_calculator_lab_manual_cost_lines WHERE scenario_id = ? ORDER BY created_at',id),
       db.all('SELECT * FROM project_calculator_lab_package_items WHERE scenario_id = ? ORDER BY rowid',id),
       db.all('SELECT * FROM project_calculator_lab_route_snapshots WHERE scenario_id = ? ORDER BY calculated_at DESC',id),
       db.get('SELECT product_subtotal_amount, delivery_total_amount, final_supplier_total_amount, original_extracted_snapshot_json FROM supplier_import_lab_commercial_summaries WHERE extraction_run_id = ?',row.extraction_run_id),
+      db.get(`SELECT r.product_subtotal_amount,r.delivery_total_amount,r.final_supplier_total_amount FROM supplier_quote_revisions r JOIN project_calculator_estimate_product_rows p ON p.source_revision_id=r.id WHERE p.scenario_id=? ORDER BY r.created_at DESC LIMIT 1`,id),
+      db.get('SELECT * FROM project_calculator_lab_exchange_rate_snapshots WHERE scenario_id=? ORDER BY created_at DESC LIMIT 1',id),
+      db.get('SELECT * FROM project_calculator_lab_markup_rules WHERE scenario_id=?',id),
+      db.all('SELECT id,version_number,reason,created_at FROM project_calculator_lab_revisions WHERE scenario_id=? ORDER BY version_number DESC',id),
+      db.get('SELECT * FROM project_calculator_lab_catalogue_snapshots WHERE scenario_id=? ORDER BY scenario_revision DESC LIMIT 1',id),
+      db.get('SELECT * FROM project_calculator_lab_options WHERE scenario_id=?',id),
     ]);
-    return { ...scenarioMap(row), products:products.map(productMap), supplierCosts:costs.map(costMap), packageItems:packageItems.map(packageMap), routeSnapshots:routes.map(routeMap), supplierSummary: summary ? { productSubtotal:summary.product_subtotal_amount,deliveryTotal:summary.delivery_total_amount,finalSupplierTotal:summary.final_supplier_total_amount,originalSnapshot:parseJson(summary.original_extracted_snapshot_json) } : null };
+    const canonicalFx=exchangeRate?createProjectCostingFx({supplierToGbpLiveRate:exchangeRate.raw_rate,supplierToGbpSellingRate:exchangeRate.adjusted_rate,adjustmentEnabled:!!exchangeRate.adjustment_enabled}):null;
+    const fx = exchangeRate ? { id:exchangeRate.id,provider:exchangeRate.provider,providerTimestamp:exchangeRate.provider_timestamp,...canonicalFx,rawRate:canonicalFx.supplierToGbpLiveRate,adjustedRate:canonicalFx.supplierToGbpSellingRate,usedRate:canonicalFx.supplierToGbpSellingRate,calculatedAdjustedRate:canonicalFx.calculatedSellingRate,manuallyOverridden:!!exchangeRate.manually_overridden,overrideReason:exchangeRate.override_reason,overriddenAt:exchangeRate.overridden_at } : null;
+    const rules = markups ? {product:markups.product_percent,extras:markups.extras_percent,transport:markups.transport_percent,equipment:markups.equipment_percent,installation:markups.installation_percent,materials:markups.materials_percent,duties:markups.duties_percent} : {product:'0',extras:'0',transport:'0',equipment:'0',installation:'0',materials:'0',duties:'0'};
+    const decorate = (line, category) => { const originalAmount=line.totalPrice??line.amount; const converted=fx?convertSupplierAmountToGbp(originalAmount,fx):{purchaseGbpAmount:null,sellingGbpAmount:null}; const markupPercent=category==='product'&&line.markupOverridePercent!=null?line.markupOverridePercent:rules[category]; const markup=applyMarkup(converted.sellingGbpAmount,markupPercent); return {...line,originalAmount,originalCurrency:line.currency,gbpAmount:converted.purchaseGbpAmount,commercialGbpAmount:converted.sellingGbpAmount,markupPercent,...markup}; };
+    const decoratedProducts=[...products.map(productMap),...estimateProducts.map(estimateProductMap),...manualProducts.map(manualProductMap)].map(line=>decorate(line,'product')), scenarioOptions=options?{projectType:options.project_type,crewSize:options.crew_size,useIllbruck:!!options.use_illbruck,bracketsRequired:!!options.brackets_required,stayAway:!!options.stay_away,customerTransport:options.transport_customer_amount,allocateTransportDifference:!!options.transport_allocate_difference,transportAllocationMethod:options.transport_allocation_method,...parseJson(options.options_json)}:null;
+    const activeSummary=summary??estimateSummary; const supplierTransport=activeSummary?.delivery_total_amount??'0',customerTransport=scenarioOptions?.customerTransport??supplierTransport;
+    const snapshotConfig=catalogueSnapshot?{catalogue:parseJson(catalogueSnapshot.catalogue_json),rules:parseJson(catalogueSnapshot.rules_json),packageRules:parseJson(catalogueSnapshot.package_rules_json),createdAt:catalogueSnapshot.created_at}:null,totalPerimeter=decoratedProducts.reduce((sum,item)=>sum+Number(item.framePerimeterMetres),0),selectedMe508=snapshotConfig?.catalogue.find(item=>item.id===scenarioOptions?.me508ItemId);
+    const me508Calculation=selectedMe508?calculateMe508({applicablePerimeterM:totalPerimeter,variant:selectedMe508.variant,priceAmount:selectedMe508.priceAmount,pricingUnit:selectedMe508.rateType}):null;
+    const fixingBreakdown=scenarioOptions?.bracketsRequired?decoratedProducts.map(item=>({rowId:item.id,reference:item.displayReference,...calculateGgfPvcuFixings({widthMm:item.widthMm,heightMm:item.heightMm,physicalQuantity:item.quantity,projectType:scenarioOptions.projectType,frameMaterial:scenarioOptions.frameMaterial,region:scenarioOptions.region||'England',packQuantity:scenarioOptions.fixingPackQuantity,packPrice:scenarioOptions.fixingPackPrice,mullionTransomPositions:null})})):[];
+    return { ...scenarioMap(row), products:decoratedProducts, supplierCosts:[...costs.map(costMap),...estimateCosts.map(estimateCostMap),...manualCosts.map(manualCostMap)].map(line=>decorate(line,line.category==='delivery'?'transport':'extras')), packageItems:packageItems.map(packageMap), routeSnapshots:routes.map(routeMap), supplierSummary: activeSummary ? { productSubtotal:activeSummary.product_subtotal_amount,deliveryTotal:activeSummary.delivery_total_amount,finalSupplierTotal:activeSummary.final_supplier_total_amount,originalSnapshot:summary?parseJson(summary.original_extracted_snapshot_json):{} } : null, exchangeRate:fx, markups:rules, revisions,catalogueSnapshot:snapshotConfig,options:scenarioOptions,transportAllocation:scenarioOptions?.allocateTransportDifference?allocateTransport({supplierTransport,customerTransport,method:scenarioOptions.transportAllocationMethod,products:decoratedProducts}):[],me508Calculation,fixingBreakdown };
   }
 
   return {
-    listScenarios: async () => (await db.all('SELECT * FROM project_calculator_lab_scenarios ORDER BY updated_at DESC')).map(scenarioMap),
+    listScenarios: async (estimateId=null) => (await db.all(`SELECT * FROM project_calculator_lab_scenarios ${estimateId?'WHERE estimate_id=?':''} ORDER BY updated_at DESC`,...(estimateId?[estimateId]:[]))).map(scenarioMap),
     getScenario,
-    async listImportSources() {
-      return db.all(`SELECT s.id sessionId,s.supplier_name supplierName,s.currency,r.id runId,r.attachment_id attachmentId,a.original_file_name attachmentFileName,r.completed_at completedAt,
-        (SELECT COUNT(*) FROM supplier_import_lab_extracted_rows x WHERE x.extraction_run_id=r.id AND x.selected_for_future_use=1 AND x.status!='rejected') selectedRowCount
+    async listImportSources(estimateId=null) {
+      return db.all(`SELECT s.id sessionId,s.estimate_id estimateId,s.supplier_name supplierName,s.currency,r.id runId,r.attachment_id attachmentId,a.original_file_name attachmentFileName,r.completed_at completedAt,
+        (SELECT COUNT(*) FROM supplier_import_lab_extracted_rows x WHERE x.extraction_run_id=r.id AND x.selected_for_future_use=1 AND x.status!='rejected') selectedRowCount,
+        (SELECT COUNT(*) FROM supplier_import_lab_additional_cost_items c WHERE c.extraction_run_id=r.id AND c.selected_for_future_use=1 AND c.status!='rejected') selectedAdditionalCostCount
         FROM supplier_import_lab_extraction_runs r JOIN supplier_import_lab_sessions s ON s.id=r.session_id JOIN supplier_import_lab_attachments a ON a.id=r.attachment_id
-        WHERE r.status IN ('completed','completed_with_warnings') ORDER BY r.completed_at DESC`);
+        WHERE r.status IN ('completed','completed_with_warnings') ${estimateId?'AND s.estimate_id=?':''} ORDER BY r.completed_at DESC`,...(estimateId?[estimateId]:[]));
     },
     async createScenario(input) {
-      if (!PACKAGE_CODES.includes(input.packageCode)) throw Object.assign(new Error('Invalid package.'),{code:'invalid_scenario'});
+      const packageCode=input.packageType??input.packageCode;
+      if (!PACKAGE_CODES.includes(packageCode)) throw Object.assign(new Error('Invalid package.'),{code:'invalid_scenario'});
       if (!String(input.name || '').trim() || !Number.isInteger(Number(input.installationOpeningCount || 0)) || Number(input.installationOpeningCount || 0) < 0) throw Object.assign(new Error('Scenario name and installation-opening count are invalid.'),{code:'invalid_scenario'});
-      const run = await db.get(`SELECT r.*,s.currency FROM supplier_import_lab_extraction_runs r JOIN supplier_import_lab_sessions s ON s.id=r.session_id WHERE r.id=? AND r.session_id=? AND r.attachment_id=? AND r.status IN ('completed','completed_with_warnings')`,input.extractionRunId,input.importLabSessionId,input.sourceAttachmentId);
+      const origin=String(input.origin||'supplier_import');
+      if (!SCENARIO_ORIGINS.includes(origin)) throw Object.assign(new Error('Invalid scenario origin.'),{code:'invalid_scenario'});
+      if (origin==='estimate') throw Object.assign(new Error('Estimate / Configurator scenario creation is not available yet.'),{code:'feature_unavailable'});
+      if (origin==='mixed') throw Object.assign(new Error('Mixed-origin scenarios are reserved for a later workflow.'),{code:'origin_unavailable'});
+      if (origin==='manual') {
+        const currency=String(input.currency||'').trim().toUpperCase();
+        if(!/^[A-Z]{3}$/.test(currency)) throw Object.assign(new Error('Manual scenarios require a three-letter currency.'),{code:'invalid_scenario'});
+        const id=randomUUID(),now=new Date().toISOString(),estimateId=String(input.estimateId||'').trim()||null;if(estimateId&&!(await db.get('SELECT 1 FROM estimates WHERE id=?',estimateId)))throw Object.assign(new Error('Estimate not found.'),{code:'estimate_not_found'});
+        await db.exec('BEGIN IMMEDIATE');
+        try {
+          await db.run('INSERT INTO project_calculator_lab_scenarios(id,estimate_id,name,currency,package_code,origin,import_lab_session_id,extraction_run_id,source_attachment_id,installation_opening_count,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',id,estimateId,String(input.name).trim(),currency,packageCode,'manual',null,null,null,0,now,now);
+          for (const [code,label] of COST_CATALOGUE) await db.run('INSERT INTO project_calculator_lab_package_items(id,scenario_id,package_code,catalogue_code,label,included,unit_cost_amount,currency,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)',randomUUID(),id,packageCode,code,label,PACKAGE_DEFAULTS[packageCode].has(code)?1:0,null,currency,now,now);
+          await createFinancialState(id,currency,now);
+          await db.exec('COMMIT');
+        } catch(error) { await db.exec('ROLLBACK'); throw error; }
+        return getScenario(id);
+      }
+      const run = await db.get(`SELECT r.*,s.currency,s.supplier_revision,s.estimate_id FROM supplier_import_lab_extraction_runs r JOIN supplier_import_lab_sessions s ON s.id=r.session_id WHERE r.id=? AND r.session_id=? AND r.attachment_id=? AND r.status IN ('completed','completed_with_warnings')`,input.extractionRunId,input.importLabSessionId,input.sourceAttachmentId);
       if (!run) throw Object.assign(new Error('Completed extraction source not found.'),{code:'source_not_found'});
+      if(input.estimateId&&run.estimate_id!==input.estimateId)throw Object.assign(new Error('Completed extraction source not found for this estimate.'),{code:'source_not_found'});
       const rows = await db.all("SELECT * FROM supplier_import_lab_extracted_rows WHERE extraction_run_id=? AND session_id=? AND selected_for_future_use=1 AND status!='rejected' ORDER BY ordinal",run.id,run.session_id);
       const costs = await db.all("SELECT * FROM supplier_import_lab_additional_cost_items WHERE extraction_run_id=? AND session_id=? AND selected_for_future_use=1 AND status!='rejected' ORDER BY ordinal",run.id,run.session_id);
+      if (!rows.length && !costs.length) throw Object.assign(new Error('The extraction run has no selected positions or additional costs.'), { code: 'source_has_no_selected_items' });
       const id=randomUUID(), now=new Date().toISOString();
       await db.exec('BEGIN IMMEDIATE');
       try {
-        await db.run('INSERT INTO project_calculator_lab_scenarios(id,name,currency,package_code,import_lab_session_id,extraction_run_id,source_attachment_id,installation_opening_count,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)',id,String(input.name||'').trim(),run.currency,input.packageCode,run.session_id,run.id,run.attachment_id,Number(input.installationOpeningCount||0),now,now);
+        await db.run('INSERT INTO project_calculator_lab_scenarios(id,estimate_id,name,currency,package_code,origin,import_lab_session_id,extraction_run_id,source_attachment_id,source_revision,installation_opening_count,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',id,run.estimate_id,String(input.name||'').trim(),run.currency,packageCode,'supplier_import',run.session_id,run.id,run.attachment_id,run.supplier_revision,Number(input.installationOpeningCount||0),now,now);
         for (const row of rows) {
           if (!row.width_mm || !row.height_mm || !row.quantity) continue;
           const geometry=calculateProductGeometry(row.width_mm,row.height_mm,row.quantity);
           await db.run('INSERT INTO project_calculator_lab_product_rows(id,scenario_id,source_row_id,source_snapshot_json,display_reference,product_class,quantity,width_mm,height_mm,total_price_amount,currency,area_square_metres,frame_perimeter_metres,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',randomUUID(),id,row.id,JSON.stringify(row),row.display_reference||'Needs review','Needs review',row.quantity,row.width_mm,row.height_mm,row.total_price_amount,row.currency,geometry.areaSquareMetres,geometry.framePerimeterMetres,now,now);
         }
         for (const item of costs) await db.run('INSERT INTO project_calculator_lab_supplier_costs(id,scenario_id,source_additional_cost_id,source_snapshot_json,category,label,amount,currency,created_at) VALUES(?,?,?,?,?,?,?,?,?)',randomUUID(),id,item.id,JSON.stringify(item),item.category,item.original_description,item.total_price_amount,item.currency,now);
-        for (const [code,label] of COST_CATALOGUE) await db.run('INSERT INTO project_calculator_lab_package_items(id,scenario_id,package_code,catalogue_code,label,included,unit_cost_amount,currency,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)',randomUUID(),id,input.packageCode,code,label,PACKAGE_DEFAULTS[input.packageCode].has(code)?1:0,null,run.currency,now,now);
+        for (const [code,label] of COST_CATALOGUE) await db.run('INSERT INTO project_calculator_lab_package_items(id,scenario_id,package_code,catalogue_code,label,included,unit_cost_amount,currency,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)',randomUUID(),id,packageCode,code,label,PACKAGE_DEFAULTS[packageCode].has(code)?1:0,null,run.currency,now,now);
+        await createFinancialState(id,run.currency,now);
         await db.exec('COMMIT');
       } catch(error) { await db.exec('ROLLBACK'); throw error; }
       return getScenario(id);
@@ -82,18 +156,80 @@ export function createProjectCalculatorLabService(db) {
       const existing=await db.get('SELECT id FROM project_calculator_lab_scenarios WHERE id=?',id); if(!existing)return null;
       if(input.packageCode && !PACKAGE_CODES.includes(input.packageCode)) throw Object.assign(new Error('Invalid package.'),{code:'invalid_scenario'});
       await db.run('UPDATE project_calculator_lab_scenarios SET name=COALESCE(?,name),package_code=COALESCE(?,package_code),installation_opening_count=COALESCE(?,installation_opening_count),updated_at=? WHERE id=?',input.name?.trim()||null,input.packageCode||null,Number.isInteger(input.installationOpeningCount)?input.installationOpeningCount:null,new Date().toISOString(),id);
+      await recordEdit(id,'scenario_edited');
       return getScenario(id);
     },
+    async refreshExchangeRate(id) {
+      const scenario=await db.get('SELECT * FROM project_calculator_lab_scenarios WHERE id=?',id);if(!scenario)return null;
+      const importedCurrencies=await db.all(`SELECT currency FROM project_calculator_estimate_product_rows WHERE scenario_id=? UNION SELECT r.currency FROM project_calculator_estimate_supplier_costs c JOIN supplier_quote_revisions r ON r.id=c.source_revision_id WHERE c.scenario_id=? UNION SELECT currency FROM project_calculator_lab_product_rows WHERE scenario_id=? UNION SELECT currency FROM project_calculator_lab_supplier_costs WHERE scenario_id=?`,id,id,id,id);
+      const fallbackCurrencies=importedCurrencies.length?importedCurrencies:await db.all(`SELECT currency FROM project_calculator_lab_manual_product_rows WHERE scenario_id=? UNION SELECT currency FROM project_calculator_lab_manual_cost_lines WHERE scenario_id=?`,id,id);
+      const currencies=[...new Set(fallbackCurrencies.map(row=>String(row.currency||'').toUpperCase()).filter(value=>/^[A-Z]{3}$/.test(value)))];
+      const currency=currencies.length===1?currencies[0]:scenario.currency;
+      const quote=await exchangeRateProvider(currency), rates=createProjectCostingFx({supplierToGbpLiveRate:quote.rawRate}), now=new Date().toISOString(), next=scenario.revision_number+1;
+      await db.exec('BEGIN IMMEDIATE');try{
+        await db.run('UPDATE project_calculator_lab_scenarios SET currency=?,revision_number=?,updated_at=? WHERE id=?',currency,next,now,id);
+        await db.run(`INSERT INTO project_calculator_lab_exchange_rate_snapshots(id,scenario_id,scenario_revision,from_currency,to_currency,provider,provider_timestamp,raw_rate,inverse_rate,rounded_up_rate,uplift_amount,calculated_adjusted_rate,adjusted_rate,adjustment_enabled,manually_overridden,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,randomUUID(),id,next,currency,'GBP',quote.provider,quote.quotedAt,rates.supplierToGbpLiveRate,null,rates.roundedUpRate,rates.upliftAmount,rates.calculatedSellingRate,rates.supplierToGbpSellingRate,1,0,now);
+        await appendRevision(id,'exchange_rate_refreshed');await db.exec('COMMIT');
+      }catch(error){await db.exec('ROLLBACK');throw error;}return getScenario(id);
+    },
+    async updateExchangeRate(id,input) {
+      const scenario=await db.get('SELECT * FROM project_calculator_lab_scenarios WHERE id=?',id), current=await db.get('SELECT * FROM project_calculator_lab_exchange_rate_snapshots WHERE scenario_id=? ORDER BY created_at DESC LIMIT 1',id);if(!scenario||!current)return null;
+      const enabled=!!input.adjustmentEnabled, override=input.adjustedRate!=null&&String(input.adjustedRate)!==current.calculated_adjusted_rate;
+      if(override&&!String(input.overrideReason||'').trim())throw Object.assign(new Error('Manual adjusted-rate overrides require a reason.'),{code:'invalid_exchange_rate'});
+      const adjustedRate=override?String(input.adjustedRate):current.calculated_adjusted_rate;calculateAdjustedRate(adjustedRate);
+      const now=new Date().toISOString(),next=scenario.revision_number+1;
+      await db.exec('BEGIN IMMEDIATE');try{
+        await db.run('UPDATE project_calculator_lab_scenarios SET revision_number=?,updated_at=? WHERE id=?',next,now,id);
+        await db.run(`INSERT INTO project_calculator_lab_exchange_rate_snapshots(id,scenario_id,scenario_revision,from_currency,to_currency,provider,provider_timestamp,raw_rate,inverse_rate,rounded_up_rate,uplift_amount,calculated_adjusted_rate,adjusted_rate,adjustment_enabled,manually_overridden,override_reason,overridden_at,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,randomUUID(),id,next,current.from_currency,current.to_currency,current.provider,current.provider_timestamp,current.raw_rate,null,current.rounded_up_rate,current.uplift_amount,current.calculated_adjusted_rate,adjustedRate,enabled?1:0,override?1:0,override?String(input.overrideReason).trim():null,override?now:null,now);
+        await appendRevision(id,'exchange_rate_settings_changed');await db.exec('COMMIT');
+      }catch(error){await db.exec('ROLLBACK');throw error;}return getScenario(id);
+    },
+    async updateMarkups(id,input) {
+      const scenario=await db.get('SELECT * FROM project_calculator_lab_scenarios WHERE id=?',id);if(!scenario)return null;const current=await db.get('SELECT * FROM project_calculator_lab_markup_rules WHERE scenario_id=?',id),keys=['product','extras','transport','equipment','installation','materials','duties'],values=keys.map(key=>String(input[key]??current?.[`${key}_percent`]??'0')),valid=value=>/^\d+(?:\.\d{1,2})?$/.test(value)&&Number(value)<=999.99;if(values.some(value=>!valid(value)))throw Object.assign(new Error('Markup percentages must be decimal strings from 0 to 999.99.'),{code:'invalid_markup'});
+      const overrides=Array.isArray(input.productOverrides)?input.productOverrides:[];if(overrides.some(item=>!item||typeof item.rowId!=='string'||(item.markupOverridePercent!=null&&!valid(String(item.markupOverridePercent)))))throw Object.assign(new Error('Product markup overrides must be null or decimal strings from 0 to 999.99.'),{code:'invalid_markup'});
+      const knownRows=new Set((await Promise.all([db.all('SELECT id FROM project_calculator_lab_product_rows WHERE scenario_id=?',id),db.all('SELECT id FROM project_calculator_estimate_product_rows WHERE scenario_id=?',id),db.all('SELECT id FROM project_calculator_lab_manual_product_rows WHERE scenario_id=?',id)])).flat().map(row=>row.id));if(overrides.some(item=>!knownRows.has(item.rowId)))throw Object.assign(new Error('Product markup row does not belong to this scenario.'),{code:'invalid_markup'});
+      const now=new Date().toISOString(),next=scenario.revision_number+1;await db.exec('BEGIN IMMEDIATE');try{await db.run('UPDATE project_calculator_lab_markup_rules SET product_percent=?,extras_percent=?,transport_percent=?,equipment_percent=?,installation_percent=?,materials_percent=?,duties_percent=?,updated_at=? WHERE scenario_id=?',...values,now,id);for(const item of overrides){const value=item.markupOverridePercent==null?null:String(item.markupOverridePercent);await db.run('UPDATE project_calculator_lab_product_rows SET markup_override_percent=?,updated_at=? WHERE id=? AND scenario_id=?',value,now,item.rowId,id);await db.run('UPDATE project_calculator_estimate_product_rows SET markup_override_percent=?,updated_at=? WHERE id=? AND scenario_id=?',value,now,item.rowId,id);await db.run('UPDATE project_calculator_lab_manual_product_rows SET markup_override_percent=?,updated_at=? WHERE id=? AND scenario_id=?',value,now,item.rowId,id);}await db.run('UPDATE project_calculator_lab_scenarios SET revision_number=?,updated_at=? WHERE id=?',next,now,id);await appendRevision(id,'markups_changed');await db.exec('COMMIT');}catch(error){await db.exec('ROLLBACK');throw error;}return getScenario(id);
+    },
+    async createRevision(id) { const scenario=await db.get('SELECT * FROM project_calculator_lab_scenarios WHERE id=?',id);if(!scenario)return null;const now=new Date().toISOString(),next=scenario.revision_number+1;await db.exec('BEGIN IMMEDIATE');try{await db.run('UPDATE project_calculator_lab_scenarios SET revision_number=?,updated_at=? WHERE id=?',next,now,id);await appendRevision(id,'revision_created');await db.exec('COMMIT');}catch(error){await db.exec('ROLLBACK');throw error;}return getScenario(id); },
+    async updateOptions(id,input){const existing=await db.get('SELECT * FROM project_calculator_lab_options WHERE scenario_id=?',id);if(!existing)return null;const projectType=input.projectType??existing.project_type;if(!['new_build','refurbishment','other'].includes(projectType))throw Object.assign(new Error('Invalid project type.'),{code:'invalid_options'});const crew=Number(input.crewSize??existing.crew_size);if(!Number.isInteger(crew)||crew<1)throw Object.assign(new Error('Crew size must be a positive integer.'),{code:'invalid_options'});const method=input.transportAllocationMethod??existing.transport_allocation_method;if(!['proportional_value','quantity','equal_per_item','manual'].includes(method))throw Object.assign(new Error('Invalid transport allocation method.'),{code:'invalid_options'});await db.run('UPDATE project_calculator_lab_options SET project_type=?,crew_size=?,use_illbruck=?,brackets_required=?,stay_away=?,transport_customer_amount=?,transport_allocate_difference=?,transport_allocation_method=?,options_json=?,updated_at=? WHERE scenario_id=?',projectType,crew,input.useIllbruck??!!existing.use_illbruck?1:0,input.bracketsRequired??!!existing.brackets_required?1:0,input.stayAway??!!existing.stay_away?1:0,input.customerTransport??existing.transport_customer_amount,input.allocateTransportDifference??!!existing.transport_allocate_difference?1:0,method,JSON.stringify(input.details??parseJson(existing.options_json)),new Date().toISOString(),id);await recordEdit(id,'scenario_options_changed');return getScenario(id);},
     async updateProduct(id,rowId,input) {
       if (input.productClass && !PRODUCT_CLASSES.includes(input.productClass)) throw Object.assign(new Error('Invalid product class.'),{code:'invalid_product'});
-      const result=await db.run('UPDATE project_calculator_lab_product_rows SET product_class=COALESCE(?,product_class),updated_at=? WHERE id=? AND scenario_id=?',input.productClass||null,new Date().toISOString(),rowId,id);
-      return result.changes ? getScenario(id) : null;
+      const override=input.markupOverridePercent===null?null:input.markupOverridePercent===undefined?undefined:String(input.markupOverridePercent);if(override!==undefined&&override!==null&&(!/^\d+(?:\.\d{1,2})?$/.test(override)||Number(override)>999.99))throw Object.assign(new Error('Product markup override must be null or a decimal string from 0 to 999.99.'),{code:'invalid_product'});const now=new Date().toISOString();
+      const result=await db.run('UPDATE project_calculator_lab_product_rows SET product_class=COALESCE(?,product_class),markup_override_percent=CASE WHEN ? THEN ? ELSE markup_override_percent END,updated_at=? WHERE id=? AND scenario_id=?',input.productClass||null,override!==undefined?1:0,override??null,now,rowId,id);
+      if(result.changes){await recordEdit(id,'product_class_edited');return getScenario(id);}
+      const estimateResult=await db.run('UPDATE project_calculator_estimate_product_rows SET product_class=COALESCE(?,product_class),markup_override_percent=CASE WHEN ? THEN ? ELSE markup_override_percent END,updated_at=? WHERE id=? AND scenario_id=?',input.productClass||null,override!==undefined?1:0,override??null,now,rowId,id);
+      if(estimateResult.changes){await recordEdit(id,'product_class_edited');return getScenario(id);}
+      const manual=await db.get('SELECT * FROM project_calculator_lab_manual_product_rows WHERE id=? AND scenario_id=?',rowId,id);if(!manual)return null;
+      const width=Number(input.widthMm??manual.width_mm),height=Number(input.heightMm??manual.height_mm),quantity=Number(input.quantity??manual.quantity),openings=Number(input.installationOpeningCount??manual.installation_opening_count);
+      calculateProductGeometry(width,height,quantity);if(!Number.isInteger(openings)||openings<0)throw Object.assign(new Error('Invalid manual product values.'),{code:'invalid_product'});
+      const decimal=/^\d+(?:\.\d+)?$/;for(const value of [input.unitSupplyCost??manual.unit_supply_cost_amount,input.totalPrice??manual.total_supply_cost_amount])if(value!=null&&value!==''&&!decimal.test(String(value)))throw Object.assign(new Error('Invalid manual product costs.'),{code:'invalid_product'});
+      await db.run('UPDATE project_calculator_lab_manual_product_rows SET reference=?,product_class=?,width_mm=?,height_mm=?,quantity=?,installation_opening_count=?,unit_supply_cost_amount=?,total_supply_cost_amount=?,markup_override_percent=CASE WHEN ? THEN ? ELSE markup_override_percent END,updated_at=? WHERE id=? AND scenario_id=?',String(input.displayReference??manual.reference).trim(),input.productClass??manual.product_class,width,height,quantity,openings,input.unitSupplyCost??manual.unit_supply_cost_amount,input.totalPrice??manual.total_supply_cost_amount,override!==undefined?1:0,override??null,now,rowId,id);
+      await recordEdit(id,'manual_product_edited');
+      return getScenario(id);
+    },
+    async addManualProduct(id,input) {
+      const scenario=await db.get('SELECT * FROM project_calculator_lab_scenarios WHERE id=?',id); if(!scenario)return null;
+      if(!['manual','mixed'].includes(scenario.origin)) throw Object.assign(new Error('Manual lines require a manual or mixed scenario.'),{code:'invalid_manual_line'});
+      if(!PRODUCT_CLASSES.includes(input.productClass)||!String(input.reference||'').trim()) throw Object.assign(new Error('Manual product reference and class are required.'),{code:'invalid_manual_line'});
+      calculateProductGeometry(Number(input.widthMm),Number(input.heightMm),Number(input.quantity));
+      if(!Number.isInteger(Number(input.installationOpeningCount))||Number(input.installationOpeningCount)<0) throw Object.assign(new Error('Invalid installation-opening count.'),{code:'invalid_manual_line'});
+      const decimal=/^\d+(?:\.\d+)?$/; for(const value of [input.unitSupplyCost,input.totalSupplyCost])if(value!=null&&value!==''&&!decimal.test(String(value)))throw Object.assign(new Error('Manual supply costs must be exact decimal strings.'),{code:'invalid_manual_line'});
+      const now=new Date().toISOString();
+      await db.run('INSERT INTO project_calculator_lab_manual_product_rows(id,scenario_id,reference,product_class,width_mm,height_mm,quantity,installation_opening_count,unit_supply_cost_amount,total_supply_cost_amount,currency,evidence_origin,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',randomUUID(),id,String(input.reference).trim(),input.productClass,Number(input.widthMm),Number(input.heightMm),Number(input.quantity),Number(input.installationOpeningCount),input.unitSupplyCost||null,input.totalSupplyCost||null,scenario.currency,'manual',now,now);
+      await recordEdit(id,'manual_product_added');
+      return getScenario(id);
+    },
+    async addManualCost(id,input) {
+      const scenario=await db.get('SELECT * FROM project_calculator_lab_scenarios WHERE id=?',id); if(!scenario)return null;
+      if(!['manual','mixed'].includes(scenario.origin)) throw Object.assign(new Error('Manual costs require a manual or mixed scenario.'),{code:'invalid_manual_line'});
+      if(!MANUAL_COST_CATEGORIES.includes(input.category)||!String(input.label||'').trim()||!/^-?\d+(?:\.\d+)?$/.test(String(input.amount||''))) throw Object.assign(new Error('Manual cost category, label and exact amount are required.'),{code:'invalid_manual_line'});
+      const now=new Date().toISOString();await db.run('INSERT INTO project_calculator_lab_manual_cost_lines(id,scenario_id,category,label,amount,currency,evidence_origin,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)',randomUUID(),id,input.category,String(input.label).trim(),String(input.amount),scenario.currency,'manual',now,now);await recordEdit(id,'manual_cost_added');return getScenario(id);
     },
     async updatePackageItem(id,itemId,input) {
       const amount=input.unitCost;
       if(amount!=null && amount!=='' && !/^\d+(?:\.\d+)?$/.test(amount)) throw Object.assign(new Error('Invalid exact decimal cost.'),{code:'invalid_cost'});
       const result=await db.run('UPDATE project_calculator_lab_package_items SET included=COALESCE(?,included),unit_cost_amount=?,updated_at=? WHERE id=? AND scenario_id=?',typeof input.included==='boolean'?(input.included?1:0):null,amount===''?null:amount,new Date().toISOString(),itemId,id);
-      return result.changes ? getScenario(id) : null;
+      if(!result.changes)return null;await recordEdit(id,'package_item_edited');return getScenario(id);
     },
     async appendRouteSnapshot(id,input) {
       if(!['office_to_site','site_to_office'].includes(input.direction)) throw Object.assign(new Error('Invalid route direction.'),{code:'invalid_route'});

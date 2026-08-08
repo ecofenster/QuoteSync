@@ -536,7 +536,7 @@ export default function FollowUpsFeature({
                     type="button"
                     onClick={() => setSelectedDateISO(iso)}
                     className={`follow-ups__calendar-day${isSelected ? " follow-ups__calendar-day--selected" : ""}`}
-                    style={{ opacity: inMonth ? 1 : 0.4 }}
+                    data-month={inMonth ? "current" : "adjacent"}
                     title={iso}
                   >
                     {d.getDate()}

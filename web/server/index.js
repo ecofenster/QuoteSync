@@ -11,6 +11,7 @@ import configuratorCatalogRoute from './routes/configuratorCatalog.js';
 import { createSupplierQuotesRouter } from './routes/supplierQuotes.js';
 import { createSupplierImportLabRouter } from './routes/supplierImportLab.js';
 import { createProjectCalculatorLabRouter } from './routes/projectCalculatorLab.js';
+import { fetchCentralExchangeRate } from './features/projectCalculatorLab/exchangeRateProvider.js';
 import { dbPromise } from './db.js';
 
 const app = express();
@@ -34,18 +35,11 @@ app.get('/api/fx-rate', async (req, res) => {
   const from = String(req.query.from || 'EUR').trim() || 'EUR';
 
   try {
-    const response = await fetch(`https://api.frankfurter.app/latest?from=${encodeURIComponent(from)}&to=GBP`);
-
-    if (!response.ok) {
-      return res.status(response.status).json({ error: 'FX fetch failed' });
-    }
-
-    const data = await response.json();
-
+    const data = await fetchCentralExchangeRate(from);
     return res.json({
-      rate: data?.rates?.GBP || null,
-      date: data?.date || null,
-      source: 'frankfurter'
+      rate: data.rawRate,
+      date: data.quotedAt,
+      source: data.provider
     });
   } catch (err) {
     return res.status(500).json({ error: 'FX fetch failed' });

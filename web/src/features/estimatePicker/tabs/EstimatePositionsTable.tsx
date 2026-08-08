@@ -108,10 +108,6 @@ export default function EstimatePositionsTable(props: Props) {
           disabled={isSaving}
           className="ep-positions-add-button"
           data-testid="position-quick-add-submit"
-          style={{
-            cursor: isSaving ? "not-allowed" : "pointer",
-            opacity: isSaving ? 0.55 : 1,
-          }}
         >
           Add Position
         </button>
@@ -125,15 +121,15 @@ export default function EstimatePositionsTable(props: Props) {
         <table className="ep-positions-table">
           <thead>
             <tr className="ep-positions-head-row">
-              <th className="ep-positions-head-cell" style={{ width: 42 }}></th>
-              <th className="ep-positions-head-cell" style={{ width: 150 }}>Reference</th>
-              <th className="ep-positions-head-cell" style={{ width: 170 }}>Room</th>
+              <th className="ep-positions-head-cell qs-migrated-246"></th>
+              <th className="ep-positions-head-cell qs-migrated-247">Reference</th>
+              <th className="ep-positions-head-cell qs-migrated-248">Room</th>
               <th className="ep-positions-head-cell">Picture</th>
-              <th className="ep-positions-head-cell" style={{ minWidth: 260 }}>Brief description</th>
-              <th className="ep-positions-head-cell ep-positions-head-cell--right" style={{ width: 90 }}>Qty</th>
-              <th className="ep-positions-head-cell ep-positions-head-cell--right" style={{ width: 140 }}>Item price</th>
-              <th className="ep-positions-head-cell ep-positions-head-cell--right" style={{ width: 130 }}>Quantity price</th>
-              <th className="ep-positions-head-cell ep-positions-head-cell--center" style={{ width: 220 }}>Actions</th>
+              <th className="ep-positions-head-cell qs-migrated-249">Brief description</th>
+              <th className="ep-positions-head-cell ep-positions-head-cell--right qs-migrated-250">Qty</th>
+              <th className="ep-positions-head-cell ep-positions-head-cell--right qs-migrated-251">Item price</th>
+              <th className="ep-positions-head-cell ep-positions-head-cell--right qs-migrated-252">Quantity price</th>
+              <th className="ep-positions-head-cell ep-positions-head-cell--center qs-migrated-253">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -153,12 +149,7 @@ export default function EstimatePositionsTable(props: Props) {
                     data-position-ref={p.positionRef ?? ""}
                   >
                     <td
-                      className="ep-positions-cell ep-positions-cell--center"
-                      style={{
-                        width: 42,
-                        minWidth: 42,
-                        cursor: "pointer",
-                      }}
+                      className="ep-positions-cell ep-positions-cell--center qs-migrated-254"
                     >
                       <ExpandToggle expanded={isExpanded} />
                     </td>
@@ -197,16 +188,14 @@ export default function EstimatePositionsTable(props: Props) {
                             value={String(p.widthMm ?? "")}
                             onChange={(ev) => onUpdatePositionDraft(p.id, { widthMm: Number(ev.target.value || 0) })}
                             onBlur={() => commitField(p.id)}
-                            inputMode="numeric"
-                            style={{ width: 90 }}
+                            inputMode="numeric" className="qs-migrated-250"
                           />
                           <span className="ep-positions-divider">×</span>
                           <Input
                             value={String(p.heightMm ?? "")}
                             onChange={(ev) => onUpdatePositionDraft(p.id, { heightMm: Number(ev.target.value || 0) })}
                             onBlur={() => commitField(p.id)}
-                            inputMode="numeric"
-                            style={{ width: 90 }}
+                            inputMode="numeric" className="qs-migrated-250"
                           />
                         </div>
                       </div>
@@ -220,26 +209,23 @@ export default function EstimatePositionsTable(props: Props) {
                         value={String(p.qty ?? "")}
                         onChange={(ev) => onUpdatePositionDraft(p.id, { qty: Number(ev.target.value || 0) })}
                         onBlur={() => commitField(p.id)}
-                        inputMode="numeric"
-                        style={{ textAlign: "right" }}
+                        inputMode="numeric" className="qs-migrated-255"
                       />
                     </td>
 
                     <td
-                      className="ep-positions-cell ep-positions-cell--right"
-                      style={{ width: 140 }}
+                      className="ep-positions-cell ep-positions-cell--right qs-migrated-251"
                       onClick={(ev) => ev.stopPropagation()}
                     >
                       <Input
                         value={itemPriceRaw}
                         onChange={(ev) => setItemPriceByPositionId((prev) => ({ ...prev, [p.id]: ev.target.value }))}
                         placeholder=""
-                        inputMode="decimal"
-                        style={{ textAlign: "right" }}
+                        inputMode="decimal" className="qs-migrated-255"
                       />
                     </td>
 
-                    <td className="ep-positions-cell ep-positions-cell--right" style={{ fontWeight: 800 }} data-testid="estimate-position-quantity-price">
+                    <td className="ep-positions-cell ep-positions-cell--right qs-migrated-256" data-testid="estimate-position-quantity-price">
                       {formatMoney(quantityPrice)}
                     </td>
 
@@ -257,10 +243,6 @@ export default function EstimatePositionsTable(props: Props) {
                             disabled={isSaving}
                             title="Edit position"
                             className="ep-positions-action-button ep-positions-action-button--configure"
-                            style={{
-                              cursor: isSaving ? "not-allowed" : "pointer",
-                              opacity: isSaving ? 0.55 : 1,
-                            }}
                           >
                             Edit position
                           </button>
@@ -273,10 +255,6 @@ export default function EstimatePositionsTable(props: Props) {
                           disabled={isSaving || idx === 0}
                           title="Move position up"
                           className="ep-positions-action-button"
-                          style={{
-                            cursor: isSaving || idx === 0 ? "not-allowed" : "pointer",
-                            opacity: isSaving || idx === 0 ? 0.55 : 1,
-                          }}
                         >
                           ↑
                         </button>
@@ -288,10 +266,6 @@ export default function EstimatePositionsTable(props: Props) {
                           disabled={isSaving || idx === e.positions.length - 1}
                           title="Move position down"
                           className="ep-positions-action-button"
-                          style={{
-                            cursor: isSaving || idx === e.positions.length - 1 ? "not-allowed" : "pointer",
-                            opacity: isSaving || idx === e.positions.length - 1 ? 0.55 : 1,
-                          }}
                         >
                           ↓
                         </button>
@@ -303,10 +277,6 @@ export default function EstimatePositionsTable(props: Props) {
                           disabled={isSaving}
                           title="Duplicate position"
                           className="ep-positions-action-button"
-                          style={{
-                            cursor: isSaving ? "not-allowed" : "pointer",
-                            opacity: isSaving ? 0.55 : 1,
-                          }}
                         >
                           ⧉
                         </button>
@@ -318,10 +288,6 @@ export default function EstimatePositionsTable(props: Props) {
                           disabled={isSaving}
                           title="Delete position"
                           className="ep-positions-action-button"
-                          style={{
-                            cursor: isSaving ? "not-allowed" : "pointer",
-                            opacity: isSaving ? 0.55 : 1,
-                          }}
                         >
                           ✕
                         </button>

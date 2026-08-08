@@ -4,7 +4,7 @@
   display: grid;
   gap: 16px;
   align-items: start;
-  color: var(--color-text-primary);
+  color: var(--qs-theme-text);
 }
 
 .bsen-stack {
@@ -17,14 +17,14 @@
 }
 
 .bsen-title {
-  color: var(--color-text-primary);
+  color: var(--qs-theme-text);
   font-size: 20px;
   font-weight: 900;
 }
 
 .bsen-intro {
   max-width: 900px;
-  color: var(--color-text-secondary);
+  color: var(--qs-theme-text-secondary);
   font-size: 13px;
 }
 
@@ -81,14 +81,14 @@
 }
 
 .bsen-chip--active {
-  border-color: var(--color-surface-inverse);
-  background: var(--color-surface-inverse);
-  color: var(--color-text-on-inverse);
+  border-color: var(--qs-theme-text);
+  background: var(--qs-theme-text);
+  color: var(--qs-text-on-primary);
 }
 
 .bsen-section-title,
 .bsen-detail-section-title {
-  color: var(--color-text-primary);
+  color: var(--qs-theme-text);
   font-size: 13px;
   font-weight: 900;
 }
@@ -105,7 +105,7 @@
 
 .bsen-count,
 .bsen-eyebrow {
-  color: var(--color-text-muted);
+  color: var(--qs-theme-text-muted);
   font-size: 12px;
   font-weight: 700;
 }
@@ -127,8 +127,8 @@
 .bsen-list-item {
   text-align: left;
   border-radius: 14px;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
+  border: 1px solid var(--qs-border-standard);
+  background: var(--qs-bg-surface);
   padding: 12px;
   display: grid;
   gap: 8px;
@@ -136,8 +136,8 @@
 }
 
 .bsen-list-item--active {
-  border-color: var(--color-brand-primary);
-  background: color-mix(in srgb, var(--color-brand-primary) 12%, var(--color-surface));
+  border-color: var(--qs-theme-primary);
+  background: color-mix(in srgb, var(--qs-theme-primary) 12%, var(--qs-bg-surface));
 }
 
 .bsen-list-item__header,
@@ -156,13 +156,13 @@
 }
 
 .bsen-list-item__code {
-  color: var(--color-text-primary);
+  color: var(--qs-theme-text);
   font-size: 13px;
   font-weight: 900;
 }
 
 .bsen-list-item__title {
-  color: var(--color-text-secondary);
+  color: var(--qs-theme-text-secondary);
   font-size: 12px;
   line-height: 1.35;
 }
@@ -170,10 +170,10 @@
 .bsen-badge,
 .bsen-tag {
   border-radius: 999px;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface-subtle);
+  border: 1px solid var(--qs-border-standard);
+  background: var(--qs-bg-surface-elevated);
   padding: 4px 8px;
-  color: var(--color-text-secondary);
+  color: var(--qs-theme-text-secondary);
 }
 
 .bsen-badge {
@@ -186,23 +186,23 @@
   padding: 6px 10px;
   font-size: 12px;
   font-weight: 700;
-  color: var(--color-text-primary);
+  color: var(--qs-theme-text);
 }
 
 .bsen-detail-title {
-  color: var(--color-text-primary);
+  color: var(--qs-theme-text);
   font-size: 16px;
   font-weight: 800;
 }
 
 .bsen-detail-copy {
-  color: var(--color-text-secondary);
+  color: var(--qs-theme-text-secondary);
   font-size: 14px;
   line-height: 1.6;
 }
 
 .bsen-empty {
-  color: var(--color-text-secondary);
+  color: var(--qs-theme-text-secondary);
   font-size: 14px;
 }
 

@@ -97,9 +97,9 @@ type Props = {
   persistEstimateOutcome: (clientId: ClientId, estimateId: EstimateId, outcome: EstimateOutcome) => void;
 };
 
-function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className="epf-card ui-card ui-card--pad-md" style={style}>
+    <div className={`epf-card ui-card ui-card--pad-md ${className}`.trim()}>
       {children}
     </div>
   );
@@ -118,15 +118,15 @@ function Button({
   onClick,
   variant = "primary",
   disabled,
-  style,
+  className = "",
 }: {
   children: React.ReactNode;
   onClick?: () => void;
   variant?: "primary" | "secondary";
   disabled?: boolean;
-  style?: React.CSSProperties;
+  className?: string;
 }) {
-  const className =
+  const variantClassName =
     variant === "primary"
       ? "epf-button ui-button ui-button--primary"
       : "epf-button ui-button";
@@ -136,12 +136,7 @@ function Button({
       type="button"
       disabled={!!disabled}
       onClick={onClick}
-      className={className}
-      style={{
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.55 : 1,
-        ...style,
-      }}
+      className={`${variantClassName} ${className}`.trim()}
     >
       {children}
     </button>
@@ -403,7 +398,7 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
 
   if (!pickerClient) {
     return (
-      <Card style={{ minHeight: 360 }}>
+      <Card className="qs-migrated-242">
         <div className="epf-header">
           <div>
             <H2>Estimate Selection</H2>
@@ -448,7 +443,7 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
   }
 
   return (
-    <Card style={{ minHeight: 520 }}>
+    <Card className="qs-migrated-2">
       <div className="epf-card-body">
         <div className="epf-header">
           <div>

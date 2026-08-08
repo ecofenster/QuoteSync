@@ -44,10 +44,8 @@ function MiniLayout(props: { rows: number; columns: number }) {
     <div
       aria-hidden
       className="b92-mini-layout"
-      style={{
-        gridTemplateRows: `repeat(${props.rows}, minmax(0, 1fr))`,
-        gridTemplateColumns: `repeat(${props.columns}, minmax(0, 1fr))`,
-      }}
+      data-rows={props.rows}
+      data-columns={props.columns}
     >
       {Array.from({ length: cellCount }, (_, index) => (
         <div key={index} className="b92-mini-layout__cell" />

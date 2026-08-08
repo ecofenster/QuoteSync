@@ -1,26 +1,27 @@
 /* Phase 5 — Estimate Picker Feature primitives */
 
 .epf-card {
-  border-radius: 18px;
-  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  background: var(--qs-bg-card);
 }
 
 .epf-h2 {
-  font-size: 16px;
+  font-size: var(--qs-type-section-title);
   margin: 0;
   font-weight: 800;
-  color: var(--color-text-primary);
+  color: var(--qs-theme-text);
 }
 
 .epf-small {
-  font-size: 12px;
-  color: var(--color-text-muted);
+  font-size: var(--qs-type-meta);
+  color: var(--qs-theme-text-muted);
 }
 
 .epf-button {
-  border-radius: 18px;
+  border-radius: var(--radius-button);
   padding: 10px 14px;
-  font-size: 14px;
+  font-size: var(--qs-type-body);
   font-weight: 800;
 }
 
@@ -54,9 +55,9 @@
   justify-content: space-between;
   gap: 10px;
   padding: 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 16px;
-  background: var(--color-surface);
+  border: 1px solid var(--qs-border-standard);
+  border-radius: var(--radius-card);
+  background: var(--qs-bg-card);
 }
 
 .epf-client-meta {
@@ -65,7 +66,7 @@
 }
 
 .epf-client-name {
-  font-size: 13px;
+  font-size: var(--qs-type-meta);
   font-weight: 900;
-  color: var(--color-text-primary);
+  color: var(--qs-theme-text);
 }

@@ -1516,14 +1516,12 @@ function ProfileReferenceOverlay(props: {
     <svg
       viewBox={`0 0 ${model.viewBox.width} ${model.viewBox.height}`}
       width="100%"
-      height="100%"
-      style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
+      height="100%" className="qs-migrated-200"
       aria-hidden={callouts.length === 0}
     >
       {callouts.map((callout) => (
         <g
-          key={callout.id}
-          style={{ pointerEvents: "auto", cursor: "pointer" }}
+          key={callout.id} className="qs-migrated-201"
           onClick={(event) => {
             event.stopPropagation();
             onOpenCallout(callout, event);
@@ -1897,8 +1895,7 @@ function MeasurementOverlay(props: { model: DrawingModel; lines: MeasurementLine
     <svg
       viewBox={`0 0 ${model.viewBox.width} ${model.viewBox.height}`}
       width="100%"
-      height="100%"
-      style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
+      height="100%" className="qs-migrated-200"
       aria-hidden={lines.length === 0}
     >
       {lines.map((line) => (
@@ -2212,47 +2209,19 @@ function WindowTypeTechnicalPreview(props: {
           const toTopPercent = (y: number) => `${(y / viewBoxHeight) * 100}%`;
           const dimensionStroke = existingOverallWidthDimension?.line.stroke ?? "#111";
           const dimensionStrokeWidth = existingOverallWidthDimension?.line.strokeWidth ?? 0.9;
-          const dimensionFontSize = existingOverallWidthDimension?.text.fontSize ?? 12;
           const tickLength = Math.abs(
             (existingOverallWidthDimension?.tickA.y2 ?? fieldDimensionY + 6) -
               (existingOverallWidthDimension?.tickA.y1 ?? fieldDimensionY - 6)
           );
           const tickHalf = Math.max(5, tickLength / 2);
           const labelGap = 22;
-          const splitInputStyle: React.CSSProperties = {
-            position: "absolute",
-            transform: "translate(-50%, -50%)",
-            pointerEvents: "auto",
-            width: 62,
-            height: 22,
-            borderRadius: 2,
-            border: "1px solid rgba(17, 24, 39, 0.28)",
-            background: "rgba(255, 255, 255, 0.94)",
-            color: "#111",
-            fontFamily: "ui-sans-serif, system-ui, -apple-system",
-            fontSize: dimensionFontSize + 1,
-            fontWeight: 400,
-            lineHeight: 1,
-            padding: 0,
-            textAlign: "center",
-            boxShadow: "0 1px 3px rgba(15, 23, 42, 0.12)",
-          };
-
           return (
             <div
-              aria-label="B92-11 editable field split dimensions"
-              style={{
-                position: "absolute",
-                inset: 0,
-                pointerEvents: "none",
-                overflow: "visible",
-                zIndex: 3,
-              }}
+              aria-label="B92-11 editable field split dimensions" className="qs-migrated-202"
             >
               <svg
                 viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`}
-                preserveAspectRatio="none"
-                style={{ position: "absolute", inset: 0, width: "100%", height: "100%", overflow: "visible" }}
+                preserveAspectRatio="none" className="qs-migrated-203"
               >
                 <g stroke={dimensionStroke} strokeWidth={dimensionStrokeWidth} fill="none" strokeLinecap="round">
                   <line x1={frameLeftX} y1={fieldDimensionY} x2={Math.max(frameLeftX, leftLabelX - labelGap)} y2={fieldDimensionY} />
@@ -2274,11 +2243,9 @@ function WindowTypeTechnicalPreview(props: {
                 onKeyDown={(event) => {
                   if (event.key === "Enter") event.currentTarget.blur();
                 }}
-                style={{
-                  ...splitInputStyle,
-                  left: toLeftPercent(leftLabelX),
-                  top: toTopPercent(fieldDimensionY),
-                }}
+                className="window-type-split-input"
+                data-left={toLeftPercent(leftLabelX)}
+                data-top={toTopPercent(fieldDimensionY)}
               />
               <input
                 type="number"
@@ -2290,28 +2257,15 @@ function WindowTypeTechnicalPreview(props: {
                 onKeyDown={(event) => {
                   if (event.key === "Enter") event.currentTarget.blur();
                 }}
-                style={{
-                  ...splitInputStyle,
-                  left: toLeftPercent(rightLabelX),
-                  top: toTopPercent(fieldDimensionY),
-                }}
+                className="window-type-split-input"
+                data-left={toLeftPercent(rightLabelX)}
+                data-top={toTopPercent(fieldDimensionY)}
               />
               {b92SplitWarning ? (
                 <div
-                  style={{
-                    position: "absolute",
-                    left: toLeftPercent(overallLabelX),
-                    top: toTopPercent(Math.min(viewBoxHeight - 4, existingOverallDimensionY + 26)),
-                    transform: "translate(-50%, -50%)",
-                    color: "#92400e",
-                    background: "rgba(254, 243, 199, 0.96)",
-                    border: "1px solid rgba(245, 158, 11, 0.42)",
-                    borderRadius: 4,
-                    padding: "1px 5px",
-                    fontSize: 10,
-                    fontWeight: 700,
-                    whiteSpace: "nowrap",
-                  }}
+                  className="window-type-split-warning"
+                  data-left={toLeftPercent(overallLabelX)}
+                  data-top={toTopPercent(Math.min(viewBoxHeight - 4, existingOverallDimensionY + 26))}
                 >
                   {b92SplitWarning}
                 </div>
@@ -2322,26 +2276,14 @@ function WindowTypeTechnicalPreview(props: {
       : null;
 
   return (
-    <div style={{ display: "grid", gap: 4, minWidth: 0, alignContent: "start" }}>
+    <div className="qs-migrated-204">
       {activeSourceModel && previewResult.model ? (
-        <div
-          style={{
-            padding: "6px 8px",
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 10,
-            alignItems: "center",
-            borderRadius: 6,
-            background: "#07100d",
-            border: "1px solid rgba(34, 197, 94, 0.14)",
-            color: "#d8eee4",
-          }}
+        <div className="qs-migrated-205"
         >
-          <div style={{ marginRight: "auto", fontSize: 11, fontWeight: 800, color: "#f8fafc" }}>
+          <div className="qs-migrated-206">
             {displayPreviewTitle} — {previewView === "external" ? "External" : "Internal"}
           </div>
-          <label
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, width: "fit-content", fontSize: 11, color: "#d8eee4" }}
+          <label className="qs-migrated-207"
           >
             <input
               type="checkbox"
@@ -2353,8 +2295,7 @@ function WindowTypeTechnicalPreview(props: {
             />
             Show profile references
           </label>
-          <label
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, width: "fit-content", fontSize: 11, color: "#d8eee4" }}
+          <label className="qs-migrated-207"
           >
             <input
               type="checkbox"
@@ -2366,22 +2307,14 @@ function WindowTypeTechnicalPreview(props: {
             Show measurements
           </label>
           {canUseStaticB92ProofPreview ? (
-            <label style={{ display: "inline-flex", alignItems: "center", gap: 6, width: "fit-content", fontSize: 11, color: "#d8eee4" }}>
+            <label className="qs-migrated-207">
               <span>Preview source</span>
               <select
                 value={previewSourceMode}
                 onChange={(event) => {
                   setPreviewSourceMode(event.currentTarget.value === "b92" ? "b92" : "native");
                   setProfilePopup(null);
-                }}
-                style={{
-                  height: 24,
-                  borderRadius: 3,
-                  border: "1px solid rgba(216, 238, 228, 0.28)",
-                  background: "#0f1f1a",
-                  color: "#f8fafc",
-                  fontSize: 11,
-                }}
+                }} className="qs-migrated-208"
               >
                 <option value="native">Native render</option>
                 <option value="b92">B92 profile-section assembly proof</option>
@@ -2389,8 +2322,7 @@ function WindowTypeTechnicalPreview(props: {
             </label>
           ) : null}
           {previewView === "internal" && !useB92ProfileSectionAssemblyPreview ? (
-            <label
-              style={{ display: "inline-flex", alignItems: "center", gap: 6, width: "fit-content", fontSize: 11, color: "#d8eee4" }}
+            <label className="qs-migrated-207"
             >
               <input
                 type="checkbox"
@@ -2413,32 +2345,16 @@ function WindowTypeTechnicalPreview(props: {
           externalCladdingRal="7016"
         />
       ) : !activeSourceModel ? (
-        <div className="admin-placeholder-box" style={{ margin: 0 }}>
+        <div className="admin-placeholder-box qs-migrated-180">
           Preview not available for this design yet.
         </div>
       ) : previewResult.error ? (
-        <div className="admin-placeholder-box" style={{ margin: 0 }}>
+        <div className="admin-placeholder-box qs-migrated-180">
           Preview unavailable: {previewResult.error}
         </div>
       ) : previewResult.model ? (
-        <div style={{ position: "relative" }}>
-          <div
-            style={{
-              position: "absolute",
-              right: 14,
-              top: 12,
-              zIndex: 2,
-              color: "#64748b",
-              fontSize: 10.5,
-              fontWeight: 650,
-              background: "transparent",
-              border: 0,
-              borderRadius: 0,
-              padding: 0,
-              pointerEvents: "none",
-              maxWidth: 285,
-              textAlign: "right",
-            }}
+        <div className="qs-migrated-209">
+          <div className="qs-migrated-210"
           >
             Right click window fields for operation and configuration options.
           </div>
@@ -2479,18 +2395,18 @@ function WindowTypeTechnicalPreview(props: {
         </div>
       ) : null}
       {!useStaticB92ProofPreview && showProfileReferences && previewResult.model ? (
-        <div className="admin-body-copy" style={{ display: "grid", gap: 4 }}>
+        <div className="admin-body-copy qs-migrated-17">
           <div>
             Profile reference callouts: {profileCallouts.length === 0 ? "none available" : `${profileCallouts.length} shown`}
           </div>
           {disabledProfileCallouts.size > 0 ? (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+            <div className="qs-migrated-211">
               <span>Disabled:</span>
               {Array.from(disabledProfileCallouts).map((calloutId) => (
                 <button
                   key={calloutId}
                   type="button"
-                  className="admin-nav-button"
+                  className="admin-nav-button qs-migrated-212"
                   onClick={() => {
                     setDisabledProfileCallouts((current) => {
                       const next = new Set(current);
@@ -2498,7 +2414,6 @@ function WindowTypeTechnicalPreview(props: {
                       return next;
                     });
                   }}
-                  style={{ padding: "3px 7px" }}
                 >
                   <span className="admin-nav-button-label">Enable {calloutId}</span>
                 </button>
@@ -2514,25 +2429,16 @@ function WindowTypeTechnicalPreview(props: {
       ) : null}
       {profilePopup ? (
         <div
-          className="admin-card ui-card"
-          style={{
-            position: "fixed",
-            top: profilePopup.y,
-            left: profilePopup.x,
-            zIndex: 1001,
-            width: 260,
-            padding: 10,
-            display: "grid",
-            gap: 8,
-            boxShadow: "0 18px 45px rgba(15, 23, 42, 0.18)",
-          }}
+          className="admin-card ui-card window-type-profile-popup"
+          data-x={`${Math.round(profilePopup.x)}px`}
+          data-y={`${Math.round(profilePopup.y)}px`}
         >
-          <div style={{ display: "grid", gap: 2 }}>
+          <div className="qs-migrated-135">
             <div className="admin-setting-label">{profilePopup.callout.profileId}</div>
             <div className="admin-body-copy">Segment: {profilePopup.callout.segmentType}</div>
             <div className="admin-body-copy">Identity: {profilePopup.callout.identity}</div>
           </div>
-          <div style={{ display: "grid", gap: 3 }}>
+          <div className="qs-migrated-213">
             <div className="admin-setting-label">Alternatives</div>
             {profilePopup.callout.alternatives.length === 0 ? (
               <div className="admin-body-copy">No alternatives available.</div>
@@ -2546,7 +2452,7 @@ function WindowTypeTechnicalPreview(props: {
           </div>
           <button
             type="button"
-            className="admin-nav-button"
+            className="admin-nav-button qs-migrated-214"
             onClick={() => {
               setDisabledProfileCallouts((current) => {
                 const next = new Set(current);
@@ -2555,27 +2461,25 @@ function WindowTypeTechnicalPreview(props: {
               });
               setProfilePopup(null);
             }}
-            style={{ justifyContent: "flex-start" }}
           >
             <span className="admin-nav-button-label">Disable this callout</span>
           </button>
           <button
             type="button"
-            className="admin-nav-button"
+            className="admin-nav-button qs-migrated-214"
             onClick={() => setProfilePopup(null)}
-            style={{ justifyContent: "flex-start" }}
           >
             <span className="admin-nav-button-label">Close</span>
           </button>
         </div>
       ) : null}
       {!useStaticB92ProofPreview && activeSourceModel && !catalogReport.attempted ? (
-        <div style={{ margin: 0, fontSize: 10, color: "#94a3b8" }}>
+        <div className="qs-migrated-215">
           Preview source: {displaySourceLabel}
         </div>
       ) : null}
       {catalogReport.attempted ? (
-        <div className="admin-placeholder-box" style={{ margin: 0, display: "grid", gap: 4 }}>
+        <div className="admin-placeholder-box qs-migrated-216">
           <div>Preview source: {sourceLabel}</div>
           <div>Catalog bridge: {catalogReport.buildSuccess ? "PASS" : "FAIL"}</div>
           <div>Comparison: {catalogReport.comparisonPass ? "PASS" : "FAIL"}</div>
@@ -2583,7 +2487,7 @@ function WindowTypeTechnicalPreview(props: {
           {catalogReport.differences.length === 0 ? (
             <div>Differences: none</div>
           ) : (
-            <div style={{ display: "grid", gap: 2 }}>
+            <div className="qs-migrated-135">
               <div>Differences:</div>
               {catalogReport.differences.map((difference) => (
                 <div key={difference.key}>
@@ -2624,7 +2528,7 @@ export default function WindowTypeEditor(props: Props) {
   const { categoryLabel, fieldCountLabel, selectedDesign, bootstrap, previewView, onRenderToolbarRegistration } = props;
 
   return (
-    <div style={{ display: "grid", gap: 8, alignContent: "start", minWidth: 0 }}>
+    <div className="qs-migrated-217">
       <WindowTypeTechnicalPreview
         categoryLabel={categoryLabel}
         selectedDesign={selectedDesign}
@@ -2632,11 +2536,11 @@ export default function WindowTypeEditor(props: Props) {
         previewView={previewView}
         onRenderToolbarRegistration={onRenderToolbarRegistration}
       />
-      <details className="admin-card ui-card" style={{ padding: 12 }}>
-        <summary className="admin-group-title" style={{ cursor: "pointer" }}>
+      <details className="admin-card ui-card qs-migrated-6">
+        <summary className="admin-group-title qs-migrated-218">
           Source model panels
         </summary>
-        <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+        <div className="qs-migrated-219">
           <div className="admin-body-copy">
             {categoryLabel} &gt; {fieldCountLabel}
             {selectedDesign ? ` > ${selectedDesign.label}` : ""}

@@ -352,26 +352,10 @@ function ToolbarIconButton(props: {
       onClick={props.onClick}
       disabled={props.disabled || !props.onClick}
       title={props.title ?? props.label}
-      style={{
-        minWidth: 54,
-        minHeight: 48,
-        display: "grid",
-        justifyItems: "center",
-        alignContent: "center",
-        gap: 4,
-        padding: "5px 7px",
-        borderRadius: 7,
-        border: props.active ? "1px solid rgba(34, 197, 94, 0.42)" : "1px solid rgba(148, 163, 184, 0.12)",
-        background: props.active ? "rgba(34, 197, 94, 0.12)" : "transparent",
-        color: props.active ? "#5ee787" : "#d8eee4",
-        fontSize: 10.5,
-        fontWeight: 750,
-        whiteSpace: "nowrap",
-        cursor: props.disabled || !props.onClick ? "not-allowed" : "pointer",
-        opacity: props.disabled || !props.onClick ? 0.48 : 1,
-      }}
+      className="window-types-toolbar-button"
+      data-state={props.active ? "active" : "idle"}
     >
-      <span style={{ fontSize: 18, lineHeight: 1, fontWeight: 900 }}>{props.icon}</span>
+      <span className="qs-migrated-154">{props.icon}</span>
       <span>{props.label}</span>
     </button>
   );
@@ -381,20 +365,10 @@ function SaveToolbarButton(props: { icon: string; label: string; primary?: boole
   return (
     <button
       type="button"
-      className="admin-nav-button"
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 7,
-        padding: "9px 12px",
-        minHeight: 36,
-        background: props.primary ? "#6bd663" : "#0b1714",
-        borderColor: props.primary ? "#6bd663" : "rgba(148, 163, 184, 0.24)",
-        color: props.primary ? "#052e16" : "#f8fafc",
-        whiteSpace: "nowrap",
-      }}
+      className="admin-nav-button window-types-save-button"
+      data-variant={props.primary ? "primary" : "secondary"}
     >
-      <span style={{ fontSize: 15, fontWeight: 900 }}>{props.icon}</span>
+      <span className="qs-migrated-155">{props.icon}</span>
       <span className="admin-nav-button-label">{props.label}</span>
     </button>
   );
@@ -402,38 +376,22 @@ function SaveToolbarButton(props: { icon: string; label: string; primary?: boole
 
 function ConfiguratorLanding(props: { onOpenCategory: (category: ConfiguratorLandingCategoryKey) => void }) {
   return (
-    <div style={{ display: "grid", gap: 16 }}>
-      <div className="admin-card ui-card" style={{ padding: 20, display: "grid", gap: 8 }}>
+    <div className="qs-migrated-122">
+      <div className="admin-card ui-card qs-migrated-123">
         <div className="admin-page-title">Configurator</div>
-        <div className="admin-body-copy" style={{ maxWidth: 900 }}>
+        <div className="admin-body-copy qs-migrated-156">
           Select a product category to open the render workspace. Current live technical rendering remains wired for Windows; other categories are staged as workspace placeholders.
         </div>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
-          gap: 12,
-        }}
+      <div className="qs-migrated-157"
       >
         {PRODUCT_CATEGORY_OPTIONS.map((category) => (
           <button
             key={category.key}
             type="button"
             onClick={() => props.onOpenCategory(category.key)}
-            className="admin-card ui-card"
-            style={{
-              padding: 18,
-              minHeight: 112,
-              display: "grid",
-              gap: 8,
-              textAlign: "left",
-              cursor: "pointer",
-              border: "1px solid var(--color-border)",
-              background: "var(--color-surface)",
-              color: "var(--color-text-primary)",
-            }}
+            className="admin-card ui-card qs-migrated-158"
           >
             <span className="admin-group-title">{category.label}</span>
             <span className="admin-body-copy">
@@ -466,55 +424,31 @@ function WorkspaceShell(props: {
   const toolbar = props.renderToolbarRegistration;
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gap: 6,
-        minHeight: "calc(100vh - 92px)",
-        background: "linear-gradient(135deg, #07100d 0%, #071413 58%, #06110f 100%)",
-        border: "1px solid rgba(34, 197, 94, 0.14)",
-        borderRadius: 10,
-        padding: 8,
-      }}
+    <div className="qs-migrated-159"
     >
-      <div
-        style={{
-          padding: "6px 8px",
-          display: "flex",
-          gap: 8,
-          alignItems: "center",
-          flexWrap: "nowrap",
-          borderRadius: 8,
-          background: "#07100d",
-          border: "1px solid rgba(34, 197, 94, 0.16)",
-          boxShadow: "0 10px 30px rgba(0, 0, 0, 0.22)",
-          color: "#e5f7ec",
-          overflowX: "auto",
-        }}
+      <div className="qs-migrated-160"
       >
-        <div style={{ fontSize: 11, fontWeight: 800, minWidth: 275, color: "#d9fbe5", whiteSpace: "nowrap" }}>
+        <div className="qs-migrated-161">
           Configurator &gt; Render &gt; {category} &gt; {layout} &gt; {operation}
         </div>
-        <label style={{ display: "grid", gap: 2, minWidth: 104 }}>
-          <span style={{ fontSize: 9, color: "#7dd3a7", textTransform: "uppercase", letterSpacing: 0 }}>Product</span>
+        <label className="qs-migrated-162">
+          <span className="qs-migrated-163">Product</span>
           <select
             value={selectedMaterialSystem}
             onChange={(event) => setSelectedMaterialSystem(event.currentTarget.value as (typeof MATERIAL_SYSTEM_OPTIONS)[number])}
-            className="admin-input"
-            style={{ height: 28, minHeight: 28, fontSize: 11, padding: "3px 8px" }}
+            className="admin-input qs-migrated-164"
           >
             {MATERIAL_SYSTEM_OPTIONS.map((option) => (
               <option key={option} value={option}>{option}</option>
             ))}
           </select>
         </label>
-        <label style={{ display: "grid", gap: 2, minWidth: 86 }}>
-          <span style={{ fontSize: 9, color: "#7dd3a7", textTransform: "uppercase", letterSpacing: 0 }}>Layout</span>
+        <label className="qs-migrated-165">
+          <span className="qs-migrated-163">Layout</span>
           <select
             value={props.selectedFieldCountMode}
             onChange={(event) => props.onSelectFieldCount(event.currentTarget.value as ConfiguratorFieldCountMode)}
-            className="admin-input"
-            style={{ height: 28, minHeight: 28, fontSize: 11, padding: "3px 8px" }}
+            className="admin-input qs-migrated-164"
             disabled={props.activeCategory !== "windows"}
           >
             {WINDOW_FIELD_COUNT_OPTIONS.map((option) => (
@@ -522,20 +456,13 @@ function WorkspaceShell(props: {
             ))}
           </select>
         </label>
-        <div style={{ display: "grid", gap: 2 }}>
-          <span style={{ fontSize: 9, color: "#7dd3a7", textTransform: "uppercase", letterSpacing: 0 }}>View</span>
-          <div style={{ display: "inline-flex", border: "1px solid rgba(34, 197, 94, 0.22)", borderRadius: 7, overflow: "hidden", height: 28 }}>
+        <div className="qs-migrated-135">
+          <span className="qs-migrated-163">View</span>
+          <div className="qs-migrated-166">
             <button
               type="button"
               className={props.previewView === "internal" ? "admin-nav-button admin-nav-button--active" : "admin-nav-button"}
               onClick={() => props.onSelectPreviewView("internal")}
-              style={{
-                border: 0,
-                borderRadius: 0,
-                padding: "5px 9px",
-                background: props.previewView === "internal" ? "#14532d" : "#0b1714",
-                color: props.previewView === "internal" ? "#d9fbe5" : "#cbd5e1",
-              }}
             >
               <span className="admin-nav-button-label">Internal</span>
             </button>
@@ -543,20 +470,13 @@ function WorkspaceShell(props: {
               type="button"
               className={props.previewView === "external" ? "admin-nav-button admin-nav-button--active" : "admin-nav-button"}
               onClick={() => props.onSelectPreviewView("external")}
-              style={{
-                border: 0,
-                borderRadius: 0,
-                padding: "5px 9px",
-                background: props.previewView === "external" ? "#14532d" : "#0b1714",
-                color: props.previewView === "external" ? "#d9fbe5" : "#cbd5e1",
-              }}
             >
               <span className="admin-nav-button-label">External</span>
             </button>
           </div>
         </div>
-        <div style={{ width: 1, height: 38, background: "rgba(148, 163, 184, 0.18)", marginLeft: "auto" }} />
-        <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
+        <div className="qs-migrated-167" />
+        <div className="qs-migrated-168">
           <ToolbarIconButton icon="⛶" label="Fit" onClick={toolbar?.controls.fit} disabled={!toolbar} title="Fit drawing to viewport" />
           <ToolbarIconButton icon="◎" label="100%" onClick={toolbar?.controls.setOneToOne} disabled={!toolbar} title="Set scale to 1:1" />
           <ToolbarIconButton icon="+" label="Zoom" onClick={toolbar?.controls.zoomIn} disabled={!toolbar} title="Zoom in" />
@@ -599,139 +519,77 @@ function WorkspaceShell(props: {
           />
           <ToolbarIconButton icon="..." label="More" disabled title="No additional render actions are wired yet" />
         </div>
-        <div style={{ width: 1, height: 38, background: "rgba(148, 163, 184, 0.18)" }} />
+        <div className="qs-migrated-169" />
         <SaveToolbarButton icon="▣" label="Save Type" />
         <SaveToolbarButton icon="✓" label="Save & Close" primary />
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: showDetailsPanel ? "220px minmax(520px, 1fr) 220px" : "220px minmax(520px, 1fr)",
-          gap: 6,
-          alignItems: "stretch",
-        }}
-      >
-        <aside
-          style={{
-            padding: 10,
-            display: "grid",
-            gap: 10,
-            alignContent: "start",
-            position: "sticky",
-            top: 16,
-            borderRadius: 8,
-            background: "#07100d",
-            border: "1px solid rgba(34, 197, 94, 0.14)",
-            color: "#e5f7ec",
-            minHeight: "calc(100vh - 156px)",
-          }}
+      <div className="window-types-workspace-grid" data-details={showDetailsPanel ? "visible" : "hidden"}>
+        <aside className="qs-migrated-170"
         >
           <button
             type="button"
-            className="admin-nav-button"
+            className="admin-nav-button qs-migrated-171"
             onClick={props.onBack}
-            style={{ justifyContent: "center", background: "#0b1714", borderColor: "rgba(34, 197, 94, 0.18)", color: "#d8eee4", padding: "7px 6px" }}
           >
             <span className="admin-nav-button-label">Back to Configurator</span>
           </button>
-          <div style={{ fontSize: 10, fontWeight: 800, color: "#a7f3d0", textTransform: "uppercase" }}>Window Categories</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
+          <div className="qs-migrated-172">Window Categories</div>
+          <div className="qs-migrated-173">
             {WORKSPACE_CATEGORY_OPTIONS.map((option) => (
               <button
                 key={option.key}
                 type="button"
                 onClick={() => props.onSelectCategory(option.key)}
                 title={option.label}
-                style={{
-                  width: "100%",
-                  height: 118,
-                  display: "grid",
-                  justifyItems: "center",
-                  alignItems: "center",
-                  gridTemplateRows: "64px 1fr",
-                  gap: 8,
-                  padding: "12px 8px 10px",
-                  borderRadius: 8,
-                  border: props.activeCategory === option.key ? "1px solid #22c55e" : "1px solid rgba(148, 163, 184, 0.22)",
-                  background: props.activeCategory === option.key ? "#133f28" : "#0b1714",
-                  color: props.activeCategory === option.key ? "#bbf7d0" : "#d8eee4",
-                  cursor: "pointer",
-                }}
+                className="window-types-category-tile"
+                data-state={props.activeCategory === option.key ? "active" : "idle"}
               >
-                <span
-                  aria-hidden="true"
-                  style={{
-                    width: 64,
-                    height: 64,
-                    display: "grid",
-                    placeItems: "center",
-                    color: props.activeCategory === option.key ? "#ecfdf5" : "#cbd5e1",
-                  }}
-                >
+                <span aria-hidden="true" className="window-types-category-icon">
                   <CategoryTileIcon category={option.key} />
                 </span>
-                <span style={{ fontSize: 10.5, fontWeight: 750, lineHeight: 1.15, textAlign: "center" }}>{option.label}</span>
+                <span className="qs-migrated-174">{option.label}</span>
               </button>
             ))}
           </div>
         </aside>
 
-        <main style={{ minWidth: 0, display: "grid", alignContent: "start" }}>{props.children}</main>
+        <main className="qs-migrated-175">{props.children}</main>
 
         {showDetailsPanel ? (
-        <aside
-          style={{
-            padding: 10,
-            display: "grid",
-            gap: 10,
-            alignContent: "start",
-            position: "sticky",
-            top: 16,
-            borderRadius: 8,
-            background: "#07100d",
-            border: "1px solid rgba(34, 197, 94, 0.16)",
-            color: "#d8eee4",
-            minHeight: "calc(100vh - 156px)",
-          }}
+        <aside className="qs-migrated-176"
         >
-          <div style={{ fontSize: 12, fontWeight: 800, color: "#f8fafc" }}>Details</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="qs-migrated-177">Details</div>
+          <div className="qs-migrated-19">
             {["Measurements", "Profiles", "Details"].map((tab) => (
               <span
                 key={tab}
-                className={tab === "Measurements" ? "admin-nav-button admin-nav-button--active" : "admin-nav-button"}
-                style={{
-                  padding: "6px 8px",
-                  background: tab === "Measurements" ? "#22c55e" : "#0b1714",
-                  borderColor: tab === "Measurements" ? "#22c55e" : "rgba(34, 197, 94, 0.18)",
-                  color: tab === "Measurements" ? "#052e16" : "#d8eee4",
-                }}
+                className={tab === "Measurements" ? "admin-nav-button admin-nav-button--active window-types-details-tab" : "admin-nav-button window-types-details-tab"}
               >
                 <span className="admin-nav-button-label">{tab}</span>
               </span>
             ))}
           </div>
-          <div style={{ display: "grid", gap: 8 }}>
-            <div style={{ fontSize: 10, fontWeight: 800, color: "#a7f3d0", textTransform: "uppercase" }}>Dimensions</div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+          <div className="qs-migrated-80">
+            <div className="qs-migrated-172">Dimensions</div>
+            <div className="qs-migrated-178">
               <span>Overall width</span><span>1000 mm</span>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+            <div className="qs-migrated-178">
               <span>Overall height</span><span>1000 mm</span>
             </div>
-            <div style={{ fontSize: 10, fontWeight: 800, color: "#a7f3d0", textTransform: "uppercase" }}>Frame</div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+            <div className="qs-migrated-172">Frame</div>
+            <div className="qs-migrated-178">
               <span>Top / jambs</span><span>57 mm</span>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+            <div className="qs-migrated-178">
               <span>Bottom sill</span><span>72 mm</span>
             </div>
-            <div style={{ fontSize: 10, fontWeight: 800, color: "#a7f3d0", textTransform: "uppercase" }}>Opening</div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+            <div className="qs-migrated-172">Opening</div>
+            <div className="qs-migrated-178">
               <span>Daylight</span><span>886 x 871</span>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+            <div className="qs-migrated-178">
               <span>Glass order</span><span>912 x 897</span>
             </div>
           </div>
@@ -795,12 +653,12 @@ export default function AdminWindowTypesWorkspace(props: Props) {
           />
         </div>
       ) : (
-        <div className="admin-card ui-card" style={{ padding: 20, minHeight: 520, display: "grid", gap: 10, alignContent: "start" }}>
+        <div className="admin-card ui-card qs-migrated-179">
           <div className="admin-page-title">{categoryLabel(activeCategory)} render workspace coming later</div>
           <div className="admin-body-copy">
             This category opens the render workspace shell now, but no category-specific renderer or source model is wired in this layout-only pass.
           </div>
-          <div className="admin-placeholder-box" style={{ margin: 0 }}>
+          <div className="admin-placeholder-box qs-migrated-180">
             Placeholder only. Existing Windows editor/render behaviour is preserved separately.
           </div>
         </div>

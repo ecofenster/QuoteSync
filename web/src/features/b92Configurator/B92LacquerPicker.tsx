@@ -32,10 +32,7 @@ export default function B92LacquerPicker(props: Props) {
               aria-label={option.label}
               onClick={() => props.onChange(option.id)}
               className={`b92-lacquer-picker__swatch${selected ? " b92-lacquer-picker__swatch--selected" : ""}`}
-              style={{
-                background: `url(${option.url}) center / cover`,
-              }}
-            />
+            ><img src={option.url} alt="" /></button>
           );
         })}
       </div>

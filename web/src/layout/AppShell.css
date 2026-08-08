@@ -1,16 +1,16 @@
 .app-shell {
   min-height: 100vh;
-  background: var(--app-shell-background);
-  color: var(--color-text-primary);
+  background: var(--qs-bg-page);
+  color: var(--qs-theme-text);
 }
 
 .app-shell__header {
   position: sticky;
   top: 0;
   z-index: 20;
-  background: var(--app-shell-header-bg);
-  border-bottom: 1px solid var(--app-shell-header-border);
-  backdrop-filter: var(--ui-backdrop-filter, none);
+  background: var(--qs-bg-surface);
+  border-bottom: 1px solid var(--qs-border-standard);
+  backdrop-filter: var(--qs-backdrop-filter, none);
 }
 
 .app-shell__inner {
@@ -28,7 +28,7 @@
   align-items: center;
   font-size: 18px;
   font-weight: 900;
-  color: var(--color-text-primary);
+  color: var(--qs-theme-text);
 }
 
 .quotesync-logo {
@@ -85,5 +85,5 @@
 .app-shell__main {
   width: 100%;
   padding: 16px;
-  background: var(--app-shell-main-bg);
+  background: var(--qs-bg-page);
 }

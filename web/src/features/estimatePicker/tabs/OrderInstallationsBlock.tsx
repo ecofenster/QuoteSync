@@ -15,13 +15,6 @@ type Props = {
   setOrderMetaField: (estimateId: EstimateId, key: string, value: any) => void;
 };
 
-const labelStyle: React.CSSProperties = {
-  fontSize: 12,
-  fontWeight: 800,
-  color: "var(--color-text-secondary)",
-  marginBottom: 6,
-};
-
 export default function OrderInstallationsBlock(props: Props) {
   const {
     e,
@@ -48,7 +41,7 @@ export default function OrderInstallationsBlock(props: Props) {
 
       {selectedOrderForInstallations === e.id && (
         <div className="ep-order-card ep-order-card--muted">
-          <div className="ep-pane-header" style={{ gap: 12 }}>
+          <div className="ep-pane-header qs-migrated-259">
             <div>
               <div className="ep-order-title">Installations</div>
               <div className="ep-order-subtitle">Installers ranked by route where provider/API is available.</div>
@@ -110,55 +103,55 @@ export default function OrderInstallationsBlock(props: Props) {
 
         <div className="ep-order-schedule-grid">
           <div className="ep-order-field">
-            <div style={labelStyle}>Client sign-off sent</div>
+            <div className="qs-migrated-243">Client sign-off sent</div>
             <Input type="date" value={e.orderMeta?.clientSignoffSentDate ?? ""} onChange={(ev) => setOrderMetaField(e.id, "clientSignoffSentDate", ev.target.value)} />
           </div>
           <div className="ep-order-field">
-            <div style={labelStyle}>Client sign-off received</div>
+            <div className="qs-migrated-243">Client sign-off received</div>
             <Input type="date" value={e.orderMeta?.clientSignoffReceivedDate ?? ""} onChange={(ev) => setOrderMetaField(e.id, "clientSignoffReceivedDate", ev.target.value)} />
           </div>
           <div className="ep-order-field">
-            <div style={labelStyle}>Deposit paid</div>
+            <div className="qs-migrated-243">Deposit paid</div>
             <Input type="date" value={e.orderMeta?.depositPaidDate ?? ""} onChange={(ev) => setOrderMetaField(e.id, "depositPaidDate", ev.target.value)} />
           </div>
           <div className="ep-order-field">
-            <div style={labelStyle}>Factory order signed off</div>
+            <div className="qs-migrated-243">Factory order signed off</div>
             <Input type="date" value={e.orderMeta?.factoryOrderSignedOffDate ?? ""} onChange={(ev) => setOrderMetaField(e.id, "factoryOrderSignedOffDate", ev.target.value)} />
           </div>
           <div className="ep-order-field">
-            <div style={labelStyle}>Factory invoice paid</div>
+            <div className="qs-migrated-243">Factory invoice paid</div>
             <Input type="date" value={e.orderMeta?.factoryInvoicePaidDate ?? ""} onChange={(ev) => setOrderMetaField(e.id, "factoryInvoicePaidDate", ev.target.value)} />
           </div>
           <div className="ep-order-field">
-            <div style={labelStyle}>Production weeks</div>
+            <div className="qs-migrated-243">Production weeks</div>
             <Input type="number" value={String(e.orderMeta?.productionWeeks ?? "")} onChange={(ev) => setOrderMetaField(e.id, "productionWeeks", ev.target.value === "" ? undefined : Number(ev.target.value))} />
           </div>
           <div className="ep-order-field">
-            <div style={labelStyle}>Production start</div>
+            <div className="qs-migrated-243">Production start</div>
             <Input type="date" value={e.orderMeta?.productionStartDate ?? ""} onChange={(ev) => setOrderMetaField(e.id, "productionStartDate", ev.target.value)} />
           </div>
           <div className="ep-order-field">
-            <div style={labelStyle}>Production end</div>
+            <div className="qs-migrated-243">Production end</div>
             <Input type="date" value={e.orderMeta?.productionEndDate ?? ""} onChange={() => {}} disabled />
           </div>
           <div className="ep-order-field">
-            <div style={labelStyle}>Balance invoice due</div>
+            <div className="qs-migrated-243">Balance invoice due</div>
             <Input type="date" value={e.orderMeta?.balanceInvoiceDueDate ?? ""} onChange={() => {}} disabled />
           </div>
           <div className="ep-order-field">
-            <div style={labelStyle}>Production completed</div>
+            <div className="qs-migrated-243">Production completed</div>
             <Input type="date" value={e.orderMeta?.productionCompletedDate ?? ""} onChange={(ev) => setOrderMetaField(e.id, "productionCompletedDate", ev.target.value)} />
           </div>
           <div className="ep-order-field">
-            <div style={labelStyle}>Factory dispatch</div>
+            <div className="qs-migrated-243">Factory dispatch</div>
             <Input type="date" value={e.orderMeta?.factoryDispatchDate ?? ""} onChange={(ev) => setOrderMetaField(e.id, "factoryDispatchDate", ev.target.value)} />
           </div>
           <div className="ep-order-field">
-            <div style={labelStyle}>Delivery date</div>
+            <div className="qs-migrated-243">Delivery date</div>
             <Input type="date" value={e.orderMeta?.deliveryDate ?? ""} onChange={(ev) => setOrderMetaField(e.id, "deliveryDate", ev.target.value)} />
           </div>
           <div className="ep-order-field">
-            <div style={labelStyle}>Installation date</div>
+            <div className="qs-migrated-243">Installation date</div>
             <Input type="date" value={e.orderMeta?.installationDate ?? ""} onChange={(ev) => setOrderMetaField(e.id, "installationDate", ev.target.value)} />
           </div>
         </div>

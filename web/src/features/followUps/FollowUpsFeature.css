@@ -17,9 +17,9 @@
 }
 
 .follow-ups__title {
-  font-size: 16px;
+  font-size: var(--qs-type-section-title);
   font-weight: 900;
-  color: var(--color-text-primary);
+  color: var(--qs-theme-text);
 }
 
 .follow-ups__subtitle,
@@ -28,14 +28,14 @@
 .follow-ups__detail-meta,
 .follow-ups__composer-copy,
 .follow-ups__note-meta {
-  font-size: 12px;
-  color: var(--color-text-muted);
+  font-size: var(--qs-type-meta);
+  color: var(--qs-theme-text-muted);
 }
 
 .follow-ups__toast {
   font-size: 12px;
   font-weight: 900;
-  color: var(--color-success);
+  color: var(--qs-semantic-success);
 }
 
 .follow-ups__grid {
@@ -47,16 +47,17 @@
 
 .follow-ups__panel {
   overflow: hidden;
-  border: 1px solid var(--color-border);
-  border-radius: 16px;
-  background: var(--color-surface);
+  border: 1px solid var(--qs-operational-quotes-border);
+  border-radius: var(--radius-card);
+  background: var(--qs-commercial-surface);
+  box-shadow: var(--shadow-card);
 }
 
 .follow-ups__panel-header {
   padding: 12px;
-  border-bottom: 1px solid var(--color-divider);
+  border-bottom: 1px solid var(--qs-border-standard);
   font-weight: 900;
-  color: var(--color-text-primary);
+  color: var(--qs-theme-text);
 }
 
 .follow-ups__panel-header--split {
@@ -89,19 +90,19 @@
 .follow-ups__primary-button,
 .follow-ups__save-button {
   padding: 10px 14px;
-  border-radius: 16px;
+  border-radius: var(--radius-button);
   font-weight: 900;
 }
 
 .follow-ups__nav-button {
   padding: 8px 10px;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
+  border: 1px solid var(--qs-border-standard);
+  background: var(--qs-bg-control);
 }
 
 .follow-ups__month-label {
   font-weight: 900;
-  color: var(--color-text-primary);
+  color: var(--qs-theme-text);
 }
 
 .follow-ups__weekday-row,
@@ -118,25 +119,26 @@
 .follow-ups__weekday {
   font-size: 11px;
   font-weight: 900;
-  color: var(--color-text-muted);
+  color: var(--qs-theme-text-muted);
   text-align: center;
 }
 
 .follow-ups__calendar-day {
   position: relative;
   padding: 10px 0;
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  background: var(--color-surface);
-  color: var(--color-text-primary);
+  border: 1px solid var(--qs-border-standard);
+  border-radius: var(--radius-control);
+  background: var(--qs-bg-control);
+  color: var(--qs-theme-text);
   cursor: pointer;
   font-weight: 900;
 }
+.follow-ups__calendar-day[data-month="adjacent"] { opacity: 0.4; }
 
 .follow-ups__calendar-day--selected {
-  border: 2px solid var(--color-surface-inverse);
-  background: var(--color-surface-inverse);
-  color: var(--color-text-on-inverse);
+  border: 2px solid var(--qs-operational-quotes-border);
+  background: var(--qs-operational-quotes-surface);
+  color: var(--qs-operational-quotes);
 }
 
 .follow-ups__calendar-today-dot {
@@ -146,7 +148,7 @@
   width: 8px;
   height: 8px;
   border-radius: 999px;
-  background: var(--color-success);
+  background: var(--qs-semantic-success);
 }
 
 .follow-ups__calendar-count {
@@ -155,40 +157,40 @@
   left: 50%;
   transform: translateX(-50%);
   padding: 2px 6px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--qs-border-standard);
   border-radius: 999px;
-  background: var(--color-surface-muted);
-  color: var(--color-text-primary);
+  background: var(--qs-bg-surface-elevated);
+  color: var(--qs-theme-text);
   font-size: 10px;
   font-weight: 900;
 }
 
 .follow-ups__calendar-count--selected {
-  border-color: color-mix(in srgb, var(--color-text-on-inverse) 35%, transparent);
-  background: color-mix(in srgb, var(--color-text-on-inverse) 18%, transparent);
-  color: var(--color-text-on-inverse);
+  border-color: color-mix(in srgb, var(--qs-text-on-primary) 35%, transparent);
+  background: color-mix(in srgb, var(--qs-text-on-primary) 18%, transparent);
+  color: var(--qs-text-on-primary);
 }
 
 .follow-ups__item {
   display: grid;
   gap: 6px;
   padding: 10px;
-  border: 1px solid var(--color-border);
-  border-radius: 14px;
-  background: var(--color-surface);
-  color: var(--color-text-primary);
+  border: 1px solid var(--qs-border-standard);
+  border-radius: var(--radius-card);
+  background: var(--qs-bg-card);
+  color: var(--qs-theme-text);
   cursor: pointer;
 }
 
 .follow-ups__item--active {
-  border: 2px solid var(--color-surface-inverse);
-  background: var(--color-surface-inverse);
-  color: var(--color-text-on-inverse);
+  border: 2px solid var(--qs-operational-quotes-border);
+  background: var(--qs-operational-quotes-surface);
+  color: var(--qs-operational-quotes);
 }
 
 .follow-ups__item--overdue {
-  border-color: color-mix(in srgb, var(--color-danger) 45%, var(--color-border));
-  background: color-mix(in srgb, var(--color-danger) 8%, var(--color-surface));
+  border-color: var(--qs-operational-orders-border);
+  background: var(--qs-operational-orders-surface);
 }
 
 .follow-ups__item-head,
@@ -233,10 +235,10 @@
 
 .follow-ups__item-note-card,
 .follow-ups__latest-note {
-  border: 1px solid var(--color-border);
-  border-radius: 14px;
+  border: 1px solid var(--qs-border-standard);
+  border-radius: var(--radius-card);
   padding: 12px;
-  background: var(--color-surface-subtle);
+  background: var(--qs-bg-surface-elevated);
 }
 
 .follow-ups__item-note-card {
@@ -244,8 +246,8 @@
 }
 
 .follow-ups__item--active .follow-ups__item-note-card {
-  border-color: color-mix(in srgb, var(--color-text-on-inverse) 25%, transparent);
-  background: color-mix(in srgb, var(--color-text-on-inverse) 8%, transparent);
+  border-color: color-mix(in srgb, var(--qs-text-on-primary) 25%, transparent);
+  background: color-mix(in srgb, var(--qs-text-on-primary) 8%, transparent);
 }
 
 .follow-ups__item-note-label,
@@ -259,12 +261,12 @@
 
 .follow-ups__latest-note-label {
   font-size: 11px;
-  color: var(--color-text-secondary);
+  color: var(--qs-theme-text-secondary);
 }
 
 .follow-ups__latest-note-text {
   font-size: 13px;
-  color: var(--color-text-primary);
+  color: var(--qs-theme-text);
   white-space: pre-wrap;
 }
 
@@ -273,15 +275,15 @@
 }
 
 .follow-ups__secondary-button {
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
+  border: 1px solid var(--qs-border-standard);
+  background: var(--qs-bg-control);
 }
 
 .follow-ups__primary-button,
 .follow-ups__save-button {
   border: none;
-  background: var(--color-surface-inverse);
-  color: var(--color-text-on-inverse);
+  background: var(--qs-theme-primary);
+  color: var(--qs-text-on-primary);
 }
 
 .follow-ups__composer {
@@ -293,8 +295,10 @@
   width: 100%;
   min-height: 160px;
   padding: 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 14px;
+  border: 1px solid var(--qs-border-standard);
+  border-radius: var(--radius-control);
+  background: var(--qs-bg-control);
+  color: var(--qs-theme-text);
   resize: vertical;
   font-size: 14px;
   outline: none;
