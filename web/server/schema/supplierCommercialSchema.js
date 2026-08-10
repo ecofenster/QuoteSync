@@ -448,6 +448,8 @@ const tables = [
     source_revision TEXT,
     revision_number INTEGER NOT NULL DEFAULT 1,
     installation_opening_count INTEGER NOT NULL DEFAULT 0 CHECK (installation_opening_count >= 0),
+    target_gross_margin_percent TEXT,
+    commercial_margin_policy_json TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY (import_lab_session_id) REFERENCES supplier_import_lab_sessions(id),
@@ -826,6 +828,8 @@ export async function initializeSupplierCommercialSchema(db) {
   if(!estimateCostFxColumns.some(column=>column.name==='selling_amount_gbp'))await db.exec('ALTER TABLE project_calculator_estimate_supplier_costs ADD COLUMN selling_amount_gbp TEXT');
   const calculatorScenarioOwnershipColumns=await db.all('PRAGMA table_info(project_calculator_lab_scenarios)');
   if(!calculatorScenarioOwnershipColumns.some(column=>column.name==='estimate_id'))await db.exec('ALTER TABLE project_calculator_lab_scenarios ADD COLUMN estimate_id TEXT');
+  if(!calculatorScenarioOwnershipColumns.some(column=>column.name==='target_gross_margin_percent'))await db.exec('ALTER TABLE project_calculator_lab_scenarios ADD COLUMN target_gross_margin_percent TEXT');
+  if(!calculatorScenarioOwnershipColumns.some(column=>column.name==='commercial_margin_policy_json'))await db.exec('ALTER TABLE project_calculator_lab_scenarios ADD COLUMN commercial_margin_policy_json TEXT');
   const labRowColumns = await db.all('PRAGMA table_info(supplier_import_lab_extracted_rows)');
   if (!labRowColumns.some((column) => column.name === 'review_warnings_json')) await db.exec("ALTER TABLE supplier_import_lab_extracted_rows ADD COLUMN review_warnings_json TEXT NOT NULL DEFAULT '[]'");
   if (!labRowColumns.some((column) => column.name === 'selected_for_future_use')) await db.exec('ALTER TABLE supplier_import_lab_extracted_rows ADD COLUMN selected_for_future_use INTEGER NOT NULL DEFAULT 1 CHECK (selected_for_future_use IN (0,1))');

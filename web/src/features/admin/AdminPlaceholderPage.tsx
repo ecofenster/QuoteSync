@@ -8,6 +8,7 @@ import AdminConfiguratorCatalogWorkspace from "./AdminConfiguratorCatalogWorkspa
 import AdminSupplierQuoteImportBeta from "./AdminSupplierQuoteImportBeta";
 import AdminIntegrationsPanel from "./AdminIntegrationsPanel";
 import AdminThemeColoursPanel from "./AdminThemeColoursPanel";
+import AdminCommercialMarginPanel from "./AdminCommercialMarginPanel";
 import { QUOTESYNC_THEME_CONFIGURATION_KEY } from "../../theme/themes";
 import "./AdminPlaceholderPage.css";
 
@@ -328,7 +329,7 @@ export default function AdminPlaceholderPage(props: {
 
   const orderedGroups = useMemo(
     () => Object.entries(settingsByGroup)
-      .map(([groupName, settings]) => [groupName, settings.filter((setting) => setting.key !== QUOTESYNC_THEME_CONFIGURATION_KEY)] as const)
+      .map(([groupName, settings]) => [groupName, settings.filter((setting) => setting.key !== QUOTESYNC_THEME_CONFIGURATION_KEY && setting.key !== "commercial.marginPolicy")] as const)
       .filter(([, settings]) => settings.length > 0)
       .sort(([a], [b]) => a.localeCompare(b)),
     [settingsByGroup]
@@ -440,6 +441,7 @@ export default function AdminPlaceholderPage(props: {
             <div className="admin-project-pref-value">No</div>
           </div>
         </div>
+        <AdminCommercialMarginPanel />
       </div>
     ) : activeSection === "feature_controls" ? (
       <AdminSupplierQuoteImportBeta />
