@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import type { SupplierQuote, SupplierQuoteAttachment, SupplierQuoteRevision } from "../supplierQuoteImport/domain/supplierQuote.types";
-import { clientValidateSupplierFiles } from "../supplierQuotes/SupplierQuotesWorkspace";
+import type { SupplierQuote, SupplierQuoteAttachment, SupplierQuoteDocumentKind, SupplierQuoteRevision } from "../supplierQuoteImport/domain/supplierQuote.types";
+import { clientValidateSupplierFiles } from "../supplierQuotes/supplierFileValidation";
 import { supplierQuotesApi } from "../supplierQuotes/api/supplierQuotesApi";
 import "../supplierQuotes/supplierQuotes.css";
 
@@ -12,6 +12,8 @@ export default function EstimateSupplierDocuments({ estimateId, estimateRef }: {
   const [supplier, setSupplier] = useState("");
   const [quotationReference, setQuotationReference] = useState("");
   const [revision, setRevision] = useState("");
+  const [currency, setCurrency] = useState("EUR");
+  const [documentKind, setDocumentKind] = useState<SupplierQuoteDocumentKind>("complete_quotation");
   const [files, setFiles] = useState<File[]>([]);
   const [supplierFilter, setSupplierFilter] = useState("");
   const [dateFilter, setDateFilter] = useState("");
@@ -44,11 +46,14 @@ export default function EstimateSupplierDocuments({ estimateId, estimateRef }: {
       const quotes = await supplierQuotesApi.listQuotes(estimateId);
       let quote = quotes.find((item) => item.supplierName.trim().toLowerCase() === supplier.trim().toLowerCase());
       if (!quote) quote = await supplierQuotesApi.createQuote(estimateId, { supplierName: supplier.trim(), supplierCode: `DOC-${Date.now().toString(36).toUpperCase()}` });
-      const createdRevision = await supplierQuotesApi.createRevision(estimateId, quote.id, {
+      const revisions = await supplierQuotesApi.listRevisions(estimateId, quote.id);
+      let targetRevision = revisions.find((item) => item.supplierQuotationNumber === quotationReference.trim() && (item.supplierRevision || "") === revision.trim());
+      if (!targetRevision) targetRevision = await supplierQuotesApi.createRevision(estimateId, quote.id, {
         supplierQuotationNumber: quotationReference.trim(), supplierRevision: revision.trim(),
-        fullQuotationReference: quotationReference.trim() || `Uploaded ${new Date().toISOString().slice(0, 10)}`, currency: "GBP", vatStatus: "unknown",
+        fullQuotationReference: quotationReference.trim() || `Uploaded ${new Date().toISOString().slice(0, 10)}`, currency: currency.trim().toUpperCase(), vatStatus: "unknown",
       });
-      await supplierQuotesApi.uploadAttachments(estimateId, quote.id, createdRevision.id, files, "original_quote");
+      const role = documentKind === "complete_quotation" || documentKind === "window_schedule" ? "original_quote" : "supporting_document";
+      await supplierQuotesApi.uploadAttachments(estimateId, quote.id, targetRevision.id, files, role, documentKind);
       setFiles([]); setQuotationReference(""); setRevision("");
       await refresh();
       setMessage(`${files.length} supplier document${files.length === 1 ? "" : "s"} uploaded and stored against ${estimateRef}.`);
@@ -61,12 +66,14 @@ export default function EstimateSupplierDocuments({ estimateId, estimateRef }: {
       <label>Supplier<input value={supplier} onChange={(event) => setSupplier(event.target.value)} /></label>
       <label>Quotation / reference<input value={quotationReference} onChange={(event) => setQuotationReference(event.target.value)} /></label>
       <label>Revision<input value={revision} onChange={(event) => setRevision(event.target.value)} /></label>
+      <label>Currency<input maxLength={3} value={currency} onChange={(event) => setCurrency(event.target.value.toUpperCase())} /></label>
+      <label>Document type<select value={documentKind} onChange={(event)=>setDocumentKind(event.target.value as SupplierQuoteDocumentKind)}><option value="complete_quotation">Complete quotation</option><option value="window_schedule">Window schedule</option><option value="quotation_letter">Quotation letter / total</option><option value="installation_pricing">Installation / additional pricing</option><option value="supporting_document">Supporting document</option></select></label>
       <input aria-label="Supplier documents" type="file" multiple accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => setFiles(Array.from(event.target.files || []))} />
       {fileIssues.map((issue) => <div className="supplier-upload-error" key={issue}>{issue}</div>)}
       <button disabled={busy || !supplier.trim() || fileIssues.length > 0} onClick={() => void upload()}>{busy ? "Uploading…" : "Upload supplier documents"}</button>
     </div>
     {message ? <p role="status" className="supplier-upload-status">{message}</p> : null}
     <div className="supplier-import-lab-heading"><h3>Stored supplier documents</h3><div className="qs-migrated-241"><select aria-label="Filter by supplier" value={supplierFilter} onChange={(event) => setSupplierFilter(event.target.value)}><option value="">All suppliers</option>{suppliers.map((name) => <option key={name}>{name}</option>)}</select><input aria-label="Filter by upload date" type="date" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} /></div></div>
-    {!visible.length ? <p>No stored supplier documents match the current filters.</p> : <div className="supplier-review-scroll"><table><thead><tr><th>Supplier</th><th>Filename</th><th>Upload date</th><th>Quotation / reference</th><th>Revision</th></tr></thead><tbody>{visible.map(({ quote, revision: itemRevision, attachment }) => <tr key={attachment.id}><td>{quote.supplierName}</td><td>{attachment.originalFileName}</td><td>{new Date(attachment.createdAt).toLocaleString()}</td><td>{itemRevision.fullQuotationReference || itemRevision.supplierQuotationNumber || "—"}</td><td>{itemRevision.supplierRevision || "—"}</td></tr>)}</tbody></table></div>}
+    {!visible.length ? <p>No stored supplier documents match the current filters.</p> : <div className="supplier-review-scroll"><table><thead><tr><th>Supplier</th><th>Quotation</th><th>Filename</th><th>Type</th><th>Upload date</th><th>Revision</th><th>Status</th></tr></thead><tbody>{visible.map(({ quote, revision: itemRevision, attachment }) => <tr key={attachment.id}><td>{quote.supplierName}</td><td>{itemRevision.fullQuotationReference || itemRevision.supplierQuotationNumber || "—"}</td><td>{attachment.originalFileName}</td><td>{attachment.documentKind.replaceAll("_"," ")}</td><td>{new Date(attachment.createdAt).toLocaleString()}</td><td>{itemRevision.supplierRevision || "—"}</td><td>{itemRevision.isLatest ? "Latest" : "Superseded"}</td></tr>)}</tbody></table></div>}
   </section>;
 }

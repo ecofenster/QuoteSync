@@ -1,14 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import type { SupplierQuote, SupplierQuoteAttachment, SupplierQuoteRevision } from "../supplierQuoteImport/domain/supplierQuote.types";
 import { supplierQuotesApi } from "./api/supplierQuotesApi";
+import { clientValidateSupplierFiles } from "./supplierFileValidation";
 import "./supplierQuotes.css";
 
 export type SupplierQuotesWorkspaceProps = { estimateId: string | null; estimateReference: string };
-export function clientValidateSupplierFiles(files: readonly Pick<File, "name" | "size">[]) {
-  const issues: string[] = []; if (!files.length) issues.push("Select at least one PDF or DOCX file."); if (files.length > 10) issues.push("Select no more than 10 files.");
-  let total = 0; for (const file of files) { total += file.size; if (!/\.(pdf|docx)$/i.test(file.name)) issues.push(`${file.name}: only PDF and DOCX are allowed.`); if (!file.size) issues.push(`${file.name}: empty files are not allowed.`); if (file.size > 50 * 1024 * 1024) issues.push(`${file.name}: exceeds 50 MB.`); }
-  if (total > 150 * 1024 * 1024) issues.push("Combined file size exceeds 150 MB."); return issues;
-}
 const sizeLabel = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 export default function SupplierQuotesWorkspace({ estimateId, estimateReference }: SupplierQuotesWorkspaceProps) {
   const [quotes, setQuotes] = useState<SupplierQuote[]>([]); const [quoteId, setQuoteId] = useState(""); const [revisions, setRevisions] = useState<SupplierQuoteRevision[]>([]); const [revisionId, setRevisionId] = useState(""); const [attachments, setAttachments] = useState<SupplierQuoteAttachment[]>([]); const [supplierName, setSupplierName] = useState(""); const [supplierCode, setSupplierCode] = useState(""); const [quotationNumber, setQuotationNumber] = useState(""); const [supplierRevision, setSupplierRevision] = useState(""); const [currency, setCurrency] = useState("GBP"); const [files, setFiles] = useState<File[]>([]); const [role, setRole] = useState("original_quote"); const [busy, setBusy] = useState(false); const [message, setMessage] = useState("");

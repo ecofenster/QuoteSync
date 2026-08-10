@@ -145,7 +145,7 @@ test('estimate commercial preview defaults to Project Costing with a storage-onl
   assert.match(importControl, /extractAndLoad/);
   assert.match(importControl, /Existing manual lines are retained/);
   assert.match(supplierRoutes, /extract-and-load/);
-  assert.match(supplierRoutes, /refreshExchangeRate\(scenarioId\)/);
+  assert.match(supplierRoutes, /ensureSupplierRevisionExchangeRates\(scenarioId,result\.documents\.map\(item=>item\.revisionId\)\)/);
   assert.match(calculator, /estimateId \? "manual" : "supplier_import"/);
   assert.match(calculator, /ensureEstimateCosting/);
   assert.match(calculator, /Project Costing`,currency:"GBP",packageType:"supply_only"/);
@@ -217,4 +217,33 @@ test('selected estimate-owned supplier documents create queued extraction runs o
     assert.deepEqual(runs[0].attachmentIds, ['doc-1', 'doc-2']);
     assert.equal((await db.get('SELECT COUNT(*) count FROM supplier_quote_import_run_attachments')).count, 2);
   } finally { await db.close(); await fs.rm(root, { recursive: true, force: true }); }
+});
+
+test('supplier quotation revisions retain history and expose one latest revision per supplier quote', async () => {
+  const { root, db } = await setup();
+  try {
+    const service=createSupplierQuotesService(db); const quote=await service.createQuote('est-a',{supplierCode:'ZYLE',supplierName:'Zyle Fenster'});
+    const first=await service.createRevision('est-a',quote.id,{supplierQuotationNumber:'343117',supplierRevision:'1',currency:'EUR'}); const second=await service.createRevision('est-a',quote.id,{supplierQuotationNumber:'343117',supplierRevision:'2',currency:'EUR'});
+    const revisions=await service.listRevisions('est-a',quote.id); assert.equal(revisions.length,2); assert.equal(revisions.find((item:any)=>item.id===first.id).lifecycleStatus,'superseded'); assert.equal(revisions.find((item:any)=>item.id===first.id).supersededByRevisionId,second.id); assert.equal(revisions.find((item:any)=>item.id===first.id).isLatest,false); assert.equal(revisions.find((item:any)=>item.id===second.id).isLatest,true);
+  } finally { await db.close(); await fs.rm(root,{recursive:true,force:true}); }
+});
+
+test('multi-document schedules and quotation totals form one revision run without invented prices', async () => {
+  const { root, db } = await setup();
+  try {
+    const calculator=createProjectCalculatorLabService(db,{exchangeRateProvider:async()=>({provider:'test',quotedAt:'2026-08-08T00:00:00.000Z',rawRate:'0.86'})});
+    const scenario=await calculator.createScenario({estimateId:'est-a',origin:'manual',name:'Aggregated costing',currency:'EUR',packageCode:'supply_only'});
+    const row={ordinal:0,displayReference:'W7, W8',originalReferenceText:'W7, W8',supplierReferenceTokens:['W7','W8'],quantity:2,widthMm:610,heightMm:1200,unitPrice:null,totalPrice:null,currency:'EUR',sourcePages:[1],sourceTrace:[],warnings:[],status:'extracted',originalExtractedSnapshot:{}};
+    const service=createSupplierQuotesService(db,{attachmentRoot:root,extractDocument:async(_path,metadata)=>({textAvailable:true,warnings:[],documentId:metadata.id}),parseFields:(document:any)=>({rows:document.documentId==='schedule'?[row]:[],warnings:[]}),parseSummary:(document:any)=>({summary:document.documentId==='letter'?{productSubtotal:null,additionalItemsSubtotal:null,deliveryTotal:null,vatTotal:null,finalSupplierTotal:'18250.00'}:null,additionalItems:document.documentId==='installation'?[{ordinal:0,category:'other',originalDescription:'Installation pricing',normalizedLabel:'Installation pricing',quantity:null,unitPrice:null,totalPrice:'1200.00',currency:'EUR',sourceTrace:[],warnings:[],originalExtractedSnapshot:{}}]:[],warnings:[]})});
+    const quote=await service.createQuote('est-a',{supplierCode:'GLASS',supplierName:'Glassworx'}); const revision=await service.createRevision('est-a',quote.id,{supplierQuotationNumber:'GW-10',supplierRevision:'2',currency:'EUR'});
+    await service.insertAttachments('est-a',quote.id,revision.id,[
+      {id:'schedule',role:'original_quote',documentKind:'window_schedule',originalFileName:'schedule.pdf',mediaType:'application/pdf',sizeBytes:1,sha256:'a'.repeat(64),storageKey:'schedule',parserEligible:true,createdAt:new Date().toISOString()},
+      {id:'letter',role:'supporting_document',documentKind:'quotation_letter',originalFileName:'letter.pdf',mediaType:'application/pdf',sizeBytes:1,sha256:'b'.repeat(64),storageKey:'letter',parserEligible:true,createdAt:new Date().toISOString()},
+      {id:'installation',role:'supporting_document',documentKind:'installation_pricing',originalFileName:'installation.pdf',mediaType:'application/pdf',sizeBytes:1,sha256:'c'.repeat(64),storageKey:'installation',parserEligible:true,createdAt:new Date().toISOString()},
+    ]);
+    const request=['schedule','letter','installation'].map(attachmentId=>({quoteId:quote.id,revisionId:revision.id,attachmentId})); const first=await service.extractAndLoadSupplierCosts('est-a',scenario.id,request); const second=await service.extractAndLoadSupplierCosts('est-a',scenario.id,request);
+    assert.equal(first.documents.length,1); assert.deepEqual(first.documents[0].attachmentIds,['schedule','letter','installation']); assert.equal(first.documents[0].loadedProducts,1); assert.equal(first.documents[0].loadedCosts,1); assert.equal(second.documents[0].loadedProducts,0); assert.equal(second.documents[0].loadedCosts,0);
+    const costing=await calculator.getScenario(scenario.id); const imported=costing.products.find((item:any)=>item.displayReference==='W7, W8'); assert.equal(imported.quantity,2); assert.equal(imported.totalPrice,null); assert.equal(imported.sourceSnapshot.sourceDocuments.length,1); assert.equal(costing.supplierSummary.finalSupplierTotal,'18250.00');
+    const runAttachments=await db.get('SELECT COUNT(*) count FROM supplier_quote_import_run_attachments WHERE import_run_id=?',first.documents[0].runId); assert.equal(runAttachments.count,3);
+  } finally { await db.close(); await fs.rm(root,{recursive:true,force:true}); }
 });

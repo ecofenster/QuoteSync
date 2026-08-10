@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { clientValidateSupplierFiles } from "../supplierQuotes/SupplierQuotesWorkspace";
+import { clientValidateSupplierFiles } from "../supplierQuotes/supplierFileValidation";
 import { supplierImportLabApi, type CreateLabSessionInput } from "./api/supplierImportLabApi";
 import { changedFields, exactTotalMatches, friendlyRunStatus, rowToDraft, validateRowDraft, type ReviewField, type ReviewIssue } from "./domain/supplierImportLabReview";
 import type { SupplierImportLabAdditionalCostItem, SupplierImportLabAttachment, SupplierImportLabAttachmentRole, SupplierImportLabCommercialSummary, SupplierImportLabExtractedRow, SupplierImportLabExtractionRun, SupplierImportLabRowDraft, SupplierImportLabSession } from "./domain/supplierImportLab.types";

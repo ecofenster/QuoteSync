@@ -65,12 +65,14 @@ export type SupplierQuoteRevision = Readonly<{
   vatTotal: Money | null;
   finalSupplierTotal: Money | null;
   lifecycleStatus: SupplierQuoteRevisionLifecycleStatus;
+  isLatest: boolean;
   createdAt: ISODateTime;
   supersededAt: ISODateTime | null;
   supersededByRevisionId: SupplierQuoteRevisionId | null;
 }>;
 
 export type SupplierQuoteAttachmentRole = "original_quote" | "supplier_drawing" | "supporting_document" | "derived_artifact";
+export type SupplierQuoteDocumentKind = "complete_quotation" | "window_schedule" | "quotation_letter" | "installation_pricing" | "supporting_document";
 export type SupplierQuoteArtifactType = "extracted_text" | "page_image" | "position_drawing" | "normalized_document" | "other";
 
 export type SupplierQuoteAttachment = {
@@ -78,12 +80,15 @@ export type SupplierQuoteAttachment = {
   estimateId: EstimateId;
   revisionId: SupplierQuoteRevisionId;
   role: SupplierQuoteAttachmentRole;
+  documentKind: SupplierQuoteDocumentKind;
   originalFileName: string;
   mediaType: string;
   sizeBytes: number;
   sha256: string;
   storageKey: string;
   parserEligible: boolean;
+  uploadedBy: string;
+  uploadOrder: number;
   createdAt: ISODateTime;
   derivedFromAttachmentId: SupplierQuoteAttachmentId | null;
   artifactType: SupplierQuoteArtifactType | null;

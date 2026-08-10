@@ -201,6 +201,9 @@ const tables = [
     derived_from_attachment_id TEXT,
     artifact_type TEXT,
     extractor_version TEXT,
+    document_kind TEXT NOT NULL DEFAULT 'complete_quotation',
+    uploaded_by TEXT NOT NULL DEFAULT 'local-admin',
+    upload_order INTEGER NOT NULL DEFAULT 0,
     UNIQUE (id, estimate_id),
     CHECK ((role = 'derived_artifact' AND derived_from_attachment_id IS NOT NULL AND artifact_type IS NOT NULL) OR (role <> 'derived_artifact' AND artifact_type IS NULL)),
     FOREIGN KEY (revision_id, estimate_id) REFERENCES supplier_quote_revisions(id, estimate_id) ON DELETE CASCADE,
@@ -536,6 +539,45 @@ const tables = [
     FOREIGN KEY (source_attachment_id) REFERENCES supplier_quote_attachments(id),
     FOREIGN KEY (source_revision_id) REFERENCES supplier_quote_revisions(id)
   )`,
+  `CREATE TABLE IF NOT EXISTS project_calculator_supplier_quote_revisions (
+    scenario_id TEXT NOT NULL,
+    supplier_quote_id TEXT NOT NULL,
+    revision_id TEXT NOT NULL,
+    import_run_id TEXT NOT NULL,
+    fx_snapshot_id TEXT,
+    currency TEXT NOT NULL,
+    linked_at TEXT NOT NULL,
+    PRIMARY KEY (scenario_id, revision_id),
+    FOREIGN KEY (scenario_id) REFERENCES project_calculator_lab_scenarios(id) ON DELETE CASCADE,
+    FOREIGN KEY (supplier_quote_id) REFERENCES supplier_quotes(id),
+    FOREIGN KEY (revision_id) REFERENCES supplier_quote_revisions(id),
+    FOREIGN KEY (import_run_id) REFERENCES supplier_quote_import_runs(id),
+    FOREIGN KEY (fx_snapshot_id) REFERENCES project_calculator_supplier_fx_snapshots(id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS project_calculator_supplier_fx_snapshots (
+    id TEXT PRIMARY KEY,
+    scenario_id TEXT NOT NULL,
+    supplier_quote_revision_id TEXT NOT NULL,
+    import_run_id TEXT NOT NULL,
+    scenario_revision INTEGER NOT NULL,
+    supplier_currency TEXT NOT NULL,
+    target_currency TEXT NOT NULL DEFAULT 'GBP',
+    provider TEXT NOT NULL,
+    provider_timestamp TEXT NOT NULL,
+    supplier_to_gbp_live_rate TEXT NOT NULL,
+    rounded_up_rate TEXT NOT NULL,
+    uplift_amount TEXT NOT NULL,
+    calculated_selling_rate TEXT NOT NULL,
+    supplier_to_gbp_selling_rate TEXT NOT NULL,
+    adjustment_enabled INTEGER NOT NULL CHECK (adjustment_enabled IN (0,1)),
+    manually_overridden INTEGER NOT NULL DEFAULT 0 CHECK (manually_overridden IN (0,1)),
+    override_reason TEXT,
+    overridden_at TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (scenario_id) REFERENCES project_calculator_lab_scenarios(id) ON DELETE CASCADE,
+    FOREIGN KEY (supplier_quote_revision_id) REFERENCES supplier_quote_revisions(id),
+    FOREIGN KEY (import_run_id) REFERENCES supplier_quote_import_runs(id)
+  )`,
   `CREATE TABLE IF NOT EXISTS project_calculator_lab_package_items (
     id TEXT PRIMARY KEY,
     scenario_id TEXT NOT NULL,
@@ -703,6 +745,8 @@ const indexes = [
   'CREATE INDEX IF NOT EXISTS idx_calculator_lab_costs_scenario ON project_calculator_lab_supplier_costs(scenario_id)',
   'CREATE INDEX IF NOT EXISTS idx_calculator_estimate_rows_scenario ON project_calculator_estimate_product_rows(scenario_id, source_attachment_id)',
   'CREATE INDEX IF NOT EXISTS idx_calculator_estimate_costs_scenario ON project_calculator_estimate_supplier_costs(scenario_id, source_attachment_id)',
+  'CREATE INDEX IF NOT EXISTS idx_calculator_quote_revisions_scenario ON project_calculator_supplier_quote_revisions(scenario_id, linked_at)',
+  'CREATE INDEX IF NOT EXISTS idx_calculator_supplier_fx_scenario ON project_calculator_supplier_fx_snapshots(scenario_id, supplier_quote_revision_id, created_at)',
   'CREATE INDEX IF NOT EXISTS idx_calculator_lab_package_scenario ON project_calculator_lab_package_items(scenario_id, package_code)',
   'CREATE INDEX IF NOT EXISTS idx_calculator_lab_routes_scenario ON project_calculator_lab_route_snapshots(scenario_id, direction, calculated_at)',
   'CREATE INDEX IF NOT EXISTS idx_calculator_lab_manual_rows_scenario ON project_calculator_lab_manual_product_rows(scenario_id, created_at)',
@@ -766,6 +810,20 @@ export async function initializeSupplierCommercialSchema(db) {
   if(!importSessionColumns.some(column=>column.name==='estimate_id'))await db.exec('ALTER TABLE supplier_import_lab_sessions ADD COLUMN estimate_id TEXT');
   const importAttachmentColumns=await db.all('PRAGMA table_info(supplier_import_lab_attachments)');
   if(!importAttachmentColumns.some(column=>column.name==='upload_order'))await db.exec('ALTER TABLE supplier_import_lab_attachments ADD COLUMN upload_order INTEGER NOT NULL DEFAULT 0');
+  const supplierQuoteAttachmentColumns=await db.all('PRAGMA table_info(supplier_quote_attachments)');
+  if(!supplierQuoteAttachmentColumns.some(column=>column.name==='document_kind'))await db.exec("ALTER TABLE supplier_quote_attachments ADD COLUMN document_kind TEXT NOT NULL DEFAULT 'complete_quotation'");
+  if(!supplierQuoteAttachmentColumns.some(column=>column.name==='uploaded_by'))await db.exec("ALTER TABLE supplier_quote_attachments ADD COLUMN uploaded_by TEXT NOT NULL DEFAULT 'local-admin'");
+  if(!supplierQuoteAttachmentColumns.some(column=>column.name==='upload_order'))await db.exec('ALTER TABLE supplier_quote_attachments ADD COLUMN upload_order INTEGER NOT NULL DEFAULT 0');
+  const calculatorQuoteRevisionColumns=await db.all('PRAGMA table_info(project_calculator_supplier_quote_revisions)');
+  if(!calculatorQuoteRevisionColumns.some(column=>column.name==='fx_snapshot_id'))await db.exec('ALTER TABLE project_calculator_supplier_quote_revisions ADD COLUMN fx_snapshot_id TEXT');
+  const estimateProductFxColumns=await db.all('PRAGMA table_info(project_calculator_estimate_product_rows)');
+  if(!estimateProductFxColumns.some(column=>column.name==='fx_snapshot_id'))await db.exec('ALTER TABLE project_calculator_estimate_product_rows ADD COLUMN fx_snapshot_id TEXT');
+  if(!estimateProductFxColumns.some(column=>column.name==='purchase_amount_gbp'))await db.exec('ALTER TABLE project_calculator_estimate_product_rows ADD COLUMN purchase_amount_gbp TEXT');
+  if(!estimateProductFxColumns.some(column=>column.name==='selling_amount_gbp'))await db.exec('ALTER TABLE project_calculator_estimate_product_rows ADD COLUMN selling_amount_gbp TEXT');
+  const estimateCostFxColumns=await db.all('PRAGMA table_info(project_calculator_estimate_supplier_costs)');
+  if(!estimateCostFxColumns.some(column=>column.name==='fx_snapshot_id'))await db.exec('ALTER TABLE project_calculator_estimate_supplier_costs ADD COLUMN fx_snapshot_id TEXT');
+  if(!estimateCostFxColumns.some(column=>column.name==='purchase_amount_gbp'))await db.exec('ALTER TABLE project_calculator_estimate_supplier_costs ADD COLUMN purchase_amount_gbp TEXT');
+  if(!estimateCostFxColumns.some(column=>column.name==='selling_amount_gbp'))await db.exec('ALTER TABLE project_calculator_estimate_supplier_costs ADD COLUMN selling_amount_gbp TEXT');
   const calculatorScenarioOwnershipColumns=await db.all('PRAGMA table_info(project_calculator_lab_scenarios)');
   if(!calculatorScenarioOwnershipColumns.some(column=>column.name==='estimate_id'))await db.exec('ALTER TABLE project_calculator_lab_scenarios ADD COLUMN estimate_id TEXT');
   const labRowColumns = await db.all('PRAGMA table_info(supplier_import_lab_extracted_rows)');
@@ -791,6 +849,8 @@ export const supplierCommercialTableNames = Object.freeze([
   'pricing_scenarios', 'calculator_snapshots',
   'project_calculator_lab_scenarios', 'project_calculator_lab_product_rows',
   'project_calculator_estimate_product_rows', 'project_calculator_estimate_supplier_costs',
+  'project_calculator_supplier_quote_revisions',
+  'project_calculator_supplier_fx_snapshots',
   'project_calculator_lab_supplier_costs', 'project_calculator_lab_package_items',
   'project_calculator_lab_route_snapshots',
   'project_calculator_lab_manual_product_rows', 'project_calculator_lab_manual_cost_lines',
