@@ -40,7 +40,7 @@ export default function ProjectCalculatorLabWorkspace({initialScenarioId="",esti
   const [manualDistance, setManualDistance] = useState(""); const [manualDuration, setManualDuration] = useState(""); const [overrideReason, setOverrideReason] = useState("");
   const [message, setMessage] = useState(""); const [messageKind, setMessageKind] = useState<"success" | "error" | "info">("info"); const [busy, setBusy] = useState(false); const [loaded, setLoaded] = useState(false);
   const creationWorkflow = useRef(createScenarioCreationWorkflow(projectCalculatorLabApi.createScenario));
-  const config = { googleMapsApiKey: String(import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""), what3wordsApiKey: String(import.meta.env.VITE_WHAT3WORDS_API_KEY || "") };
+  const config = { googleMapsApiKey: "server-managed", what3wordsApiKey: "server-managed" };
   const refresh = async () => { const [nextSources, nextScenarios] = await Promise.all([projectCalculatorLabApi.listImportSources(estimateId), projectCalculatorLabApi.listScenarios(estimateId)]); setSources(nextSources); setScenarios(nextScenarios); setLoaded(true); };
   useEffect(() => { void refresh().catch((error) => { setLoaded(true); setMessageKind("error"); setMessage(visibleApiError(error)); }); }, [estimateId]);
   useEffect(()=>{if(initialScenarioId)void projectCalculatorLabApi.getScenario(initialScenarioId,estimateId).then(setActive).catch(error=>{setMessageKind("error");setMessage(visibleApiError(error))})},[initialScenarioId,estimateId]);

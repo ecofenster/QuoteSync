@@ -1,5 +1,6 @@
 import express from 'express';
 import { dbPromise } from '../db.js';
+import { isIntegrationSecretKey } from '../features/integrations/integrationService.js';
 
 const router = express.Router();
 
@@ -30,7 +31,7 @@ router.get('/', async (_req, res) => {
       `
     );
 
-    return res.json(rows.map(parseSettingRow));
+    return res.json(rows.filter((row) => !isIntegrationSecretKey(row.key)).map(parseSettingRow));
   } catch (error) {
     console.error('Failed to load settings', error);
     return res.status(500).json({ error: 'Failed to load settings' });
@@ -52,7 +53,7 @@ router.get('/:group', async (req, res) => {
       [groupName]
     );
 
-    return res.json(rows.map(parseSettingRow));
+    return res.json(rows.filter((row) => !isIntegrationSecretKey(row.key)).map(parseSettingRow));
   } catch (error) {
     console.error('Failed to load settings group', error);
     return res.status(500).json({ error: 'Failed to load settings group' });
@@ -68,6 +69,9 @@ router.post('/', async (req, res) => {
 
     if (!key) {
       return res.status(400).json({ error: 'key is required' });
+    }
+    if (isIntegrationSecretKey(key)) {
+      return res.status(403).json({ error: 'Integration credentials are managed in Administration → Integrations' });
     }
 
     await db.run(
@@ -108,6 +112,9 @@ router.put('/:key', async (req, res) => {
 
     if (!key) {
       return res.status(400).json({ error: 'key is required' });
+    }
+    if (isIntegrationSecretKey(key)) {
+      return res.status(403).json({ error: 'Integration credentials are managed in Administration → Integrations' });
     }
 
     const existing = await db.get(

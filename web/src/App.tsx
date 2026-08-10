@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch, ApiRequestError } from "./services/api/apiClient";
+import { getIntegrationStatuses, type IntegrationStatus } from "./services/integrations/integrationService";
 
 //
 // ===== ESTIMATE API HELPERS =====
@@ -1308,11 +1309,16 @@ export default function App() {
 
   const [systemSettings, setSystemSettings] = useState(() => loadSettings());
   const [topShellPage, setTopShellPage] = useState<TopShellPage>("app");
+  const [integrationStatuses, setIntegrationStatuses] = useState<IntegrationStatus[]>([]);
 
 
   useEffect(() => {
     saveSettings(systemSettings);
   }, [systemSettings]);
+
+  useEffect(() => {
+    void getIntegrationStatuses().then(setIntegrationStatuses).catch(() => setIntegrationStatuses([]));
+  }, []);
 
 
   
@@ -1834,7 +1840,10 @@ export default function App() {
 
 
   const googleMapsApiKey = String((ENV.VITE_GOOGLE_MAPS_API_KEY ?? "")).trim();
-  const what3wordsApiKey = String((ENV.VITE_WHAT3WORDS_API_KEY ?? "")).trim();
+  const googleMapsStatus = integrationStatuses.find((item) => item.provider === "googleMaps");
+  const what3wordsStatus = integrationStatuses.find((item) => item.provider === "what3words");
+  const googleGeocodingAccess = googleMapsStatus?.enabled && googleMapsStatus.configured ? "server-managed" : googleMapsApiKey;
+  const what3wordsApiKey = what3wordsStatus?.enabled && what3wordsStatus.configured ? "server-managed" : String((ENV.VITE_WHAT3WORDS_API_KEY ?? "")).trim();
 
 async function handleWhat3WordsMapPick(lat: number, lng: number) {
   if (!selectedClient || !selectedEstimate) return;
@@ -1855,7 +1864,7 @@ async function handleWhat3WordsMapPick(lat: number, lng: number) {
         resolvedWords = words;
       }
     } else {
-      setWhat3WordsPickerError("what3words API key missing. Add VITE_WHAT3WORDS_API_KEY to .env.local. Coordinates were still captured and saved from this map click.");
+      setWhat3WordsPickerError("what3words is not configured or enabled in Administration → Integrations. Coordinates were still captured and saved from this map click.");
     }
 
     const updatedEstimate: Estimate = mergeEstimateLocationState({
@@ -3045,7 +3054,7 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
           }
 
           try {
-            const resolved = await resolveEstimateLocation(estimate, client, { googleMapsApiKey, what3wordsApiKey });
+            const resolved = await resolveEstimateLocation(estimate, client, { googleMapsApiKey: googleGeocodingAccess, what3wordsApiKey });
             if (resolved) {
               persistResolvedEstimateCoordinates(client.id, estimate, resolved);
             }
@@ -3087,7 +3096,7 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
     return () => {
       cancelled = true;
     };
-  }, [googleMapsApiKey, what3wordsApiKey, installationRowsForBoard, estimateMapRowsForBoard, mapsApiReady]);
+  }, [googleMapsApiKey, googleGeocodingAccess, what3wordsApiKey, installationRowsForBoard, estimateMapRowsForBoard, mapsApiReady]);
 
   useEffect(() => {
     setSelectedMapEstimateId(null);

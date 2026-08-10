@@ -56,6 +56,15 @@
 .admin-copy-width { max-width: 900px; }
 .admin-copy-width--narrow { max-width: 720px; }
 .admin-integrations-list { margin: 0; display: grid; gap: 6px; color: var(--qs-theme-text-secondary); }
+.admin-integrations { display: grid; gap: var(--space-4); }
+.admin-integrations__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: var(--space-4); }
+.admin-integration-card { display: grid; gap: var(--space-4); }
+.admin-integration-card__header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); }
+.admin-integration-card__header h3, .admin-integration-card__header p { margin: 0; }
+.admin-integration-card__header p { margin-top: var(--space-2); color: var(--qs-theme-text-secondary); }
+.admin-integration-card__toggle { display: inline-flex; align-items: center; gap: var(--space-2); font-weight: 600; }
+.admin-integration-card__metadata { color: var(--qs-theme-text-secondary); font-size: var(--qs-type-meta); }
+.admin-integration-card__capabilities { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 
 .admin-sidebar-title {
   font-size: var(--qs-type-meta);

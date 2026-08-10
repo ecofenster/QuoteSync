@@ -63,21 +63,15 @@ function saveCachedLocation(scope: "client" | "estimate", id: string, location: 
   }
 }
 
-async function geocodeWithGoogle(query: string, apiKey: string) {
+async function geocodeWithGoogle(query: string, _apiKey: string) {
   const browserCoords = await geocodeWithGoogleBrowser(query).catch(() => null);
   if (browserCoords) return browserCoords;
-  if (!apiKey) return null;
-
   try {
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&region=GB&key=${encodeURIComponent(apiKey)}`;
-    const response = await fetch(url);
+    const response = await fetch("/api/integrations/googleMaps/geocode", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query }) });
     if (!response.ok) return null;
     const data = await response.json();
-    if (data?.status && data.status !== "OK" && data.status !== "ZERO_RESULTS") return null;
-    const first = data?.results?.[0];
-    const location = first?.geometry?.location;
-    if (!location || typeof location.lat !== "number" || typeof location.lng !== "number") return null;
-    return { lat: location.lat, lng: location.lng };
+    if (typeof data?.lat !== "number" || typeof data?.lng !== "number") return null;
+    return { lat: data.lat, lng: data.lng };
   } catch {
     return null;
   }
@@ -109,16 +103,13 @@ async function geocodeWithGoogleBrowser(query: string) {
   });
 }
 
-async function convertWhat3Words(words: string, apiKey: string) {
-  if (!apiKey) return null;
+async function convertWhat3Words(words: string, _apiKey: string) {
   try {
-    const url = `https://api.what3words.com/v3/convert-to-coordinates?words=${encodeURIComponent(words)}&key=${encodeURIComponent(apiKey)}`;
-    const response = await fetch(url);
+    const response = await fetch("/api/integrations/what3words/coordinates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ words }) });
     if (!response.ok) return null;
     const data = await response.json();
-    const coords = data?.coordinates;
-    if (!coords || typeof coords.lat !== "number" || typeof coords.lng !== "number") return null;
-    return { lat: coords.lat, lng: coords.lng };
+    if (typeof data?.lat !== "number" || typeof data?.lng !== "number") return null;
+    return { lat: data.lat, lng: data.lng };
   } catch {
     return null;
   }
@@ -128,12 +119,9 @@ export async function resolveWhat3WordsCoordinates(words: string, apiKey: string
   return convertWhat3Words(normalizeWhat3Words(words), apiKey);
 }
 
-export async function convertCoordinatesToWhat3Words(lat: number, lng: number, apiKey: string) {
-  if (!apiKey) return "";
+export async function convertCoordinatesToWhat3Words(lat: number, lng: number, _apiKey: string) {
   try {
-    const coordText = `${lat},${lng}`;
-    const url = `https://api.what3words.com/v3/convert-to-3wa?coordinates=${encodeURIComponent(coordText)}&key=${encodeURIComponent(apiKey)}`;
-    const response = await fetch(url);
+    const response = await fetch("/api/integrations/what3words/address", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lat, lng }) });
     if (response.status === 402) return "__W3W_PAID_REQUIRED__";
     if (!response.ok) return "";
     const data = await response.json();

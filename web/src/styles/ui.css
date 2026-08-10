@@ -74,6 +74,37 @@
   border-color: var(--qs-border-standard);
 }
 
+.ui-button--danger {
+  border-color: var(--qs-semantic-error);
+  color: var(--qs-semantic-error);
+}
+
+.ui-action-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.ui-status {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 28px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--qs-border-standard);
+  border-radius: var(--radius-pill);
+  background: var(--qs-bg-surface-elevated);
+  color: var(--qs-theme-text-secondary);
+  font-size: var(--qs-type-meta);
+  font-weight: 700;
+}
+
+.ui-status--success { border-color: var(--qs-success-border); background: var(--qs-success-surface); color: var(--qs-semantic-success); }
+.ui-status--warning { border-color: var(--qs-warning-border); background: var(--qs-warning-surface); color: var(--qs-semantic-warning); }
+.ui-status--error { border-color: var(--qs-error-border); background: var(--qs-error-surface); color: var(--qs-semantic-error); }
+.ui-status--muted { color: var(--qs-theme-text-muted); }
+
 .ui-input,
 .ui-select,
 .ui-textarea {
