@@ -56,6 +56,8 @@ export type SupplierQuoteRevision = Readonly<{
   supplierRevision: string | null;
   fullQuotationReference: string;
   quotationDate: ISODate | null;
+  supplierCustomer?: string | null;
+  projectReference?: string | null;
   customerReference: string | null;
   currency: CurrencyCode;
   vatStatus: VatStatus;
@@ -64,6 +66,7 @@ export type SupplierQuoteRevision = Readonly<{
   deliveryTotal: Money | null;
   vatTotal: Money | null;
   finalSupplierTotal: Money | null;
+  comparisonTotals?: ReadonlyArray<{ classification: "alternative_supplier_subtotal" | "alternative_final_total" | "package_option"; label: string; amount: string; currency: CurrencyCode; includedInSupplierTotal: boolean; selected?: boolean }>;
   lifecycleStatus: SupplierQuoteRevisionLifecycleStatus;
   isLatest: boolean;
   createdAt: ISODateTime;
@@ -138,6 +141,12 @@ export type SupplierQuotePosition = {
   id: SupplierQuotePositionId;
   estimateId: EstimateId;
   revisionId: SupplierQuoteRevisionId;
+  /** Immutable zero-based order in the authoritative supplier document. */
+  sourceSequence?: number;
+  classification?: "standard" | "alternative" | "excluded";
+  includedInSupplierTotal?: boolean;
+  alternativeToReference?: string | null;
+  classificationEvidence?: string | null;
   displayReference: string;
   supplierReferenceTokens: string[];
   quantity: number;

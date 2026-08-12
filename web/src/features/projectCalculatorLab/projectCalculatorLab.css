@@ -24,6 +24,117 @@
   gap: 6px;
 }
 
+.supplier-commercial-review {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.supplier-commercial-review__heading,
+.supplier-commercial-review__supplier > header,
+.supplier-package-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.supplier-commercial-review__heading p,
+.supplier-commercial-review__supplier small {
+  margin: 0;
+  color: var(--qs-text-muted);
+}
+
+.supplier-commercial-review__supplier {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--qs-border-subtle);
+}
+
+.supplier-commercial-review__supplier > header > div {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.supplier-package-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: var(--space-3);
+}
+
+.supplier-package-option {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  color: var(--qs-theme-text);
+  text-align: left;
+  background: var(--qs-bg-card);
+  border: 1px solid var(--qs-border-standard);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.supplier-package-option:hover,
+.supplier-package-option.is-selected {
+  border-color: var(--qs-theme-primary);
+  background: var(--qs-bg-selected);
+}
+
+.supplier-package-option > span {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.supplier-package-option > span:last-child {
+  text-align: right;
+}
+
+.supplier-package-summary {
+  padding: var(--space-3);
+  background: var(--qs-commercial-surface);
+  border-radius: var(--radius-md);
+}
+
+.supplier-package-summary span {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.supplier-commercial-review__advanced {
+  padding-top: var(--space-2);
+}
+
+.supplier-commercial-review__advanced summary {
+  cursor: pointer;
+  color: var(--qs-theme-text-secondary);
+  font-weight: 600;
+}
+
+.supplier-project-discount {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(130px, .65fr) minmax(170px, .8fr) auto;
+  gap: var(--space-2);
+  align-items: end;
+  padding: var(--space-2) 0;
+}
+
+.supplier-project-discount label,
+.supplier-project-discount span {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.supplier-project-discount small,
+.costing-sheet__client-discount small {
+  color: var(--qs-theme-text-secondary);
+}
+
+.supplier-commercial-review__evidence {
+  display: block;
+}
+
 .calculator-lab__scenario-list,
 .calculator-lab__metrics,
 .calculator-lab__tabs {
@@ -351,6 +462,33 @@
 .costing-sheet__summary-categories b,
 .costing-sheet__summary-cost b,
 .costing-sheet__summary-profit b { font-variant-numeric: tabular-nums; }
+.costing-sheet__client-discount {
+  align-items: center;
+  padding-block: var(--space-1);
+}
+.costing-sheet__client-discount > span:first-child {
+  display: grid;
+}
+.costing-sheet__client-discount-controls {
+  display: grid;
+  grid-template-columns: 62px minmax(72px, 1fr) auto;
+  gap: var(--space-1);
+  align-items: center;
+}
+.costing-sheet__client-discount-controls .ui-input {
+  min-width: 0;
+}
+.costing-sheet__client-discount > b {
+  color: var(--qs-semantic-danger);
+}
+.costing-sheet__client-discount > b small {
+  display: block;
+  text-align: right;
+}
+.costing-sheet__products-after-discount {
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--qs-border-standard);
+}
 .costing-sheet__summary-cost,
 .costing-sheet__summary-profit { padding-left: 24px; border-left: 1px solid var(--qs-border-standard); }
 .costing-sheet__summary-cost > div,
@@ -394,6 +532,9 @@
 }
 
 @media (max-width: 850px) {
+  .supplier-project-discount { grid-template-columns: 1fr 1fr; }
+  .costing-sheet__client-discount { align-items: start; flex-wrap: wrap; }
+  .costing-sheet__client-discount-controls { grid-template-columns: 58px minmax(68px, 1fr) auto; }
   .project-costing__layout { grid-template-columns: 1fr; }
   .project-costing__sidebar { display: grid; grid-template-columns: 1fr 1fr; border-right: 0; border-bottom: 1px solid var(--qs-border-standard); }
   .project-costing__session { margin: 0; }
@@ -417,6 +558,9 @@
 }
 
 @media (max-width: 560px) {
+  .supplier-project-discount { grid-template-columns: 1fr; }
+  .costing-sheet__client-discount { display: grid; }
+  .costing-sheet__client-discount-controls { grid-template-columns: 58px 1fr auto; }
   .project-costing__sidebar { grid-template-columns: 1fr; }
   .project-costing__topbar .ui-button:not(.project-costing__more) { display: none; }
   .costing-sheet { padding: 14px 9px; }

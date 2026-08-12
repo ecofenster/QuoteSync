@@ -48,5 +48,5 @@ test('source validation is mode-specific and estimate mode explains unavailabili
 
 test('UI exposes all creation choices and manual product/cost entry', async () => {
   const ui = await readFile('src/features/projectCalculatorLab/ProjectCalculatorLabWorkspace.tsx', 'utf8');
-  for (const text of ['Supplier quotation import', 'QuoteSync generated estimate — unavailable', 'Manual Entry', 'Add manual product', 'Add manual cost', 'manual evidence, not supplier-extracted evidence']) assert.match(ui, new RegExp(text));
+  for (const text of ['Supplier quotation import', 'QuoteSuite generated estimate — unavailable', 'Manual Entry', 'Add manual product', 'Add manual cost', 'manual evidence, not supplier-extracted evidence']) assert.match(ui, new RegExp(text));
 });

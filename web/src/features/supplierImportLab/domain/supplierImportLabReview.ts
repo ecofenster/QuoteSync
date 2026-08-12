@@ -6,7 +6,7 @@ const decimal = /^(?:0|[1-9]\d*)(?:\.\d+)?$/;
 const integer = /^[1-9]\d*$/;
 
 export function rowToDraft(row: SupplierImportLabExtractedRow): SupplierImportLabRowDraft {
-  return { rowId: row.id, displayReference: row.displayReference ?? "", widthMm: row.widthMm == null ? "" : String(row.widthMm), heightMm: row.heightMm == null ? "" : String(row.heightMm), quantity: row.quantity == null ? "" : String(row.quantity), unitPrice: row.unitPrice ?? "", totalPrice: row.totalPrice ?? "", selectedForFutureUse: row.selectedForFutureUse && row.status !== "rejected" };
+  return { rowId: row.id, displayReference: row.displayReference ?? "", widthMm: row.widthMm == null ? "" : String(row.widthMm), heightMm: row.heightMm == null ? "" : String(row.heightMm), quantity: row.quantity == null ? "" : String(row.quantity), unitPrice: row.unitPrice ?? "", totalPrice: row.totalPrice ?? "", isAlternative: row.classification === "alternative", selectedForFutureUse: row.selectedForFutureUse && row.status !== "rejected" };
 }
 export function validateRowDraft(draft: SupplierImportLabRowDraft, status = "extracted"): ReviewIssue[] {
   const issues: ReviewIssue[] = [];
@@ -17,7 +17,7 @@ export function validateRowDraft(draft: SupplierImportLabRowDraft, status = "ext
   return issues;
 }
 export function changedFields(row: SupplierImportLabExtractedRow, draft: SupplierImportLabRowDraft): ReviewField[] {
-  const saved = rowToDraft(row); return (["displayReference", "widthMm", "heightMm", "quantity", "unitPrice", "totalPrice", "selectedForFutureUse"] as ReviewField[]).filter((field) => saved[field] !== draft[field]);
+  const saved = rowToDraft(row); return (["displayReference", "widthMm", "heightMm", "quantity", "unitPrice", "totalPrice", "isAlternative", "selectedForFutureUse"] as ReviewField[]).filter((field) => saved[field] !== draft[field]);
 }
 export function exactTotalMatches(draft: SupplierImportLabRowDraft) {
   if (!decimal.test(draft.unitPrice) || !decimal.test(draft.totalPrice) || !integer.test(draft.quantity)) return true;

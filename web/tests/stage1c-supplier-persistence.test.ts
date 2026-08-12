@@ -127,3 +127,23 @@ test("deleting one supplier quote cascades only that quote's evidence", async (t
   assert.equal((await db.get<{ count: number }>("SELECT COUNT(*) count FROM supplier_quote_revisions WHERE id='revision-a'"))?.count, 0);
   assert.equal((await db.get<{ count: number }>("SELECT COUNT(*) count FROM supplier_quote_revisions WHERE id='revision-b'"))?.count, 1);
 });
+
+test("document metadata, attachment order and position commercial source order round-trip", async (t) => {
+  const db = await database(t); const repository = createSupplierQuoteRepository(db);
+  await repository.createQuote(quote("quote"));
+  await repository.createRevision({ ...revision("revision", "quote", 0), supplierCustomer: "Eco Fenster", projectReference: "The Aviary" });
+  const schedule = { ...attachment("schedule", "revision"), documentKind: "window_schedule" as const, uploadedBy: "user", uploadOrder: 0 };
+  const covering = { ...attachment("covering", "revision"), documentKind: "quotation_letter" as const, uploadedBy: "user", uploadOrder: 1 };
+  await repository.createAttachment(covering); await repository.createAttachment(schedule);
+  const base = { ...position("base", "revision", "W0.04", ["W0.04"], 1), sourceSequence: 3, classification: "standard" as const, includedInSupplierTotal: true, alternativeToReference: null, classificationEvidence: null };
+  const alternative = { ...position("alternative", "revision", "W0.04ALT", ["W0.04ALT"], 1), sourceSequence: 4, classification: "alternative" as const, includedInSupplierTotal: false, alternativeToReference: "W0.04", classificationEvidence: "Alternative position (not included in total sum of the offer)" };
+  const next = { ...position("next", "revision", "W0.05", ["W0.05"], 1), sourceSequence: 5, classification: "standard" as const, includedInSupplierTotal: true, alternativeToReference: null, classificationEvidence: null };
+  await repository.persistParsedRevision("estimate-a", "revision", [next, alternative, base], []);
+  const reloadedRevision = await repository.getRevision("estimate-a", "quote", "revision");
+  assert.equal(reloadedRevision?.supplierCustomer, "Eco Fenster"); assert.equal(reloadedRevision?.projectReference, "The Aviary");
+  assert.deepEqual((await repository.listAttachments("estimate-a", "revision")).map((item) => [item.id, item.uploadOrder, item.documentKind]), [["schedule", 0, "window_schedule"], ["covering", 1, "quotation_letter"]]);
+  const rows = await repository.listPositions("estimate-a", "revision");
+  assert.deepEqual(rows.map((row) => row.display_reference), ["W0.04", "W0.04ALT", "W0.05"]);
+  assert.deepEqual(rows.map((row) => row.sourceSequence), [3, 4, 5]);
+  assert.equal(rows[1].classification, "alternative"); assert.equal(rows[1].includedInSupplierTotal, false); assert.equal(rows[1].alternativeToReference, "W0.04"); assert.match(String(rows[1].classificationEvidence), /not included/i);
+});

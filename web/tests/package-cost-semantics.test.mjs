@@ -1,0 +1,19 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import test from 'node:test';
+import {calculateSupplierCommercialPolicy} from '../server/features/projectCalculatorLab/supplierCommercialPricing.js';
+
+const packages=[
+  {id:'bronze',label:'Bronze',description:'Supply Only',amount:'80258.73',isBase:true,upliftCategory:null},
+  {id:'silver',label:'Silver',description:'Install Support',amount:'82786.66',upliftCategory:'installation_support',selected:true},
+  {id:'gold',label:'Gold',description:'Full Installation',amount:'96700.99',upliftCategory:'installation'},
+];
+const result=(selectedPackageId,extra={})=>calculateSupplierCommercialPolicy({pricingBasis:'net_buying_price',quotedCurrency:'GBP',quotedAmount:'82786.66',paidInQuotedCurrency:true,settlementCurrency:'GBP',settlementFxSnapshot:{quotedToSettlementRate:'1',settlementToGbpRate:'1'},packagePricingAvailable:true,packages,supplierDocumentPackageId:'silver',selectedPackageId,...extra});
+
+test('base supply remains independent while Bronze, Silver and Gold reconcile exact direct costs',()=>{const bronze=result('bronze'),silver=result('silver'),gold=result('gold');for(const value of [bronze,silver,gold])assert.equal(value.packageEvidenceBaseAmount,'80258.73');assert.equal(bronze.baseSupplyOnlyAmount,'80258.73');assert.equal(bronze.packageUplift,'0.00');assert.equal(bronze.totalSupplierDirectCost,'80258.73');assert.equal(silver.baseSupplyOnlyAmount,'80258.73');assert.equal(silver.packageUplift,'2527.93');assert.equal(silver.totalSupplierDirectCost,'82786.66');assert.equal(silver.packageUpliftCategory,'installation_support');assert.equal(gold.baseSupplyOnlyAmount,'80258.73');assert.equal(gold.packageUplift,'16442.26');assert.equal(gold.totalSupplierDirectCost,'96700.99');assert.equal(gold.packageUpliftCategory,'installation');assert.equal(gold.documentSelectedPackageId,'silver');});
+
+test('configured discount bases do not confuse package uplift with a discount',()=>{const complete=result('silver',{pricingBasis:'manufacturer_list',discountPolicy:{type:'single',percentage:'10'},discountApplicationBasis:'selected_complete_package'}),base=result('silver',{pricingBasis:'manufacturer_list',discountPolicy:{type:'single',percentage:'10'},discountApplicationBasis:'base_supply_only'}),uplift=result('silver',{pricingBasis:'manufacturer_list',discountPolicy:{type:'single',percentage:'10'},discountApplicationBasis:'package_uplift'});assert.equal(complete.totalSupplierDirectCost,'74507.994');assert.equal(base.baseSupplyOnlyAmount,'72232.857');assert.equal(base.totalSupplierDirectCost,'74760.787');assert.equal(uplift.baseSupplyOnlyAmount,'80258.73');assert.equal(uplift.packageUplift,'2275.137');});
+
+test('package evidence remains quoted in GBP while settlement can be EUR',()=>{const value=result('silver',{paidInQuotedCurrency:false,settlementCurrency:'EUR',settlementAmountMode:'estimated',settlementFxSnapshot:{quotedToSettlementRate:'1.18',settlementToGbpRate:'0.85'}});assert.equal(value.policy.quotedCurrency,'GBP');assert.equal(value.policy.settlementCurrency,'EUR');assert.equal(value.packageEvidenceBaseAmount,'80258.73');assert.equal(value.settlementAmount,'97688.2588');});
+
+test('normal Project Costing UI is package-first and advanced pricing remains collapsed',async()=>{const review=await readFile('src/features/projectCalculatorLab/SupplierCommercialReview.tsx','utf8'),worksheet=await readFile('src/features/projectCalculatorLab/ScenarioCostingWorksheet.tsx','utf8');for(const text of ['Base Supply Only','Total Supplier Direct Cost','Advanced supplier pricing','Supplier document indicated'])assert.match(review,new RegExp(text));assert.match(review,/role="radiogroup"/);assert.doesNotMatch(review,/Original supplier purchase/i);assert.match(worksheet,/Base Supply Only Cost/);assert.match(worksheet,/Total Supplier Direct Cost/);});

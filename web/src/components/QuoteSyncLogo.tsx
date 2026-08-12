@@ -6,7 +6,7 @@ type Props = {
   className?: string;
 };
 
-export default function QuoteSyncLogo({ alt = "QuoteSync", className }: Props) {
+export default function QuoteSyncLogo({ alt = "QuoteSuite", className }: Props) {
   const classes = ["quotesync-logo", className].filter(Boolean).join(" ");
 
   return (

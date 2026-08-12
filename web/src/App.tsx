@@ -4336,7 +4336,7 @@ function renderEstimateMapBoard() {
   }
 
   return (
-<AppShell title="QuoteSync" onMenuClick={handleTopShellMenuClick}>
+<AppShell title="QuoteSuite" onMenuClick={handleTopShellMenuClick}>
   { topShellPage === "admin" ? (
     <AdminPlaceholderPage />
   ) : topShellPage === "window_types_render_preview" ? (
@@ -5128,7 +5128,7 @@ function renderEstimateMapBoard() {
                 <div className="qs-migrated-113">
                   <div>
                     <H2>Project Preferences</H2>
-                    <Small>Configure default loading behaviour for QuoteSync.</Small>
+                    <Small>Configure default loading behaviour for QuoteSuite.</Small>
                   </div>
 
                   <div className="legacy-surface-card qs-migrated-114">

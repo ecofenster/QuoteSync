@@ -11,7 +11,7 @@ type Props = {
 };
 
 export default function AppShell(props: Props) {
-  const { title = "QuoteSync", children, onMenuClick } = props;
+  const { title = "QuoteSuite", children, onMenuClick } = props;
 
   return (
     <div className="app-shell">

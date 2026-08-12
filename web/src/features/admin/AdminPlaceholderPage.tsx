@@ -8,6 +8,7 @@ import AdminConfiguratorCatalogWorkspace from "./AdminConfiguratorCatalogWorkspa
 import AdminSupplierQuoteImportBeta from "./AdminSupplierQuoteImportBeta";
 import AdminIntegrationsPanel from "./AdminIntegrationsPanel";
 import AdminThemeColoursPanel from "./AdminThemeColoursPanel";
+import AdminSupplierCommercialDefaults from "./AdminSupplierCommercialDefaults";
 import AdminCommercialMarginPanel from "./AdminCommercialMarginPanel";
 import { QUOTESYNC_THEME_CONFIGURATION_KEY } from "../../theme/themes";
 import "./AdminPlaceholderPage.css";
@@ -35,12 +36,12 @@ type EditableDimensionsValue = {
 
 const sectionList: Array<{ key: AdminSectionKey; label: string; description: string }> = [
   { key: "settings", label: "Settings", description: "System-wide settings and feature behaviour." },
-  { key: "project_preferences", label: "Project Preferences", description: "Default/demo loading behaviour for QuoteSync projects." },
+  { key: "project_preferences", label: "Project Preferences", description: "Project Calculator, commercial presentation and project defaults." },
   { key: "feature_controls", label: "Feature Controls", description: "Enable or disable major system capabilities." },
   { key: "configurator_controls", label: "Configurator Controls", description: "Manufacturers, window types, and render-definition controls." },
   { key: "branding", label: "Branding", description: "Brand identity, logo, colours, and document identity." },
   { key: "integrations", label: "Integrations", description: "Maps, what3words, and future third-party services." },
-  { key: "supplier_defaults", label: "Supplier / Product Defaults", description: "Future supplier and product control area." },
+  { key: "supplier_defaults", label: "Supplier / Product Defaults", description: "Supplier products, pricing, settlement, discounts and packages." },
 ];
 
 const editableKeys = new Set<string>([
@@ -411,7 +412,7 @@ export default function AdminPlaceholderPage(props: {
         <div className="admin-card admin-card--content ui-card">
           <div className="admin-page-title">Project Preferences</div>
           <div className="admin-body-copy admin-copy-width">
-            Configure default loading behaviour for QuoteSync.
+            Configure default loading behaviour for QuoteSuite.
           </div>
         </div>
 
@@ -456,10 +457,7 @@ export default function AdminPlaceholderPage(props: {
     ) : activeSection === "integrations" ? (
       <AdminIntegrationsPanel />
     ) : (
-      <AdminSectionPlaceholder
-        title="Supplier / Product Defaults"
-        description="Supplier and product defaults will be managed here in a later phase once the admin settings foundation is fully established."
-      />
+      <AdminSupplierCommercialDefaults />
     );
 
   const hideAdminSidebar = activeSection === "configurator_controls" && configuratorRenderWorkspaceActive;

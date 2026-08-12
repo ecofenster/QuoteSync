@@ -121,6 +121,9 @@ export function validateSupplierQuotePosition(position: SupplierQuotePosition): 
   requireEstimateId(position.estimateId, issues);
   requiredString(position.revisionId, "revisionId", issues);
   requiredString(position.displayReference, "displayReference", issues);
+  if (position.sourceSequence != null && (!Number.isInteger(position.sourceSequence) || position.sourceSequence < 0)) issues.push({ code: "position.source_sequence", path: "sourceSequence", message: "Source sequence must be a non-negative integer." });
+  if (position.classification != null && !["standard", "alternative", "excluded"].includes(position.classification)) issues.push({ code: "position.classification", path: "classification", message: "Position classification is invalid." });
+  if (position.includedInSupplierTotal != null && typeof position.includedInSupplierTotal !== "boolean") issues.push({ code: "position.commercial_inclusion", path: "includedInSupplierTotal", message: "Commercial inclusion must be explicit." });
   if (!Number.isInteger(position.quantity) || position.quantity <= 0) issues.push({ code: "position.quantity", path: "quantity", message: "Quantity must be a positive integer independent of token count." });
   if (position.recognitionConfidence != null && (position.recognitionConfidence < 0 || position.recognitionConfidence > 1)) issues.push({ code: "position.confidence", path: "recognitionConfidence", message: "Confidence must be between 0 and 1." });
   for (const [field, value] of [["supplierAreaSquareMetres", position.supplierAreaSquareMetres], ["calculatedAreaSquareMetres", position.calculatedAreaSquareMetres]] as const) {

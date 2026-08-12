@@ -23,7 +23,7 @@ async function createDisposablePreviewEstimate() {
   const clientId = `dev-commercial-preview-client-${suffix}`;
   await apiFetch("/api/clients", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id: clientId, name: "QuoteSync Commercial Preview (Disposable)", client_ref: `DEV-PREVIEW-${suffix}`, client_type: "Development" }),
+    body: JSON.stringify({ id: clientId, name: "QuoteSuite Commercial Preview (Disposable)", client_ref: `DEV-PREVIEW-${suffix}`, client_type: "Development" }),
   });
   return apiFetch("/api/estimates", {
     method: "POST", headers: { "Content-Type": "application/json" },

@@ -436,7 +436,7 @@ export default function AdminRenderProfileWorkspace(props: Props) {
               <div>
                 <div className="admin-group-title">{selectedRecordId ? "Edit render profile" : "New render profile"}</div>
                 <div className="admin-body-copy">
-                  This is a manual render-profile dimension editor. Uploaded CAD files remain reference inputs only; the live preview below is always a native QuoteSync render.
+                  This is a manual render-profile dimension editor. Uploaded CAD files remain reference inputs only; the live preview below is always a native QuoteSuite render.
                 </div>
               </div>
 

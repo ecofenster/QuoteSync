@@ -14,6 +14,7 @@ import { createSupplierImportLabRouter } from './routes/supplierImportLab.js';
 import { createProjectCalculatorLabRouter } from './routes/projectCalculatorLab.js';
 import { fetchCentralExchangeRate } from './features/projectCalculatorLab/exchangeRateProvider.js';
 import { dbPromise } from './db.js';
+import { startApiServer } from './apiServerStartup.js';
 
 const app = express();
 
@@ -48,6 +49,4 @@ app.get('/api/fx-rate', async (req, res) => {
   }
 });
 
-app.listen(3001, () => {
-  console.log('SQLite API running on http://localhost:3001');
-});
+startApiServer(app);

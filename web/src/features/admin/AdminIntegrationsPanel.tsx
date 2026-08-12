@@ -8,7 +8,7 @@ const PROVIDERS: Array<{ id: IntegrationProvider; title: string; description: st
 
 function sourceLabel(status?: IntegrationStatus) {
   if (!status?.configured) return "Not configured";
-  return status.source === "quotesync" ? "QuoteSync managed" : "Environment fallback";
+  return status.source === "quotesync" ? "QuoteSuite managed" : "Environment fallback";
 }
 
 export default function AdminIntegrationsPanel() {
@@ -30,7 +30,7 @@ export default function AdminIntegrationsPanel() {
   return <div className="admin-integrations">
     <div className="admin-card admin-card--content ui-card">
       <div className="admin-section-title">Integrations</div>
-      <p>Company-managed credentials are stored by the QuoteSync server. Saved keys are masked and are not exposed through general Settings.</p>
+      <p>Company-managed credentials are stored by the QuoteSuite server. Saved keys are masked and are not exposed through general Settings.</p>
       {message.general ? <div className="ui-status ui-status--error">{message.general}</div> : null}
     </div>
     <div className="admin-integrations__grid">
