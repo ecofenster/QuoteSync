@@ -76,4 +76,12 @@ test("Vite retains narrow test-artifact watcher exclusions", async () => {
   const source = await import("node:fs/promises").then(({ readFile }) => readFile(new URL("../vite.config.ts", import.meta.url), "utf8"));
   assert.match(source, /\*\*\/\.tmp-chrome-phase\*\/\*\*/);
   assert.match(source, /\*\*\/\.tmp-phase\*-tests\/\*\*/);
+  assert.match(source, /\*\*\/\.tmp-edge-acceptance\/\*\*/);
+  assert.match(source, /\*\*\/\.tmp-chrome-acceptance\*\/\*\*/);
+});
+
+test("Git ignores disposable in-repository browser acceptance profiles", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) => readFile(new URL("../.gitignore", import.meta.url), "utf8"));
+  assert.match(source, /^\.tmp-edge-acceptance\/$/m);
+  assert.match(source, /^\.tmp-chrome-acceptance\*\/$/m);
 });

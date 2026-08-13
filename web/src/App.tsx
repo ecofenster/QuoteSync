@@ -760,11 +760,6 @@ type TopShellPage =
   | "app"
   | "tools"
   | "admin"
-  | "window_types_render_preview"
-  | "configurator_render"
-  | "b92_configurator"
-  | "client_portal"
-  | "settings"
   | "help";
 
 function TopShellPlaceholder({
@@ -791,8 +786,10 @@ function TopShellPlaceholder({
   );
 }
 
-function ToolsHubPage() {
-  const [activeTool, setActiveTool] = React.useState("phpp");
+function ToolsHubPage({ initialTool = "phpp" }: { initialTool?: string }) {
+  const [activeTool, setActiveTool] = React.useState(initialTool);
+
+  React.useEffect(() => setActiveTool(initialTool), [initialTool]);
 
   const tabs = [
     { key: "phpp", label: "PHPP Calculator" },
@@ -1309,6 +1306,7 @@ export default function App() {
 
   const [systemSettings, setSystemSettings] = useState(() => loadSettings());
   const [topShellPage, setTopShellPage] = useState<TopShellPage>("app");
+  const [initialToolsTab, setInitialToolsTab] = useState("phpp");
   const [integrationStatuses, setIntegrationStatuses] = useState<IntegrationStatus[]>([]);
 
 
@@ -2059,37 +2057,27 @@ async function handleWhat3WordsMapPick(lat: number, lng: number) {
   }
 
   function handleTopShellMenuClick(key: string) {
-    if (key === "menu_5") {
+    if (key === "tools") {
       setTopShellPage("tools");
       return;
     }
-    
-if (key === "menu_5") {
+    if (key === "phpp" || key === "glass_calculator") {
+      setInitialToolsTab(key === "phpp" ? "phpp" : "glass");
       setTopShellPage("tools");
-      return;
-    }
-    if (key === "client_portal") {
-      setTopShellPage("client_portal");
       return;
     }
     if (key === "admin") {
       setTopShellPage("admin");
       return;
     }
-    if (key === "window_types_render_preview") {
-      setTopShellPage("window_types_render_preview");
+    if (key === "create_client") {
+      setTopShellPage("app");
+      openAddClientPanel();
       return;
     }
-    if (key === "configurator_render") {
-      setTopShellPage("configurator_render");
-      return;
-    }
-    if (key === "b92_configurator") {
-      setTopShellPage("b92_configurator");
-      return;
-    }
-    if (key === "settings") {
-      setTopShellPage("settings");
+    if (key === "create_estimate") {
+      setTopShellPage("app");
+      openAddEstimateModal();
       return;
     }
     if (key === "help") {
@@ -2097,6 +2085,8 @@ if (key === "menu_5") {
       return;
     }
     setTopShellPage("app");
+    setMenu("dashboard");
+    setView("customers");
   }
 
 function openEstimateDefaults(clientId: Models.ClientId, estimateId: Models.EstimateId) {
@@ -4339,24 +4329,7 @@ function renderEstimateMapBoard() {
 <AppShell title="QuoteSuite" onMenuClick={handleTopShellMenuClick}>
   { topShellPage === "admin" ? (
     <AdminPlaceholderPage />
-  ) : topShellPage === "window_types_render_preview" ? (
-    <AdminPlaceholderPage
-      initialSection="configurator_controls"
-      initialConfiguratorTab="windowTypes"
-      initialWindowTypesCategory="windows"
-    />
-  ) : topShellPage === "configurator_render" ? (
-    <AdminPlaceholderPage initialSection="configurator_controls" initialConfiguratorTab="configuratorRender" />
-  ) : topShellPage === "b92_configurator" ? (
-    <AdminPlaceholderPage initialSection="configurator_controls" initialConfiguratorTab="b92Configurator" />
-  ) : topShellPage === "client_portal" ? (
-    <ClientPortalPlaceholderPage />
-  ) : topShellPage === "settings" ? (
-        <TopShellPlaceholder
-          title="Settings"
-          summary="Future-ready settings area placeholder. This will later host branding, styling, logo uploads, and broader system configuration."
-        />
-      ) : topShellPage === "help" ? (
+  ) : topShellPage === "help" ? (
         <TopShellPlaceholder
           title="Help"
           summary="Future-ready help area placeholder. This will later host support content, onboarding, and documentation."
@@ -4414,7 +4387,7 @@ function renderEstimateMapBoard() {
                 <span>{demoModeWarning}</span>
               </div>
             )}
-            {topShellPage === "tools" && <ToolsHubPage />}
+            {topShellPage === "tools" && <ToolsHubPage initialTool={initialToolsTab} />}
             {topShellPage !== "tools" && menu !== "dashboard" && view !== "estimate_workspace" && (
               <Card className="qs-migrated-87">
                 <div className="app-cluster app-cluster--between app-cluster--start">

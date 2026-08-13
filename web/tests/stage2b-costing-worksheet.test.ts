@@ -28,7 +28,8 @@ test('worksheet sections preserve evidence, use icons and hide unused categories
 test('commercial summary reconciles category totals and saved rate evidence', async () => {
   const source=await readFile('src/features/projectCalculatorLab/ScenarioCostingWorksheet.tsx','utf8');
   for(const total of ['Project Cost \\(Ex VAT\\)','VAT','Project Cost \\(Inc VAT\\)','Selling Price','Gross Profit','Gross Margin','Overall Markup'])assert.match(source,new RegExp(total));
-  assert.match(source,/sale=addDecimalAmounts\(\[discountedProductSale,extrasSale,transportSale,equipmentSale,installationSale,materialsSale,feeSale\]\)/);
+  assert.match(source,/sale=addDecimalAmounts\(\[discountedProductSale,extrasSale,transportSale,equipmentSale,installationSale,materialsSale,feeSale,siteVisitAllocatedToProducts\?null:siteVisitSale\]\)/);
+  assert.match(source,/Site Visit \/ Travel/);
   assert.match(source,/customerDiscountAmount/);
   assert.match(source,/providerTimestamp/);
   assert.match(source,/revisionNumber/);

@@ -147,10 +147,11 @@ export function useB92ConfiguratorController() {
     }));
   }
 
-  function openPreviewContextMenu(event: MouseEvent<HTMLDivElement>) {
+  function openPreviewContextMenu(event: MouseEvent<HTMLElement>, fieldId?: string) {
     event.preventDefault();
-    const target: B92ConfiguratorContextTarget = state.structure.selectedFieldId
-      ? { type: "field", fieldId: state.structure.selectedFieldId }
+    const targetFieldId = fieldId ?? state.structure.selectedFieldId;
+    const target: B92ConfiguratorContextTarget = targetFieldId
+      ? { type: "field", fieldId: targetFieldId }
       : { type: "frame-edge", frameEdgeId: "outer-frame" };
     setState((current) => ({
       ...current,
@@ -161,7 +162,10 @@ export function useB92ConfiguratorController() {
         y: event.clientY,
         target,
       },
-      contextStatusMessage: "Right-click target uses selected field fallback until proof hit-testing is added.",
+      structure: targetFieldId ? { ...current.structure, selectedFieldId: targetFieldId } : current.structure,
+      contextStatusMessage: targetFieldId
+        ? `Field ${targetFieldId} selected. Choose its opening operation.`
+        : "Outer frame selected.",
     }));
   }
 

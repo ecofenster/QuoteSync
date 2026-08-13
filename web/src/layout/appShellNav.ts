@@ -1,18 +1,23 @@
 export type AppShellMenuItem = {
   key: string;
   label: string;
+  accent?: boolean;
+  children?: AppShellMenuItem[];
 };
 
 export const appShellMenuItems: AppShellMenuItem[] = [
-  { key: "menu_1", label: "Menu 1" },
-  { key: "menu_2", label: "Menu 2" },
-  { key: "menu_3", label: "Menu 3" },
-  { key: "menu_4", label: "Menu 4" },
-  { key: "menu_5", label: "Tools" },
-  { key: "window_types_render_preview", label: "Window Types Render/Preview" },
-  { key: "configurator_render", label: "Configurator Render" },
-  { key: "b92_configurator", label: "B92 Configurator" },
-  { key: "client_portal", label: "Client Portal" },
-  { key: "admin", label: "Admin" },
+  { key: "home", label: "Home" },
+  {
+    key: "create",
+    label: "Create",
+    children: [
+      { key: "create_estimate", label: "Create Estimate" },
+      { key: "create_client", label: "Create Client" },
+      { key: "phpp", label: "PHPP" },
+      { key: "glass_calculator", label: "Glass Calculator" },
+    ],
+  },
+  { key: "tools", label: "Tools" },
   { key: "help", label: "Help" },
+  { key: "admin", label: "Admin", accent: true },
 ];

@@ -70,6 +70,60 @@
   padding: 8px 12px;
 }
 
+.app-shell__nav-button[data-accent="true"] {
+  border-color: var(--qs-theme-accent);
+  color: var(--qs-theme-accent);
+}
+
+.app-shell__nav-menu {
+  position: relative;
+}
+
+.app-shell__nav-menu > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.app-shell__nav-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.app-shell__nav-menu > summary::after {
+  content: " ▾";
+}
+
+.app-shell__nav-menu-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 30;
+  display: grid;
+  min-width: 190px;
+  padding: 6px;
+  border: 1px solid var(--qs-border-standard);
+  border-radius: var(--qs-radius-md);
+  background: var(--qs-bg-surface);
+  box-shadow: var(--qs-shadow-elevated);
+}
+
+.app-shell__nav-menu-item {
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: var(--qs-radius-sm);
+  background: transparent;
+  color: var(--qs-theme-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.app-shell__nav-menu-item:hover,
+.app-shell__nav-menu-item:focus-visible {
+  background: var(--qs-bg-surface-hover);
+  outline: none;
+}
+
 .app-shell__actions {
   display: flex;
   align-items: center;

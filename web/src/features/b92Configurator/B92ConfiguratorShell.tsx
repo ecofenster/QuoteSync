@@ -65,10 +65,7 @@ export default function B92ConfiguratorShell() {
               ))}
             </div>
           </section>
-          <div
-            onContextMenu={openPreviewContextMenu}
-            className="b92-configurator__preview-card"
-          >
+          <div className="b92-configurator__preview-card">
             {previewFamily && previewEntry ? (
               <B92ProfileSectionAssemblyPreview
                 selectedFamily={previewFamily}
@@ -90,6 +87,29 @@ export default function B92ConfiguratorShell() {
               </div>
             )}
           </div>
+          <section className="b92-configurator__field-targets" aria-label="B92 field operation targets">
+            <div className="b92-section-title">Opening operations</div>
+            <div
+              className="b92-configurator__field-target-grid"
+              data-columns={state.structure.columns}
+            >
+              {state.structure.fields.map((field) => (
+                <button
+                  key={field.id}
+                  type="button"
+                  className="b92-configurator__field-target"
+                  data-selected={state.structure.selectedFieldId === field.id ? "true" : "false"}
+                  onContextMenu={(event) => openPreviewContextMenu(event, field.id)}
+                  onClick={(event) => openPreviewContextMenu(event, field.id)}
+                  aria-label={`Choose opening operation for ${field.id}`}
+                >
+                  <strong>{field.id}</strong>
+                  <span>{field.operation.replaceAll("-", " ")}</span>
+                </button>
+              ))}
+            </div>
+            <div className="b92-body-copy">Select or right-click the exact field whose opening operation you want to change.</div>
+          </section>
           <B92ConfiguratorSummaryPanel state={state} selectedEntry={selectedEntry} proofAvailable={currentPresetHasProof} />
           <B92ContextMenu
             open={state.contextMenu.open}

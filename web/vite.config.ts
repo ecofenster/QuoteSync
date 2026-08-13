@@ -6,7 +6,12 @@ export default defineConfig({
   plugins: [react()],
   server: {
     watch: {
-      ignored: ['**/.tmp-chrome-phase*/**', '**/.tmp-phase*-tests/**'],
+      ignored: [
+        '**/.tmp-chrome-phase*/**',
+        '**/.tmp-phase*-tests/**',
+        '**/.tmp-edge-acceptance/**',
+        '**/.tmp-chrome-acceptance*/**',
+      ],
     },
   },
 })

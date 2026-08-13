@@ -1,4 +1,4 @@
-export const MARKUP_CATEGORIES = ["product", "extras", "transport", "equipment", "installation", "materials", "duties"] as const;
+export const MARKUP_CATEGORIES = ["product", "extras", "transport", "siteVisit", "equipment", "installation", "materials", "duties"] as const;
 export type MarkupCategory = (typeof MARKUP_CATEGORIES)[number];
 export type ProjectCostingMarkups = Record<MarkupCategory, string>;
 

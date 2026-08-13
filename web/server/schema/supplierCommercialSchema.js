@@ -702,6 +702,7 @@ const tables = [
     product_percent TEXT NOT NULL DEFAULT '0',
     extras_percent TEXT NOT NULL DEFAULT '0',
     transport_percent TEXT NOT NULL DEFAULT '0',
+    site_visit_percent TEXT NOT NULL DEFAULT '0',
     equipment_percent TEXT NOT NULL DEFAULT '0',
     installation_percent TEXT NOT NULL DEFAULT '0',
     materials_percent TEXT NOT NULL DEFAULT '0',
@@ -834,7 +835,7 @@ export async function initializeSupplierCommercialSchema(db) {
   if (!legacyRequiredSource && !calculatorScenarioColumns.some((column) => column.name === 'source_revision')) await db.exec('ALTER TABLE project_calculator_lab_scenarios ADD COLUMN source_revision TEXT');
   if (!legacyRequiredSource && !calculatorScenarioColumns.some((column) => column.name === 'revision_number')) await db.exec('ALTER TABLE project_calculator_lab_scenarios ADD COLUMN revision_number INTEGER NOT NULL DEFAULT 1');
   const calculatorMarkupColumns = await db.all('PRAGMA table_info(project_calculator_lab_markup_rules)');
-  for (const column of ['equipment_percent','materials_percent','duties_percent']) if (!calculatorMarkupColumns.some((item) => item.name === column)) await db.exec(`ALTER TABLE project_calculator_lab_markup_rules ADD COLUMN ${column} TEXT NOT NULL DEFAULT '0'`);
+  for (const column of ['site_visit_percent','equipment_percent','materials_percent','duties_percent']) if (!calculatorMarkupColumns.some((item) => item.name === column)) await db.exec(`ALTER TABLE project_calculator_lab_markup_rules ADD COLUMN ${column} TEXT NOT NULL DEFAULT '0'`);
   for (const table of ['project_calculator_lab_product_rows','project_calculator_lab_manual_product_rows']) {
     const columns = await db.all(`PRAGMA table_info(${table})`);
     if (!columns.some((column) => column.name === 'markup_override_percent')) await db.exec(`ALTER TABLE ${table} ADD COLUMN markup_override_percent TEXT`);

@@ -10,6 +10,7 @@ import AdminIntegrationsPanel from "./AdminIntegrationsPanel";
 import AdminThemeColoursPanel from "./AdminThemeColoursPanel";
 import AdminSupplierCommercialDefaults from "./AdminSupplierCommercialDefaults";
 import AdminCommercialMarginPanel from "./AdminCommercialMarginPanel";
+import AdminSiteVisitTravelDefaults from "./AdminSiteVisitTravelDefaults";
 import { QUOTESYNC_THEME_CONFIGURATION_KEY } from "../../theme/themes";
 import "./AdminPlaceholderPage.css";
 
@@ -443,6 +444,7 @@ export default function AdminPlaceholderPage(props: {
           </div>
         </div>
         <AdminCommercialMarginPanel />
+        <AdminSiteVisitTravelDefaults />
       </div>
     ) : activeSection === "feature_controls" ? (
       <AdminSupplierQuoteImportBeta />
