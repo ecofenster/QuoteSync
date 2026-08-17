@@ -28,6 +28,7 @@ export type MenuKey =
   | "lost"
   | "installation"
   | "estimate_map"
+  | "project_map"
   | "completed_projects"
   | "recycle_bin"
   | "project_preferences"
@@ -229,6 +230,16 @@ export type Position = {
   useEstimateDefaults: boolean;
   overrides: Partial<EstimateDefaults>;
   configuredContract?: import("../features/configurator/configuredPositionContract.types").ConfiguredPositionContract | null;
+  origin?: "b92_configured" | "supplier_imported" | "manual";
+  sourceSequence?: number;
+  classification?: "standard" | "alternative" | "excluded";
+  alternativeTo?: string | null;
+  supplier?: { code?: string | null; name?: string | null } | null;
+  product?: string | null;
+  productSystem?: string | null;
+  sourceProvenance?: Record<string, unknown> | null;
+  supplierEvidenceLinks?: Array<{ sourcePositionId: string; sourceRevisionId: string; supplierName?: string | null; supplierCode?: string | null; linkedAt: string }>;
+  matchStatus?: "matched" | "unmatched" | "review_required";
 };
 
 export type ClientNote = {

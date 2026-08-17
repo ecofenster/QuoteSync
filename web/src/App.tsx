@@ -241,6 +241,10 @@ function isProtectedClientRef(value: unknown) {
   return PROTECTED_CLIENT_REFS.has(String(value || "").trim().toUpperCase());
 }
 
+function usableLocationText(value: unknown) {
+  return String(value ?? "").trim();
+}
+
 function isCreatorFilter(value: unknown): value is "mine" | "all" {
   return value === "mine" || value === "all";
 }
@@ -361,6 +365,10 @@ function mapDbClientToClient(row: any): Client {
   const customerAddress = buildAddressString(customerStructured);
   const projectAddress = buildAddressString(projectStructured);
   const invoiceAddress = buildAddressString(invoiceStructured);
+  const projectPostcode = usableLocationText(projectStructured.postcode || extractPostcodeFromAddress(usableLocationText(projectAddress)));
+  const customerPostcode = usableLocationText(customerStructured.postcode || extractPostcodeFromAddress(usableLocationText(customerAddress)));
+  const latitude = row?.latitude == null || row?.latitude === "" || !Number.isFinite(Number(row.latitude)) ? undefined : Number(row.latitude);
+  const longitude = row?.longitude == null || row?.longitude === "" || !Number.isFinite(Number(row.longitude)) ? undefined : Number(row.longitude);
 
   return {
     id: Models.asClientId(String(row?.id || uid())),
@@ -377,8 +385,10 @@ function mapDbClientToClient(row: any): Client {
     customerAddressStructured: customerStructured,
     projectAddressStructured: projectStructured,
     invoiceAddressStructured: invoiceStructured,
-    postcode: extractPostcodeFromAddress(projectAddress),
+    postcode: projectPostcode || customerPostcode,
     what3words: String(row?.what3words || ""),
+    latitude,
+    longitude,
     businessName: type === "Business" ? String(row?.company_name || "") : undefined,
     contactPerson: type === "Business" ? String(row?.contact_name || "") : undefined,
     estimates: [],
@@ -641,6 +651,16 @@ function Card({ children, className = "" }: { children: React.ReactNode; classNa
       {children}
     </div>
   );
+}
+
+type ProjectMapStage = "all" | "enquiry" | "estimate" | "order" | "installation" | "completed" | "lost";
+
+function projectMapStageFor(outcome: Models.EstimateOutcome, estimate: Estimate, installerId?: string): Exclude<ProjectMapStage, "all" | "enquiry"> {
+  if (outcome === "Lost") return "lost";
+  if (estimate.orderMeta?.productionCompletedDate) return "completed";
+  if (outcome === "Order" && installerId) return "installation";
+  if (outcome === "Order") return "order";
+  return "estimate";
 }
 
 function H2({ children }: { children: React.ReactNode }) {
@@ -1294,7 +1314,7 @@ function ClientSummary({ c }: { c: Client }) {
 }
 
 export default function App() {
-  const ENV = ((import.meta as any)?.env ?? {}) as Record<string, unknown>;
+  const ENV = import.meta.env as unknown as Record<string, unknown>;
 
 
   const [menu, setMenu] = useState<Models.MenuKey>("dashboard");
@@ -1825,6 +1845,7 @@ export default function App() {
   const [installationTabByEstimateId, setInstallationTabByEstimateId] = useState<Record<string, "key_dates" | "order_copy">>({});
 
   const [selectedMapEstimateId, setSelectedMapEstimateId] = useState<Models.EstimateId | null>(null);
+  const [projectMapStage, setProjectMapStage] = useState<ProjectMapStage>("all");
 
   const pendingResolvedCoordinatePersistsRef = useRef<Record<string, boolean>>({});
 
@@ -1840,7 +1861,7 @@ export default function App() {
   const googleMapsApiKey = String((ENV.VITE_GOOGLE_MAPS_API_KEY ?? "")).trim();
   const googleMapsStatus = integrationStatuses.find((item) => item.provider === "googleMaps");
   const what3wordsStatus = integrationStatuses.find((item) => item.provider === "what3words");
-  const googleGeocodingAccess = googleMapsStatus?.enabled && googleMapsStatus.configured ? "server-managed" : googleMapsApiKey;
+  const googleGeocodingAccess = googleMapsStatus?.enabled && googleMapsStatus.configured ? "server-managed" : "";
   const what3wordsApiKey = what3wordsStatus?.enabled && what3wordsStatus.configured ? "server-managed" : String((ENV.VITE_WHAT3WORDS_API_KEY ?? "")).trim();
 
 async function handleWhat3WordsMapPick(lat: number, lng: number) {
@@ -2934,13 +2955,12 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
     openEstimateFromGlobalMenu(row.client.id, estimateId);
   }
 
-  const installationRowsForBoard = useMemo(() => filteredGlobalRows("installation"), [globalEstimateRows, globalSearch, globalSort, globalSortField, globalMonthFilter, globalCreatorFilterByMenu, globalSortDirectionByMenu]);
-
-  const estimateMapRowsForBoard = useMemo(() => {
+  const projectMapRowsForBoard = useMemo(() => {
     const q = globalSearch.trim().toLowerCase();
 
     const rows = globalEstimateRows.filter((row) => {
-      if (row.outcome !== "Open") return false;
+      const stage = projectMapStageFor(row.outcome, row.estimate, row.installerId);
+      if (projectMapStage !== "all" && stage !== projectMapStage) return false;
       if (globalMonthFilter !== "All" && row.estimate.estimatedOrderMonth !== globalMonthFilter) return false;
       if (!q) return true;
 
@@ -2982,18 +3002,19 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
     });
 
     return rows;
-  }, [globalEstimateRows, globalSearch, globalSort, globalSortField, globalMonthFilter, globalCreatorFilterByMenu]);
+  }, [globalEstimateRows, globalSearch, globalSort, globalSortField, globalMonthFilter, projectMapStage]);
 
   useEffect(() => {
     setGlobalExpandedEstimateId(null);
   }, [globalCreatorFilterByMenu]);
 
   function persistResolvedEstimateCoordinates(
-    clientId: Models.ClientId,
+    targetClient: Client,
     estimate: Estimate,
     resolved: ResolvedClientLocation
   ) {
     if (resolved.source === "estimate" || resolved.source === "cache") return;
+    if (isProtectedClientRef(targetClient.clientRef)) return;
 
     const currentLat = estimate.latitude == null || !Number.isFinite(Number(estimate.latitude)) ? null : Number(estimate.latitude);
     const currentLng = estimate.longitude == null || !Number.isFinite(Number(estimate.longitude)) ? null : Number(estimate.longitude);
@@ -3011,7 +3032,7 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
 
     setClients((prev) =>
       prev.map((client) =>
-        client.id !== clientId
+        client.id !== targetClient.id
           ? client
           : {
               ...client,
@@ -3020,7 +3041,7 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
       )
     );
 
-    updateEstimateAPI(estimate.id, buildDbEstimatePayload(clientId, updatedEstimate))
+    updateEstimateAPI(estimate.id, buildDbEstimatePayload(targetClient.id, updatedEstimate))
       .catch((error) => {
         console.error("Failed to persist resolved estimate coordinates", error);
       })
@@ -3032,7 +3053,7 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
   useEffect(() => {
     if (!googleMapsApiKey || !mapsApiReady) return;
 
-    const sourceRows = [...installationRowsForBoard, ...estimateMapRowsForBoard];
+    const sourceRows = projectMapRowsForBoard;
 
     let cancelled = false;
 
@@ -3046,7 +3067,7 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
           try {
             const resolved = await resolveEstimateLocation(estimate, client, { googleMapsApiKey: googleGeocodingAccess, what3wordsApiKey });
             if (resolved) {
-              persistResolvedEstimateCoordinates(client.id, estimate, resolved);
+              persistResolvedEstimateCoordinates(client, estimate, resolved);
             }
             return [estimate.id, resolved] as const;
           } catch (error) {
@@ -3086,7 +3107,7 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
     return () => {
       cancelled = true;
     };
-  }, [googleMapsApiKey, googleGeocodingAccess, what3wordsApiKey, installationRowsForBoard, estimateMapRowsForBoard, mapsApiReady]);
+  }, [googleMapsApiKey, googleGeocodingAccess, what3wordsApiKey, projectMapRowsForBoard, mapsApiReady]);
 
   useEffect(() => {
     setSelectedMapEstimateId(null);
@@ -3552,27 +3573,13 @@ function openEstimateFromGlobalMenu(clientId: Models.ClientId, estimateId: Model
 function renderInstallationBoard() {
     const rows = filteredGlobalRows("installation");
     const summary = globalSummaryForRows(rows);
-    const mapItems: GoogleMapMarkerItem[] = rows.flatMap(({ client, estimate }) => {
-      const resolved = resolvedLocationsByClientId[estimate.id];
-      if (!resolved) return [];
-      return [
-        {
-          id: estimate.id,
-          lat: resolved.lat,
-          lng: resolved.lng,
-          title: clientDisplayName(client),
-          subtitle: resolved.label,
-          variant: "installation",
-        },
-      ];
-    });
 
     return (
       <Card className="qs-migrated-34">
         <div className="qs-migrated-43">
           <div>
             <H2>Installation</H2>
-            <Small>Operational installation view with expandable project detail on the left and live map on the right.</Small>
+            <Small>Operational installation workflow with expandable project detail.</Small>
           </div>
 
           <div className="qs-migrated-44">
@@ -3581,7 +3588,7 @@ function renderInstallationBoard() {
               <div className="operational-stat__value">{summary.count}</div>
             </div>
             <div className="operational-stat">
-              <div className="operational-stat__label">Total mÃƒâ€šÃ‚Â²</div>
+              <div className="operational-stat__label">Total area (m²)</div>
               <div className="operational-stat__value">{formatMeasure(summary.totalSquareMetres)}</div>
             </div>
             <div className="operational-stat">
@@ -3751,29 +3758,6 @@ function renderInstallationBoard() {
               )}
             </div>
 
-            <div className="qs-migrated-69">
-              <div className="operational-surface qs-migrated-6">
-                <div className="operational-title qs-migrated-70">Installation Map</div>
-                <Small>Google Maps view for all open installations using postcode, what3words, or project address fallback.</Small>
-              </div>
-
-              <div className="operational-surface operational-surface--subtle qs-migrated-71">
-                <GoogleMapPanel
-                  apiKey={googleMapsApiKey}
-                  items={mapItems}
-                  selectedId={selectedMapEstimateId ?? installationExpandedEstimateId ?? undefined}
-                  onSelect={(markerId) => {
-                    const nextId = markerId as Models.EstimateId;
-                    setSelectedMapEstimateId(nextId);
-                    setInstallationExpandedEstimateId(nextId);
-                    scrollMapRowIntoView("installation-row", nextId);
-                  }}
-                  onApiReady={() => setMapsApiReady(true)}
-                  height={980}
-                  emptyText="No installation locations could be resolved yet."
-                />
-              </div>
-            </div>
           </div>
         </div>
       </Card>
@@ -3781,12 +3765,14 @@ function renderInstallationBoard() {
   }
 
 
-function renderEstimateMapBoard() {
-    const rows = estimateMapRowsForBoard;
+function renderProjectMapBoard() {
+    const rows = projectMapRowsForBoard;
     const summary = globalSummaryForRows(rows);
     const mapItems: GoogleMapMarkerItem[] = rows.flatMap(({ client, estimate }) => {
       const resolved = resolvedLocationsByClientId[estimate.id];
       if (!resolved) return [];
+      const row = globalEstimateRows.find((item) => item.estimate.id === estimate.id);
+      const stage = row ? projectMapStageFor(row.outcome, row.estimate, row.installerId) : "estimate";
       return [
         {
           id: estimate.id,
@@ -3794,7 +3780,9 @@ function renderEstimateMapBoard() {
           lng: resolved.lng,
           title: clientDisplayName(client),
           subtitle: resolved.label,
-          variant: "open",
+          variant: stage,
+          stage: stage === "estimate" ? "Estimate / Quotation" : stage === "order" ? "Order / Sold" : stage.replace(/^./, (value) => value.toUpperCase()),
+          reference: estimate.estimateRef,
         },
       ];
     });
@@ -3803,22 +3791,37 @@ function renderEstimateMapBoard() {
       <Card className="qs-migrated-34">
         <div className="qs-migrated-43">
           <div>
-            <H2>Estimate Map</H2>
-            <Small>All estimates plotted on Google Maps using postcode, what3words, or address fallback.</Small>
+            <H2>Project Map</H2>
+            <Small>One operational view of projects from quotation through installation and completion.</Small>
+          </div>
+
+          <div className="qs-migrated-19" aria-label="Project map status filters">
+            {([[
+              "all", "All"
+            ], ["enquiry", "Enquiry"], ["estimate", "Estimate / Quotation"], ["order", "Order / Sold"], ["installation", "Installation"], ["completed", "Completed"], ["lost", "Lost"]] as Array<[ProjectMapStage, string]>).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className={`operational-toggle${projectMapStage === value ? " operational-toggle--active" : ""}`}
+                onClick={() => setProjectMapStage(value)}
+              >
+                {label}
+              </button>
+            ))}
           </div>
 
           <div className="qs-migrated-44">
             <div className="operational-stat">
-              <div className="operational-stat__label">Mapped estimates</div>
+              <div className="operational-stat__label">Mapped projects</div>
               <div className="operational-stat__value">{mapItems.length}</div>
             </div>
             <div className="operational-stat">
-              <div className="operational-stat__label">All estimates</div>
+              <div className="operational-stat__label">Visible projects</div>
               <div className="operational-stat__value">{rows.length}</div>
             </div>
             <div className="operational-stat">
-              <div className="operational-stat__label">Total mÃƒâ€šÃ‚Â²</div>
-              <div className="operational-stat__value">{formatMeasure(summary.totalSquareMetres)}</div>
+              <div className="operational-stat__label">Unresolved locations</div>
+              <div className="operational-stat__value">{rows.length - mapItems.length}</div>
             </div>
             <div className="operational-stat">
               <div className="operational-stat__label">Total cost</div>
@@ -3831,6 +3834,9 @@ function renderEstimateMapBoard() {
               {rows.map(({ client, estimate, outcome, installerId }) => {
                 const selected = selectedMapEstimateId === estimate.id;
                 const totals = estimateCommercialTotals(estimate);
+                const stage = projectMapStageFor(outcome, estimate, installerId);
+                const resolved = resolvedLocationsByClientId[estimate.id];
+                const stageLabel = stage === "estimate" ? "Estimate / Quotation" : stage === "order" ? "Order / Sold" : stage.replace(/^./, (value) => value.toUpperCase());
                 return (
                   <button
                     id={`estimate-map-row-${estimate.id}`}
@@ -3848,14 +3854,15 @@ function renderEstimateMapBoard() {
                        className="operational-title qs-migrated-70">{clientDisplayName(client)}</div>
                         <Small>{estimate.estimateRef} {client.clientRef}</Small>
                       </div>
-                      <Pill>{installerId ? "Installation" : outcome}</Pill>
+                      <Pill>{stageLabel}</Pill>
                     </div>
                     <div className="qs-migrated-17">
                       <Small>{client.projectName || "No project name"}</Small>
                       <Small>{monthYearLabel(estimate.estimatedOrderMonth || "", estimate.estimatedOrderYear || 0)}</Small>
-                      <Small>{estimateProjectAddressLabel(estimate)}</Small>
-                      <Small>{estimateLocationLabel(estimate)}</Small>
-                      <Small>{formatMeasure(totals.totalSquareMetres)} m {formatMoney(totals.estimateTotal)}</Small>
+                      <Small>{resolved?.label ?? estimateProjectAddressLabel(estimate)}</Small>
+                      {resolved?.isClientAddressFallback ? <Small>Client address fallback — not a confirmed project/site location</Small> : null}
+                      {!resolved ? <Small>Location unavailable</Small> : null}
+                      <Small>{formatMeasure(totals.totalSquareMetres)} m² {formatMoney(totals.estimateTotal)}</Small>
                     </div>
                     <div className="qs-migrated-74">
                       <span
@@ -3865,7 +3872,7 @@ function renderEstimateMapBoard() {
                         }}
                         className="operational-toggle"
                       >
-                        Open Estimate
+                        Open
                       </span>
                     </div>
                   </button>
@@ -3874,15 +3881,15 @@ function renderEstimateMapBoard() {
 
               {rows.length === 0 && (
                 <div className="operational-empty">
-                  <Small>No estimates available for the map.</Small>
+                  <Small>No projects match the current filters.</Small>
                 </div>
               )}
             </div>
 
             <div className="qs-migrated-69">
               <div className="operational-surface qs-migrated-6">
-                <div className="operational-title qs-migrated-70">Estimate Map</div>
-                <Small>Marker colours reflect estimate outcome and installation allocation.</Small>
+                <div className="operational-title qs-migrated-70">Project Map</div>
+                <Small>Marker colours reflect each project's current workflow stage.</Small>
               </div>
 
               <div className="operational-surface operational-surface--subtle qs-migrated-71">
@@ -3895,9 +3902,13 @@ function renderEstimateMapBoard() {
                     setSelectedMapEstimateId(nextId);
                     scrollMapRowIntoView("estimate-map-row", nextId);
                   }}
+                  onOpen={(markerId) => {
+                    const row = globalEstimateRowById(markerId);
+                    if (row) openEstimateFromGlobalMenu(row.client.id, row.estimate.id);
+                  }}
                   onApiReady={() => setMapsApiReady(true)}
                   height={980}
-                  emptyText="No estimate locations could be resolved yet."
+                  emptyText="No project locations could be resolved for the current filters."
                 />
               </div>
             </div>
@@ -4365,7 +4376,7 @@ function renderEstimateMapBoard() {
                 <SidebarItem label="Orders" active={menu === "orders"} onClick={() => selectMenu("orders")} />
                 <SidebarItem label="Lost" active={menu === "lost"} onClick={() => selectMenu("lost")} />
                 <SidebarItem label="Installation" active={menu === "installation"} onClick={() => selectMenu("installation")} />
-                <SidebarItem label="Estimate Map" active={menu === "estimate_map"} onClick={() => selectMenu("estimate_map")} />
+                <SidebarItem label="Project Map" active={menu === "project_map"} onClick={() => selectMenu("project_map")} />
                 <SidebarItem label="Completed Projects" active={menu === "completed_projects"} onClick={() => selectMenu("completed_projects")} />
                 <SidebarItem label="Recycle Bin" active={menu === "recycle_bin"} onClick={() => selectMenu("recycle_bin")} />
               </div>
@@ -4886,9 +4897,7 @@ function renderEstimateMapBoard() {
               "No lost estimates found."
             )}
 
-            {menu === "installation" && view === "customers" && renderInstallationBoard()}
-
-            {menu === "estimate_map" && view === "customers" && renderEstimateMapBoard()}
+            {menu === "project_map" && view === "customers" && renderProjectMapBoard()}
 
             {menu === "completed_projects" && view === "customers" && (
               <Card className="qs-migrated-2">
@@ -4958,6 +4967,8 @@ function renderEstimateMapBoard() {
               </Card>
             )}
 
+            {menu === "installation" && view === "customers" && renderInstallationBoard()}
+
             {/* ESTIMATE WORKSPACE */}
             {view === "estimate_workspace" && selectedClient && selectedEstimate && (
                 <Card className="qs-migrated-98">
@@ -4987,96 +4998,6 @@ function renderEstimateMapBoard() {
                     <ClientSummary c={selectedClient} />
                   </div>
 
-                  <div className="qs-migrated-99">
-                    <Button variant="secondary" disabled className="qs-migrated-101">
-                      Add Position Disabled
-                    </Button>
-                    <Small>{DISABLED_ESTIMATE_CONFIGURATOR_MESSAGE}</Small>
-                  </div>
-
-                  <div className="legacy-section-divider qs-migrated-102">
-                    <H3>Positions</H3>
-                    <Small>Positions added to this estimate appear below.</Small>
-
-                    <div className="qs-migrated-103">
-                      {selectedEstimate.positions.length === 0 && <div className="qs-migrated-104">No positions yet.</div>}
-
-                      {(() => {
-                      const totals = estimateCommercialTotals(selectedEstimate);
-                      return (
-                        <>
-                          <div className="qs-migrated-105"
-                          >
-                            <div className="operational-stat">
-                              <div className="operational-stat__label">Total mÂ²</div>
-                              <div className="operational-stat__value">{formatMeasure(totals.totalSquareMetres)}</div>
-                            </div>
-                            <div className="operational-stat">
-                              <div className="operational-stat__label">Linear metreage</div>
-                              <div className="operational-stat__value">{formatMeasure(totals.totalLinearMetres)}</div>
-                            </div>
-                            <div className="operational-stat">
-                              <div className="operational-stat__label">Total quantity</div>
-                              <div className="operational-stat__value">{totals.totalQty}</div>
-                            </div>
-                            <div className="operational-stat">
-                              <div className="operational-stat__label">Estimate total</div>
-                              <div className="operational-stat__value">{formatMoney(totals.estimateTotal)}</div>
-                            </div>
-                          </div>
-
-                          <div className="qs-migrated-103">
-                            {selectedEstimate.positions.map((p) => {
-                              const lineTotal = Number(p.itemPrice || 0) * Math.max(1, Number(p.qty || 1));
-                              return (
-                                <div
-                         key={p.id} className="operational-surface qs-migrated-62">
-                                  <div className="qs-migrated-106">
-                                    <div className="qs-migrated-107">{p.positionRef}</div>
-                                    <div className="qs-migrated-108">
-                                      Qty {p.qty} {p.fieldsY}
-                                    </div>
-                                  </div>
-                                  <div className="qs-migrated-109">
-                                    {p.roomName || (p.useEstimateDefaults ? "Using estimate defaults" : "Overrides")}
-                                  </div>
-
-                                  <div className="qs-migrated-110">
-                                    <div
-                         />
-                                    <div
-                        >
-                                      <div className="qs-migrated-12">Item price</div>
-                                      <Input
-                                        type="number"
-                                        value={String(p.itemPrice ?? "")}
-                                        onChange={(v) =>
-                                          updateEstimatePosition(selectedClient.id, selectedEstimate.id, p.id, {
-                                            itemPrice: v === "" ? 0 : Number(v || 0),
-                                          })
-                                        }
-                                        placeholder="0.00"
-                                      />
-                                    </div>
-                                    <div
-                        >
-                                      <div className="qs-migrated-12">Quantity price</div>
-                                      <div
-                                        className="legacy-modal-status qs-migrated-111"
-                                      >
-                                        {formatMoney(lineTotal)}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </>
-                      );
-                    })()}
-                  </div>
-                </div>
                 </Card>
             )}
 
@@ -5170,7 +5091,7 @@ function renderEstimateMapBoard() {
             )}
 
             {/* Fallback for other menus */}
-            {menu !== "dashboard" && menu !== "client_database" && menu !== "follow_ups" && menu !== "estimates" && menu !== "orders" && menu !== "lost" && menu !== "installation" && menu !== "estimate_map" && menu !== "completed_projects" && menu !== "recycle_bin" && menu !== "project_preferences" && (
+            {menu !== "dashboard" && menu !== "client_database" && menu !== "follow_ups" && menu !== "estimates" && menu !== "orders" && menu !== "lost" && menu !== "installation" && menu !== "project_map" && menu !== "completed_projects" && menu !== "recycle_bin" && menu !== "project_preferences" && (
               <Card className="qs-migrated-2">
                 <H2>{menu.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase())}</H2>
                 <Small>Placeholder screen.</Small>

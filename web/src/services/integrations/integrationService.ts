@@ -19,4 +19,4 @@ export const saveIntegration = (provider: IntegrationProvider, body: { enabled: 
 export const clearIntegrationKey = (provider: IntegrationProvider) =>
   apiFetch(`/api/integrations/${provider}/key`, { method: "DELETE" }) as Promise<IntegrationStatus>;
 export const testIntegration = (provider: IntegrationProvider) =>
-  apiFetch(`/api/integrations/${provider}/test`, { method: "POST" }) as Promise<{ successful: boolean; message: string; testedAt: string }>;
+  apiFetch(`/api/integrations/${provider}/test`, { method: "POST" }) as Promise<{ successful: boolean; message: string; testedAt: string; capabilities?: { geocoding: boolean; routing: boolean } }>;

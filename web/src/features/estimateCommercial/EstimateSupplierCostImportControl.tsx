@@ -5,6 +5,13 @@ import { supplierQuotesApi } from "../supplierQuotes/api/supplierQuotesApi";
 type StoredDocument = { quote: SupplierQuote; revision: SupplierQuoteRevision; attachment: SupplierQuoteAttachment };
 const documentRoleLabel = (attachment: SupplierQuoteAttachment) => attachment.documentKind === "window_schedule" ? "Schedule" : attachment.documentKind === "quotation_letter" ? "Commercial / covering quotation" : attachment.documentKind === "installation_pricing" ? "Installation / additional pricing" : attachment.documentKind.replaceAll("_", " ");
 
+export function updateDocumentSelection(current: Set<string>, attachmentId: string, checked: boolean) {
+  const next = new Set(current);
+  if (checked) next.add(attachmentId);
+  else next.delete(attachmentId);
+  return next;
+}
+
 export default function EstimateSupplierCostImportControl({ estimateId, scenarioId, onLoaded }: { estimateId: string; scenarioId: string; onLoaded: () => Promise<void> | void }) {
   const [documents, setDocuments] = useState<StoredDocument[]>([]);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
@@ -26,9 +33,9 @@ export default function EstimateSupplierCostImportControl({ estimateId, scenario
     finally { setBusy(false); }
   }
   return <section className="ui-card calculator-lab__supplier-import" aria-labelledby="supplier-cost-import-heading">
-    <div><h3 id="supplier-cost-import-heading">Supplier costs</h3><p>Select uploaded estimate documents, then extract their commercial rows into this costing. Existing manual lines are retained.</p></div>
-    {!documents.length ? <p>No supplier documents are stored for this estimate. Use <strong>Import Supplier Costs</strong> to upload them.</p> : <div className="calculator-lab__supplier-documents">{[...grouped.values()].map(({quote,revisions})=><section key={quote.id}><h4>{quote.supplierName}</h4>{[...revisions.values()].map(({revision,attachments})=><div key={revision.id}><strong>{revision.fullQuotationReference || "No quotation reference"}{revision.supplierRevision?` · revision ${revision.supplierRevision}`:""}</strong>{attachments.map((attachment)=>{const packageDocument=attachment.documentKind!=="complete_quotation"&&attachment.documentKind!=="supporting_document";return <label key={attachment.id}><input type="checkbox" checked={selected.has(attachment.id)} onChange={(event) => setSelected((current) => { const next = new Set(current); if (event.target.checked) next.add(attachment.id); else next.delete(attachment.id); return next; })} /><span><strong>{attachment.originalFileName}</strong><small>{revision.currency} · {documentRoleLabel(attachment)} · {packageDocument?"Package document":revision.isLatest?"Latest revision":"Superseded revision"} · uploaded {new Date(attachment.createdAt).toLocaleDateString()}</small></span></label>})}</div>)}</section>)}</div>}
-    <button className="ui-button ui-button--primary" disabled={busy || selected.size === 0} onClick={() => void submit()}>{busy ? "Extracting & loading…" : "Extract & Load Supplier Costs"}</button>
+    <div><h3 id="supplier-cost-import-heading">Review and import supplier documents</h3><p>Select uploaded manufacturer documents to extract their reviewed positions and commercial evidence.</p></div>
+    {!documents.length ? <p>No supplier documents are stored for this estimate yet.</p> : <div className="calculator-lab__supplier-documents">{[...grouped.values()].map(({quote,revisions})=><section key={quote.id}><h4>{quote.supplierName}</h4>{[...revisions.values()].map(({revision,attachments})=><div key={revision.id}><strong>{revision.fullQuotationReference || "No quotation reference"}{revision.supplierRevision?` · revision ${revision.supplierRevision}`:""}</strong>{attachments.map((attachment)=>{const packageDocument=attachment.documentKind!=="complete_quotation"&&attachment.documentKind!=="supporting_document";return <label key={attachment.id}><input type="checkbox" checked={selected.has(attachment.id)} onChange={(event) => { const checked = event.currentTarget.checked; setSelected((current) => updateDocumentSelection(current, attachment.id, checked)); }} /><span><strong>{attachment.originalFileName}</strong><small>{revision.currency} · {documentRoleLabel(attachment)} · {packageDocument?"Package document":revision.isLatest?"Latest revision":"Superseded revision"} · uploaded {new Date(attachment.createdAt).toLocaleDateString()}</small></span></label>})}</div>)}</section>)}</div>}
+    <button className="ui-button ui-button--primary" disabled={busy || selected.size === 0} onClick={() => void submit()}>{busy ? "Importing…" : "Import selected manufacturer quote"}</button>
     {message ? <p role="status">{message}</p> : null}
   </section>;
 }

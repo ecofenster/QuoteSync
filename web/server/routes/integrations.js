@@ -14,27 +14,13 @@ export function createIntegrationsRouter({ databasePromise = dbPromise, serviceO
 
   router.post("/googleMaps/geocode", async (req, res) => {
     try {
-      const key = await (await withService()).enabledCredential("googleMaps");
-      const query = String(req.body?.query || "").trim();
-      if (!query) return res.status(400).json({ error: "query is required" });
-      const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&region=GB&key=${encodeURIComponent(key)}`);
-      const body = await response.json();
-      const location = body?.results?.[0]?.geometry?.location;
-      if (!response.ok || body?.status !== "OK" || !location) return res.status(422).json({ error: "Location could not be resolved" });
-      return res.json({ lat: location.lat, lng: location.lng });
+      return res.json(await (await withService()).geocodeGoogle(req.body?.query));
     } catch (error) { return fail(res, error); }
   });
 
   router.post("/googleMaps/route", async (req, res) => {
     try {
-      const key = await (await withService()).enabledCredential("googleMaps");
-      const origin = req.body?.origin, destination = req.body?.destination;
-      if (![origin?.lat, origin?.lng, destination?.lat, destination?.lng].every(Number.isFinite)) return res.status(400).json({ error: "valid route coordinates are required" });
-      const response = await fetch(`https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origin.lat},${origin.lng}&destinations=${destination.lat},${destination.lng}&units=metric&key=${encodeURIComponent(key)}`);
-      const body = await response.json();
-      const element = body?.rows?.[0]?.elements?.[0];
-      if (!response.ok || body?.status !== "OK" || element?.status !== "OK") return res.status(422).json({ error: "Route could not be calculated" });
-      return res.json({ distanceKm: element.distance.value / 1000, durationMinutes: Math.ceil(element.duration.value / 60) });
+      return res.json(await (await withService()).routeGoogle(req.body?.origin, req.body?.destination));
     } catch (error) { return fail(res, error); }
   });
 

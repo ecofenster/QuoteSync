@@ -16,6 +16,7 @@ import {
   getB92ProductionManifestEntry,
   mapB92ProofEntryForFamily,
 } from "./b92ConfiguratorProofMapping";
+import { createB92DefaultConfiguratorState } from "./b92ConfiguratorState";
 import {
   getB92ContractProofStatus,
   getB92ProofManifestEntry,
@@ -279,4 +280,11 @@ export function projectConfiguredPositionContractToLegacyPosition(
 
 export function getContractFromPositionOrNull(position: unknown): ConfiguredPositionContract | null {
   return getConfiguredPositionContract(position);
+}
+
+export function hydrateB92ConfiguratorStateFromPosition(position:Record<string,any>):B92ConfiguratorState{
+  const contract=getConfiguredPositionContract(position),base=createB92DefaultConfiguratorState();
+  if(!contract)return createB92DefaultConfiguratorState({dimensions:{...base.dimensions,widthMm:Number(position.widthMm)||base.dimensions.widthMm,heightMm:Number(position.heightMm)||base.dimensions.heightMm,columnWidthsMm:[Number(position.widthMm)||base.dimensions.widthMm],rowHeightsMm:[Number(position.heightMm)||base.dimensions.heightMm]}});
+  const operations:Record<string,B92ConfiguratorFieldOperation>={fixed:'fixed',fixed_sash:'fixed-sash',tilt_turn_left:'tilt-turn-left',tilt_turn_right:'tilt-turn-right',turn_left:'turn-left',turn_right:'turn-right',tilt:'tilt'};
+  return createB92DefaultConfiguratorState({selectedViewId:contract.render.proofViewId,selectedFamilyId:contract.render.proofFamilyId,selectedView:contract.render.orientationView==='outside'?'external':'internal',sourceModelDesignId:contract.product.sourceModelId,dimensions:{widthMm:contract.dimensions.widthMm,heightMm:contract.dimensions.heightMm,splitMode:contract.dimensions.splitMode,columnWidthsMm:contract.dimensions.colWidthsMm,rowHeightsMm:contract.dimensions.rowHeightsMm},structure:{...base.structure,layoutPreset:contract.layout.presetKey as B92ConfiguratorStructureState['layoutPreset'],rows:contract.layout.rows,columns:contract.layout.columns,fields:contract.layout.fields.map((field,index)=>({id:field.id,index,row:field.row,column:field.column,operation:operations[field.operation]??'fixed'})),selectedFieldId:contract.layout.fields[0]?.id??null},finishes:{...base.finishes,...contract.finish}});
 }

@@ -21,6 +21,12 @@ export class ApiRequestError extends Error {
 }
 
 export function extractApiErrorMessage(status: number, body: string) {
+  const looksLikeHtml = /^\s*<!doctype html|^\s*<html|<body[\s>]/i.test(body);
+  if (looksLikeHtml) {
+    if (status === 404) return "Not found";
+    if (status === 400) return "Bad request";
+    return `API request failed: ${status}`;
+  }
   if (body) {
     try {
       const parsed = JSON.parse(body);

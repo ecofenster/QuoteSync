@@ -5,9 +5,10 @@ import B92ConfiguratorModalHost from "./B92ConfiguratorModalHost";
 import B92ConfiguratorSummaryPanel from "./B92ConfiguratorSummaryPanel";
 import { useB92ConfiguratorController } from "./useB92ConfiguratorController";
 import "./B92Configurator.css";
+import type { B92ConfiguratorState } from "./b92Configurator.types";
 
-export default function B92ConfiguratorShell() {
-  const controller = useB92ConfiguratorController();
+export default function B92ConfiguratorShell({initialState,onSave,onCancel,saving=false}:{initialState?:B92ConfiguratorState;onSave?:(state:B92ConfiguratorState)=>void;onCancel?:()=>void;saving?:boolean}={}) {
+  const controller = useB92ConfiguratorController(initialState);
   const {
     state,
     activeModal,
@@ -137,6 +138,7 @@ export default function B92ConfiguratorShell() {
         onSetFieldOperation={commitFieldOperation}
         onSetOverallDimensions={setOverallDimensions}
       />
+      {onSave||onCancel?<footer className="b92-configurator__actions">{onCancel?<button type="button" className="ui-button" onClick={onCancel}>Cancel</button>:null}{onSave?<button type="button" className="ui-button ui-button--primary" disabled={saving} onClick={()=>onSave(state)}>{saving?"Saving…":"Save Configuration"}</button>:null}</footer>:null}
     </div>
   );
 }

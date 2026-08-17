@@ -1,9 +1,8 @@
 const PROVIDERS = Object.freeze({
   googleMaps: {
     category: "location_mapping",
-    capabilities: ["map_display", "geocoding", "routing", "distance", "travel_time"],
-    envNames: ["GOOGLE_MAPS_API_KEY", "VITE_GOOGLE_MAPS_API_KEY"],
-    testUrl: (key) => `https://maps.googleapis.com/maps/api/geocode/json?address=SW1A%201AA&region=GB&key=${encodeURIComponent(key)}`,
+    capabilities: ["geocoding", "routing", "distance", "travel_time"],
+    envNames: [],
   },
   what3words: {
     category: "location_mapping",
@@ -12,6 +11,33 @@ const PROVIDERS = Object.freeze({
     testUrl: (key) => `https://api.what3words.com/v3/convert-to-coordinates?words=filled.count.soap&key=${encodeURIComponent(key)}`,
   },
 });
+
+const GOOGLE_GEOCODING_URL = "https://maps.googleapis.com/maps/api/geocode/json";
+const GOOGLE_ROUTES_URL = "https://routes.googleapis.com/directions/v2:computeRoutes";
+
+function safeGoogleFailure(body, fallback) {
+  const status = String(body?.status || body?.error?.status || "").trim();
+  const detail = String(body?.error_message || body?.error?.message || "").trim();
+  const reasons = Array.isArray(body?.error?.details)
+    ? body.error.details.map((item) => item?.reason || item?.metadata?.reason || "").join(" ")
+    : "";
+  const combined = `${status} ${detail} ${reasons}`.toLowerCase();
+  if (combined.includes("referer restriction") || combined.includes("referer <empty>") || combined.includes("http_referrer_blocked")) return "Google rejected the server credential because it has website/referrer restrictions.";
+  if (combined.includes("api_not_activated") || combined.includes("has not been used") || combined.includes("not enabled")) return "A required Google Maps API is not enabled for this credential's project.";
+  if (combined.includes("billing")) return "Google Maps billing is not enabled for this credential's project.";
+  if (combined.includes("api_key_invalid") || combined.includes("invalid api key")) return "Google rejected the configured server credential.";
+  if (combined.includes("ip") && combined.includes("not allowed")) return "Google rejected the server credential's IP restriction.";
+  return status ? `${fallback} (${status}).` : fallback;
+}
+
+function providerFailure(message, status = 422) {
+  return Object.assign(new Error(message), { status });
+}
+
+function durationMinutes(value) {
+  const seconds = Number.parseFloat(String(value || "").replace(/s$/, ""));
+  return Number.isFinite(seconds) ? Math.ceil(seconds / 60) : null;
+}
 
 const secretKey = (provider) => `integrations.${provider}.apiKey`;
 const enabledKey = (provider) => `integrations.${provider}.enabled`;
@@ -117,24 +143,89 @@ export function createIntegrationService(db, { env = process.env, fetchImpl = fe
     return credential.key;
   }
 
-  async function testConnection(provider) {
-    const config = assertProvider(provider);
-    const key = await enabledCredential(provider);
-    let successful = false;
-    let message = "Connection failed. Check the key and provider permissions.";
-    try {
-      const response = await fetchImpl(config.testUrl(key));
-      const body = await response.json().catch(() => ({}));
-      if (provider === "googleMaps") successful = response.ok && body?.status === "OK";
-      else successful = response.ok && Number.isFinite(body?.coordinates?.lat) && Number.isFinite(body?.coordinates?.lng);
-      if (successful) message = "Connection successful.";
-    } catch {
-      successful = false;
+  async function geocodeGoogle(query) {
+    const key = await enabledCredential("googleMaps");
+    const normalized = String(query || "").trim();
+    if (!normalized) throw providerFailure("query is required", 400);
+    const url = new URL(GOOGLE_GEOCODING_URL);
+    url.searchParams.set("address", normalized);
+    url.searchParams.set("region", "GB");
+    url.searchParams.set("key", key);
+    const response = await fetchImpl(url);
+    const body = await response.json().catch(() => ({}));
+    const location = body?.results?.[0]?.geometry?.location;
+    if (!response.ok || body?.status !== "OK" || !location) {
+      throw providerFailure(safeGoogleFailure(body, "Location could not be resolved"));
     }
-    const testedAt = new Date().toISOString();
-    await writeValue(testKey(provider), { testedAt, successful });
-    return { successful, message, testedAt };
+    return { lat: Number(location.lat), lng: Number(location.lng) };
   }
 
-  return { status, listStatuses, configure, clearCredential, enabledCredential, testConnection };
+  async function routeGoogle(origin, destination) {
+    const key = await enabledCredential("googleMaps");
+    if (![origin?.lat, origin?.lng, destination?.lat, destination?.lng].every(Number.isFinite)) {
+      throw providerFailure("valid route coordinates are required", 400);
+    }
+    const response = await fetchImpl(GOOGLE_ROUTES_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": key,
+        "X-Goog-FieldMask": "routes.distanceMeters,routes.duration",
+      },
+      body: JSON.stringify({
+        origin: { location: { latLng: { latitude: origin.lat, longitude: origin.lng } } },
+        destination: { location: { latLng: { latitude: destination.lat, longitude: destination.lng } } },
+        travelMode: "DRIVE",
+        routingPreference: "TRAFFIC_UNAWARE",
+        computeAlternativeRoutes: false,
+      }),
+    });
+    const body = await response.json().catch(() => ({}));
+    const route = body?.routes?.[0];
+    const minutes = durationMinutes(route?.duration);
+    if (!response.ok || !Number.isFinite(route?.distanceMeters) || minutes == null) {
+      throw providerFailure(safeGoogleFailure(body, "Route could not be calculated"));
+    }
+    return { distanceKm: route.distanceMeters / 1000, durationMinutes: minutes };
+  }
+
+  async function testConnection(provider) {
+    const config = assertProvider(provider);
+    await enabledCredential(provider);
+    let successful = false;
+    let message = "Connection failed. Check the key and provider permissions.";
+    let capabilities;
+    if (provider === "googleMaps") {
+      capabilities = { geocoding: false, routing: false };
+      try {
+        const origin = await geocodeGoogle("SW1A 1AA");
+        capabilities.geocoding = true;
+        try {
+          await routeGoogle(origin, { lat: 51.5155, lng: -0.1419 });
+          capabilities.routing = true;
+          successful = true;
+          message = "Connection successful. Geocoding and routing are available.";
+        } catch (error) {
+          message = `Routing failed: ${error instanceof Error ? error.message : message}`;
+        }
+      } catch (error) {
+        message = `Geocoding failed: ${error instanceof Error ? error.message : message}`;
+      }
+    } else {
+      try {
+        const key = await enabledCredential(provider);
+        const response = await fetchImpl(config.testUrl(key));
+        const body = await response.json().catch(() => ({}));
+        successful = response.ok && Number.isFinite(body?.coordinates?.lat) && Number.isFinite(body?.coordinates?.lng);
+        if (successful) message = "Connection successful.";
+      } catch {
+        successful = false;
+      }
+    }
+    const testedAt = new Date().toISOString();
+    await writeValue(testKey(provider), { testedAt, successful, ...(capabilities ? { capabilities } : {}) });
+    return { successful, message, testedAt, ...(capabilities ? { capabilities } : {}) };
+  }
+
+  return { status, listStatuses, configure, clearCredential, enabledCredential, geocodeGoogle, routeGoogle, testConnection };
 }

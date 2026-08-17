@@ -548,6 +548,26 @@ const tables = [
     FOREIGN KEY (source_attachment_id) REFERENCES supplier_quote_attachments(id),
     FOREIGN KEY (source_revision_id) REFERENCES supplier_quote_revisions(id)
   )`,
+  `CREATE TABLE IF NOT EXISTS project_calculator_estimate_position_rows (
+    id TEXT PRIMARY KEY,
+    scenario_id TEXT NOT NULL,
+    estimate_position_id TEXT NOT NULL,
+    source_sequence INTEGER NOT NULL,
+    source_snapshot_json TEXT NOT NULL,
+    display_reference TEXT NOT NULL,
+    product_class TEXT NOT NULL,
+    quantity INTEGER NOT NULL CHECK (quantity > 0),
+    width_mm INTEGER NOT NULL CHECK (width_mm > 0),
+    height_mm INTEGER NOT NULL CHECK (height_mm > 0),
+    classification TEXT NOT NULL DEFAULT 'standard',
+    included_in_current_estimate INTEGER NOT NULL DEFAULT 1,
+    alternative_to_reference TEXT,
+    markup_override_percent TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (scenario_id, estimate_position_id),
+    FOREIGN KEY (scenario_id) REFERENCES project_calculator_lab_scenarios(id) ON DELETE CASCADE
+  )`,
   `CREATE TABLE IF NOT EXISTS project_calculator_estimate_supplier_costs (
     id TEXT PRIMARY KEY,
     scenario_id TEXT NOT NULL,
@@ -672,6 +692,7 @@ const tables = [
     amount TEXT NOT NULL,
     currency TEXT NOT NULL,
     evidence_origin TEXT NOT NULL DEFAULT 'manual' CHECK (evidence_origin = 'manual'),
+    included_in_current_estimate INTEGER NOT NULL DEFAULT 1 CHECK (included_in_current_estimate IN (0,1)),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY (scenario_id) REFERENCES project_calculator_lab_scenarios(id) ON DELETE CASCADE
@@ -858,6 +879,7 @@ export async function initializeSupplierCommercialSchema(db) {
   if(!estimateProductFxColumns.some(column=>column.name==='purchase_amount_gbp'))await db.exec('ALTER TABLE project_calculator_estimate_product_rows ADD COLUMN purchase_amount_gbp TEXT');
   if(!estimateProductFxColumns.some(column=>column.name==='selling_amount_gbp'))await db.exec('ALTER TABLE project_calculator_estimate_product_rows ADD COLUMN selling_amount_gbp TEXT');
   for(const [column,definition] of [['classification',"TEXT NOT NULL DEFAULT 'standard'"],['included_in_current_estimate','INTEGER NOT NULL DEFAULT 1'],['alternative_to_reference','TEXT']])if(!estimateProductFxColumns.some(item=>item.name===column))await db.exec(`ALTER TABLE project_calculator_estimate_product_rows ADD COLUMN ${column} ${definition}`);
+  if(!estimateProductFxColumns.some(item=>item.name==='estimate_position_id'))await db.exec('ALTER TABLE project_calculator_estimate_product_rows ADD COLUMN estimate_position_id TEXT');
   const estimateCostFxColumns=await db.all('PRAGMA table_info(project_calculator_estimate_supplier_costs)');
   if(!estimateCostFxColumns.some(column=>column.name==='fx_snapshot_id'))await db.exec('ALTER TABLE project_calculator_estimate_supplier_costs ADD COLUMN fx_snapshot_id TEXT');
   if(!estimateCostFxColumns.some(column=>column.name==='purchase_amount_gbp'))await db.exec('ALTER TABLE project_calculator_estimate_supplier_costs ADD COLUMN purchase_amount_gbp TEXT');
@@ -885,6 +907,8 @@ export async function initializeSupplierCommercialSchema(db) {
   for(const [column,definition] of [['included_in_supplier_total','INTEGER NOT NULL DEFAULT 1'],['inclusion_evidence','TEXT']])if(!labCostColumns.some(item=>item.name===column))await db.exec(`ALTER TABLE supplier_import_lab_additional_cost_items ADD COLUMN ${column} ${definition}`);
   const supplierExtraColumns=await db.all('PRAGMA table_info(supplier_quote_extras)');
   for(const [column,definition] of [['included_in_supplier_total','INTEGER NOT NULL DEFAULT 1'],['inclusion_evidence','TEXT']])if(!supplierExtraColumns.some(item=>item.name===column))await db.exec(`ALTER TABLE supplier_quote_extras ADD COLUMN ${column} ${definition}`);
+  const manualCostColumns=await db.all('PRAGMA table_info(project_calculator_lab_manual_cost_lines)');
+  if(!manualCostColumns.some(item=>item.name==='included_in_current_estimate'))await db.exec('ALTER TABLE project_calculator_lab_manual_cost_lines ADD COLUMN included_in_current_estimate INTEGER NOT NULL DEFAULT 1');
   const now=new Date().toISOString();
   for(const [id,category,label,rateType,price,variant] of CALCULATOR_CATALOGUE_DEFAULTS)await db.run('INSERT OR IGNORE INTO project_calculator_admin_catalogue_items(id,category,label,rate_type,price_amount,currency,variant_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)',id,category,label,rateType,price,'GBP',JSON.stringify(variant||{}),now,now);
   await db.run("UPDATE project_calculator_admin_catalogue_items SET active=0,updated_at=? WHERE id='me508_unconfigured' AND price_amount IS NULL",now);
@@ -904,7 +928,7 @@ export const supplierCommercialTableNames = Object.freeze([
   'supplier_position_applications', 'project_calculators', 'project_cost_items',
   'pricing_scenarios', 'calculator_snapshots',
   'project_calculator_lab_scenarios', 'project_calculator_lab_product_rows',
-  'project_calculator_estimate_product_rows', 'project_calculator_estimate_supplier_costs',
+  'project_calculator_estimate_product_rows', 'project_calculator_estimate_position_rows', 'project_calculator_estimate_supplier_costs',
   'project_calculator_supplier_quote_revisions',
   'supplier_commercial_defaults',
   'project_calculator_supplier_fx_snapshots',

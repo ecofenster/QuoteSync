@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { clearIntegrationKey, getIntegrationStatuses, saveIntegration, testIntegration, type IntegrationProvider, type IntegrationStatus } from "../../services/integrations/integrationService";
 
 const PROVIDERS: Array<{ id: IntegrationProvider; title: string; description: string }> = [
-  { id: "googleMaps", title: "Google Maps", description: "Maps, geocoding, and the foundation for future route and travel calculations." },
+  { id: "googleMaps", title: "Google Maps", description: "Server credential for geocoding, routes, distance, and travel time. Browser map display uses its separately deployed website-restricted key." },
   { id: "what3words", title: "what3words", description: "Resolve three-word addresses and coordinates for project locations." },
 ];
 
@@ -44,7 +44,7 @@ export default function AdminIntegrationsPanel() {
           </div>
           <label className="admin-integration-card__toggle"><input type="checkbox" checked={status?.enabled ?? true} disabled={!status || disabled} onChange={(event) => void run(provider.id, () => saveIntegration(provider.id, { enabled: event.target.checked }))} /> Enabled</label>
           {status?.capabilities?.length ? <div className="admin-integration-card__capabilities" aria-label={`${provider.title} capabilities`}>{status.capabilities.map((capability) => <span className="ui-chip" key={capability}>{capability.replaceAll("_", " ")}</span>)}</div> : null}
-          <label className="ui-field"><span>API Key</span><input className="ui-input" type="password" autoComplete="new-password" placeholder={status?.maskedKey || "Enter API key"} value={keys[provider.id]} onChange={(event) => setKeys((current) => ({ ...current, [provider.id]: event.target.value }))} /></label>
+          <label className="ui-field"><span>{provider.id === "googleMaps" ? "Server API Key" : "API Key"}</span><input className="ui-input" type="password" autoComplete="new-password" placeholder={status?.maskedKey || "Enter API key"} value={keys[provider.id]} onChange={(event) => setKeys((current) => ({ ...current, [provider.id]: event.target.value }))} /></label>
           {status?.maskedKey ? <div className="admin-integration-card__metadata">Saved credential: <strong>{status.maskedKey}</strong></div> : null}
           {status?.lastTestedAt ? <div className="admin-integration-card__metadata">Last tested: {new Date(status.lastTestedAt).toLocaleString()} — {status.lastTestSuccessful ? "successful" : "failed"}</div> : null}
           {message[provider.id] ? <div className="ui-status ui-status--warning">{message[provider.id]}</div> : null}

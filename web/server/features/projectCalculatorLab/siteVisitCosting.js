@@ -92,13 +92,14 @@ export function calculateSiteVisitCosting(value) {
   const chargeableMiles = multiply(oneWayMiles, journeyFactor, input.visits);
   const mileageCost = multiply(chargeableMiles, input.mileageRate);
   const routeHours = input.reviewedTravelHours ?? String((input.calculatedDurationMinutes ?? 0) / 60);
-  const travelHours = multiply(routeHours, journeyFactor, input.visits, input.people);
+  const totalDrivingHours = multiply(routeHours, journeyFactor, input.visits);
+  const travelHours = multiply(totalDrivingHours, input.people);
   const travelLabour = multiply(travelHours, input.travelLabourRate);
   const accommodation = input.accommodationFixed ?? multiply(input.accommodationNights, input.accommodationRooms, input.accommodationRate);
   const meals = input.mealsMode === 'fixed' ? input.mealsFixed : multiply(input.mealPerPerson, input.people, input.visits);
   const other = add(input.otherCosts.map((item) => item.amount));
   const total = add([mileageCost, travelLabour, accommodation, meals, input.parking, input.tolls, input.ferries, other]);
-  return { input, oneWayMiles, returnMilesPerVisit: multiply(oneWayMiles, journeyFactor), chargeableMiles, travelHours, mileageCost, travelLabour, accommodation, meals, parking: input.parking, tolls: input.tolls, ferries: input.ferries, other, total };
+  return { input, oneWayMiles, returnMilesPerVisit: multiply(oneWayMiles, journeyFactor), chargeableMiles, oneWayDrivingHours: routeHours, totalDrivingHours, travelHours, mileageCost, travelLabour, accommodation, meals, parking: input.parking, tolls: input.tolls, ferries: input.ferries, other, total };
 }
 
 export function allocateSiteVisitCost(total, products, basis = 'equal_per_position') {

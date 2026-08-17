@@ -6,6 +6,7 @@ type ToggleProps = {
   onChange: (value: boolean) => void;
   labelOn?: string;
   labelOff?: string;
+  ariaLabel?: string;
 };
 
 export default function Toggle({
@@ -13,6 +14,7 @@ export default function Toggle({
   onChange,
   labelOn = "Yes",
   labelOff = "No",
+  ariaLabel,
 }: ToggleProps) {
   return (
     <label className="toggle">
@@ -23,6 +25,7 @@ export default function Toggle({
           className="toggle__input"
           type="checkbox"
           checked={value}
+          aria-label={ariaLabel}
           onChange={(e) => onChange(e.currentTarget.checked)}
         />
 

@@ -28,7 +28,8 @@ import {
   getB92StructurePresetDefinition,
 } from "./b92StructurePresets";
 
-function initialState() {
+function initialState(seed?: B92ConfiguratorState) {
+  if(seed)return seed;
   const firstProductionView = getB92InitialProductionManifestEntry() ?? getB92InitialConfiguratorView();
   return createB92DefaultConfiguratorState({
     selectedViewId: firstProductionView?.viewId ?? null,
@@ -56,8 +57,8 @@ function withUpdatedFieldOperation(
   };
 }
 
-export function useB92ConfiguratorController() {
-  const [state, setState] = useState<B92ConfiguratorState>(() => initialState());
+export function useB92ConfiguratorController(seed?: B92ConfiguratorState) {
+  const [state, setState] = useState<B92ConfiguratorState>(() => initialState(seed));
   const [activeModal, setActiveModal] = useState<B92ConfiguratorModalId | null>(null);
 
   const selectedEntry = useMemo(() => getB92ProductionManifestEntry(state.selectedViewId), [state.selectedViewId]);

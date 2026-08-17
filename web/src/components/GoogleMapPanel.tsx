@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 
-export type GoogleMapMarkerVariant = "open" | "order" | "lost" | "installation";
+export type GoogleMapMarkerVariant = "open" | "estimate" | "order" | "lost" | "installation" | "completed" | "enquiry";
 
 export type GoogleMapMarkerItem = {
   id: string;
@@ -9,6 +9,8 @@ export type GoogleMapMarkerItem = {
   title: string;
   subtitle?: string;
   variant?: GoogleMapMarkerVariant;
+  stage?: string;
+  reference?: string;
 };
 
 declare global {
@@ -24,6 +26,7 @@ function resolvedToken(name: string) {
 
 function markerColor(variant: GoogleMapMarkerVariant | undefined) {
   if (variant === "installation") return resolvedToken("--qs-operational-installations");
+  if (variant === "completed") return resolvedToken("--qs-semantic-success");
   if (variant === "order") return resolvedToken("--qs-semantic-success");
   if (variant === "lost") return resolvedToken("--qs-semantic-error");
   return resolvedToken("--qs-theme-text");
@@ -76,6 +79,7 @@ export default function GoogleMapPanel({
   items,
   selectedId,
   onSelect,
+  onOpen,
   onApiReady,
   onMapClick,
   height = 600,
@@ -85,6 +89,7 @@ export default function GoogleMapPanel({
   items: GoogleMapMarkerItem[];
   selectedId?: string;
   onSelect?: (id: string) => void;
+  onOpen?: (id: string) => void;
   onApiReady?: () => void;
   onMapClick?: (lat: number, lng: number) => void;
   height?: number;
@@ -109,6 +114,20 @@ export default function GoogleMapPanel({
       subtitle.textContent = item.subtitle;
       content.appendChild(subtitle);
     }
+    if (item.reference || item.stage) {
+      const details = document.createElement("div");
+      details.className = "google-map-panel__info-subtitle";
+      details.textContent = [item.reference, item.stage].filter(Boolean).join(" · ");
+      content.appendChild(details);
+    }
+    if (onOpen) {
+      const open = document.createElement("button");
+      open.type = "button";
+      open.className = "ui-button";
+      open.textContent = "Open";
+      open.addEventListener("click", () => onOpen(item.id));
+      content.appendChild(open);
+    }
     return content;
   };
 
@@ -116,7 +135,7 @@ export default function GoogleMapPanel({
     let cancelled = false;
 
     if (!apiKey) {
-      setLoadError("Google Maps API key missing. Add VITE_GOOGLE_MAPS_API_KEY to .env.local.");
+      setLoadError("Map display is not configured for this QuoteSuite deployment.");
       return;
     }
 

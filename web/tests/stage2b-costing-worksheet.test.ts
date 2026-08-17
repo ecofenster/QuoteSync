@@ -15,7 +15,7 @@ test('approved Project Costing worksheet and quotation workflow mount', async ()
 test('worksheet sections preserve evidence, use icons and hide unused categories', async () => {
   const source=await readFile('src/features/projectCalculatorLab/ScenarioCostingWorksheet.tsx','utf8');
   assert.match(source,/row\.displayReference/);
-  assert.match(source,/Original supplier transport/);
+  assert.match(source,/Original Supplier Transport/);
   assert.match(source,/packageItems\.filter\(row=>row\.included\)/);
   assert.match(source,/extras\.length\?<Section/);
   assert.match(source,/equipment\.length\?<Section/);
@@ -28,7 +28,8 @@ test('worksheet sections preserve evidence, use icons and hide unused categories
 test('commercial summary reconciles category totals and saved rate evidence', async () => {
   const source=await readFile('src/features/projectCalculatorLab/ScenarioCostingWorksheet.tsx','utf8');
   for(const total of ['Project Cost \\(Ex VAT\\)','VAT','Project Cost \\(Inc VAT\\)','Selling Price','Gross Profit','Gross Margin','Overall Markup'])assert.match(source,new RegExp(total));
-  assert.match(source,/sale=addDecimalAmounts\(\[discountedProductSale,extrasSale,transportSale,equipmentSale,installationSale,materialsSale,feeSale,siteVisitAllocatedToProducts\?null:siteVisitSale\]\)/);
+  assert.match(source,/calculatedSale=addDecimalAmounts\(\[discountedProductSale,extrasSale,transportSale,equipmentSale,installationSale,materialsSale,feeSale,siteVisitAllocatedToProducts\?null:siteVisitSale\]\)/);
+  assert.match(source,/actualSale=fixedPriceDraft\.enabled\?fixedPriceDraft\.amount:calculatedSale/);
   assert.match(source,/Site Visit \/ Travel/);
   assert.match(source,/customerDiscountAmount/);
   assert.match(source,/providerTimestamp/);

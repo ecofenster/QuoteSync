@@ -58,6 +58,18 @@ export default function EstimatePositionsFeature(props: Props) {
     setExpandedPositionId(null);
   }, [e?.id, e?.positions]);
 
+  useEffect(() => {
+    const prepareB92 = (event: Event) => {
+      const requested = (event as CustomEvent<{ estimateId?: string }>).detail?.estimateId;
+      if (requested && String(requested) !== String(e?.id)) return;
+      setQuickAddPositionType("Window");
+      setQuickAddInsertion(B92_QUICK_ADD_INSERTION);
+      window.setTimeout(() => document.querySelector<HTMLElement>('[data-testid="position-quick-add-submit"]')?.focus(), 0);
+    };
+    window.addEventListener("quotesuite:create-estimate-position", prepareB92);
+    return () => window.removeEventListener("quotesuite:create-estimate-position", prepareB92);
+  }, [e?.id]);
+
   const availableInsertions = useMemo(
     () => (quickAddPositionType === "Door" ? DOOR_INSERTIONS : WINDOW_INSERTIONS),
     [quickAddPositionType]
@@ -105,6 +117,8 @@ export default function EstimatePositionsFeature(props: Props) {
 
     const nextPosition = {
       id: nextId,
+      origin: shouldCreateB92Contract ? "b92_configured" : "manual",
+      sourceSequence: currentPositions.length,
       positionRef,
       qty: 1,
       itemPrice: 0,
@@ -159,13 +173,16 @@ export default function EstimatePositionsFeature(props: Props) {
 
     const duplicatedType: QuickAddPositionType = source.positionType === "Door" ? "Door" : "Window";
     const nextId = `tmp_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const sourceIndex = currentPositions.findIndex((position) => String(position?.id) === String(positionId));
     const duplicate = {
       ...source,
       id: nextId,
+      sourceSequence: sourceIndex + 1,
+      supplierEvidenceLinks: [],
+      sourceProvenance: null,
       positionRef: nextPositionRef(currentPositions, duplicatedType),
     };
 
-    const sourceIndex = currentPositions.findIndex((position) => String(position?.id) === String(positionId));
     const updatedPositions = [...currentPositions];
     updatedPositions.splice(sourceIndex + 1, 0, duplicate);
 

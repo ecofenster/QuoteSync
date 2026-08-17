@@ -9,7 +9,7 @@ import { initializeSupplierCommercialSchema } from '../server/schema/supplierCom
 import { createSupplierImportLabService } from '../server/features/supplierImportLab/supplierImportLabService.js';
 import { createProjectCalculatorLabService } from '../server/features/projectCalculatorLab/projectCalculatorLabService.js';
 import { createSupplierQuotesService } from '../server/features/supplierQuotes/supplierQuotesService.js';
-import { chooseInitialPreviewEstimate } from '../src/features/admin/AdminSupplierQuoteImportBeta.js';
+import { chooseInitialPreviewEstimate } from '../src/features/admin/adminSupplierQuotePreview.utils.js';
 
 async function setup() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'quotesync-stage3b-'));
@@ -122,7 +122,7 @@ test('calculator scenarios retain estimate and extraction provenance without mut
   }
 });
 
-test('estimate commercial preview defaults to Project Costing with a storage-only supplier import tab', async () => {
+test('estimate commercial preview defaults to Project Costing with canonical import and B92 entry points', async () => {
   const workspace = await fs.readFile(path.join(process.cwd(), 'src/features/estimateCommercial/EstimateCommercialWorkspace.tsx'), 'utf8');
   const documents = await fs.readFile(path.join(process.cwd(), 'src/features/estimateCommercial/EstimateSupplierDocuments.tsx'), 'utf8');
   const calculator = await fs.readFile(path.join(process.cwd(), 'src/features/projectCalculatorLab/ProjectCalculatorLabWorkspace.tsx'), 'utf8');
@@ -133,7 +133,8 @@ test('estimate commercial preview defaults to Project Costing with a storage-onl
 
   assert.match(workspace, /useState<CommercialTab>\("costing"\)/);
   assert.match(workspace, /Project Costing/);
-  assert.match(workspace, /Import Supplier Costs/);
+  assert.match(workspace, /Import Manufacturer Quote/);
+  assert.match(await fs.readFile(path.join(process.cwd(), 'src/features/projectCalculatorLab/ScenarioCostingWorksheet.tsx'), 'utf8'), /Add Position/);
   for (const removed of ['Extraction Review', 'Estimate Summary', 'How is this estimate being priced?']) assert.doesNotMatch(workspace, new RegExp(removed));
   assert.match(documents, /multiple/);
   assert.match(documents, /No extraction or automatic Project Costing import occurs here/);
@@ -141,20 +142,19 @@ test('estimate commercial preview defaults to Project Costing with a storage-onl
   assert.match(documents, /Filter by supplier/);
   assert.match(documents, /Filter by upload date/);
   assert.doesNotMatch(documents, /Extract Selected Quotes|extractSelected/);
-  assert.match(importControl, /Extract & Load Supplier Costs/);
+  assert.match(importControl, /Import selected manufacturer quote/);
   assert.match(importControl, /extractAndLoad/);
-  assert.match(importControl, /Existing manual lines are retained/);
   assert.match(supplierRoutes, /extract-and-load/);
   assert.match(supplierRoutes, /ensureSupplierRevisionExchangeRates\(scenarioId,result\.documents\.map\(item=>item\.revisionId\)\)/);
-  assert.match(calculator, /estimateId \? "manual" : "supplier_import"/);
+  assert.match(calculator, /estimateId \? "estimate" : "supplier_import"/);
+  assert.match(calculator, /syncEstimatePositions/);
   assert.match(calculator, /ensureEstimateCosting/);
-  assert.match(calculator, /Project Costing`,currency:"GBP",packageType:"supply_only"/);
+  assert.match(calculator, /origin:"estimate",name:`\$\{estimateRef\|\|"Estimate"\} Project Costing`,packageType:"supply_only"/);
   assert.match(calculator, /!estimateId\?<div className="calculator-lab__tabs"/);
   assert.match(app, /<EstimateCommercialWorkspace/);
-  assert.match(admin, /Supplier Quotations &amp; Project Costing \(Preview\)/);
-  assert.match(admin, /Temporary development entry/);
+  assert.doesNotMatch(admin, /Supplier Quotations &amp; Project Costing \(Preview\)|Temporary development entry/);
   assert.match(admin, /<EstimateCommercialWorkspace/);
-  assert.match(admin, /Create disposable development estimate/);
+  assert.doesNotMatch(admin, />Create disposable development estimate/);
   assert.doesNotMatch(admin, /<ProjectCalculatorLabWorkspace/);
   assert.doesNotMatch(admin, /<SupplierImportLabWorkspace/);
 });

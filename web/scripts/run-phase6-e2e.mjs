@@ -14,6 +14,12 @@ const APP_ENDPOINT = new URL(APP_URL);
 const DEBUG_PORT = Number(process.env.QS_E2E_DEBUG_PORT ?? 9236);
 const PROTECTED_REFS = new Set(["EF-CL-001", "EF-CL-002", "EF-CL-003", "EF-CL-004", "EF-CL-005", "EF-CL-006", "EF-CL-007", "EF-CL-008"]);
 const tempEstimateId = `phase6_e2e_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+const tempClientId = `phase6_e2e_client_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+const tempClientRef = `E2E-${Date.now()}`;
+const mapFallbackClientId = `${tempClientId}_map_fallback`;
+const mapFallbackEstimateId = `${tempEstimateId}_map_fallback`;
+const mapUnresolvedClientId = `${tempClientId}_map_unresolved`;
+const mapUnresolvedEstimateId = `${tempEstimateId}_map_unresolved`;
 
 const ownedProcesses = [];
 
@@ -170,6 +176,7 @@ async function createCdpPage(url) {
       const args = message.params?.args?.map((arg) => arg.value ?? arg.description ?? "").join(" ");
       diagnostics.push(`console.${message.params?.type ?? "log"}: ${args}`);
     }
+    if (message.method === "Network.responseReceived" && Number(message.params?.response?.status) >= 400) diagnostics.push(`network.${message.params.response.status}: ${message.params.response.url}`);
     if (!message.id || !pending.has(message.id)) return;
     const { resolve: resolveMessage, reject } = pending.get(message.id);
     pending.delete(message.id);
@@ -203,6 +210,7 @@ async function createCdpPage(url) {
 
   await send("Runtime.enable");
   await send("Page.enable");
+  await send("Network.enable");
 
   return { send, evaluate, diagnostics, close: () => ws.close() };
 }
@@ -246,12 +254,26 @@ async function createTemporaryEstimate(clientId) {
       },
       outcome: "Open",
       project_address: "Phase 6 E2E Temporary Estimate",
+      postcode: "KY4 9FA",
       project_address_json: {},
       createdByUserId: "phase6-e2e",
       createdByName: "Phase 6 E2E",
       createdByRole: "admin",
     }),
   });
+}
+
+async function createTemporaryClient() {
+  await fetchJson(`${API_URL}/api/clients`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: tempClientId, name: "QuoteSuite Phase 6 Disposable Client", client_ref: tempClientRef, client_type: "Development", contact_name: "E2E only", project_name: "Disposable Project Costing acceptance" }) });
+  return (await fetchJson(`${API_URL}/api/clients`)).find((row) => row.id === tempClientId);
+}
+
+async function createProjectMapFixtures() {
+  await fetchJson(`${API_URL}/api/clients`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: mapFallbackClientId, name: "QuoteSuite Project Map Client Fallback", client_ref: `${tempClientRef}-MAP-FALLBACK`, client_type: "Development", project_name: "Disposable fallback map project", project_address: "BA2 8AP", project_address_json: { postcode: "BA2 8AP" } }) });
+  const fallbackEstimate = await fetchJson(`${API_URL}/api/estimates`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: mapFallbackEstimateId, client_id: mapFallbackClientId, status: "Draft", positions_json: [], defaults_json: {}, outcome: "Order", order_meta_json: { installerId: "phase6-map-installer" }, project_address: "" }) });
+  await fetchJson(`${API_URL}/api/clients`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: mapUnresolvedClientId, name: "QuoteSuite Project Map Unresolved", client_ref: `${tempClientRef}-MAP-UNRESOLVED`, client_type: "Development", project_name: "Disposable unresolved map project" }) });
+  await fetchJson(`${API_URL}/api/estimates`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: mapUnresolvedEstimateId, client_id: mapUnresolvedClientId, estimate_ref: `MAP-UNRESOLVED-${Date.now()}`, status: "Draft", positions_json: [], defaults_json: {}, outcome: "Open", project_address: "" }) });
+  return { fallbackEstimate };
 }
 
 async function verifyUnsupportedB92FailsSafely() {
@@ -304,6 +326,16 @@ async function cleanupTemporaryEstimate() {
   }
 }
 
+async function cleanupTemporaryClient() {
+  for (const estimateId of [mapFallbackEstimateId, mapUnresolvedEstimateId]) {
+    try { await fetch(`${API_URL}/api/estimates/${encodeURIComponent(estimateId)}/purge`, { method: "DELETE" }); } catch { /* Best-effort test-owned cleanup. */ }
+  }
+  for (const clientId of [mapFallbackClientId, mapUnresolvedClientId]) {
+    try { await fetch(`${API_URL}/api/clients/${encodeURIComponent(clientId)}/purge`, { method: "DELETE" }); } catch { /* Best-effort test-owned cleanup. */ }
+  }
+  try { await fetch(`${API_URL}/api/clients/${encodeURIComponent(tempClientId)}/purge`, { method: "DELETE" }); } catch { /* Best-effort test-owned cleanup. */ }
+}
+
 async function cleanupStalePhase6Estimates(clientId) {
   try {
     const rows = await fetchJson(`${API_URL}/api/estimates?client_id=${encodeURIComponent(clientId)}&include_deleted=true`);
@@ -320,13 +352,15 @@ async function run() {
   await ensureServices();
 
   const clients = await fetchJson(`${API_URL}/api/clients`);
-  const protectedRefsBefore = clients.map((client) => client.client_ref ?? client.clientRef).filter((ref) => PROTECTED_REFS.has(ref)).sort();
-  assert(protectedRefsBefore.length === 8, "Protected EF client refs were not intact before E2E");
-  const client = clients.find((row) => PROTECTED_REFS.has(row.client_ref ?? row.clientRef));
-  assert(client?.id, "No protected client found for temporary estimate");
+  const protectedBefore = clients.filter((client) => PROTECTED_REFS.has(client.client_ref ?? client.clientRef)).sort((a,b)=>String(a.client_ref??a.clientRef).localeCompare(String(b.client_ref??b.clientRef)));
+  assert(protectedBefore.length === 8, "Protected EF client refs were not intact before E2E");
+  const protectedSnapshot = JSON.stringify(protectedBefore);
+  const client = await createTemporaryClient();
+  assert(client?.id === tempClientId, "Disposable E2E client could not be created");
 
   await cleanupStalePhase6Estimates(client.id);
   const tempEstimate = await createTemporaryEstimate(client.id);
+  const mapFixtures = process.env.QS_E2E_PROJECT_MAP_ONLY === "1" ? await createProjectMapFixtures() : null;
 
   let chrome = null;
   let page = null;
@@ -338,9 +372,38 @@ async function run() {
     await page.evaluate(pageScript(() => {
       localStorage.clear();
     }));
+    await waitForPage(page, () => {
+      const item = Array.from(document.querySelectorAll(".app-sidebar-item")).find((element) => element.textContent?.trim() === "Project Map");
+      if (!item) return false;
+      item.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
+      return true;
+    }, [], "Project Map navigation entry was unavailable");
+    await waitForPage(page, (estimateRef) => Array.from(document.querySelectorAll("h2")).some(element => element.textContent?.trim() === "Project Map") && document.body.innerText.includes(estimateRef), [tempEstimate.estimate_ref], "Unified Project Map did not show the disposable project");
+    if (process.env.QS_E2E_PROJECT_MAP_ONLY === "1") {
+      await waitForPage(page, () => document.body.innerText.includes("QuoteSuite Project Map Client Fallback") && document.body.innerText.includes("QuoteSuite Project Map Unresolved") && document.body.innerText.includes("Client address fallback: BA2 8AP") && document.body.innerText.includes("Location unavailable") && document.body.innerText.includes("Installation"), [], "Project Map fallback/unresolved fixtures were not represented");
+      await waitForPage(page, (estimateRef) => Array.from(document.querySelectorAll('[id^="estimate-map-row-"]')).some((row) => row.textContent?.includes(estimateRef) && row.textContent?.includes("Client address fallback: BA2 8AP") && !row.textContent?.includes("Location unavailable")), [mapFixtures.fallbackEstimate.estimate_ref], "Runtime Project Map Estimate did not resolve through its disposable Client address fallback");
+    }
+    await waitForPage(page, () => Boolean(window.google?.maps) && Boolean(document.querySelector(".google-map-panel__canvas")) && !document.body.innerText.includes("No project locations could be resolved for the current filters."), [], "Unified Project Map did not render the resolved disposable location", 30000);
+    const projectMap = await page.evaluate(`({text:document.body.innerText,overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth,oldEstimateNav:Array.from(document.querySelectorAll('.app-sidebar-item')).some(item=>item.textContent?.trim()==='Estimate Map'),oldInstallationMap:Boolean(Array.from(document.querySelectorAll('.operational-title')).find(item=>item.textContent?.trim()==='Installation Map'))})`);
+    const projectMapText = projectMap.text.toLowerCase();
+    assert(projectMapText.includes("mapped projects") && projectMapText.includes("unresolved locations"), "Unified Project Map counters were missing");
+    assert(!projectMap.oldEstimateNav && !projectMap.oldInstallationMap, "A legacy map remained user-facing");
+    assert(!projectMap.overflow, "Unified Project Map caused document-level overflow");
+    await page.evaluate(pageScript(() => document.querySelector('.theme-selector')?.click()));
+    await waitForPage(page, () => document.documentElement.dataset.qsTheme === "dark", [], "Project Map dark mode did not apply");
+    await page.evaluate(pageScript(() => document.querySelector('.theme-selector')?.click()));
+    await page.evaluate(pageScript(() => document.querySelector('.theme-selector')?.click()));
+    await waitForPage(page, () => document.documentElement.dataset.qsTheme === "light", [], "Project Map light mode did not apply");
+    if (process.env.QS_E2E_PROJECT_MAP_ONLY === "1") {
+      assert(!page.diagnostics.some(entry => entry.startsWith("exception:") || entry.startsWith("network.4") || entry.startsWith("network.5")), `Project Map emitted browser diagnostics: ${page.diagnostics.join(" | ")}`);
+      const protectedAfterMap = (await fetchJson(`${API_URL}/api/clients`)).filter((row) => PROTECTED_REFS.has(row.client_ref ?? row.clientRef)).sort((a,b)=>String(a.client_ref??a.clientRef).localeCompare(String(b.client_ref??b.clientRef)));
+      assert(JSON.stringify(protectedAfterMap) === protectedSnapshot, "Protected EF client data changed during Project Map E2E");
+      console.log("Phase 6 Project Map E2E passed");
+      return;
+    }
     await page.evaluate(pageScript(() => {
-      const item = Array.from(document.querySelectorAll("div")).find((element) => element.textContent?.trim() === "Client Database");
-      item?.click();
+      const item = Array.from(document.querySelectorAll(".app-sidebar-item")).find((element) => element.textContent?.trim() === "Client Database");
+      item?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
     }));
 
     await waitForPage(page, (clientRef) => {
@@ -348,7 +411,7 @@ async function run() {
       if (!row) return false;
       row.querySelector("button")?.click();
       return true;
-    }, [client.client_ref ?? client.clientRef], "Protected client row was not available");
+    }, [client.client_ref ?? client.clientRef], "Disposable client row was not available");
 
     await waitForPage(page, () => document.body.innerText.includes("Estimate Selection"), [], "Client estimate picker did not open");
     await page.evaluate(pageScript(() => {
@@ -390,16 +453,14 @@ async function run() {
 
     await page.send("Page.reload", { ignoreCache: true });
     await waitForPage(page, () => document.body.innerText.includes("Client Database"), [], "App shell did not render after reload");
-    await page.evaluate(pageScript(() => {
-      const item = Array.from(document.querySelectorAll("div")).find((element) => element.textContent?.trim() === "Client Database");
-      item?.click();
-    }));
     await waitForPage(page, (clientRef) => {
+      const item = Array.from(document.querySelectorAll(".app-sidebar-item")).find((element) => element.textContent?.trim() === "Client Database");
+      item?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
       const row = Array.from(document.querySelectorAll('[data-testid="client-database-row"]')).find((element) => element.dataset.clientRef === clientRef);
       if (!row) return false;
       row.querySelector("button")?.click();
       return true;
-    }, [client.client_ref ?? client.clientRef], "Protected client row was not available after reload");
+    }, [client.client_ref ?? client.clientRef], "Disposable client row was not available after reload");
     await waitForPage(page, () => document.body.innerText.includes("Estimate Selection"), [], "Client estimate picker did not reopen");
     await page.evaluate(pageScript(() => {
       Array.from(document.querySelectorAll("button")).find((element) => element.textContent?.trim() === "Client Estimates")?.click();
@@ -442,12 +503,140 @@ async function run() {
     }, [], "Print PDF action was not available");
     await waitForPage(page, () => String(window.__phase6LastDocumentHtml || "").includes("B92"), [], "Document output did not use contract-first B92 description");
 
+    await fetchJson(`${API_URL}/api/estimates/${encodeURIComponent(tempEstimateId)}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({client_id:client.id,estimate_ref:tempEstimate.estimate_ref,positions_json:[]}) });
+    const runtimeScenario = await fetchJson(`${API_URL}/api/admin/project-calculator-lab/scenarios`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({estimateId:tempEstimate.id,origin:"manual",name:`${tempEstimate.estimate_ref} Project Costing`,currency:"GBP",packageCode:"supply_only"}) });
+    await fetchJson(`${API_URL}/api/admin/project-calculator-lab/scenarios/${encodeURIComponent(runtimeScenario.id)}/manual-costs`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({category:"extras",label:"Phase 6 runtime extra",amount:"125.00"}) });
+    await fetchJson(`${API_URL}/api/admin/project-calculator-lab/scenarios/${encodeURIComponent(runtimeScenario.id)}/manual-costs`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({category:"delivery",label:"Phase 6 runtime supplier transport",amount:"2200.00"}) });
+
+    await page.evaluate(pageScript(() => {
+      Array.from(document.querySelectorAll("button")).find((element) => element.textContent?.trim() === "Open")?.click();
+    }));
+    await waitForPage(page, () => document.querySelector('[data-testid="estimate-commercial-workspace"]') && document.body.innerText.includes("Products / Supply Only"), [], "Consolidated Project Costing did not open");
+    const emptyWorkspace = await page.evaluate(`({text:document.body.innerText,addCount:Array.from(document.querySelectorAll("button")).filter(button=>button.textContent?.trim()==="Add Position").length,overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth})`);
+    assert(emptyWorkspace.text.includes("No positions yet."), "Empty Products state was not shown");
+    assert(emptyWorkspace.text.includes("Import Manufacturer Quote"), "Manufacturer import action was not shown");
+    assert(emptyWorkspace.addCount === 1, "Project Costing did not expose exactly one Add Position action");
+    for (const forbidden of ["Supplier Quotations & Project Costing (Preview)","Temporary development entry","Estimate Positions","Review and import supplier documents","Add Position Disabled"]) assert(!emptyWorkspace.text.includes(forbidden), `Normal Project Costing exposed ${forbidden}`);
+    assert(!emptyWorkspace.overflow, "Project Costing caused document-level horizontal overflow");
+
+    await waitForPage(page,()=>{const dialog=document.querySelector('[role="dialog"][aria-labelledby="manufacturer-import-title"]');if(dialog)return true;const button=Array.from(document.querySelectorAll("button")).find(item=>item.textContent?.trim()==="Import Manufacturer Quote");button?.click();return false},[],"Estimate-owned supplier import entry point did not open");
+    await page.evaluate(pageScript(() => Array.from(document.querySelectorAll('[role="dialog"] button')).find(button=>button.textContent?.trim()==="Close")?.click()));
+    await waitForPage(page,()=>!document.querySelector('[role="dialog"][aria-labelledby="manufacturer-import-title"]'),[],"Supplier import dialog did not close");
+
+    await page.evaluate(pageScript(() => Array.from(document.querySelectorAll("button")).find(button=>button.textContent?.trim()==="Add Position")?.click()));
+    await waitForPage(page, () => document.body.innerText.includes("Save Configuration") && document.body.innerText.includes("B92 Configurator"), [], "Products Add Position did not open B92");
+    await page.evaluate(pageScript(() => Array.from(document.querySelectorAll("button")).find(button=>button.textContent?.trim()==="Cancel")?.click()));
+    await waitForPage(page, () => document.body.innerText.includes("No positions yet.") && !document.body.innerText.includes("Save Configuration"), [], "Add Position cancel did not return to empty Project Costing");
+    const afterCancel = await fetchJson(`${API_URL}/api/estimates/${encodeURIComponent(tempEstimateId)}/position-bridge`);
+    assert(afterCancel.positions.length === 0, "Add Position cancel created a canonical position");
+
+    await page.evaluate(pageScript(() => Array.from(document.querySelectorAll("button")).find(button=>button.textContent?.trim()==="Add Position")?.click()));
+    await waitForPage(page, () => document.body.innerText.includes("Save Configuration"), [], "B92 did not reopen from Products");
+    await page.evaluate(pageScript(() => Array.from(document.querySelectorAll("button")).find(button=>button.textContent?.trim()==="Save Configuration")?.click()));
+    await waitForPage(page, () => document.body.innerText.includes("Edit Configuration") && !document.body.innerText.includes("Save Configuration"), [], "Saved B92 position did not return to Products");
+    const bridgeAfterSave = await fetchJson(`${API_URL}/api/estimates/${encodeURIComponent(tempEstimateId)}/position-bridge`);
+    assert(bridgeAfterSave.positions.length === 1 && bridgeAfterSave.positions[0].configuredContract, "Products B92 save did not create exactly one configured canonical position");
+    const stablePositionId = bridgeAfterSave.positions[0].id;
+
+    await page.evaluate(pageScript(() => Array.from(document.querySelectorAll("button")).find(button=>button.textContent?.trim()==="Edit Configuration")?.click()));
+    await waitForPage(page, () => document.body.innerText.includes("Save Configuration"), [], "Edit Configuration did not hydrate B92");
+    await page.evaluate(pageScript(() => Array.from(document.querySelectorAll("button")).find(button=>button.textContent?.trim()==="Cancel")?.click()));
+    const bridgeAfterEditCancel = await fetchJson(`${API_URL}/api/estimates/${encodeURIComponent(tempEstimateId)}/position-bridge`);
+    assert(bridgeAfterEditCancel.positions.length === 1 && bridgeAfterEditCancel.positions[0].id === stablePositionId, "Edit cancel changed canonical position identity");
+
+    const acceptanceScenario = await fetchJson(`${API_URL}/api/admin/project-calculator-lab/scenarios/${encodeURIComponent(runtimeScenario.id)}`);
+    assert(acceptanceScenario?.id === runtimeScenario.id && acceptanceScenario.estimateId === tempEstimate.id, "Disposable Project Costing scenario was not retained by its runtime Estimate");
+    await waitForPage(page,()=>document.querySelectorAll('[aria-label$="markup percentage"]').length>0,[],"Project Costing markups did not render after B92 save");
+    const beforeFixed = await page.evaluate(`({calculated:document.querySelector('.costing-sheet__summary-sale b')?.textContent,markups:Array.from(document.querySelectorAll('[aria-label$="markup percentage"]')).map(input=>({label:input.getAttribute('aria-label'),value:input.value})),transportCount:Array.from(document.querySelectorAll('.costing-sheet__section-label b')).filter(node=>node.textContent.trim()==='3. Transport').length})`);
+    assert(beforeFixed.transportCount <= 1, `Transport rendered ${beforeFixed.transportCount} times`);
+
+    await waitForPage(page,()=>{if(document.querySelector('[aria-label="Use Fixed Selling Price"]'))return true;Array.from(document.querySelectorAll("button")).find(button=>button.textContent?.trim()==="Fix Price")?.click();return false},[],"Fix Price modal did not open");
+    await page.evaluate(pageScript(() => document.querySelector('[aria-label="Use Fixed Selling Price"]')?.click()));
+    await waitForPage(page,()=>{const input=document.querySelector('[aria-label="Fixed Selling Price GBP Ex VAT"]');return input&&!input.disabled&&!input.closest('label')?.hidden},[],"Fixed Selling Price input did not open");
+    await page.evaluate(pageScript(() => {const input=document.querySelector('[aria-label="Fixed Selling Price GBP Ex VAT"]');const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")?.set;setter?.call(input,"24000");input?.dispatchEvent(new Event("input",{bubbles:true}));}));
+    await waitForPage(page,()=>document.body.innerText.includes("Actual Selling Price (Ex VAT)")&&document.body.innerText.includes("£24,000.00"),[],"Fixed Selling Price did not recalculate the live worksheet");
+    await page.evaluate(pageScript(() => Array.from(document.querySelectorAll("button")).find(button=>button.textContent?.trim()==="Apply Fixed Price")?.click()));
+    await waitForPage(page,()=>document.body.innerText.includes("£24,000.00"),[],"Saved Fixed Selling Price was not retained");
+    const enabledMetrics = await page.evaluate(`({text:document.body.innerText,markups:Array.from(document.querySelectorAll('[aria-label$="markup percentage"]')).map(input=>({label:input.getAttribute('aria-label'),value:input.value})),fixed:document.querySelector('.costing-sheet__summary-sale b')?.textContent,status:document.querySelector('.costing-sheet__summary-sale')?.innerText})`);
+    assert(JSON.stringify(enabledMetrics.markups) === JSON.stringify(beforeFixed.markups), `Fixed price changed category markups: before=${JSON.stringify(beforeFixed.markups)} after=${JSON.stringify(enabledMetrics.markups)}`);
+    assert(enabledMetrics.fixed === "£24,000.00" && enabledMetrics.status.includes("Fixed"), "Fixed price summary did not retain £24,000");
+    await page.send("Page.reload", { ignoreCache: true });
+    await waitForPage(page,()=>document.body.innerText.includes("Client Database"),[],"App shell did not reload");
+    await page.evaluate(pageScript(() => Array.from(document.querySelectorAll(".app-sidebar-item")).find(element=>element.textContent?.trim()==="Client Database")?.dispatchEvent(new MouseEvent("click",{bubbles:true,cancelable:true,view:window}))));
+    await waitForPage(page,(clientRef)=>{const row=Array.from(document.querySelectorAll('[data-testid="client-database-row"]')).find(element=>element.dataset.clientRef===clientRef);if(!row)return false;row.querySelector("button")?.click();return true},[client.client_ref??client.clientRef],"Disposable client did not reopen after fixed-price reload");
+    await waitForPage(page,()=>document.body.innerText.includes("Estimate Selection"),[],"Estimate picker did not reopen after fixed-price reload");
+    await page.evaluate(pageScript(() => Array.from(document.querySelectorAll("button")).find(element=>element.textContent?.trim()==="Client Estimates")?.click()));
+    await page.evaluate(pageScript(() => Array.from(document.querySelectorAll("button")).find(element=>element.textContent?.trim()==="All Estimates")?.click()));
+    await waitForPage(page,(estimateRef)=>{const row=Array.from(document.querySelectorAll('[data-testid="estimate-summary"]')).find(element=>element.dataset.estimateRef===estimateRef);if(!row)return false;row.click();return true},[tempEstimate.estimate_ref],"Disposable estimate did not reopen after fixed-price reload");
+    await page.evaluate(pageScript(() => Array.from(document.querySelectorAll("button")).find(element=>element.textContent?.trim()==="Open")?.click()));
+    await waitForPage(page,()=>document.body.innerText.includes("Products / Supply Only"),[],"Project Costing did not reopen after fixed-price reload");
+    await waitForPage(page,()=>document.querySelector('.costing-sheet__summary-sale b')?.textContent==="£24,000.00"&&document.querySelector('.costing-sheet__summary-sale')?.innerText.includes("Fixed"),[],"Fixed price did not survive reload");
+    const reloadedMarkups=await page.evaluate(`Array.from(document.querySelectorAll('[aria-label$="markup percentage"]')).map(input=>({label:input.getAttribute('aria-label'),value:input.value}))`);
+    assert(JSON.stringify(reloadedMarkups)===JSON.stringify(beforeFixed.markups),"Reload changed category markups");
+    await fetchJson(`${API_URL}/api/admin/project-calculator-lab/scenarios/${encodeURIComponent(acceptanceScenario.id)}/revisions`,{method:"POST"});
+    const revisionScenario=await fetchJson(`${API_URL}/api/admin/project-calculator-lab/scenarios/${encodeURIComponent(acceptanceScenario.id)}`);
+    assert(revisionScenario.customerPricing.fixedSellingPrice.enabled&&revisionScenario.customerPricing.fixedSellingPrice.amount==="24000","Revision did not retain fixed price");
+    await page.evaluate(pageScript(() => Array.from(document.querySelectorAll("button")).find(button=>button.textContent?.trim()==="Edit Fixed Price")?.click()));
+    await waitForPage(page,()=>Boolean(document.querySelector('[aria-label="Use Fixed Selling Price"]')),[],"Edit Fixed Price modal did not open");
+    await page.evaluate(pageScript(() => document.querySelector('[aria-label="Use Fixed Selling Price"]')?.click()));
+    await page.evaluate(pageScript(() => Array.from(document.querySelectorAll("button")).find(button=>button.textContent?.trim()==="Apply Fixed Price")?.click()));
+    await waitForPage(page,()=>!document.querySelector('.costing-sheet__summary-sale')?.innerText.includes("Fixed")&&Boolean(Array.from(document.querySelectorAll('.costing-sheet__summary-sale button')).find(button=>button.textContent?.trim()==="Fix Price")),[],"Disabling fixed price did not restore calculated pricing");
+    await delay(500);
+    const disabledScenario=await fetchJson(`${API_URL}/api/admin/project-calculator-lab/scenarios/${encodeURIComponent(acceptanceScenario.id)}`);
+    assert(!disabledScenario.customerPricing.fixedSellingPrice.enabled,"Disabled fixed price did not persist");
+    await waitForPage(page,()=>document.body.innerText.includes("Products / Supply Only")&&document.body.innerText.includes("W-001"),[],"Runtime-owned populated Project Costing workspace was not retained");
+    const productHeaders=await page.evaluate(`Array.from(document.querySelectorAll('.costing-sheet__detail-table thead th')).map(element=>element.textContent.trim())`);
+    assert(!productHeaders.includes("Include"),"Products incorrectly exposed an Include column");
+    assert(productHeaders.includes("Alternative?"),"Products did not retain Alternative");
+    await page.evaluate(pageScript(() => Array.from(document.querySelectorAll(".costing-sheet__section-label")).find(button=>button.textContent?.includes("2. Extras"))?.click()));
+    await waitForPage(page,()=>document.querySelector('.costing-sheet__extras-head')?.textContent?.includes("Include"),[],"Extras Include column did not render");
+    const extraWasIncluded=await page.evaluate(`document.querySelector('.costing-sheet__extras-table .toggle__input')?.checked`);
+    await page.evaluate(pageScript(() => document.querySelector('.costing-sheet__extras-table .toggle__input')?.click()));
+    await waitForPage(page,(expected)=>document.querySelector('.costing-sheet__extras-table .toggle__input')?.checked===expected,[!extraWasIncluded],"Extra inclusion did not update");
+    await page.evaluate(pageScript(() => document.querySelector('.costing-sheet__extras-table .toggle__input')?.click()));
+    await waitForPage(page,(expected)=>document.querySelector('.costing-sheet__extras-table .toggle__input')?.checked===expected,[extraWasIncluded],"Extra inclusion did not restore");
+    await page.evaluate(pageScript(() => Array.from(document.querySelectorAll(".costing-sheet__section-label")).find(button=>button.textContent?.includes("3. Transport"))?.click()));
+    const transportUi=await page.evaluate(`({text:document.querySelector('.costing-sheet__transport-table')?.innerText,fixVisible:Boolean(Array.from(document.querySelectorAll('.costing-sheet__summary-sale button')).find(button=>/Fix Price|Edit Fixed Price/.test(button.textContent||""))),overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth})`);
+    assert(transportUi.text.includes("Description")&&transportUi.text.includes("Supplier / Cost")&&transportUi.text.includes("Allocate to Products")&&transportUi.text.includes("Selling Price"),"Transport commercial table was not visible");
+    assert(transportUi.text.includes("Storage Costs")&&transportUi.text.includes("HIAB Delivery / Offload Fee"),"Separate Transport costs were not visible");
+    assert(transportUi.fixVisible,"Fix Price was not visible inside the live Selling Price row");
+    assert(!transportUi.overflow,"Corrected Project Costing caused document-level overflow");
+    await page.evaluate(pageScript(() => {const input=document.querySelector('[aria-label="Include Storage Costs"]');if(input&&!input.checked)input.click()}));
+    await waitForPage(page,()=>Boolean(document.querySelector('[aria-label="Storage Costs GBP"]')),[],"Storage cost input did not render");
+    await page.evaluate(pageScript(() => {const input=document.querySelector('[aria-label="Allocate Storage into Products Supply Only"]');if(input?.checked)input.click()}));
+    await waitForPage(page,()=>!document.querySelector('[aria-label="Storage Amount to Allocate GBP"]'),[],"Storage allocation did not reset for deterministic acceptance");
+    await page.evaluate(pageScript(() => {const input=document.querySelector('[aria-label="Storage Costs GBP"]');const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")?.set;input?.focus();setter?.call(input,"100");input?.dispatchEvent(new Event("input",{bubbles:true}));input?.dispatchEvent(new FocusEvent("focusout",{bubbles:true,relatedTarget:document.body}));}));
+    await waitForPage(page,()=>Array.from(document.querySelectorAll('.costing-sheet__transport-item')).some(row=>row.textContent?.includes("Storage Costs")&&row.textContent?.includes("£100.00 remains")),[],"Storage cost did not save before allocation");
+    await page.evaluate(pageScript(() => {const input=document.querySelector('[aria-label="Allocate Storage into Products Supply Only"]');if(input&&!input.checked)input.click()}));
+    await waitForPage(page,()=>Boolean(document.querySelector('[aria-label="Storage Amount to Allocate GBP"]')),[],"Storage allocation input did not render on its row");
+    await page.evaluate(pageScript(() => {const input=document.querySelector('[aria-label="Storage Amount to Allocate GBP"]');const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")?.set;input?.focus();setter?.call(input,"50");input?.dispatchEvent(new Event("input",{bubbles:true}));input?.dispatchEvent(new FocusEvent("focusout",{bubbles:true,relatedTarget:document.body}));}));
+    await waitForPage(page,()=>Array.from(document.querySelectorAll('.costing-sheet__transport-item')).some(row=>row.textContent?.includes("Storage Costs")&&row.textContent?.includes("£50.00 remains")),[],"Storage remainder did not update");
+    await page.evaluate(pageScript(() => {const input=document.querySelector('[aria-label="Include HIAB Delivery Offload Fee"]');if(input&&!input.checked)input.click()}));
+    await waitForPage(page,()=>Boolean(document.querySelector('[aria-label="HIAB Delivery Offload Fee GBP"]')),[],"HIAB cost input did not render");
+    await page.evaluate(pageScript(() => {const input=document.querySelector('[aria-label="Allocate HIAB into Products Supply Only"]');if(input?.checked)input.click()}));
+    await waitForPage(page,()=>!document.querySelector('[aria-label="HIAB Amount to Allocate GBP"]'),[],"HIAB allocation did not reset for deterministic acceptance");
+    await page.evaluate(pageScript(() => {const input=document.querySelector('[aria-label="HIAB Delivery Offload Fee GBP"]');const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")?.set;input?.focus();setter?.call(input,"250");input?.dispatchEvent(new Event("input",{bubbles:true}));input?.dispatchEvent(new FocusEvent("focusout",{bubbles:true,relatedTarget:document.body}));}));
+    await waitForPage(page,()=>Array.from(document.querySelectorAll('.costing-sheet__transport-item')).some(row=>row.textContent?.includes("HIAB Delivery")&&row.textContent?.includes("£250.00 remains")),[],"HIAB cost did not save before allocation");
+    await page.evaluate(pageScript(() => {const input=document.querySelector('[aria-label="Allocate HIAB into Products Supply Only"]');if(input&&!input.checked)input.click()}));
+    await waitForPage(page,()=>Boolean(document.querySelector('[aria-label="HIAB Amount to Allocate GBP"]')),[],"HIAB allocation input did not render on its row");
+    await page.evaluate(pageScript(() => {const input=document.querySelector('[aria-label="HIAB Amount to Allocate GBP"]');const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")?.set;input?.focus();setter?.call(input,"100");input?.dispatchEvent(new Event("input",{bubbles:true}));input?.dispatchEvent(new FocusEvent("focusout",{bubbles:true,relatedTarget:document.body}));}));
+    await waitForPage(page,()=>Array.from(document.querySelectorAll('.costing-sheet__transport-item')).some(row=>row.textContent?.includes("HIAB Delivery")&&row.textContent?.includes("£150.00 remains")),[],"HIAB remainder did not update");
+    await page.evaluate(pageScript(() => Array.from(document.querySelectorAll(".costing-sheet__section-label")).find(button=>button.textContent?.includes("4. Site Visit / Travel"))?.click()));
+    await waitForPage(page,()=>{const details=document.querySelector('details.site-visit-panel');if(!details)return false;if(!details.open)details.querySelector('summary')?.click();return Boolean(details.querySelector('.site-visit-panel__body'))&&details.textContent?.includes("Project/site postcode")&&details.textContent?.includes("Refresh Route")},[],"Site Visit / Travel worksheet did not open");
+    await waitForPage(page,()=>{if(document.querySelector('[role="dialog"][aria-labelledby="fix-price-title"]'))return true;Array.from(document.querySelectorAll('.costing-sheet__summary-sale button')).find(button=>/Fix Price|Edit Fixed Price/.test(button.textContent||""))?.click();return false},[],"Live Selling Price Fix Price click did not open the modal");
+    await page.evaluate(pageScript(() => Array.from(document.querySelectorAll('[role="dialog"] button')).find(button=>button.textContent?.trim()==="Cancel")?.click()));
+    await waitForPage(page,()=>!document.querySelector('[role="dialog"][aria-labelledby="fix-price-title"]'),[],"Fix Price Cancel did not close the modal");
+    await page.evaluate(pageScript(() => document.querySelector('.theme-selector')?.click()));
+    await waitForPage(page,()=>document.documentElement.dataset.qsTheme==="dark",[],"Dark mode did not apply",5000);
+    const darkWorkspace = await page.evaluate(`({overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth,summary:document.body.innerText.includes("Commercial Summary")})`);
+    assert(!darkWorkspace.overflow && darkWorkspace.summary, "Dark Project Costing acceptance failed");
+    await page.evaluate(pageScript(() => document.querySelector('.theme-selector')?.click()));
+    await page.evaluate(pageScript(() => document.querySelector('.theme-selector')?.click()));
+    await waitForPage(page,()=>document.documentElement.dataset.qsTheme==="light",[],"Light mode did not apply",5000);
     await verifyUnsupportedB92FailsSafely();
-
-    const protectedAfter = await fetchJson(`${API_URL}/api/clients`);
-    const protectedRefsAfter = protectedAfter.map((row) => row.client_ref ?? row.clientRef).filter((ref) => PROTECTED_REFS.has(ref)).sort();
-    assert(JSON.stringify(protectedRefsAfter) === JSON.stringify(protectedRefsBefore), "Protected EF client refs changed during E2E");
-
+    assert(!page.diagnostics.some(entry=>entry.startsWith("exception:")||entry.startsWith("network.4")||entry.startsWith("network.5")),`Project Costing emitted browser diagnostics: ${page.diagnostics.join(" | ")}`);
+    const protectedAfterFixed = (await fetchJson(`${API_URL}/api/clients`)).filter((row) => PROTECTED_REFS.has(row.client_ref ?? row.clientRef)).sort((a,b)=>String(a.client_ref??a.clientRef).localeCompare(String(b.client_ref??b.clientRef)));
+    assert(JSON.stringify(protectedAfterFixed) === protectedSnapshot, "Protected EF client data changed during fixed-price E2E");
     console.log("Phase 6 E2E passed");
   } finally {
     if (page) {
@@ -456,6 +645,7 @@ async function run() {
     }
     await cleanupTemporaryEstimate();
     await cleanupStalePhase6Estimates(client.id);
+    await cleanupTemporaryClient();
     if (chrome) {
       const termination = await terminateOwnedChrome(chrome.child);
       await delay(300);
