@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { cleanMetadataValue, parsePdfSupplierFields } from './pdfSupplierAdapters.js';
+import { mapManufacturerVisualsToRows } from './manufacturerPositionVisuals.js';
 
-export const FIELD_PARSER_VERSION = '1.1.0';
+export const FIELD_PARSER_VERSION = '1.2.0';
 const decimalPattern = /^[-+]?\d+(?:[.,]\d+)?$/;
 const dimensionPattern = /^(\d+)\s*[x×]\s*(\d+)\s*mm$/i;
 const priceHeaderPattern = /^Price\s*,?\s*([A-Z]{3})?$/i;
@@ -29,6 +30,69 @@ function flatten(document) {
   return document.pages.flatMap((page) => page.blocks.map((block) => ({ ...block, text: String(block.text).trim(), pageNumber: page.pageNumber }))).filter((item) => item.text);
 }
 
+const customerSafeSpecificationLabels = new Set([
+  'product', 'system', 'alu cladded', 'timber', 'surface finishing', 'glass unit', 'fittings',
+  'trickle ventilator', 'drip rail', 'sash sealing', 'glass sealing', 'routing', 'opening',
+  'threshold', 'locking', 'weight',
+]);
+
+function firstMatch(lines, pattern) {
+  for (const line of lines) {
+    const match = line.match(pattern);
+    if (match) return String(match[1] ?? '').trim() || null;
+  }
+  return null;
+}
+
+function parseManufacturerPositionEvidence(source, displayReference) {
+  const lines = source.map((item) => item.text);
+  const numbered = lines.flatMap((line) => {
+    const match = line.match(/^\s*(\d+)\.\s*(.+)$/);
+    if (!match) return [];
+    const body = match[2].trim();
+    const separator = body.indexOf(':');
+    const rawLabel = (separator >= 0 ? body.slice(0, separator) : body).trim();
+    const colonValue = separator >= 0 ? body.slice(separator + 1).trim() : '';
+    const knownLabel = [...customerSafeSpecificationLabels].find((label) => rawLabel.toLowerCase() === label);
+    if (knownLabel) return [{ ordinal: Number(match[1]), label: rawLabel, value: colonValue }];
+    const noColon = rawLabel.match(/^(Routing|View from inside|View from outside|Weight|Uw)\b\s*(.*)$/i);
+    return noColon ? [{ ordinal: Number(match[1]), label: noColon[1], value: noColon[2].trim() }] : [];
+  });
+  const valueFor = (label) => numbered.find((item) => item.label.toLowerCase() === label)?.value || null;
+  const product = valueFor('product');
+  const glassSpecification = valueFor('glass unit');
+  const opening = numbered.find((item) => /^(opening|view from inside|view from outside)$/i.test(item.label));
+  const weightRaw = numbered.find((item) => /^weight$/i.test(item.label))?.value ?? firstMatch(lines, /\bWeight\s+([\d.,]+)\s*kg\b/i);
+  const manufacturerItemNumber = firstMatch(lines, /^(?:Manufacturer\s+)?(?:Item|Position|Pos\.)\s*(?:No\.?\s*)?[:#-]?\s*(\d+)\b/i);
+  const ug = firstMatch(lines, /\bUg\s*=\s*([\d.,]+)/i);
+  const uw = firstMatch(lines, /\bUw\s*=\s*([\d.,]+)/i);
+  const area = firstMatch(lines, /^\s*([\d.,]+)\s*m(?:²|2)\s*$/i);
+  const normalizedDecimal = (value) => value == null ? null : normalizeDecimal(value);
+  return {
+    manufacturerItemNumber,
+    customerReference: displayReference,
+    roomLocation: null,
+    product,
+    productSystem: valueFor('system'),
+    productType: product ? (/\bdoor\b/i.test(product) ? 'Door' : /\bwindow\b/i.test(product) ? 'Window' : null) : null,
+    configurationDescription: opening ? `${opening.label}${opening.value ? ` ${opening.value}` : ''}`.trim() : null,
+    areaSquareMetres: normalizedDecimal(area),
+    weightKg: normalizedDecimal(weightRaw?.match(/[\d.,]+/)?.[0] ?? weightRaw),
+    glassSpecification,
+    fittingsSpecification: valueFor('fittings'),
+    manufacturerQuotedUg: normalizedDecimal(ug),
+    manufacturerQuotedUw: normalizedDecimal(uw),
+    customerSafeSpecification: numbered
+      .filter((item) => customerSafeSpecificationLabels.has(item.label.toLowerCase()) && item.value)
+      .map(({ ordinal, label, value }) => ({ ordinal, label, value })),
+    sourceVisual: {
+      kind: 'manufacturer_document_image',
+      status: 'unavailable',
+      reason: 'No position-safe renderable image was mapped from this source document.',
+    },
+  };
+}
+
 export function parseCommercialFields(document, { currency: sessionCurrency }) {
   const adapted=parsePdfSupplierFields(document); if(adapted)return adapted;
   const blocks = flatten(document); const quotation = parseQuotationReference(blocks.map((item) => item.text).join('\n')); const rows = []; let start = quotation.fullQuotationReference ? blocks.findIndex((item) => item.text.includes(quotation.fullQuotationReference)) + 1 : 0; const metadata={supplierCustomer:null,projectReference:null,quotationDate:null};
@@ -43,9 +107,11 @@ export function parseCommercialFields(document, { currency: sessionCurrency }) {
     if (quantity && unitPrice && totalPrice && !equivalentMoney(multiplyDecimal(unitPrice, quantity), totalPrice)) warnings.push('Supplied total does not equal unit price multiplied by quantity.');
     const source = blocks.slice(start, index + 3 + dimensionIndex + numeric.indexOf(totalRaw) + 1); const sourcePages = [...new Set(source.map((item) => item.pageNumber).filter(Number.isInteger))]; const displayReference = referenceBlock?.text || null;
     const classificationBlock=source.find(item=>/\b(alternative position|optional position|excluded position|not included in (?:the )?(?:total|offer)|superseded position)\b/i.test(item.text)); const wording=classificationBlock?.text||null; const classification=/alternative/i.test(wording||'')?'alternative':/excluded|not included|superseded/i.test(wording||'')?'excluded':/optional/i.test(wording||'')?'alternative':'standard'; const includedInSupplierTotal=classification==='standard'; let alternativeTo=null; if(classification==='alternative'&&displayReference&&/ALT$/i.test(displayReference))alternativeTo=displayReference.replace(/ALT$/i,'');
-    const original = { displayReference, originalReferenceText: displayReference, supplierReferenceTokens: displayReference ? displayReference.split(/\s*[,/]\s*/).map((item) => item.trim()).filter(Boolean) : [], quantity, widthMm: Number(dimensions[1]), heightMm: Number(dimensions[2]), originalDimensionsText: tail[dimensionIndex].text, unitPrice, totalPrice, currency: (header[1] || sessionCurrency).toUpperCase(),classification,includedInSupplierTotal,alternativeTo,classificationEvidence:wording };
-    rows.push({ id: randomUUID(), ordinal: rows.length, ...original, sourcePages, sourceTrace: source.map((item) => ({ attachmentId: document.attachmentId, pageNumber: item.pageNumber, blockId: item.id, boundingBox: item.boundingBox, coordinateSpace: item.boundingBox ? 'pdf_points' : null, extractedText: item.text })), confidence: warnings.length ? '0.75' : '0.98', warnings, status: warnings.length ? 'needs_review' : 'extracted', originalExtractedSnapshot: original });
+    const manufacturerEvidence = parseManufacturerPositionEvidence(source, displayReference);
+    const original = { displayReference, originalReferenceText: displayReference, supplierReferenceTokens: displayReference ? displayReference.split(/\s*[,/]\s*/).map((item) => item.trim()).filter(Boolean) : [], quantity, widthMm: Number(dimensions[1]), heightMm: Number(dimensions[2]), originalDimensionsText: tail[dimensionIndex].text, unitPrice, totalPrice, currency: (header[1] || sessionCurrency).toUpperCase(),classification,includedInSupplierTotal,alternativeTo,classificationEvidence:wording, manufacturerEvidence };
+    rows.push({ id: randomUUID(), ordinal: rows.length, ...original, ...manufacturerEvidence, sourcePages, sourceTrace: source.map((item) => ({ attachmentId: document.attachmentId, pageNumber: item.pageNumber, blockId: item.id, boundingBox: item.boundingBox, coordinateSpace: item.boundingBox ? 'pdf_points' : null, extractedText: item.text })), confidence: warnings.length ? '0.75' : '0.98', warnings, status: warnings.length ? 'needs_review' : 'extracted', originalExtractedSnapshot: original });
     start = blocks.indexOf(totalRaw) + 1;
   }
+  mapManufacturerVisualsToRows(rows, document.manufacturerVisualCandidates, quotation);
   return { quotation, metadata, rows, warnings: rows.length ? [] : ['No commercial position blocks were detected.'] };
 }

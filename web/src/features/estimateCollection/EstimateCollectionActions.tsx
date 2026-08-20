@@ -44,8 +44,6 @@ export default function EstimateCollectionActions(props: Props) {
     confirmDeleteEstimate,
     openEstimateFromPicker,
     persistEstimateOutcome,
-    downloadEstimateWordDocService,
-    printEstimatePdfService,
     addFollowUpForEstimateService,
     itemPriceByPositionId,
     formatMeasure,
@@ -147,48 +145,6 @@ export default function EstimateCollectionActions(props: Props) {
         <div className="ep-estimate-action-label">Open estimate</div>
         <Button variant="primary" onClick={() => openEstimateFromPicker(item.id)}>
           Open
-        </Button>
-      </div>
-
-      <div className="ep-estimate-action-group">
-        <div className="ep-estimate-action-label">Print Word Doc</div>
-        <Button
-          variant="outline"
-          disabled={!canUseOutputActions}
-          onClick={() =>
-            downloadEstimateWordDocService({
-              pickerClient: itemClient,
-              e: item,
-              itemPriceByPositionId,
-              formatMeasure,
-              formatMoney,
-              positionDescription,
-            })
-          }
-        >
-          Print Word Doc
-        </Button>
-      </div>
-
-      <div className="ep-estimate-action-group">
-        <div className="ep-estimate-action-label">Print PDF</div>
-        <Button
-          variant="outline"
-          disabled={!canUseOutputActions}
-          data-testid="estimate-print-pdf"
-          onClick={() =>
-            printEstimatePdfService({
-              pickerClient: itemClient,
-              e: item,
-              itemPriceByPositionId,
-              formatMeasure,
-              formatMoney,
-              positionDescription,
-              alertFn: alert,
-            })
-          }
-        >
-          Print PDF
         </Button>
       </div>
 

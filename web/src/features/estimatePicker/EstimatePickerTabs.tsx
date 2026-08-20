@@ -63,6 +63,7 @@ type Props = {
   setEstimatePickerTab: (t: EstimatePickerTab) => void;
 
   pickerClient: Client | null;
+  createEstimateForClient: (client: Client, options?: { openManufacturerImport?: boolean }) => void;
   openEditClientPanel: (c: Client) => void;
   openEstimateFromPicker: (estimateId: EstimateId) => void;
   copyEstimateForClient: (client: Client, sourceEstimateId: EstimateId) => void;
@@ -415,6 +416,7 @@ export default function EstimatePickerTabs(props: Props) {
     estimatePickerTab,
     setEstimatePickerTab,
     pickerClient,
+    createEstimateForClient,
     openEditClientPanel,
     openEstimateFromPicker,
     copyEstimateForClient,
@@ -790,6 +792,7 @@ export default function EstimatePickerTabs(props: Props) {
 
         {(estimatePickerTab === "estimates" || estimatePickerTab === "orders" || estimatePickerTab === "lost") && (
           <ControlToolbar>
+            {estimatePickerTab === "estimates" ? <ControlToolbarGroup label="Create"><Button variant="primary" onClick={() => createEstimateForClient(pickerClient)}>+ New Estimate</Button><Button variant="secondary" onClick={() => createEstimateForClient(pickerClient, { openManufacturerImport: true })}>Import Manufacturer Quote</Button></ControlToolbarGroup> : null}
             <ControlToolbarGroup label="Scope">
               <Button
                 variant={estimateCreatorFilterByTab[estimatePickerTab] === "mine" ? "primary" : "secondary"}
@@ -981,17 +984,13 @@ export default function EstimatePickerTabs(props: Props) {
                       Copy email text
                     </Button>
 
-                    <Button variant="secondary" onClick={() => printEstimatePdfService({ pickerClient, e: pickerClient.estimates.find((x) => x.id === sendModalEstimateId)!, itemPriceByPositionId, formatMeasure, formatMoney, positionDescription, alertFn: alert })}>
-                      Generate PDF
-                    </Button>
-
                     <Button variant="primary" onClick={() => openMailClientService((pickerClient as any)?.email ?? "", sendEmailDraft.subject, sendEmailDraft.body)}>
                       Open email app
                     </Button>
                   </div>
 
                   <Small className="qs-migrated-82">
-                    Use “Print PDF” to generate the customer-facing estimate PDF, then attach that PDF in your email app. Direct file attachment from the browser send flow is not wired yet.
+                    Create the customer document from Estimate → Project Costing → Customer Quotation before attaching it in your email app. Direct file attachment from this transitional send flow is not wired yet.
                   </Small>
                 </div>
               </div>
@@ -1037,7 +1036,6 @@ export default function EstimatePickerTabs(props: Props) {
                 <Button
                   variant="primary"
                   onClick={() => {
-                    printEstimatePdfService({ pickerClient, e: pickerClient.estimates.find((x) => x.id === sendModalEstimateId)!, itemPriceByPositionId, formatMeasure, formatMoney, positionDescription, alertFn: alert });
                     openMailClientService((pickerClient as any)?.email ?? "", sendEmailDraft.subject, sendEmailDraft.body);
                     if (sendModalAddFollowUp) {
                       addFollowUpForEstimateService({ pickerClient, estimateId: sendModalEstimateId, opts: {

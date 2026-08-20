@@ -11,6 +11,7 @@ import AdminThemeColoursPanel from "./AdminThemeColoursPanel";
 import AdminSupplierCommercialDefaults from "./AdminSupplierCommercialDefaults";
 import AdminCommercialMarginPanel from "./AdminCommercialMarginPanel";
 import AdminSiteVisitTravelDefaults from "./AdminSiteVisitTravelDefaults";
+import DevelopmentRoadmapWorkspace from "../developmentRoadmap/DevelopmentRoadmapWorkspace";
 import { QUOTESYNC_THEME_CONFIGURATION_KEY } from "../../theme/themes";
 import "./AdminPlaceholderPage.css";
 
@@ -21,7 +22,8 @@ type AdminSectionKey =
   | "configurator_controls"
   | "branding"
   | "integrations"
-  | "supplier_defaults";
+  | "supplier_defaults"
+  | "development";
 
 type AdminConfiguratorInitialTab = "manufacturers" | "windowTypes" | "configuratorRender" | "b92Configurator";
 type AdminWindowTypesInitialCategory = "windows";
@@ -43,6 +45,7 @@ const sectionList: Array<{ key: AdminSectionKey; label: string; description: str
   { key: "branding", label: "Branding", description: "Brand identity, logo, colours, and document identity." },
   { key: "integrations", label: "Integrations", description: "Maps, what3words, and future third-party services." },
   { key: "supplier_defaults", label: "Supplier / Product Defaults", description: "Supplier products, pricing, settlement, discounts and packages." },
+  { key: "development", label: "Development", description: "QuoteSuite Roadmap and future internal development tools." },
 ];
 
 const editableKeys = new Set<string>([
@@ -299,6 +302,7 @@ export default function AdminPlaceholderPage(props: {
   const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
+    if (activeSection !== "settings") return;
     let cancelled = false;
 
     async function load() {
@@ -327,7 +331,7 @@ export default function AdminPlaceholderPage(props: {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [activeSection]);
 
   const orderedGroups = useMemo(
     () => Object.entries(settingsByGroup)
@@ -458,6 +462,8 @@ export default function AdminPlaceholderPage(props: {
       <AdminThemeColoursPanel />
     ) : activeSection === "integrations" ? (
       <AdminIntegrationsPanel />
+    ) : activeSection === "development" ? (
+      <DevelopmentRoadmapWorkspace />
     ) : (
       <AdminSupplierCommercialDefaults />
     );

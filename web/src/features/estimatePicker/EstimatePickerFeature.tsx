@@ -70,7 +70,7 @@ type Props = {
   onBack: () => void;
   openEditClientPanel: (c: Client) => void;
 
-  createEstimateForClient: (c: Client) => void;
+  createEstimateForClient: (c: Client, options?: { openManufacturerImport?: boolean }) => void;
   copyEstimateForClient: (client: Client, sourceEstimateId: EstimateId) => void;
   deleteClientToRecycle: (clientId: ClientId) => void;
   deletedEstimatesForClient: { estimate: Client["estimates"][number]; deletedAt: string }[];
@@ -475,6 +475,7 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
           onConsumedInitialExpandedEstimateId={() => setInitialExpandedEstimateId(null)}
           setEstimatePickerTab={setEstimatePickerTab}
           pickerClient={pickerClient}
+          createEstimateForClient={createEstimateForClient}
           openEditClientPanel={openEditClientPanel}
           openEstimateFromPicker={openEstimateFromPicker}
           copyEstimateForClient={copyEstimateForClient}

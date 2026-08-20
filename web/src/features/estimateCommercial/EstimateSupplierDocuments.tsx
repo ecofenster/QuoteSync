@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SupplierQuote, SupplierQuoteAttachment, SupplierQuoteDocumentKind, SupplierQuoteRevision } from "../supplierQuoteImport/domain/supplierQuote.types";
 import { clientValidateSupplierFiles } from "../supplierQuotes/supplierFileValidation";
 import { supplierQuotesApi } from "../supplierQuotes/api/supplierQuotesApi";
@@ -21,7 +21,7 @@ export default function EstimateSupplierDocuments({ estimateId, estimateRef }: {
   const [message, setMessage] = useState("");
   const fileIssues = useMemo(() => clientValidateSupplierFiles(files), [files]);
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     const quotes = await supplierQuotesApi.listQuotes(estimateId);
     const groups = await Promise.all(quotes.map(async (quote) => {
       const revisions = await supplierQuotesApi.listRevisions(estimateId, quote.id);
@@ -32,9 +32,9 @@ export default function EstimateSupplierDocuments({ estimateId, estimateRef }: {
       return revisionDocuments.flat();
     }));
     setDocuments(groups.flat().sort((left, right) => right.attachment.createdAt.localeCompare(left.attachment.createdAt)));
-  }
+  }, [estimateId]);
 
-  useEffect(() => { void refresh().catch((error) => setMessage(error instanceof Error ? error.message : "Stored documents could not be loaded.")); }, [estimateId]);
+  useEffect(() => { void refresh().catch((error) => setMessage(error instanceof Error ? error.message : "Stored documents could not be loaded.")); }, [refresh]);
 
   const visible = documents.filter((item) => (!supplierFilter || item.quote.supplierName === supplierFilter) && (!dateFilter || dateKey(item.attachment.createdAt) === dateFilter));
   const suppliers = [...new Set(documents.map((item) => item.quote.supplierName))].sort();
@@ -58,6 +58,7 @@ export default function EstimateSupplierDocuments({ estimateId, estimateRef }: {
       await supplierQuotesApi.uploadAttachments(estimateId, quote.id, targetRevision.id, files, role, documentKind);
       setFiles([]); setQuotationReference(""); setRevision("");
       await refresh();
+      window.dispatchEvent(new CustomEvent("quotesuite:supplier-documents-changed", { detail: { estimateId } }));
       setMessage(`${files.length} supplier document${files.length === 1 ? "" : "s"} uploaded and stored against ${estimateRef}.`);
     } catch (error) { setMessage(error instanceof Error ? error.message : "Supplier documents could not be uploaded."); }
     finally { setBusy(false); }

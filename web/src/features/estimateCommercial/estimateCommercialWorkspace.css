@@ -1,5 +1,6 @@
 .estimate-commercial { display: grid; gap: 14px; color: var(--qs-theme-text); }
-.estimate-commercial__breadcrumb { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--qs-theme-text-muted); }
+.estimate-commercial__breadcrumb { display: flex; gap: 8px; align-items: center; justify-content: space-between; font-size: 12px; color: var(--qs-theme-text-muted); }
+.estimate-commercial__breadcrumb > span { display: flex; gap: 8px; align-items: center; }
 .estimate-commercial__breadcrumb strong { color: var(--qs-theme-text); }
 .estimate-commercial__content { display: grid; gap: 15px; }
 .estimate-commercial__content header h2,.estimate-commercial__empty h2 { margin: 0; }
@@ -28,3 +29,4 @@
 .estimate-position-match-review>div{display:flex;flex-wrap:wrap;gap:var(--space-2)}
 .estimate-position-bridge__editor{min-width:0;overflow-x:hidden}
 @media(max-width:760px){.estimate-position-bridge__editor-heading{align-items:flex-start;flex-direction:column}}
+.manufacturer-import-review{display:grid;gap:var(--space-4);max-width:100%}.manufacturer-import-review>header,.manufacturer-import-review>footer{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3)}.manufacturer-import-review__metadata{display:grid;grid-template-columns:2fr 1.3fr .7fr .7fr;gap:var(--space-3)}.manufacturer-import-review__metadata label{display:grid;gap:var(--space-1)}.manufacturer-import-review__table{overflow:auto;max-height:52vh}.manufacturer-import-review__table table{min-width:1500px}.manufacturer-import-review__image-button{border:0;background:transparent;padding:0;cursor:zoom-in}.manufacturer-import-review__image-button img{display:block;width:92px;height:92px;object-fit:contain}.manufacturer-import-review__lightbox{position:fixed;inset:0;z-index:1200;display:grid;place-items:center;padding:var(--space-5);background:var(--qs-overlay-scrim)}.manufacturer-import-review__lightbox section{display:grid;gap:var(--space-3);max-width:min(1100px,94vw);max-height:92vh}.manufacturer-import-review__lightbox section>button{justify-self:end}.manufacturer-import-review__lightbox img{display:block;max-width:100%;max-height:78vh;object-fit:contain;margin:auto}@media(max-width:900px){.manufacturer-import-review__metadata{grid-template-columns:1fr 1fr}}

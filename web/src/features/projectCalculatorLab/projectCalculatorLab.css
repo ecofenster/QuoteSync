@@ -136,6 +136,8 @@
 .costing-sheet__client-discount small {
   color: var(--qs-theme-text-secondary);
 }
+.supplier-commercial-review__calculation { display: grid; gap: var(--space-1); padding: var(--space-2); border: var(--qs-border-width) solid var(--qs-border-standard); border-radius: var(--qs-radius-md); background: var(--qs-bg-surface-subtle); }
+.supplier-commercial-review__calculation > div { display: flex; justify-content: space-between; gap: var(--space-2); }
 
 .supplier-commercial-review__evidence {
   display: block;
@@ -499,6 +501,11 @@
 .costing-sheet__detail-table td > span,
 .costing-sheet__detail-table td > small { display: block; }
 .costing-sheet__detail-table td > small { color: var(--qs-theme-text-muted); }
+.costing-sheet__product-preview { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: var(--space-1); align-items: center; margin-top: var(--space-1); }
+.costing-sheet__product-preview > img { width: 44px; height: 34px; object-fit: contain; border: var(--qs-border-width) solid var(--qs-border-standard); border-radius: var(--qs-radius-sm); }
+.costing-sheet__product-preview > span:not(.sr-only) { display: grid; place-items: center; width: 44px; height: 34px; border: var(--qs-border-width) dashed var(--qs-border-standard); border-radius: var(--qs-radius-sm); color: var(--qs-theme-text-muted); }
+.costing-sheet__product-preview details { min-width: 0; }
+.costing-sheet__product-preview details small { display: block; color: var(--qs-theme-text-muted); }
 
 .costing-sheet__row-markup { min-width: 86px; display: grid; gap: 4px; }
 .costing-sheet__row-markup input { width: 72px; min-height: 34px; padding: 5px 7px; border: 1px solid var(--qs-border-standard); border-radius: var(--radius-control); background: var(--qs-bg-control); color: inherit; font-size: var(--qs-type-body); text-align: right; }

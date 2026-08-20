@@ -1,8 +1,10 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import mammoth from 'mammoth';
+import { extractDocxManufacturerVisuals } from './manufacturerPositionVisuals.js';
+import { resolveAttachmentRoot } from '../supplierQuotes/managedAttachmentStorage.js';
 
-export const EXTRACTOR_VERSION = '1.0.0';
+export const EXTRACTOR_VERSION = '1.1.0';
 const MAX_DOCX_ENTRIES = 2_000;
 const MAX_DOCX_EXPANDED_BYTES = 128 * 1024 * 1024;
 const MAX_DOCX_RATIO = 200;
@@ -23,14 +25,15 @@ function zipSafety(buffer) {
 const clean = (value) => String(value ?? '').replace(/\u00a0/g, ' ').replace(/[ \t]+/g, ' ').trim();
 const stripHtml = (value) => clean(String(value).replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>'));
 
-async function extractDocx(filename, attachment) {
+async function extractDocx(filename, attachment, options) {
   const buffer = await readFile(filename); zipSafety(buffer);
   const raw = await mammoth.extractRawText({ buffer });
   const html = await mammoth.convertToHtml({ buffer });
   const lines = raw.value.split(/\r?\n/).map(clean).filter(Boolean);
   const blocks = lines.map((text, index) => ({ id: `docx-block-${index}`, text, pageNumber: null, boundingBox: null, readingOrder: index, sourceType: 'paragraph' }));
   const tables = [...html.value.matchAll(/<table[^>]*>([\s\S]*?)<\/table>/gi)].map((table, tableIndex) => ({ id: `docx-table-${tableIndex}`, pageNumber: null, rows: [...table[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)].map((row, rowIndex) => [...row[1].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)].map((cell, column) => ({ row: rowIndex, column, text: stripHtml(cell[1]), boundingBox: null }))), sourceTrace: [{ attachmentId: attachment.id, blockId: `docx-table-${tableIndex}`, coordinateSpace: null }] }));
-  return { attachmentId: attachment.id, sessionId: attachment.sessionId, mediaType: attachment.mediaType, extractorName: 'mammoth', extractorVersion: EXTRACTOR_VERSION, createdAt: new Date().toISOString(), pages: [{ pageNumber: null, pageLabel: 'document', width: null, height: null, text: lines.join('\n'), blocks, tables }], warnings: raw.messages.map((item) => item.message), textAvailable: lines.join('').length >= 20, extractionStatus: lines.join('').length >= 20 ? 'completed' : 'unsupported' };
+  const visuals = await extractDocxManufacturerVisuals(buffer, attachment, options);
+  return { attachmentId: attachment.id, sessionId: attachment.sessionId, mediaType: attachment.mediaType, extractorName: 'mammoth', extractorVersion: EXTRACTOR_VERSION, createdAt: new Date().toISOString(), pages: [{ pageNumber: null, pageLabel: 'document', width: null, height: null, text: lines.join('\n'), blocks, tables }], manufacturerVisualCandidates: visuals.candidates, warnings: [...raw.messages.map((item) => item.message), ...visuals.warnings], textAvailable: lines.join('').length >= 20, extractionStatus: lines.join('').length >= 20 ? 'completed' : 'unsupported' };
 }
 
 async function extractPdf(filename, attachment) {
@@ -49,10 +52,10 @@ async function extractPdf(filename, attachment) {
   return { attachmentId: attachment.id, sessionId: attachment.sessionId, mediaType: attachment.mediaType, extractorName: 'pdfjs-dist', extractorVersion: EXTRACTOR_VERSION, createdAt: new Date().toISOString(), pages, warnings: textLength < 20 ? ['OCR required — unsupported in Stage 1E'] : [], textAvailable: textLength >= 20, extractionStatus: textLength >= 20 ? 'completed' : 'unsupported' };
 }
 
-export async function extractSupplierDocument(filename, attachment) {
+export async function extractSupplierDocument(filename, attachment, options = {}) {
   try {
     if (attachment.mediaType === 'application/pdf') return await extractPdf(filename, attachment);
-    if (attachment.mediaType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return await extractDocx(filename, attachment);
+    if (attachment.mediaType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return await extractDocx(filename, attachment, { visualRoot: path.join(resolveAttachmentRoot(), 'manufacturer-position-visuals'), ...options });
     throw Object.assign(new Error('Unsupported extraction media type.'), { code: 'unsupported_file_type' });
   } catch (error) {
     if (error.code) throw error;

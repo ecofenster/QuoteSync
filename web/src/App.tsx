@@ -2117,7 +2117,7 @@ function openEstimateDefaults(clientId: Models.ClientId, estimateId: Models.Esti
 }
 
   
-async function createEstimateForClient(client: Client) {
+async function createEstimateForClient(client: Client, options: { openManufacturerImport?: boolean } = {}) {
     const estimateDefaults = systemSettings.loadDefaults ? makeDefaultEstimateDefaults() : makeBlankEstimateDefaults();
 
     const est: Estimate = mergeEstimateLocationState({
@@ -2156,6 +2156,7 @@ async function createEstimateForClient(client: Client) {
       );
 
       openEstimateDefaults(client.id, createdEstimate.id);
+      if (options.openManufacturerImport) window.setTimeout(() => window.dispatchEvent(new CustomEvent("quotesuite:import-manufacturer-quote")), 0);
     } catch (error) {
       if (error instanceof ApiRequestError && error.isConflict) {
         console.error("Failed to create estimate: duplicate estimate reference", {
@@ -4220,23 +4221,6 @@ function renderProjectMapBoard() {
                       </Button>
 
                       <Button
-                        variant="secondary"
-                        onClick={() =>
-                          printEstimatePdfService({
-                            pickerClient: sendModalRow.client,
-                            e: sendModalRow.estimate,
-                            itemPriceByPositionId: globalItemPriceByPositionId,
-                            formatMeasure,
-                            formatMoney,
-                            positionDescription,
-                            alertFn: alert,
-                          })
-                        }
-                      >
-                        Generate PDF
-                      </Button>
-
-                      <Button
                         variant="primary"
                         onClick={() =>
                           openMailClientService(
@@ -4251,7 +4235,7 @@ function renderProjectMapBoard() {
                     </div>
 
                     <Small className="qs-migrated-82">
-                      Use “Print PDF” to generate the customer-facing estimate PDF, then attach that PDF in your email app. Direct file attachment from the browser send flow is not wired yet.
+                      Create the customer document from Estimate → Project Costing → Customer Quotation before attaching it in your email app. Direct file attachment from this transitional send flow is not wired yet.
                     </Small>
                   </div>
                 </div>
@@ -4297,15 +4281,6 @@ function renderProjectMapBoard() {
                   <Button
                     variant="primary"
                     onClick={() => {
-                      printEstimatePdfService({
-                        pickerClient: sendModalRow.client,
-                        e: sendModalRow.estimate,
-                        itemPriceByPositionId: globalItemPriceByPositionId,
-                        formatMeasure,
-                        formatMoney,
-                        positionDescription,
-                        alertFn: alert,
-                      });
                       openMailClientService((sendModalRow.client as any)?.email ?? "", sendEmailDraft.subject, sendEmailDraft.body);
                       if (globalSendModalAddFollowUp) {
                         addFollowUpForEstimateService({
@@ -4408,6 +4383,7 @@ function renderProjectMapBoard() {
                   </div>
 
                   <div className="app-cluster">
+                    {menu === "estimates" ? <Button variant="primary" onClick={() => openAddEstimateModal()}>+ New Estimate</Button> : null}
                     <Button variant="primary" onClick={openAddClientPanel}>
                       Add Client
                     </Button>
@@ -4991,7 +4967,7 @@ function renderProjectMapBoard() {
                   </div>
 
                   <div className="qs-migrated-99">
-                    <EstimateCommercialWorkspace estimateId={String(selectedEstimate.id)} estimateRef={selectedEstimate.estimateRef} />
+                    <EstimateCommercialWorkspace estimateId={String(selectedEstimate.id)} estimateRef={selectedEstimate.estimateRef} client={selectedClient} estimate={selectedEstimate} PositionPreview={PositionPreview} />
                   </div>
 
                   <div className="qs-migrated-100">

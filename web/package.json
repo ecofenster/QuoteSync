@@ -10,6 +10,9 @@
     "check:design-system": "node scripts/check-design-system-compliance.mjs",
     "test:commercial-margin": "node scripts/run-project-costing-commercial-margin-tests.mjs",
     "test:integrations": "node scripts/run-admin-integrations-tests.mjs",
+    "test:development-roadmap": "node scripts/run-development-roadmap-tests.mjs",
+    "test:customer-quotation-mvp": "node scripts/run-customer-quotation-mvp-tests.mjs",
+    "test:manufacturer-position-visuals": "node scripts/run-manufacturer-position-visual-tests.mjs",
     "lint": "eslint .",
     "test": "npm run test:phase5",
     "test:phase5": "node scripts/run-phase5-tests.mjs",
@@ -19,6 +22,7 @@
   "dependencies": {
     "cors": "^2.8.6",
     "express": "^5.2.1",
+    "jszip": "^3.10.1",
     "mammoth": "1.12.0",
     "multer": "2.2.0",
     "pdfjs-dist": "6.2.108",

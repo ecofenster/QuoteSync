@@ -142,7 +142,11 @@ test('estimate commercial preview defaults to Project Costing with canonical imp
   assert.match(documents, /Filter by supplier/);
   assert.match(documents, /Filter by upload date/);
   assert.doesNotMatch(documents, /Extract Selected Quotes|extractSelected/);
-  assert.match(importControl, /Import selected manufacturer quote/);
+  assert.doesNotMatch(importControl, /Import selected manufacturer quote/);
+  assert.match(importControl, /Manufacturer Import Review/);
+  assert.match(importControl, /Extract & Review Manufacturer Quote/);
+  assert.match(importControl, /Confirm & Load to Project Costing/);
+  assert.match(importControl, /prepareReview/);
   assert.match(importControl, /extractAndLoad/);
   assert.match(supplierRoutes, /extract-and-load/);
   assert.match(supplierRoutes, /ensureSupplierRevisionExchangeRates\(scenarioId,result\.documents\.map\(item=>item\.revisionId\)\)/);
@@ -157,6 +161,11 @@ test('estimate commercial preview defaults to Project Costing with canonical imp
   assert.doesNotMatch(admin, />Create disposable development estimate/);
   assert.doesNotMatch(admin, /<ProjectCalculatorLabWorkspace/);
   assert.doesNotMatch(admin, /<SupplierImportLabWorkspace/);
+});
+
+test('Client and global New Estimate actions reuse canonical Estimate creation and preserve Client ownership', async () => {
+  const [app,picker,tabs]=await Promise.all([fs.readFile(path.join(process.cwd(),'src/App.tsx'),'utf8'),fs.readFile(path.join(process.cwd(),'src/features/estimatePicker/EstimatePickerFeature.tsx'),'utf8'),fs.readFile(path.join(process.cwd(),'src/features/estimatePicker/EstimatePickerTabs.tsx'),'utf8')]);
+  assert.match(app,/menu === "estimates"[^\n]+\+ New Estimate/);assert.match(app,/openAddEstimateModal\(\)/);assert.match(tabs,/\+ New Estimate/);assert.match(tabs,/createEstimateForClient\(pickerClient\)/);assert.match(tabs,/Import Manufacturer Quote/);assert.match(tabs,/openManufacturerImport: true/);assert.match(picker,/createEstimateForClient=\{createEstimateForClient\}/);assert.equal((app.match(/async function createEstimateForClient/g)||[]).length,1);assert.match(app,/buildDbEstimatePayload\(client\.id, est\)/);assert.match(app,/openEstimateDefaults\(client\.id, createdEstimate\.id\)/);
 });
 
 test('temporary Admin access selects an existing estimate without fabricating standalone ownership', () => {
@@ -217,6 +226,25 @@ test('selected estimate-owned supplier documents create queued extraction runs o
     assert.deepEqual(runs[0].attachmentIds, ['doc-1', 'doc-2']);
     assert.equal((await db.get('SELECT COUNT(*) count FROM supplier_quote_import_run_attachments')).count, 2);
   } finally { await db.close(); await fs.rm(root, { recursive: true, force: true }); }
+});
+
+test('manufacturer review is non-committing, resolves canonical supplier, loads only selected rows and is idempotent', async () => {
+  const { root, db } = await setup();
+  try {
+    const calculator=createProjectCalculatorLabService(db,{exchangeRateProvider:async()=>({provider:'test',quotedAt:'2026-08-20T00:00:00.000Z',rawRate:'0.86'})});
+    await calculator.saveSupplierCommercialDefault({supplierCode:'ZYLE',supplierName:'Zyle Fenster',policy:{pricingMethod:'staged_discount',pricingBasis:'staged_discount',discountPolicy:{type:'staged',stages:[{id:'d1',label:'Discount 1',sequence:0,percentage:'30',enabled:true}],bands:[]}},pricingDisplayPolicy:{}});
+    await calculator.saveSupplierCommercialDefault({supplierCode:'OTHER',supplierName:'Other Supplier',policy:{pricingMethod:'parity_1_to_1',pricingBasis:'parity_1_to_1'},pricingDisplayPolicy:{}});
+    const scenario=await calculator.createScenario({estimateId:'est-a',origin:'estimate',name:'Review costing',currency:'EUR',packageCode:'supply_only'});
+    const makeRow=(ordinal:number,reference:string)=>({ordinal,displayReference:reference,originalReferenceText:reference,supplierReferenceTokens:[reference],quantity:1,widthMm:1000+ordinal*100,heightMm:1200,unitPrice:'500.00',totalPrice:'500.00',currency:'EUR',sourcePages:[],sourceTrace:[],warnings:[],status:'extracted',manufacturerEvidence:{manufacturerItemNumber:String(ordinal+1),customerReference:reference,roomLocation:null,product:'92 Europa window',productSystem:'Europa 92',configurationDescription:null,areaSquareMetres:null,manufacturerQuotedUg:'0.51',manufacturerQuotedUw:'0.79',sourceVisual:ordinal===0?{status:'available',url:'/api/manufacturer-position-visuals/token/quotation.png',mappingReviewStatus:'mapped_automatic'}:{status:'unavailable',mappingReviewStatus:'needs_review'}},originalExtractedSnapshot:{manufacturerEvidence:{manufacturerItemNumber:String(ordinal+1),customerReference:reference,sourceVisual:ordinal===0?{status:'available',url:'/api/manufacturer-position-visuals/token/quotation.png'}:{status:'unavailable'}}}});
+    const rows=[makeRow(0,'W1'),makeRow(1,'W2')];
+    const supplier=createSupplierQuotesService(db,{attachmentRoot:root,extractDocument:async()=>({textAvailable:true,warnings:[]}),parseFields:()=>({quotation:{supplierQuotationNumber:'343117',supplierRevision:'3'},rows:structuredClone(rows),warnings:[]}),parseSummary:()=>({summary:{productSubtotal:'1000.00',additionalItemsSubtotal:null,deliveryTotal:null,vatTotal:null,finalSupplierTotal:'1000.00'},additionalItems:[],warnings:[]})});
+    const quote=await supplier.createQuote('est-a',{supplierCode:'DOC-TEMP',supplierName:'Zyle Fenster'}),revision=await supplier.createRevision('est-a',quote.id,{supplierQuotationNumber:'',supplierRevision:'',currency:'EUR'});await supplier.insertAttachments('est-a',quote.id,revision.id,[{id:'doc-review',role:'original_quote',originalFileName:'zyle.docx',mediaType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',sizeBytes:1,sha256:'a'.repeat(64),storageKey:'doc-review',parserEligible:true,createdAt:new Date().toISOString()}]);
+    const documents=[{quoteId:quote.id,revisionId:revision.id,attachmentId:'doc-review'}],review=await supplier.prepareImportReview('est-a',documents);
+    assert.equal(review.metadata.supplierCode,'ZYLE');assert.equal(review.metadata.quotationNumber,'343117');assert.equal(review.metadata.revision,'3');assert.equal(review.positionCount,2);assert.equal(review.documents[0].rows[0].manufacturerItemNumber,'1');assert.equal(review.documents[0].rows[0].customerReference,'W1');assert.equal(review.documents[0].rows[0].sourceVisual.status,'available');assert.equal((await calculator.getScenario(scenario.id)).products.length,0);
+    const confirmation={selectedRowKeys:['doc-review:0'],supplierCode:'ZYLE',metadata:{quotationNumber:'343117',revision:'3',currency:'EUR'}};const first=await supplier.extractAndLoadSupplierCosts('est-a',scenario.id,documents,confirmation),second=await supplier.extractAndLoadSupplierCosts('est-a',scenario.id,documents,confirmation);
+    assert.equal(first.documents[0].loadedProducts,1);assert.equal(second.documents[0].loadedProducts,0);const loaded=await calculator.getScenario(scenario.id);assert.deepEqual(loaded.products.map((item:any)=>item.displayReference),['W1']);assert.equal(loaded.products[0].estimateId,undefined);assert.equal((await db.get('SELECT client_id FROM estimates WHERE id=?','est-a')).client_id,'client-a');assert.equal((await db.get('SELECT supplier_code FROM supplier_quotes WHERE id=?',quote.id)).supplier_code,'ZYLE');assert.equal(JSON.parse((await db.get('SELECT commercial_policy_json FROM project_calculator_supplier_quote_revisions WHERE scenario_id=?',scenario.id)).commercial_policy_json).pricingMethod,'staged_discount');
+    const quote2=await supplier.createQuote('est-b',{supplierCode:'DOC-TEMP-2',supplierName:'Unrecognised'}),revision2=await supplier.createRevision('est-b',quote2.id,{currency:'EUR'});await supplier.insertAttachments('est-b',quote2.id,revision2.id,[{id:'doc-review-2',role:'original_quote',originalFileName:'other.docx',mediaType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',sizeBytes:1,sha256:'b'.repeat(64),storageKey:'doc-review-2',parserEligible:true,createdAt:new Date().toISOString()}]);const scenario2=await calculator.createScenario({estimateId:'est-b',origin:'estimate',name:'Manual correction',currency:'EUR',packageCode:'supply_only'});await supplier.extractAndLoadSupplierCosts('est-b',scenario2.id,[{quoteId:quote2.id,revisionId:revision2.id,attachmentId:'doc-review-2'}],{selectedRowKeys:['doc-review-2:0'],supplierCode:'OTHER',metadata:{quotationNumber:'Q-2',revision:'1',currency:'EUR'}});assert.equal((await db.get('SELECT supplier_code FROM supplier_quotes WHERE id=?',quote2.id)).supplier_code,'OTHER');assert.equal(JSON.parse((await db.get('SELECT commercial_policy_json FROM project_calculator_supplier_quote_revisions WHERE scenario_id=?',scenario2.id)).commercial_policy_json).pricingMethod,'parity_1_to_1');
+  } finally { await db.close(); await fs.rm(root,{recursive:true,force:true}); }
 });
 
 test('supplier quotation revisions retain history and expose one latest revision per supplier quote', async () => {
