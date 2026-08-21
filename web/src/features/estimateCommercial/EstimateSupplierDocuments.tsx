@@ -38,6 +38,10 @@ export default function EstimateSupplierDocuments({ estimateId, estimateRef }: {
 
   const visible = documents.filter((item) => (!supplierFilter || item.quote.supplierName === supplierFilter) && (!dateFilter || dateKey(item.attachment.createdAt) === dateFilter));
   const suppliers = [...new Set(documents.map((item) => item.quote.supplierName))].sort();
+  const quotationRevisionKey = (item: StoredDocument) => `${item.quote.id}|${item.revision.supplierQuotationNumber.trim().toUpperCase()}|${(item.revision.supplierRevision || "").trim().toUpperCase()}`;
+  const packageCounts = new Map<string, number>();
+  const latestUploadByPackage = new Map<string, string>();
+  for (const item of documents) { const key=quotationRevisionKey(item); packageCounts.set(key,(packageCounts.get(key)??0)+1); if(!latestUploadByPackage.has(key)||item.attachment.createdAt>(latestUploadByPackage.get(key)??""))latestUploadByPackage.set(key,item.attachment.createdAt); }
 
   async function upload() {
     if (!supplier.trim() || fileIssues.length) return;
@@ -77,6 +81,6 @@ export default function EstimateSupplierDocuments({ estimateId, estimateRef }: {
     </div>
     {message ? <p role="status" className="supplier-upload-status">{message}</p> : null}
     <div className="supplier-import-lab-heading"><h3>Stored supplier documents</h3><div className="qs-migrated-241"><select aria-label="Filter by supplier" value={supplierFilter} onChange={(event) => setSupplierFilter(event.target.value)}><option value="">All suppliers</option>{suppliers.map((name) => <option key={name}>{name}</option>)}</select><input aria-label="Filter by upload date" type="date" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} /></div></div>
-    {!visible.length ? <p>No stored supplier documents match the current filters.</p> : <div className="supplier-review-scroll"><table><thead><tr><th>Supplier</th><th>Quotation</th><th>Filename</th><th>Type</th><th>Upload date</th><th>Revision</th><th>Status</th></tr></thead><tbody>{visible.map(({ quote, revision: itemRevision, attachment }) => { const packageDocument = attachment.documentKind !== "complete_quotation"; return <tr key={attachment.id}><td>{quote.supplierName}</td><td>{itemRevision.fullQuotationReference || itemRevision.supplierQuotationNumber || "—"}</td><td>{attachment.originalFileName}</td><td>{attachment.documentKind.replaceAll("_"," ")}</td><td>{new Date(attachment.createdAt).toLocaleString()}</td><td>{itemRevision.supplierRevision || "—"}</td><td>{packageDocument ? "Package document" : itemRevision.isLatest ? "Latest" : "Superseded"}</td></tr>; })}</tbody></table></div>}
+    {!visible.length ? <p>No stored supplier documents match the current filters.</p> : <div className="supplier-review-scroll"><table><thead><tr><th>Supplier</th><th>Quotation</th><th>Source document</th><th>Type</th><th>Upload date</th><th>Quotation revision</th><th>Document status</th></tr></thead><tbody>{visible.map((item) => { const {quote,revision:itemRevision,attachment}=item,key=quotationRevisionKey(item),companions=(packageCounts.get(key)??0)>1,latestUpload=latestUploadByPackage.get(key)===attachment.createdAt; return <tr key={attachment.id}><td>{quote.supplierName}</td><td>{itemRevision.fullQuotationReference || itemRevision.supplierQuotationNumber || "—"}</td><td>{attachment.originalFileName}</td><td>{attachment.documentKind.replaceAll("_"," ")}</td><td>{new Date(attachment.createdAt).toLocaleString()}</td><td>{itemRevision.supplierRevision || "—"}</td><td>{companions?(latestUpload?"Latest document upload":"Companion document"):itemRevision.isLatest?"Current quotation revision":"Superseded quotation revision"}</td></tr>; })}</tbody></table></div>}
   </section>;
 }

@@ -19,11 +19,11 @@ export async function readCanonicalEstimatePositions(db,estimateId){
   return parsePositions(row.positions_json).map(normalizeCanonicalEstimatePosition);
 }
 
-export async function linkSupplierPositionToEstimate(db,{estimateId,sourcePositionId,sourceRevisionId,sourceSequence,displayReference,quantity,widthMm,heightMm,classification='standard',alternativeTo=null,supplierName=null,supplierCode=null,product=null,productSystem=null}){
+export async function linkSupplierPositionToEstimate(db,{estimateId,sourcePositionId,sourceRevisionId,sourceSequence,displayReference,quantity,widthMm,heightMm,classification='standard',alternativeTo=null,supplierName=null,supplierCode=null,product=null,productSystem=null,preferredEstimatePositionId=null,replacesSourcePositionId=null}){
   const row=await db.get('SELECT positions_json FROM estimates WHERE id=?',estimateId);if(!row)throw Object.assign(new Error('Estimate not found.'),{code:'estimate_not_found'});
   const positions=parsePositions(row.positions_json).map(normalizeCanonicalEstimatePosition), evidence={sourcePositionId,sourceRevisionId,supplierName,supplierCode,linkedAt:new Date().toISOString()};
   const reviewed=await db.get("SELECT target_estimate_position_id,action FROM supplier_position_applications WHERE estimate_id=? AND supplier_quote_position_id=? AND active=1 ORDER BY applied_at DESC LIMIT 1",estimateId,sourcePositionId);
-  let matched=reviewed?.target_estimate_position_id?positions.find(position=>position.id===reviewed.target_estimate_position_id):positions.find(position=>Array.isArray(position.supplierEvidenceLinks)&&position.supplierEvidenceLinks.some(link=>link.sourcePositionId===sourcePositionId));
+  let matched=preferredEstimatePositionId?positions.find(position=>position.id===preferredEstimatePositionId):reviewed?.target_estimate_position_id?positions.find(position=>position.id===reviewed.target_estimate_position_id):positions.find(position=>Array.isArray(position.supplierEvidenceLinks)&&position.supplierEvidenceLinks.some(link=>link.sourcePositionId===sourcePositionId));
   let matchStatus='matched';
   if(!matched&&!reviewed){
     const candidate={positionRef:displayReference,qty:quantity,widthMm,heightMm},matches=positions.filter(position=>signature(position)===signature(candidate)&&!(position.supplierEvidenceLinks||[]).some(link=>link.sourceRevisionId===sourceRevisionId));
@@ -33,7 +33,7 @@ export async function linkSupplierPositionToEstimate(db,{estimateId,sourcePositi
     else if(matches.length>1)matchStatus='review_required';
   }
   if(!matched){matched=normalizeCanonicalEstimatePosition({id:stableImportedId(estimateId,sourcePositionId),origin:'supplier_imported',sourceSequence,positionRef:displayReference,roomName:'',qty:quantity,widthMm,heightMm,positionType:'Window',fieldsX:1,fieldsY:1,insertion:'',cellInsertions:{},useEstimateDefaults:true,overrides:{},classification,alternativeTo,supplier:{code:supplierCode,name:supplierName},product,productSystem,sourceProvenance:{kind:'supplier_quote_position',sourcePositionId,sourceRevisionId},matchStatus},positions.length);positions.push(matched);}
-  matched.supplierEvidenceLinks=[...(matched.supplierEvidenceLinks||[]).filter(link=>link.sourcePositionId!==sourcePositionId),evidence];
+  matched.supplierEvidenceLinks=[...(matched.supplierEvidenceLinks||[]).filter(link=>link.sourcePositionId!==sourcePositionId&&link.sourcePositionId!==replacesSourcePositionId),evidence];
   if(matched.origin==='b92_configured'||matched.configuredContract)matched.origin='b92_configured';
   matched.classification=classification;matched.alternativeTo=alternativeTo;
   await db.run('UPDATE estimates SET positions_json=?,updated_at=? WHERE id=?',JSON.stringify(positions),new Date().toISOString(),estimateId);

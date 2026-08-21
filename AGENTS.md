@@ -28,6 +28,8 @@ The QuoteSuite Development Roadmap in **Administration → Development → Quote
 - Clients `EF-CL-001` through `EF-CL-008` are protected live user data.
 - Do not edit, delete, merge, deduplicate, re-reference, deactivate or otherwise mutate these Clients or their persisted data.
 - Do not attach disposable Estimates or other mutable test records to protected Clients.
+- Estimates already associated with these Clients may intentionally be controlled development representations of real Estimates used to verify QuoteSuite calculations and workflows against the established Excel costing method. Bounded Estimate-level acceptance is permitted when the specific Estimate/workflow is in scope, Client and Estimate identity are preserved, unrelated Estimate information is preserved, commercial changes are directly required, deterministic before/after evidence is retained, and no broad purge, reset, demo replacement or unrelated automation is performed. Do not block such bounded acceptance solely because the parent Client is protected.
+- This Estimate-level allowance does not weaken Client-level protection or authorise destructive Estimate operations. Explicit task authority is still required for material live commercial mutation, and the exact approved Estimate and workflow remain the limit of that authority.
 - Tests and acceptance workflows must use explicitly owned disposable fixtures and clean up only records they own.
 - Where a task could affect live data, use deterministic read-only before/after verification appropriate to the risk.
 - Do not inspect or print credentials, ignored secret files or live API keys unnecessarily.
