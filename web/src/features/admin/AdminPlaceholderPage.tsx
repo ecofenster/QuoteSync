@@ -14,6 +14,7 @@ import AdminSiteVisitTravelDefaults from "./AdminSiteVisitTravelDefaults";
 import AdminProjectCostingMarkupDefaults from "./AdminProjectCostingMarkupDefaults";
 import AdminCustomerViewControls from "./AdminCustomerViewControls";
 import DevelopmentRoadmapWorkspace from "../developmentRoadmap/DevelopmentRoadmapWorkspace";
+import CalculatorAdminCatalogue from "../projectCalculatorLab/CalculatorAdminCatalogue";
 import { QUOTESYNC_THEME_CONFIGURATION_KEY } from "../../theme/themes";
 import "./AdminPlaceholderPage.css";
 
@@ -21,6 +22,7 @@ type AdminSectionKey =
   | "settings"
   | "project_preferences"
   | "feature_controls"
+  | "installation"
   | "configurator_controls"
   | "branding"
   | "integrations"
@@ -43,6 +45,7 @@ const sectionList: Array<{ key: AdminSectionKey; label: string; description: str
   { key: "settings", label: "Settings", description: "System-wide settings and feature behaviour." },
   { key: "project_preferences", label: "Project Preferences", description: "Project Calculator, commercial presentation and project defaults." },
   { key: "feature_controls", label: "Feature Controls", description: "Enable or disable major system capabilities." },
+  { key: "installation", label: "Installation", description: "Installation companies, installers, teams, programme rules and rates." },
   { key: "configurator_controls", label: "Configurator Controls", description: "Manufacturers, window types, and render-definition controls." },
   { key: "branding", label: "Branding", description: "Brand identity, logo, colours, and document identity." },
   { key: "integrations", label: "Integrations", description: "Maps, what3words, and future third-party services." },
@@ -456,6 +459,8 @@ export default function AdminPlaceholderPage(props: {
       </div>
     ) : activeSection === "feature_controls" ? (
       <AdminSupplierQuoteImportBeta />
+    ) : activeSection === "installation" ? (
+      <CalculatorAdminCatalogue />
     ) : activeSection === "configurator_controls" ? (
       <AdminConfiguratorCatalogWorkspace
         initialTab={props.initialConfiguratorTab}

@@ -1,5 +1,5 @@
 import { apiFetch } from "../../../services/api/apiClient";
-import type { CalculatorAdminConfiguration, CalculatorScenario, ImportSource, ProductClass } from "../domain/projectCalculatorLab.types";
+import type { CalculatorAdminConfiguration, CalculatorScenario, ImportSource, InstallationWorkforce, ProductClass } from "../domain/projectCalculatorLab.types";
 import type { ScenarioCreationInput } from "../domain/scenarioCreation";
 import { normalizeCalculatorScenario } from "../domain/normalizeCalculatorScenario";
 const base="/api/admin/project-calculator-lab";
@@ -8,6 +8,11 @@ export const projectCalculatorLabApi={
   listImportSources:(estimateId?:string)=>apiFetch(`${base}/import-sources${estimateId?`?estimate_id=${encodeURIComponent(estimateId)}`:""}`) as Promise<ImportSource[]>,
   getAdminConfiguration:()=>apiFetch(`${base}/admin-configuration`) as Promise<CalculatorAdminConfiguration>,
   updateCatalogueItem:(id:string,input:Record<string,unknown>)=>apiFetch(`${base}/admin-configuration/catalogue/${encodeURIComponent(id)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)}) as Promise<CalculatorAdminConfiguration>,
+  updateRule:(key:string,value:unknown)=>apiFetch(`${base}/admin-configuration/rules/${encodeURIComponent(key)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({value})}) as Promise<CalculatorAdminConfiguration>,
+  getInstallationWorkforce:()=>apiFetch(`${base}/installation-workforce`) as Promise<InstallationWorkforce>,
+  saveInstallationCompany:(id:string|undefined,input:Record<string,unknown>)=>apiFetch(`${base}/installation-workforce/companies/${encodeURIComponent(id??"new")}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)}) as Promise<InstallationWorkforce>,
+  saveInstallationInstaller:(id:string|undefined,input:Record<string,unknown>)=>apiFetch(`${base}/installation-workforce/installers/${encodeURIComponent(id??"new")}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)}) as Promise<InstallationWorkforce>,
+  saveInstallationTeam:(id:string|undefined,input:Record<string,unknown>)=>apiFetch(`${base}/installation-workforce/teams/${encodeURIComponent(id??"new")}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)}) as Promise<InstallationWorkforce>,
   listScenarios:(estimateId?:string)=>apiFetch(`${base}/scenarios${estimateId?`?estimate_id=${encodeURIComponent(estimateId)}`:""}`) as Promise<CalculatorScenario[]>,
   getScenario:(id:string,estimateId?:string)=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(id)}${estimateId?`?estimate_id=${encodeURIComponent(estimateId)}`:""}`)),
   syncEstimatePositions:(id:string)=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(id)}/sync-estimate-positions`,{method:"POST"})),
@@ -26,6 +31,8 @@ export const projectCalculatorLabApi={
   updateMarkups:(scenarioId:string,input:CalculatorScenario["markups"]&{productOverrides?:Array<{rowId:string;markupOverridePercent:string|null}>;targetGrossMarginPercent?:string})=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/markups`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
   createRevision:(scenarioId:string)=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/revisions`,{method:"POST"})),
   updateOptions:(scenarioId:string,input:Record<string,unknown>)=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/options`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
+  updateInstallationProfile:(scenarioId:string,input:Record<string,unknown>)=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/installation-profile`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
+  updateInstallationMaterials:(scenarioId:string,input:Record<string,unknown>)=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/installation-materials`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
   updatePackageItem:(scenarioId:string,itemId:string,input:{included:boolean;unitCost:string})=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/package-items/${encodeURIComponent(itemId)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
   addRouteSnapshot:(scenarioId:string,input:Record<string,unknown>)=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/route-snapshots`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
 };

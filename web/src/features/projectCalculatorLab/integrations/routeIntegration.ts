@@ -14,10 +14,10 @@ export async function resolveRouteEndpoint(label:string,config:RouteIntegrationC
   return found?{label:normalized,lat:String(found.lat),lng:String(found.lng)}:null;
 }
 
-export async function calculateDirectionalRoute(direction:"office_to_site"|"site_to_office",origin:RouteEndpoint,destination:RouteEndpoint,config:RouteIntegrationConfig):Promise<RouteDraft|null>{
+export async function calculateDirectionalRoute(direction:"office_to_site"|"site_to_office"|"installer_to_site",origin:RouteEndpoint,destination:RouteEndpoint,config:RouteIntegrationConfig):Promise<RouteDraft|null>{
   const route=await apiFetch("/api/integrations/googleMaps/route",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({origin:{lat:Number(origin.lat),lng:Number(origin.lng)},destination:{lat:Number(destination.lat),lng:Number(destination.lng)}})}) as {distanceKm:number;durationMinutes:number}|null;
   if(!route)return null;
-  return {direction,origin,destination,distanceKm:String(route.distanceKm),durationMinutes:route.durationMinutes,trafficDurationMinutes:null,calculatedAt:new Date().toISOString(),integration:"google_routes",manuallyOverridden:false,overrideReason:null};
+  return {direction:direction==="installer_to_site"?"office_to_site":direction,origin,destination,distanceKm:String(route.distanceKm),durationMinutes:route.durationMinutes,trafficDurationMinutes:null,calculatedAt:new Date().toISOString(),integration:direction==="installer_to_site"?"google_routes_installation_team":"google_routes",manuallyOverridden:false,overrideReason:null};
 }
 
 export const ROUTE_INTEGRATION_CAPABILITIES=Object.freeze({googleMapDisplay:true,googleGeocoding:true,googleRoutableDistance:true,normalDuration:true,trafficAwareDuration:false,what3wordsCoordinates:true,directionalSnapshots:true});

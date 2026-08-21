@@ -759,6 +759,31 @@ const tables = [
     catalogue_json TEXT NOT NULL, rules_json TEXT NOT NULL, package_rules_json TEXT NOT NULL, created_at TEXT NOT NULL,
     FOREIGN KEY(scenario_id) REFERENCES project_calculator_lab_scenarios(id) ON DELETE CASCADE
   )`,
+  `CREATE TABLE IF NOT EXISTS installation_companies (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, address_json TEXT NOT NULL DEFAULT '{}', postcode TEXT,
+    telephone TEXT, email TEXT, notes TEXT, day_rate TEXT, active INTEGER NOT NULL DEFAULT 1 CHECK(active IN(0,1)),
+    version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS installation_installers (
+    id TEXT PRIMARY KEY, company_id TEXT NOT NULL, name TEXT NOT NULL, mobile TEXT, email TEXT,
+    address_json TEXT NOT NULL DEFAULT '{}', postcode TEXT, day_rate TEXT, capabilities_json TEXT NOT NULL DEFAULT '[]',
+    active INTEGER NOT NULL DEFAULT 1 CHECK(active IN(0,1)), version INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+    FOREIGN KEY(company_id) REFERENCES installation_companies(id) ON DELETE RESTRICT
+  )`,
+  `CREATE TABLE IF NOT EXISTS installation_teams (
+    id TEXT PRIMARY KEY, company_id TEXT NOT NULL, name TEXT NOT NULL, normal_crew_size INTEGER NOT NULL,
+    base_address_json TEXT NOT NULL DEFAULT '{}', base_postcode TEXT, capabilities_json TEXT NOT NULL DEFAULT '[]',
+    active INTEGER NOT NULL DEFAULT 1 CHECK(active IN(0,1)), version INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+    FOREIGN KEY(company_id) REFERENCES installation_companies(id) ON DELETE RESTRICT
+  )`,
+  `CREATE TABLE IF NOT EXISTS installation_team_members (
+    team_id TEXT NOT NULL, installer_id TEXT NOT NULL, created_at TEXT NOT NULL,
+    PRIMARY KEY(team_id,installer_id),
+    FOREIGN KEY(team_id) REFERENCES installation_teams(id) ON DELETE CASCADE,
+    FOREIGN KEY(installer_id) REFERENCES installation_installers(id) ON DELETE RESTRICT
+  )`,
   `CREATE TABLE IF NOT EXISTS project_calculator_lab_options (
     scenario_id TEXT PRIMARY KEY, project_type TEXT NOT NULL DEFAULT 'new_build', crew_size INTEGER NOT NULL DEFAULT 2,
     use_illbruck INTEGER NOT NULL DEFAULT 0, brackets_required INTEGER NOT NULL DEFAULT 0, stay_away INTEGER NOT NULL DEFAULT 0,
@@ -811,6 +836,8 @@ const indexes = [
   'CREATE INDEX IF NOT EXISTS idx_calculator_lab_fx_scenario ON project_calculator_lab_exchange_rate_snapshots(scenario_id, created_at)',
   'CREATE INDEX IF NOT EXISTS idx_calculator_lab_revisions_scenario ON project_calculator_lab_revisions(scenario_id, version_number)',
   'CREATE INDEX IF NOT EXISTS idx_calculator_admin_catalogue_category ON project_calculator_admin_catalogue_items(category, active)',
+  'CREATE INDEX IF NOT EXISTS idx_installation_installers_company ON installation_installers(company_id, active)',
+  'CREATE INDEX IF NOT EXISTS idx_installation_teams_company ON installation_teams(company_id, active)',
   'CREATE INDEX IF NOT EXISTS idx_calculator_lab_catalogue_snapshot ON project_calculator_lab_catalogue_snapshots(scenario_id, scenario_revision)',
 ];
 
@@ -909,6 +936,8 @@ export async function initializeSupplierCommercialSchema(db) {
   for(const [column,definition] of [['included_in_supplier_total','INTEGER NOT NULL DEFAULT 1'],['inclusion_evidence','TEXT']])if(!supplierExtraColumns.some(item=>item.name===column))await db.exec(`ALTER TABLE supplier_quote_extras ADD COLUMN ${column} ${definition}`);
   const manualCostColumns=await db.all('PRAGMA table_info(project_calculator_lab_manual_cost_lines)');
   if(!manualCostColumns.some(item=>item.name==='included_in_current_estimate'))await db.exec('ALTER TABLE project_calculator_lab_manual_cost_lines ADD COLUMN included_in_current_estimate INTEGER NOT NULL DEFAULT 1');
+  const installationCompanyColumns=await db.all('PRAGMA table_info(installation_companies)');
+  if(!installationCompanyColumns.some(item=>item.name==='day_rate'))await db.exec('ALTER TABLE installation_companies ADD COLUMN day_rate TEXT');
   const now=new Date().toISOString();
   for(const [id,category,label,rateType,price,variant] of CALCULATOR_CATALOGUE_DEFAULTS)await db.run('INSERT OR IGNORE INTO project_calculator_admin_catalogue_items(id,category,label,rate_type,price_amount,currency,variant_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)',id,category,label,rateType,price,'GBP',JSON.stringify(variant||{}),now,now);
   await db.run("UPDATE project_calculator_admin_catalogue_items SET active=0,updated_at=? WHERE id='me508_unconfigured' AND price_amount IS NULL",now);
@@ -939,4 +968,5 @@ export const supplierCommercialTableNames = Object.freeze([
   'project_calculator_lab_revisions',
   'project_calculator_admin_catalogue_items','project_calculator_admin_rules','project_calculator_admin_package_rules',
   'project_calculator_lab_catalogue_snapshots','project_calculator_lab_options',
+  'installation_team_members','installation_teams','installation_installers','installation_companies',
 ]);

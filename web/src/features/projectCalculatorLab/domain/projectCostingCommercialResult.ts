@@ -27,6 +27,8 @@ export type ProjectCostingScenarioView = CalculatorScenario & {
     allocatedProductPurchaseGbp: string; allocatedProductCommercialGbp: string; transportPurchaseGbp: string; transportCommercialGbp: string;
   };
   transportAllocation?: Array<{ productRowId: string; displayReference: string; amount: string; currency: string; purchaseGbpAmount: string; commercialGbpAmount: string }>;
+  me508Calculation?: { totalCost: string | null } | null;
+  installationProgramme?: { costs: { purchaseCost: string }; [key: string]: unknown } | null;
 };
 
 export type CustomerPricingInput = {
@@ -106,14 +108,15 @@ export function deriveProjectCostingCommercialResult(
   const transportAllocated = transportModel.allocatedOriginalAmount;
   const transportGbp = addDecimalAmounts([transportModel.transportPurchaseGbp, ...transportPackageUplifts.map((item) => item.purchaseAmountGbp)]);
   const productGbp = addDecimalAmounts([baseProductGbp, transportModel.allocatedPurchaseGbp]);
-  const installationGbp = addDecimalAmounts([gbp(includedInstallation), ...installationPackageUplifts.map((item) => item.purchaseAmountGbp)]);
+  const calculatedInstallationCost = scenario.options?.installationRequired && scenario.options?.installationProfile && (scenario.options.installationProfile as Record<string, unknown>).enabled !== false ? scenario.installationProgramme?.costs.purchaseCost : null;
+  const installationGbp = addDecimalAmounts([gbp(includedInstallation), ...installationPackageUplifts.map((item) => item.purchaseAmountGbp), calculatedInstallationCost]);
   const feeGbp = addDecimalAmounts([gbp(includedFees), ...dutyPackageUplifts.map((item) => item.purchaseAmountGbp)]);
   const extrasCommercialGbp = addDecimalAmounts([commercialGbp(includedExtras), ...extraPackageUplifts.map((item) => item.sellingAmountGbp)]);
   const transportCommercialGbp = addDecimalAmounts([transportModel.transportCommercialGbp, ...transportPackageUplifts.map((item) => item.sellingAmountGbp)]);
-  const installationCommercialGbp = addDecimalAmounts([commercialGbp(includedInstallation), ...installationPackageUplifts.map((item) => item.sellingAmountGbp)]);
+  const installationCommercialGbp = addDecimalAmounts([commercialGbp(includedInstallation), ...installationPackageUplifts.map((item) => item.sellingAmountGbp), calculatedInstallationCost]);
   const feeCommercialGbp = addDecimalAmounts([commercialGbp(includedFees), ...dutyPackageUplifts.map((item) => item.sellingAmountGbp)]);
   const equipmentCost = addDecimalAmounts([...equipment.map((row) => row.unitCost), ...equipmentPackageUplifts.map((item) => item.purchaseAmountGbp)]);
-  const materialsCost = addDecimalAmounts([...materials.map((row) => row.unitCost), ...materialsPackageUplifts.map((item) => item.purchaseAmountGbp)]);
+  const materialsCost = addDecimalAmounts([...materials.map((row) => row.unitCost), ...materialsPackageUplifts.map((item) => item.purchaseAmountGbp), scenario.me508Calculation?.totalCost, scenario.installationMaterials?.purchaseCost]);
   const selling = (amount: string, category: keyof ProjectCostingMarkups) => applyMarkupPercentage(amount, markups[category])?.sellingPrice ?? "0";
   const productPricing = includedProducts.map((row) => {
     const amount = addDecimalAmounts([row.commercialGbpAmount, transportAllocationByProduct.get(row.id)?.commercialGbpAmount]);

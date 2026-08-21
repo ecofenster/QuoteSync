@@ -34,9 +34,9 @@ test("status rendering uses accessible text as well as colour", async () => {
 });
 
 test("chronology remains ordered and displays the current checkpoint", () => {
-  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 30 }, (_, index) => index + 1));
+  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 32 }, (_, index) => index + 1));
   assert.equal(ROADMAP_CHRONOLOGY.find((entry) => entry.title === "Checkpoint stabilization")?.checkpointSha, ROADMAP_CHECKPOINT_SHA);
-  assert.match(ROADMAP_CHRONOLOGY.at(-1)?.title ?? "", /Same-revision manufacturer document accumulation correction/);
+  assert.match(ROADMAP_CHRONOLOGY.at(-1)?.title ?? "", /Stage 6 Installation workforce/);
   assert.equal(ROADMAP_CHECKPOINT_SHA, "ed6537b99f0930357e19ea1f505958e088385ce0");
 });
 

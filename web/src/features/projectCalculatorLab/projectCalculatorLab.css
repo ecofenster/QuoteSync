@@ -49,6 +49,10 @@
   display: grid;
   gap: var(--space-4);
 }
+.supplier-commercial-review__amend{justify-self:end;margin-block:var(--space-1)}
+.ui-modal-backdrop{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:var(--space-4);background:var(--qs-overlay-scrim)}
+.ui-modal{width:min(900px,calc(100vw - 32px));max-height:calc(100vh - 32px);overflow:auto;padding:var(--space-4);color:var(--qs-theme-text);background:var(--qs-bg-card);border:var(--qs-border-width) solid var(--qs-border-standard);border-radius:var(--radius-dialog);box-shadow:var(--shadow-overlay);display:grid;gap:var(--space-3)}
+.ui-modal>header,.ui-modal>footer{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3)}
 .supplier-commercial-review--compact{padding:0;overflow:hidden}
 .supplier-commercial-review--compact>summary{cursor:pointer;padding:var(--space-3) var(--space-4);list-style:none}
 .supplier-commercial-review--compact>summary span:first-child{display:grid;gap:var(--space-1)}
@@ -338,6 +342,7 @@
   padding: 26px 22px 20px;
   background: var(--qs-bg-surface);
 }
+.costing-sheet__section--products{order:10}.costing-sheet__section--extras{order:20}.costing-sheet__section--transport{order:30}.costing-sheet__section--siteVisit{order:40}.costing-sheet__section--materials{order:50}.costing-sheet__section--installation{order:60}.costing-sheet__section--duties{order:70}.costing-sheet__summary{order:80}.costing-sheet__footer{order:90}
 
 .costing-sheet__title { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
 .costing-sheet__title h1 { margin: 0; font-size: var(--qs-type-page-title); line-height: 1.2; }

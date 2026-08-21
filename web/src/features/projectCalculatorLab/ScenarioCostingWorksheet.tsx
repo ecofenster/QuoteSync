@@ -7,6 +7,7 @@ import type {
 } from "./domain/projectCalculatorLab.types";
 import {
   addDecimalAmounts,
+  applyMarkupPercentage,
   calculateProductSelling,
   MARKUP_CATEGORIES,
   percentageRatio,
@@ -31,6 +32,8 @@ import SupplierCommercialReview, {
 } from "./SupplierCommercialReview";
 import { projectCalculatorLabApi } from "./api/projectCalculatorLabApi";
 import SiteVisitTravelPanel from "./SiteVisitTravelPanel";
+import InstallationMaterialsAssumptions from "./InstallationMaterialsAssumptions";
+import ConfigureInstallation from "./ConfigureInstallation";
 import { useEstimateCommercialActions } from "../estimateCommercial/EstimateCommercialActionsContext";
 import { resolveManufacturerVisualAssetUrl } from "../manufacturerVisuals/manufacturerVisualAssetUrl";
 import { useCustomerViewPolicy } from "../estimateCommercial/customerViewPolicy";
@@ -795,6 +798,40 @@ export default function ScenarioCostingWorksheet({
       setSaving(false);
     }
   };
+  const updateInstallationRequired = async (required: boolean) => {
+    setSaving(true);
+    setError("");
+    try {
+      const updated = await projectCalculatorLabApi.updateOptions(scenario.id, {
+        installationRequired: required,
+      });
+      window.dispatchEvent(
+        new CustomEvent("quotesuite:costing-updated", { detail: updated }),
+      );
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Installation requirement could not be saved.");
+    } finally {
+      setSaving(false);
+    }
+  };
+  const updateMaterialsRequired = async (required: boolean) => {
+    setSaving(true);
+    setError("");
+    try {
+      const current = (scenario.options?.installationMaterials ?? {}) as Record<string, unknown>;
+      const updated = await projectCalculatorLabApi.updateInstallationMaterials(scenario.id, {
+        fixingMethod: current.fixingMethod ?? "brackets",
+        contingencyPercent: current.contingencyPercent ?? "15",
+        ...current,
+        enabled: required,
+      });
+      window.dispatchEvent(new CustomEvent("quotesuite:costing-updated", { detail: updated }));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Installation Materials requirement could not be saved.");
+    } finally {
+      setSaving(false);
+    }
+  };
   const saveCustomerDiscount = saveCustomerPricing,
     sale = actualSale;
   const policy =
@@ -846,11 +883,14 @@ export default function ScenarioCostingWorksheet({
       ? `${scenario.currency} 1 = GBP ${scenario.exchangeRate.supplierToGbpLiveRate} live / ${scenario.exchangeRate.supplierToGbpSellingRate} selling${scenario.exchangeRate.providerTimestamp ? ` · captured ${scenario.exchangeRate.providerTimestamp}` : ""}`
       : "No foreign-currency rate";
   const installVisible =
+    commercialView === "internal" ||
     scenario.packageCode === "full_installation" ||
     installation.length > 0 ||
     installationPackageUplifts.length > 0;
   const materialsVisible =
+    commercialView === "internal" ||
     materials.length > 0 ||
+    Boolean(scenario.installationMaterials) ||
     Boolean(
       scenario.options?.useIllbruck || scenario.options?.bracketsRequired,
     );
@@ -863,11 +903,6 @@ export default function ScenarioCostingWorksheet({
   ];
   return (
     <>
-      {commercialView === "internal" ? <SupplierCommercialReview
-        scenarioId={scenario.id}
-        policies={commercialScenario.supplierCommercialPolicies ?? []}
-        onSaveSupplier={onUpdateSupplierCommercial}
-      /> : null}
       <div className={`project-costing project-costing--${commercialView}`} data-commercial-view={commercialView}>
         <header className="project-costing__topbar">
           <div className="project-costing__brand">
@@ -887,6 +922,7 @@ export default function ScenarioCostingWorksheet({
             <strong>Project Costing</strong>
           </div>
           <div className="project-costing__rate">{rateSummary}</div>
+          {commercialView === "internal" ? <SupplierCommercialReview scenarioId={scenario.id} policies={commercialScenario.supplierCommercialPolicies ?? []} onSaveSupplier={onUpdateSupplierCommercial}/> : null}
           <button className="ui-button">View rate history</button>
           <button
             className="ui-button"
@@ -907,6 +943,7 @@ export default function ScenarioCostingWorksheet({
           >
             {saving ? "Saving…" : "Save"}
           </button>
+          <span className={dirty ? "costing-sheet__unsaved" : "costing-sheet__saved"}>{dirty ? "Unsaved" : `Saved · Revision ${scenario.revisionNumber}`}</span>
           <button
             className="ui-button ui-button--primary"
             disabled={dirty || saving}
@@ -987,15 +1024,6 @@ export default function ScenarioCostingWorksheet({
               <div>
                 <h1>Project Costing</h1>
                 <p>Commercial worksheet for this quotation</p>
-              </div>
-              <div
-                className={
-                  dirty ? "costing-sheet__unsaved" : "costing-sheet__saved"
-                }
-              >
-                {dirty
-                  ? "Unsaved markup changes"
-                  : `Saved · Revision ${scenario.revisionNumber}`}
               </div>
             </div>
             {error ? (
@@ -1450,41 +1478,9 @@ export default function ScenarioCostingWorksheet({
             >
               <SiteVisitTravelPanel scenario={scenario} />
             </Section>
-            {equipment.length ? (
-              <Section
-                index={4}
-                kind="equipment"
-                title="Equipment Hire"
-                summary={`${equipment.length} selected`}
-                cost={money(String(equipmentCost))}
-                converted={money(equipmentCost)}
-                markup={markupDraft.equipment}
-                sale={money(equipmentSale)}
-                open={open === "equipment"}
-                onToggle={() => toggle("equipment")}
-                onMarkupChange={(value) => editMarkup("equipment", value)}
-                onMarkupKeyDown={markupKeys("equipment")}
-                invalid={Boolean(
-                  validateMarkupPercentage(markupDraft.equipment),
-                )}
-              >
-                <div className="costing-sheet__detail-list">
-                  {equipment.map((item) => (
-                    <CommercialRow
-                      key={item.id}
-                      description={item.label}
-                      cost={money(item.unitCost, item.currency)}
-                      converted={money(item.unitCost)}
-                      rate={`${scenario.markups.installation}%`}
-                      sale={money(item.unitCost)}
-                    />
-                  ))}
-                </div>
-              </Section>
-            ) : null}
             {installVisible ? (
               <Section
-                index={5}
+                index={6}
                 kind="installation"
                 title="Installation"
                 summary={
@@ -1493,9 +1489,9 @@ export default function ScenarioCostingWorksheet({
                     : "Selected installation costs"
                 }
                 cost={originalTotals(installation)}
-                converted={money(installationGbp)}
+                converted={money(addDecimalAmounts([installationGbp,equipmentCost]))}
                 markup={markupDraft.installation}
-                sale={money(installationSale)}
+                sale={money(addDecimalAmounts([installationSale,equipmentSale]))}
                 open={open === "installation"}
                 onToggle={() => toggle("installation")}
                 onMarkupChange={(value) => editMarkup("installation", value)}
@@ -1505,6 +1501,20 @@ export default function ScenarioCostingWorksheet({
                 )}
               >
                 <div className="costing-sheet__detail-list">
+                  <div className="costing-sheet__product-actions"><span>Installation required?</span><Toggle ariaLabel="Installation required" value={Boolean(scenario.options?.installationRequired)} onChange={(value)=>void updateInstallationRequired(value)} /><ConfigureInstallation scenario={scenario}/>{scenario.installationProgramme?.status==="review_required"?<span className="ui-badge">Review Required</span>:null}</div>
+                  {scenario.installationProgramme ? <>
+                    <div className="costing-sheet__facts"><span>Team <b>{scenario.selectedInstallationTeam?`${scenario.selectedInstallationTeam.companyName} · ${scenario.selectedInstallationTeam.name}`:"Select team"}</b></span><span>Crew <b>{scenario.installationProgramme.crewSize}</b></span><span>Programme <b>{scenario.installationProgramme.programmeDays} full day(s)</b></span><span>Travel <b>{scenario.installationProgramme.travel.mode.replaceAll("_"," ")}</b></span><span>Vehicles <b>{scenario.installationProgramme.travel.vehicleCount}</b></span></div>
+                    <CommercialRow description="Installer labour · full-day charging" cost={money(scenario.installationProgramme.costs.labour)} converted={`${scenario.installationProgramme.crewSize} people · ${scenario.installationProgramme.programmeDays} day(s)`} rate={`${markupDraft.installation}%`} sale={money(applyMarkupPercentage(scenario.installationProgramme.costs.labour,markupDraft.installation)?.sellingPrice)} />
+                    <CommercialRow description="Mileage" cost={money(scenario.installationProgramme.costs.mileage)} converted={`${scenario.installationProgramme.travel.chargeableMiles} mi · ${scenario.installationProgramme.travel.vehicleCount} vehicle(s)`} rate={`${markupDraft.installation}%`} sale={money(applyMarkupPercentage(scenario.installationProgramme.costs.mileage,markupDraft.installation)?.sellingPrice)} />
+                    <CommercialRow description="Food allowance" cost={money(scenario.installationProgramme.costs.food)} converted={`${scenario.installationProgramme.allowances.foodDays} day(s)`} rate={`${markupDraft.installation}%`} sale={money(applyMarkupPercentage(scenario.installationProgramme.costs.food,markupDraft.installation)?.sellingPrice)} />
+                    <CommercialRow description="Accommodation" cost={money(scenario.installationProgramme.costs.accommodation)} converted={`${scenario.installationProgramme.allowances.nights} night(s)`} rate={`${markupDraft.installation}%`} sale={money(applyMarkupPercentage(scenario.installationProgramme.costs.accommodation,markupDraft.installation)?.sellingPrice)} />
+                    <CommercialRow description="Installation Support" cost={money(scenario.installationProgramme.costs.support)} converted={`${scenario.installationProgramme.allowances.supportDays} full day(s)`} rate={`${markupDraft.installation}%`} sale={money(applyMarkupPercentage(scenario.installationProgramme.costs.support,markupDraft.installation)?.sellingPrice)} />
+                    <CommercialRow description="Retrofit Survey" cost={money(scenario.installationProgramme.costs.survey)} converted={`${scenario.installationProgramme.allowances.surveyDays} day(s)`} rate={`${markupDraft.installation}%`} sale={money(applyMarkupPercentage(scenario.installationProgramme.costs.survey,markupDraft.installation)?.sellingPrice)} />
+                    <CommercialRow description="Cill Installation" cost={money(scenario.installationProgramme.costs.cillInstallation)} converted={`${scenario.installationProgramme.allowances.cillApplicableQuantity} applicable window(s)`} rate={`${markupDraft.installation}%`} sale={money(applyMarkupPercentage(scenario.installationProgramme.costs.cillInstallation,markupDraft.installation)?.sellingPrice)} />
+                    {scenario.installationProgramme.reviewRequired.length?<details><summary>Review Required ({scenario.installationProgramme.reviewRequired.length})</summary><ul>{scenario.installationProgramme.reviewRequired.map(item=><li key={item}>{item}</li>)}</ul></details>:null}
+                    <details><summary>Programme calculation trail</summary>{scenario.installationProgramme.days.map((day,index)=><div className="costing-sheet__facts" key={index}><span><b>Day {String(day.day)}</b> · {String(day.capacityHours)} productive hours available</span><span>{Array.isArray(day.tasks)?day.tasks.map(task=>`${String(task.reference)} (${String(task.durationHours)} h / ${String(task.minimumCrew)} people)`).join(" · "):""}</span></div>)}</details>
+                  </> : <p>Configure Installation to create the Estimate-owned programme and costing snapshot.</p>}
+                  {equipment.map(item=><CommercialRow key={item.id} description={item.label} cost={money(item.unitCost,item.currency)} converted={money(item.unitCost)} rate={`${markupDraft.equipment}%`} sale={money(applyMarkupPercentage(item.unitCost??"0",markupDraft.equipment)?.sellingPrice)}/>)}
                   {[
                     "labour",
                     "travel",
@@ -1566,7 +1576,7 @@ export default function ScenarioCostingWorksheet({
             ) : null}
             {materialsVisible ? (
               <Section
-                index={6}
+                index={5}
                 kind="materials"
                 title="Installation Materials"
                 summary={`${materials.length + (scenario.me508Calculation ? 1 : 0)} selected`}
@@ -1582,6 +1592,7 @@ export default function ScenarioCostingWorksheet({
                   validateMarkupPercentage(markupDraft.materials),
                 )}
               >
+                <div className="costing-sheet__product-actions"><InstallationMaterialsAssumptions scenario={scenario}/><span>Required</span><Toggle ariaLabel="Installation Materials required" value={Boolean(scenario.options?.installationMaterials&&String((scenario.options.installationMaterials as Record<string,unknown>).enabled)!=="false")} onChange={(value)=>void updateMaterialsRequired(value)}/><span>Building Type: <b>{String(scenario.installationMaterials?.buildingType??"Review required").replaceAll("_"," & ")}</b></span><span>Contingency: <b>{scenario.installationMaterials?.contingencyPercent??"—"}%</b></span></div>
                 <div className="costing-sheet__detail-list">
                   {materials.map((item) => (
                     <CommercialRow
@@ -1589,8 +1600,8 @@ export default function ScenarioCostingWorksheet({
                       description={item.label}
                       cost={money(item.unitCost, item.currency)}
                       converted={money(item.unitCost)}
-                      rate={`${scenario.markups.installation}%`}
-                      sale={money(item.unitCost)}
+                      rate={`${markupDraft.materials}%`}
+                      sale={money(applyMarkupPercentage(item.unitCost??"0",markupDraft.materials)?.sellingPrice)}
                     />
                   ))}
                   {scenario.me508Calculation ? (
@@ -1606,14 +1617,26 @@ export default function ScenarioCostingWorksheet({
                           ? money(scenario.me508Calculation.totalCost)
                           : "Price required"
                       }
-                      rate={`${scenario.markups.installation}%`}
+                      rate={`${markupDraft.materials}%`}
                       sale={
                         scenario.me508Calculation.totalCost
-                          ? money(scenario.me508Calculation.totalCost)
+                          ? money(applyMarkupPercentage(scenario.me508Calculation.totalCost,markupDraft.materials)?.sellingPrice)
                           : "Price required"
                       }
                     />
                   ) : null}
+                  {scenario.installationMaterials ? <>
+                    <h4>Sealing &amp; Airtightness</h4>
+                    {Object.entries(scenario.installationMaterials.sealing).filter(([product])=>product!=="ME508").map(([product,requirement])=><CommercialRow key={product} description={product} cost={requirement.status} converted={requirement.requiredLengthM==null?"—":`${requirement.requiredLengthM} m required`} rate={`${markupDraft.materials}%`} sale="—"/>)}
+                    <h4>Mechanical Fixings</h4>
+                    <CommercialRow description={`Bracket ${scenario.installationMaterials.bracketLengthMm??"—"} mm`} cost={scenario.installationMaterials.purchasing.brackets.purchaseCost?money(scenario.installationMaterials.purchasing.brackets.purchaseCost):scenario.installationMaterials.purchasing.brackets.status} converted={`${scenario.installationMaterials.purchasing.brackets.requiredQuantity??"—"} required / ${scenario.installationMaterials.purchasing.brackets.packsRequired??"—"} packs`} rate={`${markupDraft.materials}%`} sale={scenario.installationMaterials.purchasing.brackets.purchaseCost?money(applyMarkupPercentage(scenario.installationMaterials.purchasing.brackets.purchaseCost,markupDraft.materials)?.sellingPrice):"—"}/>
+                    <CommercialRow description={`Frame screws · ${scenario.installationMaterials.frameScrewsPerBracket} per bracket (Admin rule)`} cost={scenario.installationMaterials.purchasing.frameScrews.purchaseCost?money(scenario.installationMaterials.purchasing.frameScrews.purchaseCost):scenario.installationMaterials.purchasing.frameScrews.status} converted={`${scenario.installationMaterials.purchasing.frameScrews.requiredQuantity??"—"} required / ${scenario.installationMaterials.purchasing.frameScrews.packsRequired??"—"} packs`} rate={`${markupDraft.materials}%`} sale={scenario.installationMaterials.purchasing.frameScrews.purchaseCost?money(applyMarkupPercentage(scenario.installationMaterials.purchasing.frameScrews.purchaseCost,markupDraft.materials)?.sellingPrice):"—"}/>
+                    <CommercialRow description="Substrate fixings" cost={scenario.installationMaterials.purchasing.substrateFixings.purchaseCost?money(scenario.installationMaterials.purchasing.substrateFixings.purchaseCost):scenario.installationMaterials.purchasing.substrateFixings.status} converted={`${scenario.installationMaterials.purchasing.substrateFixings.requiredQuantity??"—"} required / ${scenario.installationMaterials.purchasing.substrateFixings.packsRequired??"—"} packs`} rate={`${markupDraft.materials}%`} sale={scenario.installationMaterials.purchasing.substrateFixings.purchaseCost?money(applyMarkupPercentage(scenario.installationMaterials.purchasing.substrateFixings.purchaseCost,markupDraft.materials)?.sellingPrice):"—"}/>
+                    <CommercialRow description="Installation packers" cost={scenario.installationMaterials.packers.purchaseCost?money(String(scenario.installationMaterials.packers.purchaseCost)):scenario.installationMaterials.packers.status==="available"?`${scenario.installationMaterials.packers.finalRequiredQuantity} required`:scenario.installationMaterials.packers.reason??"Pending product specification"} converted={scenario.installationMaterials.packers.status==="available"?`${scenario.installationMaterials.packers.allocatedQuantity} allocated`:"—"} rate={`${markupDraft.materials}%`} sale={scenario.installationMaterials.packers.purchaseCost?money(applyMarkupPercentage(String(scenario.installationMaterials.packers.purchaseCost),markupDraft.materials)?.sellingPrice):"—"}/>
+                    <h4>Tools</h4>
+                    {(scenario.catalogueSnapshot?.catalogue??[]).filter(item=>item.category==="tool").map(item=><CommercialRow key={item.id} description={item.label} cost={item.priceAmount?money(item.priceAmount):"Price required"} converted="Select when required" rate={`${markupDraft.materials}%`} sale={item.priceAmount?money(applyMarkupPercentage(item.priceAmount,markupDraft.materials)?.sellingPrice):"—"}/>)}
+                    <details><summary>Position calculation trail</summary><div className="costing-sheet__detail-list">{scenario.installationMaterials.positionCalculations.map((item,index)=><div className="costing-sheet__facts" key={`${String(item.reference)}-${index}`}><span><b>{String(item.reference)}</b> · {String(item.widthMm)} × {String(item.heightMm)} · Qty {String(item.quantity)}</span><span>Rule <b>{String(item.fixing?.ruleSource??item.fixing?.reason??"Unavailable")}</b></span><span>Left <b>{String(item.fixing?.leftJambFixingCount??"—")}</b></span><span>Right <b>{String(item.fixing?.rightJambFixingCount??"—")}</b></span><span>Head <b>{String(item.fixing?.headFixingCount??"—")}</b></span><span>Sill <b>{String(item.fixing?.sillFixingCount??"—")}</b></span><span>Per frame <b>{String(item.fixing?.totalFixingPositionsPerFrame??"—")}</b></span><span>Total brackets <b>{String(item.bracketQuantity??"—")}</b></span></div>)}</div></details>
+                  </> : <p>Installation calculation unavailable until an Estimate installation rule and frame material are selected.</p>}
                 </div>
               </Section>
             ) : null}
@@ -1750,8 +1773,7 @@ export default function ScenarioCostingWorksheet({
                   ...(!siteVisitAllocatedToProducts && Number(siteVisitCost) > 0
                     ? [["Site Visit / Travel", siteVisitSale]]
                     : []),
-                  ["Equipment Hire", equipmentSale],
-                  ["Installation", installationSale],
+                  ["Installation", addDecimalAmounts([installationSale,equipmentSale])],
                   ["Installation Materials", materialsSale],
                   ["Import Fees & Duties", feeSale],
                 ].map(([label, value]) => (
