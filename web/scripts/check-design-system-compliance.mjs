@@ -7,6 +7,9 @@ const ignoredDirectories = new Set(["dist", "node_modules", "_backups"]);
 const documentOutputFiles = new Set([
   "services/documents/estimateDocumentService.ts",
   "features/tools/glass/GlassWeightCalculatorTool.tsx",
+  "features/customerQuotation/CustomerQuotationPreview.tsx",
+  "features/customerQuotation/customerQuotation.css",
+  "features/customerQuotation/customerQuotationBrand.css",
 ]);
 const themeAuthorityFiles = new Set(["styles/tokens.css", "theme/themes.ts"]);
 const themeAuthoringFiles = new Set(["features/admin/AdminThemeColoursPanel.tsx"]);

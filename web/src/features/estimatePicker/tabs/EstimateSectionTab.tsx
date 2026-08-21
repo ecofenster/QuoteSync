@@ -97,9 +97,7 @@ export default function EstimateSectionTab(props: Props) {
       outcome={outcome}
       sectionTotals={sectionTotals}
       expandedEstimateId={expandedEstimateId}
-      onToggleEstimate={(estimateId) =>
-        setExpandedEstimateId((prev) => (prev === estimateId ? null : estimateId))
-      }
+      onToggleEstimate={(estimateId) => currentTab === "estimates" ? openEstimateFromPicker(estimateId) : setExpandedEstimateId((prev) => (prev === estimateId ? null : estimateId))}
       statusMenuForEstimateId={statusMenuForEstimateId}
       setStatusMenuForEstimateId={setStatusMenuForEstimateId}
       selectedOrderForInstallations={selectedOrderForInstallations}

@@ -64,8 +64,8 @@ function parseManufacturerPositionEvidence(source, displayReference) {
   const opening = numbered.find((item) => /^(opening|view from inside|view from outside)$/i.test(item.label));
   const weightRaw = numbered.find((item) => /^weight$/i.test(item.label))?.value ?? firstMatch(lines, /\bWeight\s+([\d.,]+)\s*kg\b/i);
   const manufacturerItemNumber = firstMatch(lines, /^(?:Manufacturer\s+)?(?:Item|Position|Pos\.)\s*(?:No\.?\s*)?[:#-]?\s*(\d+)\b/i);
-  const ug = firstMatch(lines, /\bUg\s*=\s*([\d.,]+)/i);
-  const uw = firstMatch(lines, /\bUw\s*=\s*([\d.,]+)/i);
+  const ug = firstMatch(lines, /\bUg\s*=\s*(\d+(?:[.,]\d+)?)/i);
+  const uw = firstMatch(lines, /\bUw\s*=\s*(\d+(?:[.,]\d+)?)/i);
   const area = firstMatch(lines, /^\s*([\d.,]+)\s*m(?:²|2)\s*$/i);
   const normalizedDecimal = (value) => value == null ? null : normalizeDecimal(value);
   return {

@@ -1,97 +1,1509 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ApiRequestError } from "../../services/api/apiClient";
 import { projectCalculatorLabApi } from "./api/projectCalculatorLabApi";
-import type { CalculatorPackageCode, CalculatorScenario, CalculatorScenarioOrigin, ImportSource, ProductClass } from "./domain/projectCalculatorLab.types";
-import { createScenarioCreationWorkflow, toScenarioCreationInput, validateScenarioCreation } from "./domain/scenarioCreation";
-import { calculateDirectionalRoute, resolveRouteEndpoint } from "./integrations/routeIntegration";
+import type {
+  CalculatorPackageCode,
+  CalculatorScenario,
+  CalculatorScenarioOrigin,
+  ImportSource,
+  ProductClass,
+} from "./domain/projectCalculatorLab.types";
+import {
+  createScenarioCreationWorkflow,
+  toScenarioCreationInput,
+  validateScenarioCreation,
+} from "./domain/scenarioCreation";
+import {
+  calculateDirectionalRoute,
+  resolveRouteEndpoint,
+} from "./integrations/routeIntegration";
 import "./projectCalculatorLab.css";
 import CalculatorAdminCatalogue from "./CalculatorAdminCatalogue";
 import ScenarioCostingWorksheet from "./ScenarioCostingWorksheet";
 
-const packages: [CalculatorPackageCode, string][] = [["supply_only", "Supply Only"], ["support", "Support"], ["full_installation", "Full Installation"]];
-const productClasses: ProductClass[] = ["Window", "Single door", "French/double door", "Door with sidelight", "Lift-and-slide", "Bifold", "Sliding/gliding door", "Curtain walling", "Other", "Needs review"];
-const costCategories = ["discount", "extras", "delivery", "survey", "materials", "labour", "plant", "travel", "accommodation", "admin", "other"];
+const packages: [CalculatorPackageCode, string][] = [
+  ["supply_only", "Supply Only"],
+  ["support", "Support"],
+  ["full_installation", "Full Installation"],
+];
+const productClasses: ProductClass[] = [
+  "Window",
+  "Single door",
+  "French/double door",
+  "Door with sidelight",
+  "Lift-and-slide",
+  "Bifold",
+  "Sliding/gliding door",
+  "Curtain walling",
+  "Other",
+  "Needs review",
+];
+const costCategories = [
+  "discount",
+  "extras",
+  "delivery",
+  "survey",
+  "materials",
+  "labour",
+  "plant",
+  "travel",
+  "accommodation",
+  "admin",
+  "other",
+];
 
-function sumExact(values: (string | null)[]) { let scale = 0; for (const value of values) scale = Math.max(scale, (value?.split(".")[1] || "").length); let total = 0n; for (const value of values) { if (!value) continue; const [whole, fraction = ""] = value.split("."); total += BigInt(whole + fraction.padEnd(scale, "0")); } const raw = String(total).padStart(scale + 1, "0"); return scale ? `${raw.slice(0, -scale)}.${raw.slice(-scale).replace(/0+$/, "") || "0"}` : raw; }
-function visibleApiError(error: unknown) { if (error instanceof ApiRequestError) { try { const code = JSON.parse(error.body)?.code; return code ? `${error.message} (${code})` : error.message; } catch { return error.message; } } return error instanceof Error ? error.message : "Calculator operation failed."; }
-function isOpenScenario(value: CalculatorScenario | null): boolean { return value !== null; }
+function sumExact(values: (string | null)[]) {
+  let scale = 0;
+  for (const value of values)
+    scale = Math.max(scale, (value?.split(".")[1] || "").length);
+  let total = 0n;
+  for (const value of values) {
+    if (!value) continue;
+    const [whole, fraction = ""] = value.split(".");
+    total += BigInt(whole + fraction.padEnd(scale, "0"));
+  }
+  const raw = String(total).padStart(scale + 1, "0");
+  return scale
+    ? `${raw.slice(0, -scale)}.${raw.slice(-scale).replace(/0+$/, "") || "0"}`
+    : raw;
+}
+function visibleApiError(error: unknown) {
+  if (error instanceof ApiRequestError) {
+    try {
+      const code = JSON.parse(error.body)?.code;
+      return code ? `${error.message} (${code})` : error.message;
+    } catch {
+      return error.message;
+    }
+  }
+  return error instanceof Error
+    ? error.message
+    : "Calculator operation failed.";
+}
+function isOpenScenario(value: CalculatorScenario | null): boolean {
+  return value !== null;
+}
 const estimateCostingLoads = new Map<string, Promise<CalculatorScenario>>();
-export function ensureEstimateCosting(estimateId:string,estimateRef?:string){let pending=estimateCostingLoads.get(estimateId);if(!pending){pending=projectCalculatorLabApi.listScenarios(estimateId).then(async scenarios=>scenarios[0]?projectCalculatorLabApi.syncEstimatePositions(scenarios[0].id):projectCalculatorLabApi.createScenario({estimateId,origin:"estimate",name:`${estimateRef||"Estimate"} Project Costing`,packageType:"supply_only"})).finally(()=>estimateCostingLoads.delete(estimateId));estimateCostingLoads.set(estimateId,pending)}return pending}
+export function ensureEstimateCosting(
+  estimateId: string,
+  estimateRef?: string,
+) {
+  let pending = estimateCostingLoads.get(estimateId);
+  if (!pending) {
+    pending = projectCalculatorLabApi
+      .listScenarios(estimateId)
+      .then(async (scenarios) =>
+        scenarios[0]
+          ? projectCalculatorLabApi.syncEstimatePositions(scenarios[0].id)
+          : projectCalculatorLabApi.createScenario({
+              estimateId,
+              origin: "estimate",
+              name: `${estimateRef || "Estimate"} Project Costing`,
+              packageType: "supply_only",
+            }),
+      )
+      .finally(() => estimateCostingLoads.delete(estimateId));
+    estimateCostingLoads.set(estimateId, pending);
+  }
+  return pending;
+}
 
-export default function ProjectCalculatorLabWorkspace({initialScenarioId="",estimateId,estimateRef}:{initialScenarioId?:string;estimateId?:string;estimateRef?:string}={}) {
+export default function ProjectCalculatorLabWorkspace({
+  initialScenarioId = "",
+  estimateId,
+  estimateRef,
+  commercialView = "internal",
+}: {
+  initialScenarioId?: string;
+  estimateId?: string;
+  estimateRef?: string;
+  commercialView?: "internal" | "customer";
+} = {}) {
   const [sources, setSources] = useState<ImportSource[]>([]);
-  const [workspaceView,setWorkspaceView]=useState<"scenarios"|"admin">("scenarios");
-  const [calculatorSection,setCalculatorSection]=useState("Project Summary");
+  const [workspaceView, setWorkspaceView] = useState<"scenarios" | "admin">(
+    "scenarios",
+  );
+  const [calculatorSection, setCalculatorSection] = useState("Project Summary");
   const [scenarios, setScenarios] = useState<CalculatorScenario[]>([]);
   const [active, setActive] = useState<CalculatorScenario | null>(null);
-  const [origin, setOrigin] = useState<CalculatorScenarioOrigin>(estimateId ? "estimate" : "supplier_import");
+  const [origin, setOrigin] = useState<CalculatorScenarioOrigin>(
+    estimateId ? "estimate" : "supplier_import",
+  );
   const [rateOverride, setRateOverride] = useState("");
   const [rateOverrideReason, setRateOverrideReason] = useState("");
   const [sourceId, setSourceId] = useState("");
   const [name, setName] = useState("");
   const [currency, setCurrency] = useState("EUR");
-  const [packageCode, setPackageCode] = useState<CalculatorPackageCode>("supply_only");
+  const [packageCode, setPackageCode] =
+    useState<CalculatorPackageCode>("supply_only");
   const [openings, setOpenings] = useState("0");
-  const [manualProduct, setManualProduct] = useState({ reference: "", productClass: "Needs review" as ProductClass, widthMm: "", heightMm: "", quantity: "1", installationOpeningCount: "1", unitSupplyCost: "", totalSupplyCost: "" });
-  const [manualCost, setManualCost] = useState({ category: "other", label: "", amount: "" });
-  const [office, setOffice] = useState(""); const [site, setSite] = useState("");
-  const [manualDirection, setManualDirection] = useState<"office_to_site" | "site_to_office">("office_to_site");
-  const [manualDistance, setManualDistance] = useState(""); const [manualDuration, setManualDuration] = useState(""); const [overrideReason, setOverrideReason] = useState("");
-  const [message, setMessage] = useState(""); const [messageKind, setMessageKind] = useState<"success" | "error" | "info">("info"); const [busy, setBusy] = useState(false); const [loaded, setLoaded] = useState(false);
-  const creationWorkflow = useRef(createScenarioCreationWorkflow(projectCalculatorLabApi.createScenario));
-  const config = { googleMapsApiKey: "server-managed", what3wordsApiKey: "server-managed" };
-  const refresh = async () => { const [nextSources, nextScenarios] = await Promise.all([projectCalculatorLabApi.listImportSources(estimateId), projectCalculatorLabApi.listScenarios(estimateId)]); setSources(nextSources); setScenarios(nextScenarios); setLoaded(true); };
-  useEffect(() => { void refresh().catch((error) => { setLoaded(true); setMessageKind("error"); setMessage(visibleApiError(error)); }); }, [estimateId]);
-  useEffect(()=>{if(initialScenarioId)void projectCalculatorLabApi.getScenario(initialScenarioId,estimateId).then(setActive).catch(error=>{setMessageKind("error");setMessage(visibleApiError(error))})},[initialScenarioId,estimateId]);
-  useEffect(()=>{if(estimateId&&!initialScenarioId)void ensureEstimateCosting(estimateId,estimateRef).then(setActive).catch(error=>{console.error("Project Costing position synchronization failed",error);setMessageKind("error");setMessage("Project Costing could not synchronize positions.")})},[estimateId,estimateRef,initialScenarioId]);
-  useEffect(()=>{const update=(event:Event)=>setActive((event as CustomEvent<CalculatorScenario>).detail);window.addEventListener("quotesuite:costing-updated",update);return()=>window.removeEventListener("quotesuite:costing-updated",update)},[]);
-  useEffect(() => { if (origin !== "supplier_import") setSourceId(""); }, [origin]);
-  const totals = useMemo(() => active ? { rows: active.products.length, quantity: active.products.reduce((sum, row) => sum + row.quantity, 0), area: sumExact(active.products.map((row) => row.areaSquareMetres)), perimeter: sumExact(active.products.map((row) => row.framePerimeterMetres)) } : null, [active]);
-  const stage2b=active as (CalculatorScenario&{me508Calculation?:{requiredLengthM:number;rollsRequired:number;boxesRequired:number;pricingUnit:string;totalCost:string|null;priceStatus:string};fixingBreakdown?:Array<Record<string,unknown>>})|null;
-  const scenarioDetails=(active?.options??{}) as NonNullable<CalculatorScenario["options"]>&{me508ItemId?:string;frameMaterial?:string;region?:string;fixingPackQuantity?:number;fixingPackPrice?:string};
+  const [manualProduct, setManualProduct] = useState({
+    reference: "",
+    productClass: "Needs review" as ProductClass,
+    widthMm: "",
+    heightMm: "",
+    quantity: "1",
+    installationOpeningCount: "1",
+    unitSupplyCost: "",
+    totalSupplyCost: "",
+  });
+  const [manualCost, setManualCost] = useState({
+    category: "other",
+    label: "",
+    amount: "",
+  });
+  const [office, setOffice] = useState("");
+  const [site, setSite] = useState("");
+  const [manualDirection, setManualDirection] = useState<
+    "office_to_site" | "site_to_office"
+  >("office_to_site");
+  const [manualDistance, setManualDistance] = useState("");
+  const [manualDuration, setManualDuration] = useState("");
+  const [overrideReason, setOverrideReason] = useState("");
+  const [message, setMessage] = useState("");
+  const [messageKind, setMessageKind] = useState<"success" | "error" | "info">(
+    "info",
+  );
+  const [busy, setBusy] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const creationWorkflow = useRef(
+    createScenarioCreationWorkflow(projectCalculatorLabApi.createScenario),
+  );
+  const config = {
+    googleMapsApiKey: "server-managed",
+    what3wordsApiKey: "server-managed",
+  };
+  const refresh = async () => {
+    const [nextSources, nextScenarios] = await Promise.all([
+      projectCalculatorLabApi.listImportSources(estimateId),
+      projectCalculatorLabApi.listScenarios(estimateId),
+    ]);
+    setSources(nextSources);
+    setScenarios(nextScenarios);
+    setLoaded(true);
+  };
+  useEffect(() => {
+    void refresh().catch((error) => {
+      setLoaded(true);
+      setMessageKind("error");
+      setMessage(visibleApiError(error));
+    });
+  }, [estimateId]);
+  useEffect(() => {
+    if (initialScenarioId)
+      void projectCalculatorLabApi
+        .getScenario(initialScenarioId, estimateId)
+        .then(setActive)
+        .catch((error) => {
+          setMessageKind("error");
+          setMessage(visibleApiError(error));
+        });
+  }, [initialScenarioId, estimateId]);
+  useEffect(() => {
+    if (estimateId && !initialScenarioId)
+      void ensureEstimateCosting(estimateId, estimateRef)
+        .then(setActive)
+        .catch((error) => {
+          console.error(
+            "Project Costing position synchronization failed",
+            error,
+          );
+          setMessageKind("error");
+          setMessage("Project Costing could not synchronize positions.");
+        });
+  }, [estimateId, estimateRef, initialScenarioId]);
+  useEffect(() => {
+    const update = (event: Event) =>
+      setActive((event as CustomEvent<CalculatorScenario>).detail);
+    window.addEventListener("quotesuite:costing-updated", update);
+    return () =>
+      window.removeEventListener("quotesuite:costing-updated", update);
+  }, []);
+  useEffect(() => {
+    if (origin !== "supplier_import") setSourceId("");
+  }, [origin]);
+  const totals = useMemo(
+    () =>
+      active
+        ? {
+            rows: active.products.length,
+            quantity: active.products.reduce(
+              (sum, row) => sum + row.quantity,
+              0,
+            ),
+            area: sumExact(active.products.map((row) => row.areaSquareMetres)),
+            perimeter: sumExact(
+              active.products.map((row) => row.framePerimeterMetres),
+            ),
+          }
+        : null,
+    [active],
+  );
+  const stage2b = active as
+    | (CalculatorScenario & {
+        me508Calculation?: {
+          requiredLengthM: number;
+          rollsRequired: number;
+          boxesRequired: number;
+          pricingUnit: string;
+          totalCost: string | null;
+          priceStatus: string;
+        };
+        fixingBreakdown?: Array<Record<string, unknown>>;
+      })
+    | null;
+  const scenarioDetails = (active?.options ?? {}) as NonNullable<
+    CalculatorScenario["options"]
+  > & {
+    me508ItemId?: string;
+    frameMaterial?: string;
+    region?: string;
+    fixingPackQuantity?: number;
+    fixingPackPrice?: string;
+  };
 
   async function create() {
-    const draft = { name, origin, sourceRunId: sourceId, currency, packageCode, installationOpeningCount: openings };
+    const draft = {
+      name,
+      origin,
+      sourceRunId: sourceId,
+      currency,
+      packageCode,
+      installationOpeningCount: openings,
+    };
     const validation = validateScenarioCreation(draft, sources);
-    if (validation) { setMessageKind("error"); setMessage(validation); return; }
-    const source = origin === "supplier_import" ? sources.find((candidate) => candidate.runId === sourceId) : undefined;
-    setBusy(true); setMessageKind("info"); setMessage("Creating scenario…");
-    try { const created = await creationWorkflow.current.run({...toScenarioCreationInput(draft, source),estimateId}, refresh, setActive); setMessageKind("success"); setMessage(`Project Costing “${created.name}” created and opened for ${estimateRef||"this estimate"}.`); } catch (error) { setMessageKind("error"); setMessage(visibleApiError(error)); } finally { setBusy(false); }
+    if (validation) {
+      setMessageKind("error");
+      setMessage(validation);
+      return;
+    }
+    const source =
+      origin === "supplier_import"
+        ? sources.find((candidate) => candidate.runId === sourceId)
+        : undefined;
+    setBusy(true);
+    setMessageKind("info");
+    setMessage("Creating scenario…");
+    try {
+      const created = await creationWorkflow.current.run(
+        { ...toScenarioCreationInput(draft, source), estimateId },
+        refresh,
+        setActive,
+      );
+      setMessageKind("success");
+      setMessage(
+        `Project Costing “${created.name}” created and opened for ${estimateRef || "this estimate"}.`,
+      );
+    } catch (error) {
+      setMessageKind("error");
+      setMessage(visibleApiError(error));
+    } finally {
+      setBusy(false);
+    }
   }
-  async function addManualProduct() { if (!active) return; try { setActive(await projectCalculatorLabApi.addManualProduct(active.id, manualProduct)); setManualProduct({ ...manualProduct, reference: "", widthMm: "", heightMm: "", unitSupplyCost: "", totalSupplyCost: "" }); setMessageKind("success"); setMessage("Manual product line added."); } catch (error) { setMessageKind("error"); setMessage(visibleApiError(error)); } }
-  async function addManualCost() { if (!active) return; try { setActive(await projectCalculatorLabApi.addManualCost(active.id, manualCost)); setManualCost({ ...manualCost, label: "", amount: "" }); setMessageKind("success"); setMessage("Manual cost line added."); } catch (error) { setMessageKind("error"); setMessage(visibleApiError(error)); } }
-  async function calculateRoutes() { if (!active) return; setBusy(true); try { const officePoint = await resolveRouteEndpoint(office, config), sitePoint = await resolveRouteEndpoint(site, config); if (!officePoint || !sitePoint) throw new Error("Locations could not be resolved. Check Integration configuration."); const outbound = await calculateDirectionalRoute("office_to_site", officePoint, sitePoint, config), inbound = await calculateDirectionalRoute("site_to_office", sitePoint, officePoint, config); if (!outbound || !inbound) throw new Error("Google routing is unavailable or Google Routes API permission is absent."); let updated = await projectCalculatorLabApi.addRouteSnapshot(active.id, outbound as unknown as Record<string, unknown>); updated = await projectCalculatorLabApi.addRouteSnapshot(active.id, inbound as unknown as Record<string, unknown>); setActive(updated); } catch (error) { setMessageKind("error"); setMessage(visibleApiError(error)); } finally { setBusy(false); } }
-  async function saveManualRoute() { if (!active || !overrideReason.trim()) return; const officePoint = await resolveRouteEndpoint(office, config), sitePoint = await resolveRouteEndpoint(site, config); if (!officePoint || !sitePoint) return; const outbound = manualDirection === "office_to_site"; setActive(await projectCalculatorLabApi.addRouteSnapshot(active.id, { direction: manualDirection, origin: outbound ? officePoint : sitePoint, destination: outbound ? sitePoint : officePoint, distanceKm: manualDistance || null, durationMinutes: manualDuration ? Number(manualDuration) : null, trafficDurationMinutes: null, calculatedAt: new Date().toISOString(), integration: "manual", manuallyOverridden: true, overrideReason: overrideReason.trim() })); }
+  async function addManualProduct() {
+    if (!active) return;
+    try {
+      setActive(
+        await projectCalculatorLabApi.addManualProduct(
+          active.id,
+          manualProduct,
+        ),
+      );
+      setManualProduct({
+        ...manualProduct,
+        reference: "",
+        widthMm: "",
+        heightMm: "",
+        unitSupplyCost: "",
+        totalSupplyCost: "",
+      });
+      setMessageKind("success");
+      setMessage("Manual product line added.");
+    } catch (error) {
+      setMessageKind("error");
+      setMessage(visibleApiError(error));
+    }
+  }
+  async function addManualCost() {
+    if (!active) return;
+    try {
+      setActive(
+        await projectCalculatorLabApi.addManualCost(active.id, manualCost),
+      );
+      setManualCost({ ...manualCost, label: "", amount: "" });
+      setMessageKind("success");
+      setMessage("Manual cost line added.");
+    } catch (error) {
+      setMessageKind("error");
+      setMessage(visibleApiError(error));
+    }
+  }
+  async function calculateRoutes() {
+    if (!active) return;
+    setBusy(true);
+    try {
+      const officePoint = await resolveRouteEndpoint(office, config),
+        sitePoint = await resolveRouteEndpoint(site, config);
+      if (!officePoint || !sitePoint)
+        throw new Error(
+          "Locations could not be resolved. Check Integration configuration.",
+        );
+      const outbound = await calculateDirectionalRoute(
+          "office_to_site",
+          officePoint,
+          sitePoint,
+          config,
+        ),
+        inbound = await calculateDirectionalRoute(
+          "site_to_office",
+          sitePoint,
+          officePoint,
+          config,
+        );
+      if (!outbound || !inbound)
+        throw new Error(
+          "Google routing is unavailable or Google Routes API permission is absent.",
+        );
+      let updated = await projectCalculatorLabApi.addRouteSnapshot(
+        active.id,
+        outbound as unknown as Record<string, unknown>,
+      );
+      updated = await projectCalculatorLabApi.addRouteSnapshot(
+        active.id,
+        inbound as unknown as Record<string, unknown>,
+      );
+      setActive(updated);
+    } catch (error) {
+      setMessageKind("error");
+      setMessage(visibleApiError(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function saveManualRoute() {
+    if (!active || !overrideReason.trim()) return;
+    const officePoint = await resolveRouteEndpoint(office, config),
+      sitePoint = await resolveRouteEndpoint(site, config);
+    if (!officePoint || !sitePoint) return;
+    const outbound = manualDirection === "office_to_site";
+    setActive(
+      await projectCalculatorLabApi.addRouteSnapshot(active.id, {
+        direction: manualDirection,
+        origin: outbound ? officePoint : sitePoint,
+        destination: outbound ? sitePoint : officePoint,
+        distanceKm: manualDistance || null,
+        durationMinutes: manualDuration ? Number(manualDuration) : null,
+        trafficDurationMinutes: null,
+        calculatedAt: new Date().toISOString(),
+        integration: "manual",
+        manuallyOverridden: true,
+        overrideReason: overrideReason.trim(),
+      }),
+    );
+  }
 
-  if(workspaceView==="admin")return <div className="calculator-lab"><div className="calculator-lab__tabs"><button className="ui-button" onClick={()=>setWorkspaceView("scenarios")}>Project Costing</button><button className="ui-button ui-button--primary">Admin Catalogue & Rules</button></div><CalculatorAdminCatalogue/></div>;
+  if (workspaceView === "admin")
+    return (
+      <div className="calculator-lab">
+        <div className="calculator-lab__tabs">
+          <button
+            className="ui-button"
+            onClick={() => setWorkspaceView("scenarios")}
+          >
+            Project Costing
+          </button>
+          <button className="ui-button ui-button--primary">
+            Admin Catalogue & Rules
+          </button>
+        </div>
+        <CalculatorAdminCatalogue />
+      </div>
+    );
   // The helper deliberately avoids narrowing the legacy JSX below while the worksheet replaces it.
-  if(isOpenScenario(active))return <div className="calculator-lab">{!estimateId?<div className="calculator-lab__tabs"><button className="ui-button ui-button--primary">Project Costing</button><button className="ui-button" onClick={()=>setWorkspaceView("admin")}>Admin Catalogue & Rules</button></div>:null}<ScenarioCostingWorksheet scenario={stage2b!} onNew={estimateId?undefined:()=>setActive(null)} onUpdateProduct={async(rowId,input)=>setActive(await projectCalculatorLabApi.updateProduct(active!.id,rowId,input))} onUpdateSupplierCost={async(rowId,input)=>setActive(await projectCalculatorLabApi.updateSupplierCost(active!.id,rowId,input))} onUpdateManualCost={async(rowId,input)=>setActive(await projectCalculatorLabApi.updateManualCost(active!.id,rowId,input))} onSaveMarkups={async(markups,productOverrides)=>{try{const updated=await projectCalculatorLabApi.updateMarkups(active!.id,{...markups,productOverrides});setActive(updated);setMessageKind("success");setMessage("Markup percentages saved atomically.")}catch(error){setMessageKind("error");setMessage(visibleApiError(error));throw error}}} onRefreshRate={async()=>{try{const updated=await projectCalculatorLabApi.refreshExchangeRate(active!.id);setActive(updated);setMessageKind("success");setMessage(`Live rate refreshed: £1 = ${updated.exchangeRate?.rawRate} ${updated.currency}; selling rate ${updated.exchangeRate?.usedRate}.`)}catch(error){setMessageKind("error");setMessage(visibleApiError(error));throw error}}} onCreateRevision={async()=>{try{const updated=await projectCalculatorLabApi.createRevision(active!.id);setActive(updated);setMessageKind("success");setMessage(`Revision ${updated.revisionNumber} created with the saved markup settings.`)}catch(error){setMessageKind("error");setMessage(visibleApiError(error));throw error}}}/>{message?<p role={messageKind==="error"?"alert":"status"} className={`calculator-lab__message calculator-lab__message--${messageKind}`}>{message}</p>:null}</div>;
-  if(estimateId)return <div className="calculator-lab"><section className="ui-card calculator-lab__card"><h2>Project Costing</h2><p>{message||`Loading saved costing for ${estimateRef||"this estimate"}…`}</p></section></div>;
-  return <div className="calculator-lab">
-    <div className="calculator-lab__tabs"><button className="ui-button ui-button--primary">Project Costing</button><button className="ui-button" onClick={()=>setWorkspaceView("admin")}>Admin Catalogue & Rules</button></div>
-    <section className="ui-card calculator-lab__card"><h2>Project Costing</h2><p>{estimateId?`Create or open saved costing for ${estimateRef||"this estimate"}.`:"Legacy compatibility view. Manual and supplier-extracted evidence remain distinct."}</p>
-      {loaded && !estimateId && origin === "supplier_import" && !sources.length ? <p className="calculator-lab__notice">No eligible imports are available. Choose Manual Entry now; Estimate / Configurator is not yet available.</p> : null}
-      <div className="calculator-lab__form"><label>Pricing source<select className="ui-input" value={origin} onChange={(event) => setOrigin(event.target.value as CalculatorScenarioOrigin)}><option value="supplier_import">Supplier quotation import</option><option value="estimate">Estimate positions</option><option value="manual">Manual Entry</option></select></label><label>Costing name<input className="ui-input" value={name} onChange={(event) => setName(event.target.value)} /></label>{origin === "supplier_import" ? <label>Completed extraction<select className="ui-input" value={sourceId} onChange={(event) => setSourceId(event.target.value)}><option value="">Select extraction run</option>{sources.map((source) => <option key={source.runId} value={source.runId}>{source.supplierName} — {source.attachmentFileName} ({source.selectedRowCount} positions, {source.selectedAdditionalCostCount} costs)</option>)}</select></label> : null}{origin === "manual" ? <label>Currency<input className="ui-input" maxLength={3} value={currency} onChange={(event) => setCurrency(event.target.value.toUpperCase())} /></label> : null}{origin === "estimate" ? <p className="calculator-lab__notice">Canonical Estimate positions are shown even while supplier pricing is pending.</p> : null}<label>Package<select className="ui-input" value={packageCode} onChange={(event) => setPackageCode(event.target.value as CalculatorPackageCode)}>{packages.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Installation openings<input className="ui-input" type="number" min="0" value={openings} onChange={(event) => setOpenings(event.target.value)} /></label><button className="ui-button ui-button--primary" disabled={busy} onClick={() => void create()}>{busy ? "Creating…" : "Create Project Costing"}</button></div>
-      <div className="calculator-lab__scenario-list">{scenarios.map((scenario) => <button className={active?.id === scenario.id ? "ui-button ui-button--primary" : "ui-button"} key={scenario.id} onClick={() => void projectCalculatorLabApi.getScenario(scenario.id,estimateId).then(setActive)}>{scenario.name} · {scenario.currency} · {scenario.origin.replaceAll("_", " ")}</button>)}</div>{message ? <p role={messageKind==="error"?"alert":"status"} className={`calculator-lab__message calculator-lab__message--${messageKind}`}>{message}</p> : null}
-    </section>
-    {active ? <><section className="ui-card calculator-lab__card"><h3>{active.name}</h3><p>Origin: <strong>{active.origin.replaceAll("_", " ")}</strong>. {active.origin === "manual" ? "Values are manual evidence, not supplier-extracted evidence." : "Supplier provenance is preserved."}</p><div className="calculator-lab__metrics"><span>Supply subtotal <strong>{active.supplierSummary?.productSubtotal ?? "—"} {active.currency}</strong></span><span>Supplier transport <strong>{active.supplierSummary?.deliveryTotal ?? "—"} {active.currency}</strong></span><span>Supplier final <strong>{active.supplierSummary?.finalSupplierTotal ?? "—"} {active.currency}</strong></span><span>Commercial rows <strong>{totals?.rows}</strong></span><span>Physical quantity <strong>{totals?.quantity}</strong></span><span>Total m² <strong>{totals?.area}</strong></span><span>Frame perimeter m <strong>{totals?.perimeter}</strong></span></div></section>
-      {active.origin === "manual" || active.origin === "mixed" ? <section className="ui-card calculator-lab__card"><h3>Add manual calculator lines</h3><div className="calculator-lab__form"><input className="ui-input" placeholder="Reference" value={manualProduct.reference} onChange={(event) => setManualProduct({ ...manualProduct, reference: event.target.value })} /><select className="ui-input" value={manualProduct.productClass} onChange={(event) => setManualProduct({ ...manualProduct, productClass: event.target.value as ProductClass })}>{productClasses.map((value) => <option key={value}>{value}</option>)}</select>{(["widthMm", "heightMm", "quantity", "installationOpeningCount", "unitSupplyCost", "totalSupplyCost"] as const).map((field) => <input key={field} className="ui-input" placeholder={field} value={manualProduct[field]} onChange={(event) => setManualProduct({ ...manualProduct, [field]: event.target.value })} />)}<button className="ui-button" onClick={() => void addManualProduct()}>Add manual product</button></div><div className="calculator-lab__form"><select className="ui-input" value={manualCost.category} onChange={(event) => setManualCost({ ...manualCost, category: event.target.value })}>{costCategories.map((value) => <option key={value}>{value}</option>)}</select><input className="ui-input" placeholder="Cost label" value={manualCost.label} onChange={(event) => setManualCost({ ...manualCost, label: event.target.value })} /><input className="ui-input" placeholder="Amount" value={manualCost.amount} onChange={(event) => setManualCost({ ...manualCost, amount: event.target.value })} /><button className="ui-button" onClick={() => void addManualCost()}>Add manual cost</button></div></section> : null}
-      <section className="ui-card calculator-lab__card"><h3>Calculator products</h3><div className="calculator-lab__table-wrap"><table><thead><tr><th>Reference</th><th>Evidence</th><th>Class</th><th>Qty</th><th>W × H</th><th>Openings</th><th>Unit supply</th><th>Total supply</th></tr></thead><tbody>{active.products.map((row) => <tr key={row.id}><td>{row.displayReference}</td><td>{row.evidenceOrigin}</td><td><select value={row.productClass} onChange={(event) => void projectCalculatorLabApi.updateProduct(active.id, row.id, { productClass: event.target.value }).then(setActive)}>{productClasses.map((value) => <option key={value}>{value}</option>)}</select></td><td>{row.quantity}</td><td>{row.widthMm} × {row.heightMm}</td><td>{row.installationOpeningCount ?? "—"}</td><td>{row.unitSupplyCost ?? "—"} {row.currency}</td><td>{row.totalPrice ?? "—"} {row.currency}</td></tr>)}</tbody></table></div></section>
-      <section className="ui-card calculator-lab__card"><h3>Cost lines</h3>{active.supplierCosts.map((cost) => <div key={cost.id}>{cost.category}: {cost.label} — {cost.amount} {cost.currency} <small>({cost.evidenceOrigin})</small></div>)}</section>
-      <section className="ui-card calculator-lab__card"><h3>Scenario package catalogue</h3><div className="calculator-lab__catalogue">{active.packageItems.map((item) => <label key={item.id}><input type="checkbox" checked={item.included} onChange={(event) => void projectCalculatorLabApi.updatePackageItem(active.id, item.id, { included: event.target.checked, unitCost: item.unitCost ?? "" }).then(setActive)} /><span>{item.label}</span><input className="ui-input" value={item.unitCost ?? ""} onChange={(event) => setActive({ ...active, packageItems: active.packageItems.map((row) => row.id === item.id ? { ...row, unitCost: event.target.value } : row) })} /></label>)}</div></section>
-      <section className="ui-card calculator-lab__card"><h3>Directional route snapshots</h3><div className="calculator-lab__form"><input className="ui-input" placeholder="Office" value={office} onChange={(event) => setOffice(event.target.value)} /><input className="ui-input" placeholder="Site / what3words" value={site} onChange={(event) => setSite(event.target.value)} /><button className="ui-button" onClick={() => void calculateRoutes()}>Calculate both directions</button></div><details><summary>Manual override</summary><div className="calculator-lab__form"><select value={manualDirection} onChange={(event) => setManualDirection(event.target.value as typeof manualDirection)}><option value="office_to_site">Office → site</option><option value="site_to_office">Site → office</option></select><input value={manualDistance} onChange={(event) => setManualDistance(event.target.value)} placeholder="Distance km" /><input value={manualDuration} onChange={(event) => setManualDuration(event.target.value)} placeholder="Minutes" /><input value={overrideReason} onChange={(event) => setOverrideReason(event.target.value)} placeholder="Reason" /><button disabled={!overrideReason.trim()} onClick={() => void saveManualRoute()}>Save override</button></div></details></section>
-      <nav className="calculator-lab__section-nav">{["Project Summary","Products & Supply","Installation","Sealing & Fixings","Travel & Accommodation","Commercial Summary"].map(section=><button key={section} className={calculatorSection===section?"ui-button ui-button--primary":"ui-button"} onClick={()=>setCalculatorSection(section)}>{section}</button>)}</nav>
-      {calculatorSection==="Project Summary"?<section className="calculator-lab__headline"><article><span>Products</span><strong>{active.products.reduce((sum,row)=>sum+Number(row.markedUpAmount||0),0).toFixed(2)} GBP</strong></article><article><span>Extras</span><strong>{active.supplierCosts.filter(row=>row.category!=="delivery").reduce((sum,row)=>sum+Number(row.markedUpAmount||0),0).toFixed(2)} GBP</strong></article><article><span>Transport</span><strong>{active.supplierCosts.filter(row=>row.category==="delivery").reduce((sum,row)=>sum+Number(row.markedUpAmount||0),0).toFixed(2)} GBP</strong></article><article><span>Installation</span><strong>Configure</strong></article></section>:null}
-      {calculatorSection==="Installation"?<section className="ui-card calculator-lab__card"><h3>Installation</h3><div className="calculator-lab__form"><label>Project type<select value={active.options?.projectType??"new_build"} onChange={event=>void projectCalculatorLabApi.updateOptions(active.id,{projectType:event.target.value}).then(setActive)}><option value="new_build">New Build</option><option value="refurbishment">Refurbishment</option><option value="other">Other</option></select></label><label>Crew size<input type="number" min="1" defaultValue={active.options?.crewSize??2} onBlur={event=>void projectCalculatorLabApi.updateOptions(active.id,{crewSize:Number(event.target.value)}).then(setActive)}/></label></div><p>Day 1 is reserved for travel, offload, inspection and setting out. Final-day productive time is constrained by the stored return route.</p></section>:null}
-      {calculatorSection==="Sealing & Fixings"?<section className="ui-card calculator-lab__card"><h3>Sealing & Fixings</h3><label><input type="checkbox" checked={active.options?.useIllbruck??false} onChange={event=>void projectCalculatorLabApi.updateOptions(active.id,{useIllbruck:event.target.checked}).then(setActive)}/> Use Illbruck installation products?</label>{active.options?.useIllbruck?<div className="calculator-lab__subpanel"><h4>Illbruck ME508 — internal membrane</h4><select className="ui-input" value={scenarioDetails.me508ItemId??""} onChange={event=>void projectCalculatorLabApi.updateOptions(active.id,{details:{...scenarioDetails,me508ItemId:event.target.value}}).then(setActive)}><option value="">Select ME508 variant</option>{active.catalogueSnapshot?.catalogue.filter(item=>item.category==="illbruck_me508"&&item.active).map(item=><option key={item.id} value={item.id}>{item.label} · {item.priceAmount?`${item.priceAmount} ${item.currency}/${item.rateType}`:"Price required"}</option>)}</select>{stage2b?.me508Calculation?<dl className="calculator-lab__breakdown"><dt>Applicable perimeter</dt><dd>{totals?.perimeter} m</dd><dt>Required length including 10%</dt><dd>{stage2b.me508Calculation.requiredLengthM} m</dd><dt>Rolls required</dt><dd>{stage2b.me508Calculation.rollsRequired}</dd><dt>Boxes required</dt><dd>{stage2b.me508Calculation.boxesRequired}</dd><dt>Pricing unit</dt><dd>{stage2b.me508Calculation.pricingUnit}</dd><dt>Total</dt><dd>{stage2b.me508Calculation.totalCost??"Price required"}</dd></dl>:null}<p>TP600 and TP601 are pre-compressed joint-sealing tapes. Their variants remain Admin-controlled and scenario-snapshotted.</p></div>:null}<label><input type="checkbox" checked={active.options?.bracketsRequired??false} onChange={event=>void projectCalculatorLabApi.updateOptions(active.id,{bracketsRequired:event.target.checked}).then(setActive)}/> Brackets/Fixings required?</label>{active.options?.bracketsRequired?<div className="calculator-lab__subpanel"><div className="calculator-lab__form"><label>Frame material<select value={scenarioDetails.frameMaterial??""} onChange={event=>void projectCalculatorLabApi.updateOptions(active.id,{details:{...scenarioDetails,frameMaterial:event.target.value}}).then(setActive)}><option value="">Select material</option><option>PVC-U</option><option>Aluminium</option><option>Timber</option><option>Steel</option></select></label><label>Rule set<input readOnly value={active.options.projectType==="refurbishment"&&scenarioDetails.frameMaterial==="PVC-U"?"GGF 2016 Replacement PVC-U Baseline":"No applicable fixing rule configured."}/></label></div>{stage2b?.fixingBreakdown?.map((item,index)=><details key={String(item.rowId)}><summary>{String(item.reference)} · position {index+1}</summary><pre>{JSON.stringify(item,null,2)}</pre></details>)}</div>:null}</section>:null}
-      {calculatorSection==="Travel & Accommodation"?<section className="ui-card calculator-lab__card"><h3>Travel & Accommodation</h3><label><input type="checkbox" checked={active.options?.stayAway??false} onChange={event=>void projectCalculatorLabApi.updateOptions(active.id,{stayAway:event.target.checked}).then(setActive)}/> Stay Away</label>{active.options?.stayAway?<p>B&amp;B, Hotel and Airbnb rates plus food and staying-away allowances use the scenario catalogue snapshot.</p>:null}<p>Installer mileage and supplier/site-visit mileage are separate snapshotted catalogue rates.</p></section>:null}
-      {calculatorSection==="Commercial Summary"?<section className="ui-card calculator-lab__card"><h3>Transport evidence and allocation</h3><p>Original supplier transport: <strong>{active.supplierSummary?.deliveryTotal??"—"} {active.currency}</strong></p><div className="calculator-lab__form"><label>Customer-facing transport<input className="ui-input" defaultValue={active.options?.customerTransport??""} onBlur={event=>void projectCalculatorLabApi.updateOptions(active.id,{customerTransport:event.target.value}).then(setActive)}/></label><label><input type="checkbox" checked={active.options?.allocateTransportDifference??false} onChange={event=>void projectCalculatorLabApi.updateOptions(active.id,{allocateTransportDifference:event.target.checked}).then(setActive)}/> Allocate remaining amount across products</label><label>Allocation method<select value={active.options?.transportAllocationMethod??"proportional_value"} onChange={event=>void projectCalculatorLabApi.updateOptions(active.id,{transportAllocationMethod:event.target.value}).then(setActive)}><option value="proportional_value">Proportional to product value</option><option value="quantity">Proportional to quantity</option><option value="equal_per_item">Equal per physical item</option><option value="manual">Manual</option></select></label></div><p>Supplier transport evidence remains immutable. Allocated transport uses product markup.</p></section>:null}
-      <section className="ui-card calculator-lab__card"><h3>Currency snapshot and markups</h3>
-        {active.exchangeRate ? <><p>Provider: {active.exchangeRate.provider} · captured {active.exchangeRate.providerTimestamp} · calculator revision {active.revisionNumber}</p><div className="calculator-lab__metrics"><span>Raw live rate <strong>{active.exchangeRate.rawRate}</strong></span><span>Rounded upward <strong>{active.exchangeRate.roundedUpRate}</strong></span><span>Uplift <strong>{active.exchangeRate.upliftAmount}</strong></span><span>Adjusted rate <strong>{active.exchangeRate.adjustedRate}</strong></span></div><label><input type="checkbox" checked={active.exchangeRate.adjustmentEnabled} onChange={(event)=>void projectCalculatorLabApi.updateExchangeRate(active.id,{adjustmentEnabled:event.target.checked}).then(setActive)}/> Use adjusted exchange rate</label><div className="calculator-lab__form"><input className="ui-input" value={rateOverride} onChange={(event)=>setRateOverride(event.target.value)} placeholder={`Override adjusted rate (${active.exchangeRate.calculatedAdjustedRate})`}/><input className="ui-input" value={rateOverrideReason} onChange={(event)=>setRateOverrideReason(event.target.value)} placeholder="Override reason"/><button className="ui-button" disabled={!rateOverride||!rateOverrideReason.trim()} onClick={()=>void projectCalculatorLabApi.updateExchangeRate(active.id,{adjustmentEnabled:true,adjustedRate:rateOverride,overrideReason:rateOverrideReason}).then(setActive)}>Save explicit override</button><button className="ui-button" onClick={()=>void projectCalculatorLabApi.refreshExchangeRate(active.id).then(setActive)}>Refresh exchange rate</button></div></>:<p>Exchange-rate snapshot unavailable.</p>}
-        <div className="calculator-lab__form">{(["product","extras","transport","installation"] as const).map(category=><label key={category}>{category} markup %<input className="ui-input" defaultValue={active.markups[category]} onBlur={(event)=>void projectCalculatorLabApi.updateMarkups(active.id,{...active.markups,[category]:event.target.value}).then(setActive)}/></label>)}</div>
-        <div className="calculator-lab__table-wrap"><table><thead><tr><th>Line</th><th>Original amount</th><th>Currency</th><th>Live rate</th><th>Rate used</th><th>GBP converted</th><th>Markup %</th><th>Markup GBP</th><th>Marked-up GBP</th></tr></thead><tbody>{[...active.products.map(row=>({key:row.id,lineLabel:row.displayReference,...row})),...active.supplierCosts.map(row=>({key:row.id,lineLabel:row.label,...row}))].map(row=><tr key={row.key}><td>{row.lineLabel}</td><td>{row.originalAmount??"—"}</td><td>{row.originalCurrency??"—"}</td><td>{active.exchangeRate?.rawRate??"—"}</td><td>{active.exchangeRate?.usedRate??"—"}</td><td>{row.gbpAmount??"—"}</td><td>{row.markupPercent}</td><td>{row.markupValue??"—"}</td><td>{row.markedUpAmount??"—"}</td></tr>)}</tbody></table></div>
-        <details><summary>Calculator history ({active.revisions.length})</summary>{active.revisions.map(revision=><p key={revision.id}>v{revision.version_number} · {revision.reason} · {revision.created_at}</p>)}</details>
+  if (isOpenScenario(active))
+    return (
+      <div className="calculator-lab">
+        {!estimateId ? (
+          <div className="calculator-lab__tabs">
+            <button className="ui-button ui-button--primary">
+              Project Costing
+            </button>
+            <button
+              className="ui-button"
+              onClick={() => setWorkspaceView("admin")}
+            >
+              Admin Catalogue & Rules
+            </button>
+          </div>
+        ) : null}
+        <ScenarioCostingWorksheet
+          scenario={stage2b!}
+          commercialView={commercialView}
+          onNew={estimateId ? undefined : () => setActive(null)}
+          onUpdateProduct={async (rowId, input) =>
+            setActive(
+              await projectCalculatorLabApi.updateProduct(
+                active!.id,
+                rowId,
+                input,
+              ),
+            )
+          }
+          onUpdateSupplierCost={async (rowId, input) =>
+            setActive(
+              await projectCalculatorLabApi.updateSupplierCost(
+                active!.id,
+                rowId,
+                input,
+              ),
+            )
+          }
+          onUpdateManualCost={async (rowId, input) =>
+            setActive(
+              await projectCalculatorLabApi.updateManualCost(
+                active!.id,
+                rowId,
+                input,
+              ),
+            )
+          }
+          onSaveMarkups={async (markups, productOverrides) => {
+            try {
+              const updated = await projectCalculatorLabApi.updateMarkups(
+                active!.id,
+                { ...markups, productOverrides },
+              );
+              setActive(updated);
+              setMessageKind("success");
+              setMessage("Markup percentages saved atomically.");
+            } catch (error) {
+              setMessageKind("error");
+              setMessage(visibleApiError(error));
+              throw error;
+            }
+          }}
+          onRefreshRate={async () => {
+            try {
+              const updated = await projectCalculatorLabApi.refreshExchangeRate(
+                active!.id,
+              );
+              setActive(updated);
+              setMessageKind("success");
+              setMessage(
+                `Live rate refreshed: £1 = ${updated.exchangeRate?.rawRate} ${updated.currency}; selling rate ${updated.exchangeRate?.usedRate}.`,
+              );
+            } catch (error) {
+              setMessageKind("error");
+              setMessage(visibleApiError(error));
+              throw error;
+            }
+          }}
+          onCreateRevision={async () => {
+            try {
+              const updated = await projectCalculatorLabApi.createRevision(
+                active!.id,
+              );
+              setActive(updated);
+              setMessageKind("success");
+              setMessage(
+                `Revision ${updated.revisionNumber} created with the saved markup settings.`,
+              );
+            } catch (error) {
+              setMessageKind("error");
+              setMessage(visibleApiError(error));
+              throw error;
+            }
+          }}
+        />
+        {message ? (
+          <p
+            role={messageKind === "error" ? "alert" : "status"}
+            className={`calculator-lab__message calculator-lab__message--${messageKind}`}
+          >
+            {message}
+          </p>
+        ) : null}
+      </div>
+    );
+  if (estimateId)
+    return (
+      <div className="calculator-lab">
+        <section className="ui-card calculator-lab__card">
+          <h2>Project Costing</h2>
+          <p>
+            {message ||
+              `Loading saved costing for ${estimateRef || "this estimate"}…`}
+          </p>
+        </section>
+      </div>
+    );
+  return (
+    <div className="calculator-lab">
+      <div className="calculator-lab__tabs">
+        <button className="ui-button ui-button--primary">
+          Project Costing
+        </button>
+        <button className="ui-button" onClick={() => setWorkspaceView("admin")}>
+          Admin Catalogue & Rules
+        </button>
+      </div>
+      <section className="ui-card calculator-lab__card">
+        <h2>Project Costing</h2>
+        <p>
+          {estimateId
+            ? `Create or open saved costing for ${estimateRef || "this estimate"}.`
+            : "Legacy compatibility view. Manual and supplier-extracted evidence remain distinct."}
+        </p>
+        {loaded &&
+        !estimateId &&
+        origin === "supplier_import" &&
+        !sources.length ? (
+          <p className="calculator-lab__notice">
+            No eligible imports are available. Choose Manual Entry now; Estimate
+            / Configurator is not yet available.
+          </p>
+        ) : null}
+        <div className="calculator-lab__form">
+          <label>
+            Pricing source
+            <select
+              className="ui-input"
+              value={origin}
+              onChange={(event) =>
+                setOrigin(event.target.value as CalculatorScenarioOrigin)
+              }
+            >
+              <option value="supplier_import">Supplier quotation import</option>
+              <option value="estimate">Estimate positions</option>
+              <option value="manual">Manual Entry</option>
+            </select>
+          </label>
+          <label>
+            Costing name
+            <input
+              className="ui-input"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
+          </label>
+          {origin === "supplier_import" ? (
+            <label>
+              Completed extraction
+              <select
+                className="ui-input"
+                value={sourceId}
+                onChange={(event) => setSourceId(event.target.value)}
+              >
+                <option value="">Select extraction run</option>
+                {sources.map((source) => (
+                  <option key={source.runId} value={source.runId}>
+                    {source.supplierName} — {source.attachmentFileName} (
+                    {source.selectedRowCount} positions,{" "}
+                    {source.selectedAdditionalCostCount} costs)
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {origin === "manual" ? (
+            <label>
+              Currency
+              <input
+                className="ui-input"
+                maxLength={3}
+                value={currency}
+                onChange={(event) =>
+                  setCurrency(event.target.value.toUpperCase())
+                }
+              />
+            </label>
+          ) : null}
+          {origin === "estimate" ? (
+            <p className="calculator-lab__notice">
+              Canonical Estimate positions are shown even while supplier pricing
+              is pending.
+            </p>
+          ) : null}
+          <label>
+            Package
+            <select
+              className="ui-input"
+              value={packageCode}
+              onChange={(event) =>
+                setPackageCode(event.target.value as CalculatorPackageCode)
+              }
+            >
+              {packages.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Installation openings
+            <input
+              className="ui-input"
+              type="number"
+              min="0"
+              value={openings}
+              onChange={(event) => setOpenings(event.target.value)}
+            />
+          </label>
+          <button
+            className="ui-button ui-button--primary"
+            disabled={busy}
+            onClick={() => void create()}
+          >
+            {busy ? "Creating…" : "Create Project Costing"}
+          </button>
+        </div>
+        <div className="calculator-lab__scenario-list">
+          {scenarios.map((scenario) => (
+            <button
+              className={
+                active?.id === scenario.id
+                  ? "ui-button ui-button--primary"
+                  : "ui-button"
+              }
+              key={scenario.id}
+              onClick={() =>
+                void projectCalculatorLabApi
+                  .getScenario(scenario.id, estimateId)
+                  .then(setActive)
+              }
+            >
+              {scenario.name} · {scenario.currency} ·{" "}
+              {scenario.origin.replaceAll("_", " ")}
+            </button>
+          ))}
+        </div>
+        {message ? (
+          <p
+            role={messageKind === "error" ? "alert" : "status"}
+            className={`calculator-lab__message calculator-lab__message--${messageKind}`}
+          >
+            {message}
+          </p>
+        ) : null}
       </section>
-    </> : null}
-  </div>;
+      {active ? (
+        <>
+          <section className="ui-card calculator-lab__card">
+            <h3>{active.name}</h3>
+            <p>
+              Origin: <strong>{active.origin.replaceAll("_", " ")}</strong>.{" "}
+              {active.origin === "manual"
+                ? "Values are manual evidence, not supplier-extracted evidence."
+                : "Supplier provenance is preserved."}
+            </p>
+            <div className="calculator-lab__metrics">
+              <span>
+                Supply subtotal{" "}
+                <strong>
+                  {active.supplierSummary?.productSubtotal ?? "—"}{" "}
+                  {active.currency}
+                </strong>
+              </span>
+              <span>
+                Supplier transport{" "}
+                <strong>
+                  {active.supplierSummary?.deliveryTotal ?? "—"}{" "}
+                  {active.currency}
+                </strong>
+              </span>
+              <span>
+                Supplier final{" "}
+                <strong>
+                  {active.supplierSummary?.finalSupplierTotal ?? "—"}{" "}
+                  {active.currency}
+                </strong>
+              </span>
+              <span>
+                Commercial rows <strong>{totals?.rows}</strong>
+              </span>
+              <span>
+                Physical quantity <strong>{totals?.quantity}</strong>
+              </span>
+              <span>
+                Total m² <strong>{totals?.area}</strong>
+              </span>
+              <span>
+                Frame perimeter m <strong>{totals?.perimeter}</strong>
+              </span>
+            </div>
+          </section>
+          {active.origin === "manual" || active.origin === "mixed" ? (
+            <section className="ui-card calculator-lab__card">
+              <h3>Add manual calculator lines</h3>
+              <div className="calculator-lab__form">
+                <input
+                  className="ui-input"
+                  placeholder="Reference"
+                  value={manualProduct.reference}
+                  onChange={(event) =>
+                    setManualProduct({
+                      ...manualProduct,
+                      reference: event.target.value,
+                    })
+                  }
+                />
+                <select
+                  className="ui-input"
+                  value={manualProduct.productClass}
+                  onChange={(event) =>
+                    setManualProduct({
+                      ...manualProduct,
+                      productClass: event.target.value as ProductClass,
+                    })
+                  }
+                >
+                  {productClasses.map((value) => (
+                    <option key={value}>{value}</option>
+                  ))}
+                </select>
+                {(
+                  [
+                    "widthMm",
+                    "heightMm",
+                    "quantity",
+                    "installationOpeningCount",
+                    "unitSupplyCost",
+                    "totalSupplyCost",
+                  ] as const
+                ).map((field) => (
+                  <input
+                    key={field}
+                    className="ui-input"
+                    placeholder={field}
+                    value={manualProduct[field]}
+                    onChange={(event) =>
+                      setManualProduct({
+                        ...manualProduct,
+                        [field]: event.target.value,
+                      })
+                    }
+                  />
+                ))}
+                <button
+                  className="ui-button"
+                  onClick={() => void addManualProduct()}
+                >
+                  Add manual product
+                </button>
+              </div>
+              <div className="calculator-lab__form">
+                <select
+                  className="ui-input"
+                  value={manualCost.category}
+                  onChange={(event) =>
+                    setManualCost({
+                      ...manualCost,
+                      category: event.target.value,
+                    })
+                  }
+                >
+                  {costCategories.map((value) => (
+                    <option key={value}>{value}</option>
+                  ))}
+                </select>
+                <input
+                  className="ui-input"
+                  placeholder="Cost label"
+                  value={manualCost.label}
+                  onChange={(event) =>
+                    setManualCost({ ...manualCost, label: event.target.value })
+                  }
+                />
+                <input
+                  className="ui-input"
+                  placeholder="Amount"
+                  value={manualCost.amount}
+                  onChange={(event) =>
+                    setManualCost({ ...manualCost, amount: event.target.value })
+                  }
+                />
+                <button
+                  className="ui-button"
+                  onClick={() => void addManualCost()}
+                >
+                  Add manual cost
+                </button>
+              </div>
+            </section>
+          ) : null}
+          <section className="ui-card calculator-lab__card">
+            <h3>Calculator products</h3>
+            <div className="calculator-lab__table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Reference</th>
+                    <th>Evidence</th>
+                    <th>Class</th>
+                    <th>Qty</th>
+                    <th>W × H</th>
+                    <th>Openings</th>
+                    <th>Unit supply</th>
+                    <th>Total supply</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {active.products.map((row) => (
+                    <tr key={row.id}>
+                      <td>{row.displayReference}</td>
+                      <td>{row.evidenceOrigin}</td>
+                      <td>
+                        <select
+                          value={row.productClass}
+                          onChange={(event) =>
+                            void projectCalculatorLabApi
+                              .updateProduct(active.id, row.id, {
+                                productClass: event.target.value,
+                              })
+                              .then(setActive)
+                          }
+                        >
+                          {productClasses.map((value) => (
+                            <option key={value}>{value}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>{row.quantity}</td>
+                      <td>
+                        {row.widthMm} × {row.heightMm}
+                      </td>
+                      <td>{row.installationOpeningCount ?? "—"}</td>
+                      <td>
+                        {row.unitSupplyCost ?? "—"} {row.currency}
+                      </td>
+                      <td>
+                        {row.totalPrice ?? "—"} {row.currency}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+          <section className="ui-card calculator-lab__card">
+            <h3>Cost lines</h3>
+            {active.supplierCosts.map((cost) => (
+              <div key={cost.id}>
+                {cost.category}: {cost.label} — {cost.amount} {cost.currency}{" "}
+                <small>({cost.evidenceOrigin})</small>
+              </div>
+            ))}
+          </section>
+          <section className="ui-card calculator-lab__card">
+            <h3>Scenario package catalogue</h3>
+            <div className="calculator-lab__catalogue">
+              {active.packageItems.map((item) => (
+                <label key={item.id}>
+                  <input
+                    type="checkbox"
+                    checked={item.included}
+                    onChange={(event) =>
+                      void projectCalculatorLabApi
+                        .updatePackageItem(active.id, item.id, {
+                          included: event.target.checked,
+                          unitCost: item.unitCost ?? "",
+                        })
+                        .then(setActive)
+                    }
+                  />
+                  <span>{item.label}</span>
+                  <input
+                    className="ui-input"
+                    value={item.unitCost ?? ""}
+                    onChange={(event) =>
+                      setActive({
+                        ...active,
+                        packageItems: active.packageItems.map((row) =>
+                          row.id === item.id
+                            ? { ...row, unitCost: event.target.value }
+                            : row,
+                        ),
+                      })
+                    }
+                  />
+                </label>
+              ))}
+            </div>
+          </section>
+          <section className="ui-card calculator-lab__card">
+            <h3>Directional route snapshots</h3>
+            <div className="calculator-lab__form">
+              <input
+                className="ui-input"
+                placeholder="Office"
+                value={office}
+                onChange={(event) => setOffice(event.target.value)}
+              />
+              <input
+                className="ui-input"
+                placeholder="Site / what3words"
+                value={site}
+                onChange={(event) => setSite(event.target.value)}
+              />
+              <button
+                className="ui-button"
+                onClick={() => void calculateRoutes()}
+              >
+                Calculate both directions
+              </button>
+            </div>
+            <details>
+              <summary>Manual override</summary>
+              <div className="calculator-lab__form">
+                <select
+                  value={manualDirection}
+                  onChange={(event) =>
+                    setManualDirection(
+                      event.target.value as typeof manualDirection,
+                    )
+                  }
+                >
+                  <option value="office_to_site">Office → site</option>
+                  <option value="site_to_office">Site → office</option>
+                </select>
+                <input
+                  value={manualDistance}
+                  onChange={(event) => setManualDistance(event.target.value)}
+                  placeholder="Distance km"
+                />
+                <input
+                  value={manualDuration}
+                  onChange={(event) => setManualDuration(event.target.value)}
+                  placeholder="Minutes"
+                />
+                <input
+                  value={overrideReason}
+                  onChange={(event) => setOverrideReason(event.target.value)}
+                  placeholder="Reason"
+                />
+                <button
+                  disabled={!overrideReason.trim()}
+                  onClick={() => void saveManualRoute()}
+                >
+                  Save override
+                </button>
+              </div>
+            </details>
+          </section>
+          <nav className="calculator-lab__section-nav">
+            {[
+              "Project Summary",
+              "Products & Supply",
+              "Installation",
+              "Sealing & Fixings",
+              "Travel & Accommodation",
+              "Commercial Summary",
+            ].map((section) => (
+              <button
+                key={section}
+                className={
+                  calculatorSection === section
+                    ? "ui-button ui-button--primary"
+                    : "ui-button"
+                }
+                onClick={() => setCalculatorSection(section)}
+              >
+                {section}
+              </button>
+            ))}
+          </nav>
+          {calculatorSection === "Project Summary" ? (
+            <section className="calculator-lab__headline">
+              <article>
+                <span>Products</span>
+                <strong>
+                  {active.products
+                    .reduce(
+                      (sum, row) => sum + Number(row.markedUpAmount || 0),
+                      0,
+                    )
+                    .toFixed(2)}{" "}
+                  GBP
+                </strong>
+              </article>
+              <article>
+                <span>Extras</span>
+                <strong>
+                  {active.supplierCosts
+                    .filter((row) => row.category !== "delivery")
+                    .reduce(
+                      (sum, row) => sum + Number(row.markedUpAmount || 0),
+                      0,
+                    )
+                    .toFixed(2)}{" "}
+                  GBP
+                </strong>
+              </article>
+              <article>
+                <span>Transport</span>
+                <strong>
+                  {active.supplierCosts
+                    .filter((row) => row.category === "delivery")
+                    .reduce(
+                      (sum, row) => sum + Number(row.markedUpAmount || 0),
+                      0,
+                    )
+                    .toFixed(2)}{" "}
+                  GBP
+                </strong>
+              </article>
+              <article>
+                <span>Installation</span>
+                <strong>Configure</strong>
+              </article>
+            </section>
+          ) : null}
+          {calculatorSection === "Installation" ? (
+            <section className="ui-card calculator-lab__card">
+              <h3>Installation</h3>
+              <div className="calculator-lab__form">
+                <label>
+                  Project type
+                  <select
+                    value={active.options?.projectType ?? "new_build"}
+                    onChange={(event) =>
+                      void projectCalculatorLabApi
+                        .updateOptions(active.id, {
+                          projectType: event.target.value,
+                        })
+                        .then(setActive)
+                    }
+                  >
+                    <option value="new_build">New Build</option>
+                    <option value="refurbishment">Refurbishment</option>
+                    <option value="other">Other</option>
+                  </select>
+                </label>
+                <label>
+                  Crew size
+                  <input
+                    type="number"
+                    min="1"
+                    defaultValue={active.options?.crewSize ?? 2}
+                    onBlur={(event) =>
+                      void projectCalculatorLabApi
+                        .updateOptions(active.id, {
+                          crewSize: Number(event.target.value),
+                        })
+                        .then(setActive)
+                    }
+                  />
+                </label>
+              </div>
+              <p>
+                Day 1 is reserved for travel, offload, inspection and setting
+                out. Final-day productive time is constrained by the stored
+                return route.
+              </p>
+            </section>
+          ) : null}
+          {calculatorSection === "Sealing & Fixings" ? (
+            <section className="ui-card calculator-lab__card">
+              <h3>Sealing & Fixings</h3>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={active.options?.useIllbruck ?? false}
+                  onChange={(event) =>
+                    void projectCalculatorLabApi
+                      .updateOptions(active.id, {
+                        useIllbruck: event.target.checked,
+                      })
+                      .then(setActive)
+                  }
+                />{" "}
+                Use Illbruck installation products?
+              </label>
+              {active.options?.useIllbruck ? (
+                <div className="calculator-lab__subpanel">
+                  <h4>Illbruck ME508 — internal membrane</h4>
+                  <select
+                    className="ui-input"
+                    value={scenarioDetails.me508ItemId ?? ""}
+                    onChange={(event) =>
+                      void projectCalculatorLabApi
+                        .updateOptions(active.id, {
+                          details: {
+                            ...scenarioDetails,
+                            me508ItemId: event.target.value,
+                          },
+                        })
+                        .then(setActive)
+                    }
+                  >
+                    <option value="">Select ME508 variant</option>
+                    {active.catalogueSnapshot?.catalogue
+                      .filter(
+                        (item) =>
+                          item.category === "illbruck_me508" && item.active,
+                      )
+                      .map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.label} ·{" "}
+                          {item.priceAmount
+                            ? `${item.priceAmount} ${item.currency}/${item.rateType}`
+                            : "Price required"}
+                        </option>
+                      ))}
+                  </select>
+                  {stage2b?.me508Calculation ? (
+                    <dl className="calculator-lab__breakdown">
+                      <dt>Applicable perimeter</dt>
+                      <dd>{totals?.perimeter} m</dd>
+                      <dt>Required length including 10%</dt>
+                      <dd>{stage2b.me508Calculation.requiredLengthM} m</dd>
+                      <dt>Rolls required</dt>
+                      <dd>{stage2b.me508Calculation.rollsRequired}</dd>
+                      <dt>Boxes required</dt>
+                      <dd>{stage2b.me508Calculation.boxesRequired}</dd>
+                      <dt>Pricing unit</dt>
+                      <dd>{stage2b.me508Calculation.pricingUnit}</dd>
+                      <dt>Total</dt>
+                      <dd>
+                        {stage2b.me508Calculation.totalCost ?? "Price required"}
+                      </dd>
+                    </dl>
+                  ) : null}
+                  <p>
+                    TP600 and TP601 are pre-compressed joint-sealing tapes.
+                    Their variants remain Admin-controlled and
+                    scenario-snapshotted.
+                  </p>
+                </div>
+              ) : null}
+              <label>
+                <input
+                  type="checkbox"
+                  checked={active.options?.bracketsRequired ?? false}
+                  onChange={(event) =>
+                    void projectCalculatorLabApi
+                      .updateOptions(active.id, {
+                        bracketsRequired: event.target.checked,
+                      })
+                      .then(setActive)
+                  }
+                />{" "}
+                Brackets/Fixings required?
+              </label>
+              {active.options?.bracketsRequired ? (
+                <div className="calculator-lab__subpanel">
+                  <div className="calculator-lab__form">
+                    <label>
+                      Frame material
+                      <select
+                        value={scenarioDetails.frameMaterial ?? ""}
+                        onChange={(event) =>
+                          void projectCalculatorLabApi
+                            .updateOptions(active.id, {
+                              details: {
+                                ...scenarioDetails,
+                                frameMaterial: event.target.value,
+                              },
+                            })
+                            .then(setActive)
+                        }
+                      >
+                        <option value="">Select material</option>
+                        <option>PVC-U</option>
+                        <option>Aluminium</option>
+                        <option>Timber</option>
+                        <option>Steel</option>
+                      </select>
+                    </label>
+                    <label>
+                      Rule set
+                      <input
+                        readOnly
+                        value={
+                          active.options.projectType === "refurbishment" &&
+                          scenarioDetails.frameMaterial === "PVC-U"
+                            ? "GGF 2016 Replacement PVC-U Baseline"
+                            : "No applicable fixing rule configured."
+                        }
+                      />
+                    </label>
+                  </div>
+                  {stage2b?.fixingBreakdown?.map((item, index) => (
+                    <details key={String(item.rowId)}>
+                      <summary>
+                        {String(item.reference)} · position {index + 1}
+                      </summary>
+                      <pre>{JSON.stringify(item, null, 2)}</pre>
+                    </details>
+                  ))}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+          {calculatorSection === "Travel & Accommodation" ? (
+            <section className="ui-card calculator-lab__card">
+              <h3>Travel & Accommodation</h3>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={active.options?.stayAway ?? false}
+                  onChange={(event) =>
+                    void projectCalculatorLabApi
+                      .updateOptions(active.id, {
+                        stayAway: event.target.checked,
+                      })
+                      .then(setActive)
+                  }
+                />{" "}
+                Stay Away
+              </label>
+              {active.options?.stayAway ? (
+                <p>
+                  B&amp;B, Hotel and Airbnb rates plus food and staying-away
+                  allowances use the scenario catalogue snapshot.
+                </p>
+              ) : null}
+              <p>
+                Installer mileage and supplier/site-visit mileage are separate
+                snapshotted catalogue rates.
+              </p>
+            </section>
+          ) : null}
+          {calculatorSection === "Commercial Summary" ? (
+            <section className="ui-card calculator-lab__card">
+              <h3>Transport evidence and allocation</h3>
+              <p>
+                Original supplier transport:{" "}
+                <strong>
+                  {active.supplierSummary?.deliveryTotal ?? "—"}{" "}
+                  {active.currency}
+                </strong>
+              </p>
+              <div className="calculator-lab__form">
+                <label>
+                  Customer-facing transport
+                  <input
+                    className="ui-input"
+                    defaultValue={active.options?.customerTransport ?? ""}
+                    onBlur={(event) =>
+                      void projectCalculatorLabApi
+                        .updateOptions(active.id, {
+                          customerTransport: event.target.value,
+                        })
+                        .then(setActive)
+                    }
+                  />
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={
+                      active.options?.allocateTransportDifference ?? false
+                    }
+                    onChange={(event) =>
+                      void projectCalculatorLabApi
+                        .updateOptions(active.id, {
+                          allocateTransportDifference: event.target.checked,
+                        })
+                        .then(setActive)
+                    }
+                  />{" "}
+                  Allocate remaining amount across products
+                </label>
+                <label>
+                  Allocation method
+                  <select
+                    value={
+                      active.options?.transportAllocationMethod ??
+                      "proportional_value"
+                    }
+                    onChange={(event) =>
+                      void projectCalculatorLabApi
+                        .updateOptions(active.id, {
+                          transportAllocationMethod: event.target.value,
+                        })
+                        .then(setActive)
+                    }
+                  >
+                    <option value="proportional_value">
+                      Proportional to product value
+                    </option>
+                    <option value="quantity">Proportional to quantity</option>
+                    <option value="equal_per_item">
+                      Equal per physical item
+                    </option>
+                    <option value="manual">Manual</option>
+                  </select>
+                </label>
+              </div>
+              <p>
+                Supplier transport evidence remains immutable. Allocated
+                transport uses product markup.
+              </p>
+            </section>
+          ) : null}
+          <section className="ui-card calculator-lab__card">
+            <h3>Currency snapshot and markups</h3>
+            {active.exchangeRate ? (
+              <>
+                <p>
+                  Provider: {active.exchangeRate.provider} · captured{" "}
+                  {active.exchangeRate.providerTimestamp} · calculator revision{" "}
+                  {active.revisionNumber}
+                </p>
+                <div className="calculator-lab__metrics">
+                  <span>
+                    Raw live rate <strong>{active.exchangeRate.rawRate}</strong>
+                  </span>
+                  <span>
+                    Rounded upward{" "}
+                    <strong>{active.exchangeRate.roundedUpRate}</strong>
+                  </span>
+                  <span>
+                    Uplift <strong>{active.exchangeRate.upliftAmount}</strong>
+                  </span>
+                  <span>
+                    Adjusted rate{" "}
+                    <strong>{active.exchangeRate.adjustedRate}</strong>
+                  </span>
+                </div>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={active.exchangeRate.adjustmentEnabled}
+                    onChange={(event) =>
+                      void projectCalculatorLabApi
+                        .updateExchangeRate(active.id, {
+                          adjustmentEnabled: event.target.checked,
+                        })
+                        .then(setActive)
+                    }
+                  />{" "}
+                  Use adjusted exchange rate
+                </label>
+                <div className="calculator-lab__form">
+                  <input
+                    className="ui-input"
+                    value={rateOverride}
+                    onChange={(event) => setRateOverride(event.target.value)}
+                    placeholder={`Override adjusted rate (${active.exchangeRate.calculatedAdjustedRate})`}
+                  />
+                  <input
+                    className="ui-input"
+                    value={rateOverrideReason}
+                    onChange={(event) =>
+                      setRateOverrideReason(event.target.value)
+                    }
+                    placeholder="Override reason"
+                  />
+                  <button
+                    className="ui-button"
+                    disabled={!rateOverride || !rateOverrideReason.trim()}
+                    onClick={() =>
+                      void projectCalculatorLabApi
+                        .updateExchangeRate(active.id, {
+                          adjustmentEnabled: true,
+                          adjustedRate: rateOverride,
+                          overrideReason: rateOverrideReason,
+                        })
+                        .then(setActive)
+                    }
+                  >
+                    Save explicit override
+                  </button>
+                  <button
+                    className="ui-button"
+                    onClick={() =>
+                      void projectCalculatorLabApi
+                        .refreshExchangeRate(active.id)
+                        .then(setActive)
+                    }
+                  >
+                    Refresh exchange rate
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p>Exchange-rate snapshot unavailable.</p>
+            )}
+            <div className="calculator-lab__form">
+              {(
+                ["product", "extras", "transport", "installation"] as const
+              ).map((category) => (
+                <label key={category}>
+                  {category} markup %
+                  <input
+                    className="ui-input"
+                    defaultValue={active.markups[category]}
+                    onBlur={(event) =>
+                      void projectCalculatorLabApi
+                        .updateMarkups(active.id, {
+                          ...active.markups,
+                          [category]: event.target.value,
+                        })
+                        .then(setActive)
+                    }
+                  />
+                </label>
+              ))}
+            </div>
+            <div className="calculator-lab__table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Line</th>
+                    <th>Original amount</th>
+                    <th>Currency</th>
+                    <th>Live rate</th>
+                    <th>Rate used</th>
+                    <th>GBP converted</th>
+                    <th>Markup %</th>
+                    <th>Markup GBP</th>
+                    <th>Marked-up GBP</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    ...active.products.map((row) => ({
+                      key: row.id,
+                      lineLabel: row.displayReference,
+                      ...row,
+                    })),
+                    ...active.supplierCosts.map((row) => ({
+                      key: row.id,
+                      lineLabel: row.label,
+                      ...row,
+                    })),
+                  ].map((row) => (
+                    <tr key={row.key}>
+                      <td>{row.lineLabel}</td>
+                      <td>{row.originalAmount ?? "—"}</td>
+                      <td>{row.originalCurrency ?? "—"}</td>
+                      <td>{active.exchangeRate?.rawRate ?? "—"}</td>
+                      <td>{active.exchangeRate?.usedRate ?? "—"}</td>
+                      <td>{row.gbpAmount ?? "—"}</td>
+                      <td>{row.markupPercent}</td>
+                      <td>{row.markupValue ?? "—"}</td>
+                      <td>{row.markedUpAmount ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <details>
+              <summary>Calculator history ({active.revisions.length})</summary>
+              {active.revisions.map((revision) => (
+                <p key={revision.id}>
+                  v{revision.version_number} · {revision.reason} ·{" "}
+                  {revision.created_at}
+                </p>
+              ))}
+            </details>
+          </section>
+        </>
+      ) : null}
+    </div>
+  );
 }

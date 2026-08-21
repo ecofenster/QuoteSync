@@ -1157,3 +1157,9 @@
   color: var(--qs-theme-text-secondary);
   font-size: 12px;
 }
+
+.estimate-index-table-wrap { max-height: calc(100vh - 310px); overflow: auto; border: 1px solid var(--qs-border-standard); border-radius: var(--radius-card); background: var(--qs-bg-card); }
+.estimate-index-table { width: 100%; min-width: 1180px; border-collapse: collapse; font-size: var(--qs-type-body); }
+.estimate-index-table th { position: sticky; top: 0; z-index: 2; padding: var(--qs-space-2); background: var(--qs-bg-surface-elevated); color: var(--qs-theme-text-muted); text-align: left; white-space: nowrap; }
+.estimate-index-table td { padding: var(--qs-space-2); border-top: 1px solid var(--qs-border-subtle); vertical-align: middle; }
+.estimate-index-table tbody tr:hover { background: var(--qs-bg-hover); }

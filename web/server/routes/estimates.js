@@ -1,8 +1,9 @@
 import express from 'express';
 import { dbPromise } from '../db.js';
 import { APP_USER_ROLES, CURRENT_APP_USER } from '../currentUser.js';
-import { addConfiguredEstimatePosition, saveConfiguredEstimatePosition } from '../features/estimatePositions/canonicalEstimatePositions.js';
+import { addConfiguredEstimatePosition, normalizeCanonicalEstimatePosition, saveConfiguredEstimatePosition, syncEstimatePositionProjections } from '../features/estimatePositions/canonicalEstimatePositions.js';
 import { randomUUID } from 'node:crypto';
+import { purgeEstimateOwnedGraph } from '../features/estimatePositions/estimatePurgeService.js';
 
 const router = express.Router();
 
@@ -185,6 +186,7 @@ router.get('/', async (req, res) => {
 
 router.get('/:id/position-bridge',async(req,res)=>{try{const db=await dbPromise,row=await db.get('SELECT id,client_id,positions_json FROM estimates WHERE id=? AND deleted_at IS NULL',req.params.id);if(!row)return res.status(404).json({error:'Estimate not found'});const positions=JSON.parse(row.positions_json||'[]');res.json({estimateId:row.id,clientId:row.client_id,positions,reviewRequired:positions.filter(position=>position.matchStatus==='review_required').map(position=>({position,candidates:positions.filter(candidate=>candidate.id!==position.id&&candidate.matchStatus!=='review_required')}))});}catch(error){console.error('GET position bridge failed',error);res.status(500).json({error:'Position bridge could not be loaded'})}});
 router.post('/:id/positions',async(req,res)=>{try{const value=await addConfiguredEstimatePosition(await dbPromise,{estimateId:req.params.id,position:req.body?.position});return value?res.status(201).json(value):res.status(404).json({error:'Estimate not found'});}catch(error){console.error('POST configured position failed',error);res.status(500).json({error:'Position could not be saved'})}});
+router.put('/:id/positions',async(req,res)=>{const db=await dbPromise;try{const estimate=await db.get('SELECT id FROM estimates WHERE id=? AND deleted_at IS NULL',req.params.id);if(!estimate)return res.status(404).json({error:'Estimate not found'});if(!Array.isArray(req.body?.positions))return res.status(400).json({error:'Canonical positions are required'});const positions=req.body.positions.map((position,index)=>normalizeCanonicalEstimatePosition({...position,sourceSequence:index},index)),ids=new Set();if(positions.some(position=>!position.id||ids.has(position.id)||(ids.add(position.id),false)))return res.status(400).json({error:'Position identifiers must be unique'});await db.exec('BEGIN IMMEDIATE');try{const now=new Date().toISOString();await db.run('UPDATE estimates SET positions_json=?,updated_at=? WHERE id=?',JSON.stringify(positions),now,req.params.id);for(const scenario of await db.all('SELECT id FROM project_calculator_lab_scenarios WHERE estimate_id=?',req.params.id)){if(positions.length)await db.run(`DELETE FROM project_calculator_estimate_product_rows WHERE scenario_id=? AND estimate_position_id IS NOT NULL AND estimate_position_id NOT IN (${positions.map(()=>'?').join(',')})`,scenario.id,...positions.map(position=>position.id));else await db.run('DELETE FROM project_calculator_estimate_product_rows WHERE scenario_id=? AND estimate_position_id IS NOT NULL',scenario.id);for(const position of positions)await db.run('UPDATE project_calculator_estimate_product_rows SET display_reference=?,quantity=?,width_mm=?,height_mm=?,classification=?,included_in_current_estimate=?,alternative_to_reference=?,updated_at=? WHERE scenario_id=? AND estimate_position_id=?',position.positionRef,position.qty,position.widthMm,position.heightMm,position.classification,position.classification==='standard'?1:0,position.alternativeTo,now,scenario.id,position.id);await syncEstimatePositionProjections(db,scenario.id);}await db.exec('COMMIT');res.json({positions});}catch(error){await db.exec('ROLLBACK');throw error;}}catch(error){console.error('PUT canonical positions failed',error);res.status(500).json({error:'Positions could not be saved'})}});
 router.put('/:id/positions/:positionId/configuration',async(req,res)=>{try{const value=await saveConfiguredEstimatePosition(await dbPromise,{estimateId:req.params.id,positionId:req.params.positionId,configuredContract:req.body?.configuredContract,projection:req.body?.projection||{}});return value?res.json(value):res.status(404).json({error:'Estimate position not found'});}catch(error){console.error('PUT position configuration failed',error);res.status(500).json({error:'Configuration could not be saved'})}});
 router.post('/:id/position-match-reviews/:sourcePositionId',async(req,res)=>{const db=await dbPromise;try{const estimate=await db.get('SELECT positions_json FROM estimates WHERE id=?',req.params.id),source=await db.get(`SELECT p.*,q.id supplier_quote_id,q.supplier_code,q.supplier_name FROM supplier_quote_positions p JOIN supplier_quote_revisions r ON r.id=p.revision_id JOIN supplier_quotes q ON q.id=r.supplier_quote_id WHERE p.id=? AND p.estimate_id=?`,req.params.sourcePositionId,req.params.id);if(!estimate||!source)return res.status(404).json({error:'Match review source not found'});const positions=JSON.parse(estimate.positions_json||'[]'),sourceIndex=positions.findIndex(position=>(position.supplierEvidenceLinks||[]).some(link=>link.sourcePositionId===source.id));if(sourceIndex<0)return res.status(404).json({error:'Canonical supplier position not found'});const decision=req.body?.decision,targetId=decision==='link_existing'?String(req.body?.targetEstimatePositionId||''):positions[sourceIndex].id,targetIndex=positions.findIndex(position=>position.id===targetId);if(targetIndex<0||!['link_existing','create_new'].includes(decision))return res.status(400).json({error:'A valid match decision and target are required'});await db.exec('BEGIN IMMEDIATE');try{if(decision==='link_existing'){const links=positions[sourceIndex].supplierEvidenceLinks||[];positions[targetIndex]={...positions[targetIndex],supplierEvidenceLinks:[...(positions[targetIndex].supplierEvidenceLinks||[]).filter(link=>link.sourcePositionId!==source.id),...links],configurationState:positions[targetIndex].configuredContract?'imported_configured':'imported',matchStatus:'matched'};positions.splice(sourceIndex,1);await db.run('UPDATE project_calculator_estimate_product_rows SET estimate_position_id=? WHERE source_position_id=?',targetId,source.id);}else positions[targetIndex]={...positions[targetIndex],matchStatus:'matched'};await db.run('UPDATE supplier_position_applications SET active=0 WHERE estimate_id=? AND supplier_quote_position_id=? AND active=1',req.params.id,source.id);await db.run(`INSERT INTO supplier_position_applications(id,estimate_id,supplier_quote_id,supplier_quote_revision_id,supplier_quote_position_id,action,target_estimate_position_id,applied_at,applied_by,active,note,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,randomUUID(),req.params.id,source.supplier_quote_id,source.revision_id,source.id,decision==='link_existing'?'map_to_existing_position':'include_as_new_position',targetId,new Date().toISOString(),CURRENT_APP_USER.id,1,'Canonical Estimate Position match review',new Date().toISOString());await db.run('UPDATE estimates SET positions_json=?,updated_at=? WHERE id=?',JSON.stringify(positions),new Date().toISOString(),req.params.id);await db.exec('COMMIT');res.json({positions,targetEstimatePositionId:targetId});}catch(error){await db.exec('ROLLBACK');throw error;}}catch(error){console.error('POST position match review failed',error);res.status(500).json({error:'Match review could not be saved'})}});
 
@@ -597,20 +599,11 @@ router.post('/:id/restore', async (req, res) => {
 router.delete('/:id/purge', async (req, res) => {
   try {
     const db = await dbPromise;
-
-    const result = await db.run(
-      `
-        DELETE FROM estimates
-        WHERE id = ?
-      `,
-      [req.params.id]
-    );
-
-    if (!result.changes) {
+    const result=await purgeEstimateOwnedGraph(db,req.params.id);
+    if (!result) {
       return res.status(404).json({ error: 'Estimate not found' });
     }
-
-    res.json({ success: true });
+    res.json(result);
   } catch (error) {
     console.error('DELETE /api/estimates/:id/purge failed', error);
     res.status(500).json({ error: 'Failed to purge estimate' });

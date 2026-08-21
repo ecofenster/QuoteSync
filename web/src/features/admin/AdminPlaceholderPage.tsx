@@ -11,6 +11,8 @@ import AdminThemeColoursPanel from "./AdminThemeColoursPanel";
 import AdminSupplierCommercialDefaults from "./AdminSupplierCommercialDefaults";
 import AdminCommercialMarginPanel from "./AdminCommercialMarginPanel";
 import AdminSiteVisitTravelDefaults from "./AdminSiteVisitTravelDefaults";
+import AdminProjectCostingMarkupDefaults from "./AdminProjectCostingMarkupDefaults";
+import AdminCustomerViewControls from "./AdminCustomerViewControls";
 import DevelopmentRoadmapWorkspace from "../developmentRoadmap/DevelopmentRoadmapWorkspace";
 import { QUOTESYNC_THEME_CONFIGURATION_KEY } from "../../theme/themes";
 import "./AdminPlaceholderPage.css";
@@ -448,6 +450,8 @@ export default function AdminPlaceholderPage(props: {
           </div>
         </div>
         <AdminCommercialMarginPanel />
+        <AdminProjectCostingMarkupDefaults />
+        <AdminCustomerViewControls />
         <AdminSiteVisitTravelDefaults />
       </div>
     ) : activeSection === "feature_controls" ? (

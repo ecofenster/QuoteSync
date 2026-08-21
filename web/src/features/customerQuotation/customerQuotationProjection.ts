@@ -9,7 +9,7 @@ import { ECOFENSTER_DEVELOPMENT_DOCUMENT_BRAND, type CustomerDocumentBrand } fro
 
 export type CustomerQuotationDrawing =
   | { source: "configurator"; available: true; insideAvailable: boolean; outsideAvailable: boolean }
-  | { source: "manufacturer"; available: true; imageUrl: string; mediaType: string | null }
+  | { source: "manufacturer"; available: true; imageUrl: string; mediaType: string | null; orientation: "inside" | "outside" | "unknown" }
   | { source: "unavailable"; available: false; reason: string };
 
 export type CustomerQuotationPosition = {
@@ -86,7 +86,9 @@ function drawingForPosition(estimatePosition: Position | null, evidence: Record<
     if (inside.available || outside.available) return { source: "configurator", available: true, insideAvailable: inside.available, outsideAvailable: outside.available };
   }
   const visual = record(evidence.sourceVisual); const imageUrl = textValue(visual.url);
-  if (visual.status === "available" && imageUrl) return { source: "manufacturer", available: true, imageUrl, mediaType: textValue(visual.mediaType) || null };
+  const orientationText = `${textValue(evidence.configurationDescription)} ${textValue(visual.orientation)}`;
+  const orientation = /view from inside|\binside\b/i.test(orientationText) ? "inside" : /view from outside|\boutside\b/i.test(orientationText) ? "outside" : "unknown";
+  if (visual.status === "available" && imageUrl) return { source: "manufacturer", available: true, imageUrl, mediaType: textValue(visual.mediaType) || null, orientation };
   return { source: "unavailable", available: false, reason: textValue(visual.reason) || "No trusted drawing is available for this position." };
 }
 

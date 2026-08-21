@@ -46,5 +46,5 @@ export default function AdminSupplierQuoteImportBeta() {
   const selected = estimates.find((estimate) => estimate.id === selectedId) ?? null;
   if(error)return <p role="alert">{error}</p>;
   if(loading)return <p role="status">Loading Project Costing…</p>;
-  return selected?<EstimateCommercialWorkspace key={selected.id} estimateId={selected.id} estimateRef={selected.estimate_ref || selected.id}/>:null;
+  return selected?<EstimateCommercialWorkspace key={selected.id} estimateId={selected.id} estimateRef={selected.estimate_ref || selected.id} initialCommercialView="internal"/>:null;
 }

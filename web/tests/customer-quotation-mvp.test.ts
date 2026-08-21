@@ -4,6 +4,8 @@ import { readFile } from "node:fs/promises";
 import { buildCustomerQuotationProjection } from "../src/features/customerQuotation/customerQuotationProjection";
 import { deriveProjectCostingCommercialResult } from "../src/features/projectCalculatorLab/domain/projectCostingCommercialResult";
 import { DEFAULT_CUSTOMER_QUOTATION_DISPLAY_OPTIONS, resolveCustomerQuotationTechnicalLayout } from "../src/features/customerQuotation/customerQuotationDisplay";
+import { isWideQuotationPosition, paginateCustomerQuotationPositions } from "../src/features/customerQuotation/customerQuotationPagination";
+import { resolveManufacturerVisualAssetUrl } from "../src/features/manufacturerVisuals/manufacturerVisualAssetUrl";
 
 const configuredContract = { schemaVersion: 1, source: "b92_configurator", product: { systemCode: "B92" } };
 const estimate = { id: "estimate-1", estimateRef: "EF-EST-MVP-001", projectAddress: "1 Test Street", positions: [
@@ -105,7 +107,7 @@ test("reviewed manufacturer image is the customer-safe fallback without source e
   const evidence: Record<string, unknown> = {}; row.sourceSnapshot!.manufacturerEvidence = evidence;
   evidence.sourceVisual = { kind: "manufacturer_document_image", status: "available", mediaType: "image/png", url: "/api/manufacturer-position-visuals/0123456789012345678901234567890123456789/quotation.png", sourceMediaObject: "word/media/image22.emf", relationshipId: "rId27", originalAsset: { storageKey: "internal/source.emf" } };
   const quote = buildCustomerQuotationProjection({ scenario: input, client, estimate }); const drawing = quote.positions.find((item) => item.reference === "D01")!.drawing;
-  assert.deepEqual(drawing, { source: "manufacturer", available: true, imageUrl: "/api/manufacturer-position-visuals/0123456789012345678901234567890123456789/quotation.png", mediaType: "image/png" });
+  assert.deepEqual(drawing, { source: "manufacturer", available: true, imageUrl: "/api/manufacturer-position-visuals/0123456789012345678901234567890123456789/quotation.png", mediaType: "image/png", orientation: "unknown" });
   assert.doesNotMatch(JSON.stringify(quote), /word\/media|rId27|internal\/source|supplierPrice/);
 });
 
@@ -121,20 +123,54 @@ test("quotation display contract supports adaptive section and thermal combinati
   assert.doesNotMatch(JSON.stringify(fullThermal), /averageProjectUw/i);
 });
 
+test("pagination preserves order and pairs wide positions when half-page readability remains acceptable", () => {
+  const quote = buildCustomerQuotationProjection({ scenario: scenario(), client, estimate });
+  const standard = quote.positions[0];
+  const pages = paginateCustomerQuotationPositions([
+    standard,
+    { ...standard, id: "standard-2", sequence: 2 },
+    { ...standard, id: "wide", sequence: 3, widthMm: 5000, heightMm: 2100 },
+    { ...standard, id: "standard-4", sequence: 4 },
+  ]);
+  assert.deepEqual(pages.map(page => page.positions.map(position => position.id)), [["row-1", "standard-2"], ["wide", "standard-4"]]);
+  assert.equal(isWideQuotationPosition({ widthMm: 5000, heightMm: 2100, specification: standard.specification }), false);
+  assert.equal(isWideQuotationPosition({ widthMm: 5000, heightMm: 2100, specification: Array.from({length:16},(_,index)=>({label:`Detail ${index}`,value:"Dense"})) }), true);
+});
+
+test("manufacturer visual URLs use the API origin without altering external assets", () => {
+  assert.equal(resolveManufacturerVisualAssetUrl("/api/manufacturer-position-visuals/token/quotation.png"), "http://localhost:3001/api/manufacturer-position-visuals/token/quotation.png");
+  assert.equal(resolveManufacturerVisualAssetUrl("https://cdn.example.test/image.png"), "https://cdn.example.test/image.png");
+});
+
 test("the canonical entry point and A4 print path are present and misleading legacy outputs are not exposed", async () => {
-  const [workspace, preview, css, pickerActions, collectionActions] = await Promise.all([
+  const [workspace, preview, css, pickerActions, collectionActions, costing, adminPreview] = await Promise.all([
     readFile("src/features/estimateCommercial/EstimateCommercialWorkspace.tsx", "utf8"),
     readFile("src/features/customerQuotation/CustomerQuotationPreview.tsx", "utf8"),
     readFile("src/features/customerQuotation/customerQuotation.css", "utf8"),
     readFile("src/features/estimatePicker/components/EstimateActionsBar.tsx", "utf8"),
     readFile("src/features/estimateCollection/EstimateCollectionActions.tsx", "utf8"),
+    readFile("src/features/projectCalculatorLab/ScenarioCostingWorksheet.tsx", "utf8"),
+    readFile("src/features/admin/AdminSupplierQuoteImportBeta.tsx", "utf8"),
   ]);
-  assert.match(workspace, />Customer Quotation</);
+  assert.match(workspace, /Customer Quotation\s*<\/button>/);
   assert.match(preview, /window\.print\(\)/);
   assert.match(preview, /Print \/ Save PDF/);
+  assert.match(preview, /Technical Schedule/);
+  assert.match(preview, /Customer Quotation/);
+  assert.match(preview, /data-document-template/);
+  assert.match(preview, /data-thermal-mode/);
+  assert.match(preview, /data-section-details/);
+  assert.match(workspace, /aria-label="Commercial view"/);
+  assert.match(workspace, /Internal View<\/button>/);
+  assert.match(workspace, /Customer View<\/button>/);
+  assert.match(costing, /Reference[\s\S]*Room[\s\S]*Item Type \/ Picture/);
+  assert.match(costing, /data-commercial-view/);
+  assert.match(adminPreview, /initialCommercialView="internal"/);
   assert.doesNotMatch(preview, /DOCX|Print Word Doc|supplier purchase price|purchase FX|gross margin|Supplier Import Lab/);
   assert.doesNotMatch(`${pickerActions}\n${collectionActions}`, />Print Word Doc<|>Print PDF</);
   assert.match(css, /@page\{size:A4 portrait/);
+  assert.match(css, /height:297mm/);
+  assert.match(css, /grid-template-rows:repeat\(2,minmax\(0,1fr\)\)/);
   assert.match(css, /no-print/);
   assert.match(css, /estimate-commercial>:not\(\.customer-quotation__scrim\)/);
 });

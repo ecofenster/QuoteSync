@@ -35,6 +35,7 @@ The QuoteSuite Development Roadmap in **Administration → Development → Quote
 ## Canonical architecture boundaries
 
 - Estimate is the current canonical project and commercial container unless an approved architecture change explicitly supersedes it.
+- The dedicated Estimate workspace is the primary operational commercial UI. Internal View is the default staff workspace; Customer View is a customer-safe reduced presentation of the same Estimate-owned Project Costing scenario. Shared actions always modify canonical Estimate/Position state, and Administration Customer View controls must never enable internal commercial data.
 - Configurator is the generic product architecture. B92 is one currently proven product/system-specific implementation and must not be treated as universal coverage. `ConfiguredPositionContract` remains the canonical technical configuration contract where a position is genuinely configured.
 - Document drawings must resolve through product/system-specific providers behind a generic Configurator boundary. Providers may reuse proven geometry, but must return unavailable for unsupported families and must not persist duplicate drawing geometry or configuration state.
 - Configurator foundation does not mean the Configurator product programme is complete. Preserve that distinction in implementation, tests and roadmap status.
@@ -43,6 +44,7 @@ The QuoteSuite Development Roadmap in **Administration → Development → Quote
 - Manufacturer position visuals must retain the original source asset and mapping provenance. Customer-facing output may use only a reviewed renderable derivative; ambiguous visual-to-position associations remain unavailable rather than being guessed.
 - Manufacturer-quoted thermal values are immutable source evidence, distinct from certificate/catalogue values and QuoteSuite-calculated performance. Preserve their quotation, revision and position provenance; never relabel them as calculated values or invent missing Uf/Psi.
 - Project Costing is the sole authority for customer quotation selling prices. Customer documents must consume saved Project Costing commercial state; they must not independently recalculate prices or use legacy Estimate/manufacturer prices.
+- Administration commercial defaults initialise new Project Costing scenarios only. Once persisted, Estimate-owned commercial values and revisions must not be silently rewritten when an Administration default changes.
 - Supplier pricing methods are supplier-specific, revision-snapshotted inputs to Project Costing. `1 to 1 Pricing` is an explicit GBP commercial parity policy, not an FX rate; preserve original currency, amount, saved FX evidence and policy provenance. Staged supplier discounts compound sequentially and remain internal commercial information.
 - Customer-facing output must not expose supplier purchase prices, purchase FX, supplier discounts, internal markups, margins, internal commercial notes, evidence/debug IDs or other internal-only data.
 - Customer-document branding is tenant/company data and is separate from QuoteSuite application branding. Generic document renderers must consume a brand projection and must not hard-code QuoteSuite or a development tenant.
@@ -75,6 +77,9 @@ The QuoteSuite Development Roadmap in **Administration → Development → Quote
 
 - Add or update focused regression coverage for changed behaviour.
 - During development, run targeted validation proportional to the change; avoid repeatedly running broad suites without a reason.
+- Select the smallest acceptance boundary that proves the change: UI/layout work uses focused tests, applicable TypeScript and targeted browser inspection; commercial-calculation work uses focused calculation tests and the relevant minimal scenario/browser proof; manufacturer fixtures are reserved for extraction, mapping, evidence or import changes; quotation/PDF/print acceptance is reserved for document projection, layout, rendering or printing changes.
+- Reserve the complete Client → Import → Costing → Quotation → PDF workflow for cross-boundary milestones/regression checkpoints or an explicit request. Do not make full imports, full disposable commercial workflows or PDF regeneration the default validation for unrelated changes.
+- Prefer an isolated test database, then a reusable seeded disposable scenario for UI-only checks, then minimal purpose-built disposable records. Never use protected Clients for acceptance.
 - Before declaring a coherent implementation complete, run the focused tests for every changed boundary plus TypeScript, ESLint, applicable design-system validation, production build and `git diff --check`, unless the user explicitly narrows validation or an environment blocker is reported.
 - Run broader integration or browser/E2E validation when the risk crosses domain boundaries or when required by acceptance criteria. Use disposable fixtures and never mutate protected Clients.
 - Report exact test results, static-validation results, known warnings, unperformed acceptance checks and remaining limitations truthfully.

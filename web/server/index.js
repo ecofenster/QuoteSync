@@ -51,4 +51,4 @@ app.get('/api/fx-rate', async (req, res) => {
   }
 });
 
-startApiServer(app);
+startApiServer(app, { port: Number(process.env.PORT || 3001) });

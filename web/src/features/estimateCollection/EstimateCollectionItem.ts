@@ -7,4 +7,5 @@ export type EstimateCollectionItem = Estimate & {
   createdByUserId?: string;
   createdByName?: string;
   createdByRole?: Estimate["createdByRole"];
+  updatedAt?: string;
 };

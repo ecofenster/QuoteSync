@@ -1,8 +1,15 @@
 .estimate-commercial { display: grid; gap: 14px; color: var(--qs-theme-text); }
-.estimate-commercial__breadcrumb { display: flex; gap: 8px; align-items: center; justify-content: space-between; font-size: 12px; color: var(--qs-theme-text-muted); }
+.estimate-commercial__breadcrumb { position: sticky; top: 0; z-index: 20; display: flex; gap: 8px; align-items: center; justify-content: space-between; padding-block: var(--qs-space-2); background: var(--qs-bg-page); box-shadow: 0 1px 0 var(--qs-border-standard); font-size: 12px; color: var(--qs-theme-text-muted); }
 .estimate-commercial__breadcrumb > span { display: flex; gap: 8px; align-items: center; }
 .estimate-commercial__breadcrumb strong { color: var(--qs-theme-text); }
 .estimate-commercial__content { display: grid; gap: 15px; }
+.estimate-commercial__action-bar { position: sticky; top: 48px; z-index: 19; display: flex; flex-wrap: wrap; gap: var(--qs-space-2); padding: var(--qs-space-2); border-bottom: 1px solid var(--qs-border-standard); background: var(--qs-bg-page); }
+.estimate-commercial__metrics { position: sticky; top: 96px; z-index: 18; display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: var(--qs-space-2); padding: var(--qs-space-2); background: var(--qs-bg-page); }
+.estimate-commercial__metrics span { display: grid; padding: var(--qs-space-2); border: 1px solid var(--qs-border-subtle); border-radius: var(--radius-control); background: var(--qs-bg-card); }
+.estimate-commercial__metrics small { color: var(--qs-theme-text-muted); }
+.estimate-commercial__content .costing-sheet__detail-table { max-height: calc(100vh - 360px); overflow: auto; }
+.estimate-commercial__content .project-costing__layout { min-height: 0; }
+.estimate-commercial__content .costing-sheet__detail-table thead th { position: sticky; top: 0; z-index: 3; background: var(--qs-bg-surface-elevated); }
 .estimate-commercial__content header h2,.estimate-commercial__empty h2 { margin: 0; }
 .estimate-commercial__content header p { margin: 5px 0 0; color: var(--qs-theme-text-muted); }
 .estimate-commercial__nav { display: flex; gap: 6px; flex-wrap: wrap; border-bottom: 1px solid var(--qs-border-standard); padding-bottom: 9px; }
@@ -28,5 +35,7 @@
 .estimate-position-match-review select{min-width:0;max-width:36rem}
 .estimate-position-match-review>div{display:flex;flex-wrap:wrap;gap:var(--space-2)}
 .estimate-position-bridge__editor{min-width:0;overflow-x:hidden}
+.estimate-commercial__view-switch{display:inline-flex;gap:var(--space-1);margin-left:auto}
 @media(max-width:760px){.estimate-position-bridge__editor-heading{align-items:flex-start;flex-direction:column}}
+@media(max-width:1500px){.estimate-commercial .project-costing__topbar{flex-wrap:wrap}.estimate-commercial .project-costing__breadcrumbs{display:none}.estimate-commercial .project-costing__brand{width:auto}.estimate-commercial .project-costing__rate{margin-left:auto}}
 .manufacturer-import-review{display:grid;gap:var(--space-4);max-width:100%}.manufacturer-import-review>header,.manufacturer-import-review>footer{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3)}.manufacturer-import-review__metadata{display:grid;grid-template-columns:2fr 1.3fr .7fr .7fr;gap:var(--space-3)}.manufacturer-import-review__metadata label{display:grid;gap:var(--space-1)}.manufacturer-import-review__table{overflow:auto;max-height:52vh}.manufacturer-import-review__table table{min-width:1500px}.manufacturer-import-review__image-button{border:0;background:transparent;padding:0;cursor:zoom-in}.manufacturer-import-review__image-button img{display:block;width:92px;height:92px;object-fit:contain}.manufacturer-import-review__lightbox{position:fixed;inset:0;z-index:1200;display:grid;place-items:center;padding:var(--space-5);background:var(--qs-overlay-scrim)}.manufacturer-import-review__lightbox section{display:grid;gap:var(--space-3);max-width:min(1100px,94vw);max-height:92vh}.manufacturer-import-review__lightbox section>button{justify-self:end}.manufacturer-import-review__lightbox img{display:block;max-width:100%;max-height:78vh;object-fit:contain;margin:auto}@media(max-width:900px){.manufacturer-import-review__metadata{grid-template-columns:1fr 1fr}}

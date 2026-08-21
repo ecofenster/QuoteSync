@@ -1,9 +1,18 @@
 import type { CalculatorScenario } from "./projectCalculatorLab.types";
+import { resolveManufacturerVisualAssetUrl } from "../../manufacturerVisuals/manufacturerVisualAssetUrl";
+
+function normalizeProductVisual<T extends CalculatorScenario["products"][number]>(product: T): T {
+  const snapshot = product.sourceSnapshot as Record<string, unknown> | null;
+  const evidence = snapshot?.manufacturerEvidence as Record<string, unknown> | undefined;
+  const visual = evidence?.sourceVisual as Record<string, unknown> | undefined;
+  if (!visual || typeof visual.url !== "string") return product;
+  return { ...product, sourceSnapshot: { ...snapshot, manufacturerEvidence: { ...evidence, sourceVisual: { ...visual, url: resolveManufacturerVisualAssetUrl(visual.url) } } } } as T;
+}
 
 export function normalizeCalculatorScenario(value: CalculatorScenario): CalculatorScenario {
   return {
     ...value,
-    products: Array.isArray(value.products) ? value.products : [],
+    products: Array.isArray(value.products) ? value.products.map(normalizeProductVisual) : [],
     supplierCosts: Array.isArray(value.supplierCosts) ? value.supplierCosts : [],
     packageItems: Array.isArray(value.packageItems) ? value.packageItems : [],
     routeSnapshots: Array.isArray(value.routeSnapshots) ? value.routeSnapshots : [],

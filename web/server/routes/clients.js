@@ -1,5 +1,6 @@
 import express from 'express';
 import { dbPromise } from '../db.js';
+import { purgeClientOwnedGraph } from '../features/estimatePositions/estimatePurgeService.js';
 
 const router = express.Router();
 
@@ -453,27 +454,8 @@ router.delete('/:id/purge', async (req, res) => {
       return res.status(403).json({ error: 'Protected live clients cannot be purged' });
     }
 
-    await db.run(
-      `
-        DELETE FROM estimates
-        WHERE client_id = ?
-      `,
-      [req.params.id]
-    );
-
-    const result = await db.run(
-      `
-        DELETE FROM clients
-        WHERE id = ?
-      `,
-      [req.params.id]
-    );
-
-    if (!result.changes) {
-      return res.status(404).json({ error: 'Client not found' });
-    }
-
-    res.json({ success: true });
+    const result=await purgeClientOwnedGraph(db,req.params.id);
+    res.json(result);
   } catch (error) {
     console.error('DELETE /api/clients/:id/purge failed', error);
     res.status(500).json({ error: 'Failed to purge client' });

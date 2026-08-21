@@ -2,5 +2,3 @@
 .customer-quotation__print-root h1,
 .customer-quotation__print-root h2 { color: var(--document-primary); }
 .customer-quotation__header { border-bottom-color: var(--document-accent); }
-.customer-quotation__brand-logo { display: block; max-width: 140px; max-height: 55px; object-fit: contain; }
-.customer-quotation__source-image { display: block; width: 120px; max-height: 80px; object-fit: contain; }

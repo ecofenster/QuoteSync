@@ -1,9 +1,13 @@
-import type { ComponentType, Dispatch, SetStateAction } from "react";
+import { useEffect, useState, type ComponentType, type Dispatch, type SetStateAction } from "react";
 import type { Client, ClientId, EstimateId, EstimateOutcome } from "../../models/types";
 import { H3, Small } from "../estimatePicker/tabs/shared";
 import EstimateCollectionRow from "./EstimateCollectionRow";
 import EstimateExpandedPanel from "./EstimateExpandedPanel";
 import type { EstimateCollectionItem } from "./EstimateCollectionItem";
+import { apiFetch } from "../../services/api/apiClient";
+import { deriveProjectCostingCommercialResult } from "../projectCalculatorLab/domain/projectCostingCommercialResult";
+import type { CalculatorScenario } from "../projectCalculatorLab/domain/projectCalculatorLab.types";
+import { estimateTotals } from "../../domain/estimates/estimateCalculations";
 
 export type EstimateCollectionViewMode = "list" | "grid";
 
@@ -93,6 +97,22 @@ export default function EstimateCollectionView(props: Props) {
     setSendModalOpen,
     importSupplierEstimate,
   } = props;
+  const [customerValues, setCustomerValues] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (currentTab !== "estimates") return;
+    let cancelled = false;
+    void Promise.all(items.map(async (item) => {
+      const scenarios = await apiFetch(`/api/admin/project-calculator-lab/scenarios?estimate_id=${encodeURIComponent(item.id)}`) as Array<{ id: string }>;
+      if (!scenarios[0]) return [item.id, "0"] as const;
+      const scenario = await apiFetch(`/api/admin/project-calculator-lab/scenarios/${encodeURIComponent(scenarios[0].id)}?estimate_id=${encodeURIComponent(item.id)}`) as CalculatorScenario;
+      return [item.id, deriveProjectCostingCommercialResult(scenario).actualSale] as const;
+    })).then((entries) => { if (!cancelled) setCustomerValues(Object.fromEntries(entries)); }).catch(() => { if (!cancelled) setCustomerValues({}); });
+    return () => { cancelled = true; };
+  }, [currentTab, items]);
+
+  if (currentTab === "estimates") {
+    return <div className="ep-section-shell"><div className="estimate-index-table-wrap"><table className="estimate-index-table"><thead><tr><th>Estimate</th><th>Client</th><th>Project</th><th>Status</th><th>Positions</th><th>Area</th><th>Linear Metres</th><th>Qty</th><th>Value</th><th>Updated</th><th>Actions</th></tr></thead><tbody>{items.map((item) => { const totals = estimateTotals(item); return <tr key={item.id} data-estimate-ref={item.estimateRef}><td><strong>{item.estimateRef}</strong></td><td>{item.clientName || item.clientReference || "—"}</td><td>{item.projectAddress || "—"}</td><td>{item.status}</td><td>{item.positions.length}</td><td>{formatMeasure(totals.totalSquareMetres)} m²</td><td>{formatMeasure(totals.totalLinearMetres)} lm</td><td>{totals.totalQty}</td><td>{formatMoney(Number(customerValues[item.id] || 0))}</td><td>{item.updatedAt ? new Date(item.updatedAt).toLocaleDateString("en-GB") : "—"}</td><td><button type="button" className="ui-button ui-button--primary" onClick={() => onToggleEstimate(item.id)}>Open</button></td></tr>; })}</tbody></table>{items.length === 0 ? <div className="ep-empty-state"><Small>{emptyText}</Small></div> : null}</div></div>;
+  }
 
   return (
     <div className="ep-section-shell">

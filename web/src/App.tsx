@@ -1500,6 +1500,21 @@ export default function App() {
 
   const [selectedEstimateId, setSelectedEstimateId] = useState<Models.EstimateId | null>(null);
 
+  const estimateRouteRestored = useRef(false);
+  useEffect(() => {
+    if (!clientsLoaded || estimateRouteRestored.current) return;
+    estimateRouteRestored.current = true;
+    const match = window.location.hash.match(/^#\/estimate\/([^/]+)\/([^/]+)$/);
+    if (!match) return;
+    const clientId = decodeURIComponent(match[1]) as Models.ClientId;
+    const estimateId = decodeURIComponent(match[2]) as Models.EstimateId;
+    const client = clients.find((item) => item.id === clientId);
+    if (!client?.estimates.some((item) => item.id === estimateId)) return;
+    setSelectedClientId(clientId);
+    setSelectedEstimateId(estimateId);
+    setView("estimate_workspace");
+  }, [clients, clientsLoaded]);
+
   const selectedEstimate = useMemo(() => {
     if (!selectedClient) return null;
     return selectedClient.estimates.find((e) => e.id === selectedEstimateId) ?? null;
@@ -2114,6 +2129,7 @@ function openEstimateDefaults(clientId: Models.ClientId, estimateId: Models.Esti
   setSelectedClientId(clientId);
   setSelectedEstimateId(estimateId);
   setView("estimate_workspace");
+  window.history.replaceState(null, "", `#/estimate/${encodeURIComponent(clientId)}/${encodeURIComponent(estimateId)}`);
 }
 
   
@@ -4133,9 +4149,7 @@ function renderProjectMapBoard() {
                     totalCost: summary.totalCost,
                   }}
                   expandedEstimateId={globalExpandedEstimateId}
-                  onToggleEstimate={(estimateId) =>
-                    setGlobalExpandedEstimateId((prev) => (prev === estimateId ? null : estimateId))
-                  }
+                  onToggleEstimate={(estimateId) => menuKey === "estimates" ? openEstimateFromGlobalCollection(estimateId) : setGlobalExpandedEstimateId((prev) => (prev === estimateId ? null : estimateId))}
                   statusMenuForEstimateId={globalStatusMenuForEstimateId}
                   setStatusMenuForEstimateId={setGlobalStatusMenuForEstimateId}
                   selectedOrderForInstallations={globalSelectedOrderForInstallations}
@@ -4947,7 +4961,7 @@ function renderProjectMapBoard() {
 
             {/* ESTIMATE WORKSPACE */}
             {view === "estimate_workspace" && selectedClient && selectedEstimate && (
-                <Card className="qs-migrated-98">
+                <Card className="qs-migrated-98 dedicated-estimate-workspace">
                   <div className="qs-migrated-94">
                     <div>
                       <H2>Estimate</H2>
@@ -4967,7 +4981,7 @@ function renderProjectMapBoard() {
                   </div>
 
                   <div className="qs-migrated-99">
-                    <EstimateCommercialWorkspace estimateId={String(selectedEstimate.id)} estimateRef={selectedEstimate.estimateRef} client={selectedClient} estimate={selectedEstimate} PositionPreview={PositionPreview} />
+                    <EstimateCommercialWorkspace estimateId={String(selectedEstimate.id)} estimateRef={selectedEstimate.estimateRef} client={selectedClient} estimate={selectedEstimate} PositionPreview={PositionPreview} onEmail={()=>{setGlobalSendModalEstimateId(selectedEstimate.id);setGlobalSendModalOpen(true)}} onFollowUp={()=>addFollowUpForEstimateService({pickerClient:selectedClient,estimateId:selectedEstimate.id,opts:{days:3,sendEmail:true,needsCall:true},apiFetchJson,activeUserName,alertFn:alert,logError:console.error})} onStatus={status=>persistEstimateOutcome(selectedClient.id,selectedEstimate.id,status)} onCopy={()=>copyEstimateForClient(selectedClient,selectedEstimate.id)} onDelete={()=>confirmDeleteGlobalEstimate(selectedEstimate.id)} />
                   </div>
 
                   <div className="qs-migrated-100">

@@ -3,6 +3,26 @@
   display: grid;
   gap: 16px;
 }
+.project-costing--customer .project-costing__sidebar,
+.project-costing--customer .project-costing__rate,
+.project-costing--customer .project-costing__topbar > .ui-button,
+.project-costing--customer .project-costing__more,
+.project-costing--customer .costing-sheet__columns,
+.project-costing--customer .costing-sheet__section:not(.costing-sheet__section--products),
+.project-costing--customer .costing-sheet__section-row > strong,
+.project-costing--customer .costing-sheet__section-row > label,
+.project-costing--customer .costing-sheet__summary-cost,
+.project-costing--customer .costing-sheet__summary-profit,
+.project-costing--customer .costing-sheet__margin-control,
+.project-costing--customer .costing-sheet__footer,
+.project-costing--customer .costing-sheet__section-label small { display: none; }
+.project-costing--customer .project-costing__layout { grid-template-columns: minmax(0, 1fr); }
+.project-costing--customer .costing-sheet__detail-table td.is-dimension { width: 68px; min-width: 68px; text-align: right; }
+.project-costing--customer .costing-sheet__product-image { min-width: 170px; }
+.project-costing--customer .costing-sheet__summary { grid-template-columns: minmax(0, 1fr); }
+.costing-sheet__position-actions { display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; }
+.costing-sheet__position-actions .ui-button { min-height:28px; padding:3px 6px; font-size:var(--qs-type-meta); }
+.costing-sheet__alternative-control { display:flex; align-items:center; gap:4px; font-size:var(--qs-type-meta); }
 .calculator-lab > .calculator-lab__supplier-import { display: none; }
 
 .calculator-lab__card {
@@ -506,6 +526,10 @@
 .costing-sheet__product-preview > span:not(.sr-only) { display: grid; place-items: center; width: 44px; height: 34px; border: var(--qs-border-width) dashed var(--qs-border-standard); border-radius: var(--qs-radius-sm); color: var(--qs-theme-text-muted); }
 .costing-sheet__product-preview details { min-width: 0; }
 .costing-sheet__product-preview details small { display: block; color: var(--qs-theme-text-muted); }
+.costing-sheet__product-image { min-width: 118px; }
+.costing-sheet__product-image .costing-sheet__product-preview { grid-template-columns: 74px minmax(0, 1fr); margin-top: 0; }
+.costing-sheet__product-image button { display: grid; place-items: center; width: 74px; height: 58px; padding: 2px; border: var(--qs-border-width) solid var(--qs-border-standard); border-radius: var(--qs-radius-sm); background: var(--qs-bg-card); cursor: zoom-in; }
+.costing-sheet__product-image button img { display: block; width: 100%; height: 100%; object-fit: contain; }
 
 .costing-sheet__row-markup { min-width: 86px; display: grid; gap: 4px; }
 .costing-sheet__row-markup input { width: 72px; min-height: 34px; padding: 5px 7px; border: 1px solid var(--qs-border-standard); border-radius: var(--radius-control); background: var(--qs-bg-control); color: inherit; font-size: var(--qs-type-body); text-align: right; }
