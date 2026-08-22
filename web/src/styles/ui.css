@@ -1,4 +1,6 @@
 .ui-card {
+  box-sizing: border-box;
+  min-width: 0;
   border: 1px solid var(--qs-border-standard, var(--qs-border-standard));
   border-radius: var(--radius-card);
   background: var(--qs-bg-card, var(--qs-bg-surface));

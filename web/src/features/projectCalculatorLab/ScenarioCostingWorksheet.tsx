@@ -108,6 +108,20 @@ const productOverrides = (products: CalculatorProductRow[]) =>
   Object.fromEntries(
     products.map((row) => [row.id, row.markupOverridePercent ?? ""]),
   );
+const thermalText = (value: unknown) =>
+  typeof value === "string" && value.trim() ? value.trim() : null;
+function positionThermal(row: CalculatorProductRow) {
+  const snapshot = (row.sourceSnapshot ?? {}) as Record<string, unknown>;
+  const evidence = (snapshot.manufacturerEvidence ?? {}) as Record<string, unknown>;
+  const contract = (snapshot.configuredContract ?? {}) as Record<string, unknown>;
+  const contractThermal = (contract.thermal ?? {}) as Record<string, unknown>;
+  const pricing = (contract.pricing ?? {}) as Record<string, unknown>;
+  const pricingInputs = (pricing.inputs ?? {}) as Record<string, unknown>;
+  return {
+    ug: thermalText(evidence.manufacturerQuotedUg) ?? thermalText(contractThermal.ug) ?? thermalText(pricingInputs.ug),
+    uw: thermalText(evidence.manufacturerQuotedUw) ?? thermalText(contractThermal.uw) ?? thermalText(pricingInputs.uw),
+  };
+}
 
 function Icon({ kind }: { kind: SectionKey }) {
   const glyph = {
@@ -159,9 +173,9 @@ function ProductRow({
   references,
   categoryMarkup,
   override,
-  onOverrideChange,
   onReview,
   commercialView,
+  showThermal,
 }: {
   row: CalculatorProductRow;
   allocation?: {
@@ -174,9 +188,9 @@ function ProductRow({
   references: string[];
   categoryMarkup: string;
   override: string;
-  onOverrideChange: (value: string) => void;
   onReview: (input: Record<string, unknown>) => void;
   commercialView: "internal" | "customer";
+  showThermal: boolean;
 }) {
   const customerPolicy=useCustomerViewPolicy();
   const commercialActions=useEstimateCommercialActions();
@@ -196,12 +210,6 @@ function ProductRow({
             override === "" ? null : override,
           )
         : null,
-    invalid = override !== "" && Boolean(validateMarkupPercentage(override)),
-    rate = row.pricingPolicy?.parityPricingApplied
-      ? "1 to 1 Pricing"
-      : row.fxSnapshot
-      ? `${row.fxSnapshot.supplierCurrency} 1 = GBP ${row.fxSnapshot.supplierToGbpLiveRate}`
-      : "—",
     usesPrevious =
       alternative &&
       Boolean(previousReference) &&
@@ -221,7 +229,8 @@ function ProductRow({
     imageUrl =
       visual.status === "available" && typeof visual.url === "string"
         ? resolveManufacturerVisualAssetUrl(visual.url)
-        : null;
+        : null,
+    thermal = positionThermal(row);
   if (commercialView === "customer") {
     const room = typeof evidence.roomLocation === "string" && evidence.roomLocation.trim() ? evidence.roomLocation : "—";
     return <tr className={!included ? "is-excluded" : "is-inherited"}><td><strong>{row.displayReference}</strong><small>{supplierNameForProduct(row)}</small></td>{customerPolicy.room?<td>{room}</td>:null}<td className="costing-sheet__product-image"><div className="costing-sheet__product-preview">{imageUrl ? <button type="button" onClick={() => row.estimatePositionId && configured && customerPolicy.quickConfigurator ? commercialActions?.configurePosition?.(row.estimatePositionId) : window.open(imageUrl, "_blank", "noopener,noreferrer")} aria-label={`Open manufacturer preview for ${row.displayReference}`}><img src={imageUrl} alt={`Manufacturer preview for ${row.displayReference}`} /></button> : <span aria-label="Preview unavailable">▧</span>}<span>{typeof evidence.product === "string" ? evidence.product : row.productClass}</span></div></td>{customerPolicy.dimensions?<><td className="is-dimension">{row.widthMm}</td><td className="is-dimension">{row.heightMm}</td></>:null}<td>{row.quantity}</td>{customerPolicy.itemPrice?<td>{!included ? "Excluded" : money(pricing?.unitSellingPrice)}</td>:null}{customerPolicy.quantityPrice?<td>{!included ? "Excluded" : money(pricing?.totalSellingPrice)}</td>:null}<td>{customerPolicy.alternative?<label className="costing-sheet__alternative-control"><span>Alternative</span><Toggle ariaLabel={`${row.displayReference} alternative`} value={alternative} onChange={() => positionAction("alternative")} /></label>:null}{row.estimatePositionId ? <span className="costing-sheet__position-actions">{customerPolicy.reorder?<><button className="ui-button" onClick={() => positionAction("up")} aria-label={`Move ${row.displayReference} up`} title="Move Up">↑</button><button className="ui-button" onClick={() => positionAction("down")} aria-label={`Move ${row.displayReference} down`} title="Move Down">↓</button></>:null}{customerPolicy.duplicate?<button className="ui-button" onClick={() => positionAction("duplicate")} aria-label={`Duplicate ${row.displayReference}`} title="Duplicate Position">⧉</button>:null}<button className="ui-button" onClick={() => positionAction("delete")} aria-label={`Delete ${row.displayReference}`} title="Delete Position">×</button></span> : null}</td></tr>;
@@ -265,6 +274,7 @@ function ProductRow({
           </details>
         </div>
       </td>
+      {showThermal ? <><td className="costing-sheet__thermal-value">{thermal.ug ?? "—"}</td><td className="costing-sheet__thermal-value">{thermal.uw ?? "—"}</td></> : null}
       <td>
         <Toggle
           ariaLabel={`${row.displayReference} alternative`}
@@ -328,39 +338,10 @@ function ProductRow({
       <td>{row.quantity}</td>
       <td>{money(row.unitSupplyCost, row.currency)}</td>
       <td>
-        <span>
-          {money(row.originalAmount, row.originalCurrency ?? row.currency)}
-        </span>
-        {allocation ? (
-          <small>
-            + {money(allocation.amount, allocation.currency)} transport
-          </small>
-        ) : null}
-      </td>
-      <td>{rate}</td>
-      <td>
         <span>{money(row.gbpAmount)}</span>
         {allocation ? (
           <small>+ {money(allocation.purchaseGbpAmount)} transport</small>
         ) : null}
-      </td>
-      <td>
-        {!included ? (
-          <small>Excluded</small>
-        ) : (
-          <label
-            className={`costing-sheet__row-markup${invalid ? " is-invalid" : ""}`}
-          >
-            <input
-              aria-label={`${row.displayReference} markup override`}
-              inputMode="decimal"
-              value={override}
-              placeholder={categoryMarkup}
-              onChange={(event) => onOverrideChange(event.currentTarget.value)}
-            />
-            <small>% · {override === "" ? "Inherited" : "Override"}</small>
-          </label>
-        )}
       </td>
       <td>{!included ? "Excluded" : money(pricing?.unitSellingPrice)}</td>
       <td>{!included ? "Excluded" : money(pricing?.totalSellingPrice)}</td>
@@ -904,6 +885,10 @@ export default function ScenarioCostingWorksheet({
     Boolean(
       scenario.options?.useIllbruck || scenario.options?.bracketsRequired,
     );
+  const showProductThermal = scenario.products.some((row) => {
+    const thermal = positionThermal(row);
+    return Boolean(thermal.ug || thermal.uw);
+  });
   const vatTreatment=resolveVatTreatment(scenario.options?.vatTreatment,scenario.options?.projectType),vatAmount=percentageAmount(actualSale,vatTreatment.percentage),totalIncludingVat=addDecimalAmounts([actualSale,vatAmount]);
   const saveVatTreatment=async(code:VatTreatmentCode)=>{setSaving(true);setError("");try{const selected=VAT_TREATMENTS[code],updated=await projectCalculatorLabApi.updateVatTreatment(scenario.id,{code,percentage:selected.percentage,source:"manual_override",manuallyOverridden:true});window.dispatchEvent(new CustomEvent("quotesuite:costing-updated",{detail:updated}));}catch(reason){setError(reason instanceof Error?reason.message:"VAT Treatment could not be saved.");}finally{setSaving(false);}};
   const nav = [
@@ -1099,18 +1084,28 @@ export default function ScenarioCostingWorksheet({
               </div>
               {scenario.products.length ? (
                 <div className="costing-sheet__detail-table">
-                  <table>
+                  <table className={commercialView === "internal" ? "costing-sheet__products-table--internal" : undefined}>
+                    {commercialView === "internal" ? <colgroup>
+                      <col className="costing-sheet__col-reference" />
+                      <col className="costing-sheet__col-preview" />
+                      {showProductThermal ? <><col className="costing-sheet__col-thermal" /><col className="costing-sheet__col-thermal" /></> : null}
+                      <col className="costing-sheet__col-alternative" />
+                      <col className="costing-sheet__col-quantity" />
+                      <col className="costing-sheet__col-commercial" />
+                      <col className="costing-sheet__col-commercial" />
+                      <col className="costing-sheet__col-commercial" />
+                      <col className="costing-sheet__col-commercial" />
+                      <col className="costing-sheet__col-actions" />
+                    </colgroup> : null}
                     <thead>
                       {commercialView === "customer" ? <tr><th>Reference</th>{customerPolicy.room?<th>Room</th>:null}<th>Item Type / Picture</th>{customerPolicy.dimensions?<><th>Width</th><th>Height</th></>:null}<th>Qty</th>{customerPolicy.itemPrice?<th>Item Price</th>:null}{customerPolicy.quantityPrice?<th>Quantity Price</th>:null}<th>Actions</th></tr> : <tr>
                         <th>Reference</th>
                         <th>Preview / Product Image</th>
+                        {showProductThermal ? <><th>Ug</th><th>Uw</th></> : null}
                         <th>Alternative?</th>
                         <th>Qty</th>
                         <th>Supplier unit</th>
-                        <th>Supplier total</th>
-                        <th>Rate</th>
                         <th>GBP cost</th>
-                        <th>Markup</th>
                         <th>Sale unit</th>
                         <th>Sale total</th>
                         <th>Action</th>
@@ -1132,13 +1127,6 @@ export default function ScenarioCostingWorksheet({
                           )}
                           categoryMarkup={markupDraft.product}
                           override={rowOverrides[row.id] ?? ""}
-                          onOverrideChange={(value) => {
-                            setRowOverrides((current) => ({
-                              ...current,
-                              [row.id]: value,
-                            }));
-                            setError("");
-                          }}
                           onReview={(input) => {
                             setSaving(true);
                             void onUpdateProduct(row.id, input)
@@ -1152,6 +1140,7 @@ export default function ScenarioCostingWorksheet({
                               .finally(() => setSaving(false));
                           }}
                           commercialView={commercialView}
+                          showThermal={showProductThermal}
                         />
                       ))}
                     </tbody>

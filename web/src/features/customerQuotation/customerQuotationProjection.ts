@@ -2,7 +2,7 @@ import type { Client, Estimate, Position } from "../../models/types";
 import { getConfiguredPositionContract } from "../configurator/configuredPositionContract.utils";
 import { configuratorDocumentDrawingRegistry } from "../configurator/documentDrawing";
 import { deriveProjectCostingCommercialResult, customerProductDescription, percentageAmount, type ProjectCostingScenarioView } from "../projectCalculatorLab/domain/projectCostingCommercialResult";
-import { addDecimalAmounts, subtractDecimalAmounts } from "../projectCalculatorLab/domain/projectCostingMarkup";
+import { addDecimalAmounts } from "../projectCalculatorLab/domain/projectCostingMarkup";
 import { resolveVatTreatment } from "../projectCalculatorLab/domain/vatTreatment";
 import { CUSTOMER_QUOTATION_POLICY } from "./quotationPolicy";
 import { DEFAULT_CUSTOMER_QUOTATION_DISPLAY_OPTIONS, type CustomerQuotationDisplayOptions, type CustomerQuotationPositionThermal } from "./customerQuotationDisplay";
@@ -37,6 +37,7 @@ export type CustomerQuotationPosition = {
 };
 
 export type CustomerQuotationCharge = { id: string; label: string; amountGbp: string };
+export type CustomerQuotationSupplySummary = { reference: string; description: string; quantity: number; dimensions: string; amountGbp: string | null };
 
 export type CustomerQuotationProjection = {
   brand: CustomerDocumentBrand;
@@ -49,6 +50,9 @@ export type CustomerQuotationProjection = {
   projectAddress: string;
   currency: "GBP";
   positions: CustomerQuotationPosition[];
+  productsSupplyTotalGbp: string;
+  productSupplySummary: CustomerQuotationSupplySummary[];
+  installationInclusions: string[];
   alternatives: Array<Pick<CustomerQuotationPosition, "id" | "reference" | "quantity" | "widthMm" | "heightMm" | "description">>;
   charges: CustomerQuotationCharge[];
   customerDiscountGbp: string;
@@ -92,6 +96,22 @@ function drawingForPosition(estimatePosition: Position | null, evidence: Record<
   const orientation = /view from inside|\binside\b/i.test(orientationText) ? "inside" : /view from outside|\boutside\b/i.test(orientationText) ? "outside" : "unknown";
   if (visual.status === "available" && imageUrl) return { source: "manufacturer", available: true, imageUrl, mediaType: textValue(visual.mediaType) || null, orientation };
   return { source: "unavailable", available: false, reason: textValue(visual.reason) || "No trusted drawing is available for this position." };
+}
+
+function installationInclusions(scenario: ProjectCostingScenarioView) {
+  const programme = record(scenario.installationProgramme);
+  const costs = record(programme.costs);
+  const allowances = record(programme.allowances);
+  const included = (value: unknown) => Number(value ?? 0) > 0;
+  const lines: string[] = [];
+  if (included(costs.labour)) lines.push("Installation labour");
+  if (included(costs.mileage)) lines.push("Travel to site");
+  if (included(costs.food)) lines.push("Food and subsistence");
+  if (included(costs.accommodation)) lines.push(`Accommodation · ${Number(allowances.nights ?? 0)} night(s)`);
+  if (included(costs.cillInstallation)) lines.push(`Cill installation for ${Number(allowances.cillApplicableQuantity ?? 0)} applicable window(s)`);
+  if (included(costs.survey)) lines.push(`Retrofit survey · ${Number(allowances.surveyDays ?? 0)} day(s)`);
+  if (included(costs.support)) lines.push(`Installation support · ${Number(allowances.supportDays ?? 0)} day(s)`);
+  return lines;
 }
 
 export function buildCustomerQuotationProjection(input: {
@@ -142,14 +162,12 @@ export function buildCustomerQuotationProjection(input: {
     description: customerProductDescription(row),
   }));
   const charges: CustomerQuotationCharge[] = [];
-  const knownProductTotal = addDecimalAmounts(positions.map((position) => position.totalSellingPriceGbp));
-  const productBalance = subtractDecimalAmounts(result.productSale, knownProductTotal);
-  if (nonZero(productBalance)) charges.push({ id: "products-balance", label: "Products / Supply Only balance", amountGbp: productBalance });
-  const extraRows = result.includedExtras.filter((row) => nonZero(row.markedUpAmount)).map((row) => ({ id: `extra-${row.id}`, label: row.label || "Additional item", amountGbp: row.markedUpAmount ?? "0.00" }));
+  charges.push({ id: "products", label: "Products / Supply Only", amountGbp: result.productSale });
+  const extraRows = [
+    ...result.includedExtras.filter((row) => nonZero(row.markedUpAmount)).map((row) => ({ id: `extra-${row.id}`, label: row.label || "Additional item", amountGbp: row.markedUpAmount ?? "0.00" })),
+    ...result.extraPackageUplifts.filter((row) => nonZero(row.sellingAmountGbp)).map((row, index) => ({ id: `extra-package-${index}`, label: row.label || "Additional item", amountGbp: row.sellingAmountGbp ?? "0.00" })),
+  ];
   charges.push(...extraRows);
-  const knownExtrasTotal = addDecimalAmounts(extraRows.map((row) => row.amountGbp));
-  const extrasBalance = subtractDecimalAmounts(result.extrasSale, knownExtrasTotal);
-  if (nonZero(extrasBalance)) charges.push({ id: "extras-balance", label: "Additional project items", amountGbp: extrasBalance });
   if (nonZero(result.transportSale)) charges.push({ id: "transport", label: "Delivery and transport", amountGbp: result.transportSale });
   if (!result.siteVisitAllocatedToProducts && nonZero(result.siteVisitSale)) charges.push({ id: "site-visit", label: "Site visit and travel", amountGbp: result.siteVisitSale });
   if (nonZero(result.equipmentSale)) charges.push({ id: "equipment", label: "Equipment hire", amountGbp: result.equipmentSale });
@@ -172,6 +190,9 @@ export function buildCustomerQuotationProjection(input: {
     projectAddress: input.estimate.projectAddress || input.client.projectAddress,
     currency: CUSTOMER_QUOTATION_POLICY.currency,
     positions,
+    productsSupplyTotalGbp: result.productSale,
+    productSupplySummary: positions.map((position) => ({ reference: position.customerReference, description: position.productSystem || position.description, quantity: position.quantity, dimensions: `${position.widthMm} × ${position.heightMm} mm`, amountGbp: position.totalSellingPriceGbp })),
+    installationInclusions: installationInclusions(input.scenario),
     alternatives,
     charges,
     customerDiscountGbp: result.customerDiscountAmount,

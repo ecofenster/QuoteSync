@@ -95,9 +95,32 @@ test("alternatives are visible separately and excluded from the primary total", 
 
 test("included Extras and customer Transport are presented once without allocation mechanics", () => {
   const quote = buildCustomerQuotationProjection({ scenario: scenario(), client, estimate });
+  assert.deepEqual(quote.charges.filter((line) => line.id === "products").map((line) => line.amountGbp), ["1800.00"]);
+  assert.equal(quote.productSupplySummary.length, 2);
+  assert.deepEqual(quote.productSupplySummary[0], { reference: "W01", description: "92 Europa window", quantity: 2, dimensions: "1200 × 1400 mm", amountGbp: "1200.00" });
   assert.deepEqual(quote.charges.filter((line) => /cills/i.test(line.label)).map((line) => line.amountGbp), ["125.00"]);
   assert.deepEqual(quote.charges.filter((line) => /transport/i.test(line.label)).map((line) => line.amountGbp), ["220.00"]);
   assert.doesNotMatch(JSON.stringify(quote.charges), /supplier|allocation|storageAllocation|HIAB allocation/i);
+});
+
+test("customer Installation scope describes only commercially included snapshot components", () => {
+  const input = scenario();
+  input.options.installationRequired = true;
+  input.options.installationProfile = { enabled: true };
+  input.installationProgramme = {
+    costs: { labour: "3500.00", mileage: "250.00", food: "0.00", accommodation: "0.00", support: "0.00", survey: "0.00", cillInstallation: "575.00", purchaseCost: "4325.00" },
+    allowances: { nights: 0, foodDays: 0, supportDays: 0, surveyDays: 0, cillApplicableQuantity: 23, cillInstallationRate: "25.00" },
+  };
+  const quote = buildCustomerQuotationProjection({ scenario: input, client, estimate });
+  assert.deepEqual(quote.installationInclusions, ["Installation labour", "Travel to site", "Cill installation for 23 applicable window(s)"]);
+  assert.doesNotMatch(JSON.stringify(quote.installationInclusions), /day rate|markup|Accommodation|Food|Support|Survey/);
+});
+
+test("document-only penny residue does not create a fake Additional project items line", () => {
+  const input = scenario();
+  input.supplierCosts[0].markedUpAmount = "124.99";
+  const quote = buildCustomerQuotationProjection({ scenario: input, client, estimate });
+  assert.equal(quote.charges.some((line) => line.label === "Additional project items"), false);
 });
 
 test("imported evidence is customer-safe while native drawing remains unavailable until a document-safe provider exists", () => {
@@ -195,4 +218,16 @@ test("the canonical entry point and A4 print path are present and misleading leg
   assert.match(css, /grid-template-rows:repeat\(2,minmax\(0,1fr\)\)/);
   assert.match(css, /no-print/);
   assert.match(css, /estimate-commercial>:not\(\.customer-quotation__scrim\)/);
+});
+
+test("dedicated Estimate containment and simplified thermal-aware Products columns use shared canonical evidence", async () => {
+  const [appCss, worksheet] = await Promise.all([
+    readFile("src/App.css", "utf8"),
+    readFile("src/features/projectCalculatorLab/ScenarioCostingWorksheet.tsx", "utf8"),
+  ]);
+  assert.match(appCss, /\.app-main-workspace > \.dedicated-estimate-workspace[\s\S]*height:\s*auto[\s\S]*overflow:\s*visible/);
+  const header = worksheet.match(/<th>Reference<\/th>[\s\S]*?<th>Action<\/th>/)?.[0] ?? "";
+  assert.match(header, /Preview \/ Product Image[\s\S]*<th>Ug<\/th>[\s\S]*<th>Uw<\/th>/);
+  for (const removed of ["Supplier total", "Rate", "Markup"]) assert.doesNotMatch(header, new RegExp(`<th>${removed}<\\/th>`));
+  assert.match(worksheet, /manufacturerQuotedUg[\s\S]*contractThermal\.ug[\s\S]*pricingInputs\.ug/);
 });

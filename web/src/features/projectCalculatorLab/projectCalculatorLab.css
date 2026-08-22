@@ -20,7 +20,7 @@
 .project-costing--customer .costing-sheet__detail-table td.is-dimension { width: 68px; min-width: 68px; text-align: right; }
 .project-costing--customer .costing-sheet__product-image { min-width: 170px; }
 .project-costing--customer .costing-sheet__summary { grid-template-columns: minmax(0, 1fr); }
-.costing-sheet__position-actions { display:grid; grid-template-columns:repeat(4,32px); gap:6px; margin-top:4px; }
+.costing-sheet__position-actions { display:grid; grid-template-columns:repeat(4,32px); gap:8px; margin-top:4px; }
 .costing-sheet__position-actions .ui-button { width:32px; min-width:32px; height:32px; min-height:32px; padding:0; place-content:center; font-size:var(--qs-type-body); }
 .costing-sheet__position-actions .ui-button:last-child { border-color:var(--qs-semantic-error); color:var(--qs-semantic-error); }
 .costing-sheet__position-actions .ui-button:last-child:hover { background:var(--qs-error-surface); }
@@ -265,6 +265,12 @@
 .calculator-admin__row small { color: var(--qs-theme-text-muted); }
 
 .project-costing {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-rows: auto auto;
+  align-content: start;
+  height: auto;
+  min-width: 0;
   overflow: hidden;
   border: 1px solid var(--qs-commercial-border);
   border-radius: var(--radius-card);
@@ -322,6 +328,7 @@
   min-height: 760px;
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
+  align-items: stretch;
 }
 
 .project-costing__sidebar {
@@ -396,6 +403,8 @@
 
 .costing-sheet {
   display: grid;
+  align-content: start;
+  min-width: 0;
   gap: 11px;
   padding: 26px 22px 20px;
   background: var(--qs-bg-surface);
@@ -581,11 +590,21 @@
 .costing-sheet__facts span { padding: 8px 11px; border-radius: var(--radius-control); background: var(--qs-bg-surface-elevated); font-size: var(--qs-type-meta); }
 .costing-sheet__detail-table { overflow-x: auto; }
 .costing-sheet__detail-table table { min-width: 880px; font-size: var(--qs-type-body); line-height: 1.35; }
+.costing-sheet__products-table--internal { width:100%; min-width:980px!important; table-layout:fixed; }
+.costing-sheet__products-table--internal .costing-sheet__col-reference { width:10%; }
+.costing-sheet__products-table--internal .costing-sheet__col-preview { width:12%; }
+.costing-sheet__products-table--internal .costing-sheet__col-thermal { width:6%; }
+.costing-sheet__products-table--internal .costing-sheet__col-alternative { width:12%; }
+.costing-sheet__products-table--internal .costing-sheet__col-quantity { width:5%; }
+.costing-sheet__products-table--internal .costing-sheet__col-commercial { width:9%; }
+.costing-sheet__products-table--internal .costing-sheet__col-actions { width:13%; }
+.costing-sheet__products-table--internal .costing-sheet__position-actions { width:min(100%,153.02px); margin-inline:auto; grid-template-columns:repeat(4,32px); justify-content:space-between; column-gap:0; align-items:center; }
 .costing-sheet__detail-table th { padding: 10px 9px; font-size: var(--qs-type-body); white-space: nowrap; }
 .costing-sheet__detail-table td { padding: 9px; font-variant-numeric: tabular-nums; }
 .costing-sheet__detail-table th:last-child,
 .costing-sheet__detail-table td:last-child { min-width:146px; width:146px; }
-.costing-sheet__detail-table td > span,
+.costing-sheet__products-table--internal th:last-child { text-align:center; }
+.costing-sheet__detail-table td > span:not(.costing-sheet__position-actions),
 .costing-sheet__detail-table td > small { display: block; }
 .costing-sheet__detail-table td > small { color: var(--qs-theme-text-muted); }
 .costing-sheet__product-preview { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: var(--space-1); align-items: center; margin-top: var(--space-1); }
@@ -594,6 +613,7 @@
 .costing-sheet__product-preview details { min-width: 0; }
 .costing-sheet__product-preview details small { display: block; color: var(--qs-theme-text-muted); }
 .costing-sheet__product-image { min-width: 118px; }
+.costing-sheet__thermal-value { width: 54px; min-width: 54px; text-align: center; white-space: nowrap; }
 .costing-sheet__product-image .costing-sheet__product-preview { grid-template-columns: 74px minmax(0, 1fr); margin-top: 0; }
 .costing-sheet__product-image button { display: grid; place-items: center; width: 74px; height: 58px; padding: 2px; border: var(--qs-border-width) solid var(--qs-border-standard); border-radius: var(--qs-radius-sm); background: var(--qs-bg-card); cursor: zoom-in; }
 .costing-sheet__product-image button img { display: block; width: 100%; height: 100%; object-fit: contain; }
@@ -605,6 +625,8 @@
 .costing-sheet__detail-table tr.is-overridden { background: var(--qs-bg-surface-elevated); }
 
 .costing-sheet__summary {
+  min-width: 0;
+  align-self: start;
   margin-top: 20px;
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);

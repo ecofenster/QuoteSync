@@ -3825,7 +3825,7 @@ function renderProjectMapBoard() {
     });
 
     return (
-      <Card className="qs-migrated-34">
+      <Card className="project-map-card">
         <div className="qs-migrated-43">
           <div>
             <H2>Project Map</H2>

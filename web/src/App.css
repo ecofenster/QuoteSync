@@ -77,6 +77,26 @@
 .app-workspace-grid { height: 100%; min-height: 0; display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: var(--space-4); align-items: stretch; }
 .app-workspace-grid > .app-card { position: sticky; top: 16px; align-self: stretch; height: 100%; min-height: 0; overflow-y: auto; }
 
+/* The dedicated Estimate is normal document content inside the scrolling main
+   workspace. Its border must follow the complete Project Costing flow. */
+.app-main-workspace > .dedicated-estimate-workspace {
+  box-sizing: border-box;
+  align-self: start;
+  width: 100%;
+  height: auto;
+  min-height: 520px;
+  max-height: none;
+  overflow: visible;
+  flex: none;
+  contain: none;
+}
+.dedicated-estimate-workspace > .qs-migrated-99 {
+  min-width: 0;
+  min-height: 0;
+  height: auto;
+  overflow: visible;
+}
+
 /* Operational screens */
 
 .demo-mode-banner {
@@ -202,6 +222,24 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(140px, 1fr));
   gap: 10px;
+}
+
+/* Project Map is a content-height workspace: its bounded map stays inside the card. */
+.project-map-card {
+  height: auto;
+  overflow: visible;
+}
+
+.project-map-card > .qs-migrated-43 {
+  height: auto;
+  grid-template-rows: auto auto auto;
+}
+
+.project-map-card .qs-migrated-45,
+.project-map-card .qs-migrated-69,
+.project-map-card .operational-surface {
+  min-width: 0;
+  min-height: 0;
 }
 
 @media (max-width: 900px) {

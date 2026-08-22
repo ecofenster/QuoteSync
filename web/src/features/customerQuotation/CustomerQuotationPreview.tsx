@@ -1,5 +1,6 @@
 import {
   useEffect,
+  Fragment,
   useMemo,
   useState,
   type ComponentType,
@@ -176,10 +177,14 @@ export default function CustomerQuotationPreview({
           {projection.charges.length ? (
             <div className="customer-quotation__charges">
               {projection.charges.map((charge) => (
-                <div key={charge.id}>
-                  <span>{charge.label}</span>
-                  <strong>{money(charge.amountGbp)}</strong>
-                </div>
+                <Fragment key={charge.id}>
+                  <div>
+                    <span>{charge.label}</span>
+                    <strong>{money(charge.amountGbp)}</strong>
+                  </div>
+                  {charge.id === "products" ? <div className="customer-quotation__scope-note"><span>{projection.positions.length} quoted position(s) · physical quantity {projection.positions.reduce((sum, position) => sum + position.quantity, 0)} · detailed product schedule follows</span></div> : null}
+                  {charge.id === "installation" && projection.installationInclusions.length ? <div className="customer-quotation__scope-note"><span>Includes: {projection.installationInclusions.join(" · ")}</span></div> : null}
+                </Fragment>
               ))}
             </div>
           ) : null}
