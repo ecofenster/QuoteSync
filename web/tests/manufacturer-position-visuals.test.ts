@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import JSZip from 'jszip';
 import { extractSupplierDocument } from '../server/features/supplierImportLab/documentExtraction.js';
-import { mapManufacturerVisualsToRows } from '../server/features/supplierImportLab/manufacturerPositionVisuals.js';
+import { emfRendererScriptPath, mapManufacturerVisualsToRows } from '../server/features/supplierImportLab/manufacturerPositionVisuals.js';
 import { parseCommercialFields } from '../server/features/supplierImportLab/commercialFieldParser.js';
 
 const fixture = path.resolve('docs/Supplier_Quotes/343117-3_EF-EST-2026-004 - Luke.docx');
@@ -30,4 +30,25 @@ test('ambiguous reference mapping remains unavailable and requires review', () =
   const rows: any[] = [0, 1].map((ordinal) => ({ ordinal, displayReference: 'W1', manufacturerEvidence: evidence(), originalExtractedSnapshot: { manufacturerEvidence: evidence() } }));
   mapManufacturerVisualsToRows(rows, [{ customerReference: 'W1', mappingConfidence: 'strong', mappingMethod: 'docx_same_table_cell_exact_reference', status: 'available', renderedDerivative: { mediaType: 'image/png', url: '/must-not-leak.png' } }]);
   for (const row of rows) { assert.equal(row.manufacturerEvidence.sourceVisual.status, 'unavailable'); assert.equal(row.manufacturerEvidence.sourceVisual.mappingReviewStatus, 'needs_review'); assert.equal(row.manufacturerEvidence.sourceVisual.url, undefined); }
+});
+
+test('EMF renderer location is module-relative and independent of the working directory', async () => {
+  const original = process.cwd();
+  try {
+    process.chdir(os.tmpdir());
+    await access(emfRendererScriptPath);
+    assert.match(emfRendererScriptPath.replaceAll('\\', '/'), /server\/features\/supplierImportLab\/renderEmfToPng\.ps1$/);
+  } finally { process.chdir(original); }
+});
+
+test('same-cell U-Value suffix maps conservatively while collisions remain unavailable', () => {
+  const evidence = () => ({ sourceVisual: { kind: 'manufacturer_document_image', status: 'unavailable' } });
+  const row: any = { displayReference: 'M', manufacturerEvidence: evidence(), originalExtractedSnapshot: { manufacturerEvidence: evidence() } };
+  mapManufacturerVisualsToRows([row], [{ customerReference: 'M U-Value – 0,92', mappingConfidence: 'strong', mappingMethod: 'docx_same_table_cell_exact_reference', status: 'available', sourceFormat: 'png', renderedDerivative: { mediaType: 'image/png', url: '/m.png' } }]);
+  assert.equal(row.manufacturerEvidence.sourceVisual.status, 'available');
+  assert.equal(row.manufacturerEvidence.sourceVisual.url, '/m.png');
+
+  const duplicates: any[] = [0, 1].map(() => ({ displayReference: 'M', manufacturerEvidence: evidence(), originalExtractedSnapshot: { manufacturerEvidence: evidence() } }));
+  mapManufacturerVisualsToRows(duplicates, [{ customerReference: 'M U-Value – 0,92', mappingConfidence: 'strong', mappingMethod: 'docx_same_table_cell_exact_reference', status: 'available', renderedDerivative: { mediaType: 'image/png', url: '/must-not-map.png' } }]);
+  for (const duplicate of duplicates) assert.equal(duplicate.manufacturerEvidence.sourceVisual.status, 'unavailable');
 });

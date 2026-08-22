@@ -33,6 +33,8 @@
 .customer-quotation__print-root--customer-quotation .customer-quotation-position__drawing small{color:var(--document-muted)}
 .customer-quotation__print-root--customer-quotation .customer-quotation-position__specification dl{font-size:7.2px;line-height:1.25}
 .customer-quotation__print-root--customer-quotation .customer-quotation-position__specification dl div{grid-template-columns:24mm 1fr}
+.customer-quotation-position__specification dd{white-space:pre-line}
 .customer-quotation__print-root--customer-quotation .customer-quotation-position__technical{border-color:var(--document-rule);min-height:15mm}
 .customer-quotation__print-root--customer-quotation .customer-quotation-position__technical th,.customer-quotation__print-root--customer-quotation .customer-quotation-position__technical td{border-color:var(--document-rule)}
 .customer-quotation__print-root--customer-quotation .customer-quotation-position--wide .customer-quotation-position__drawing-stage img{max-height:125mm}
+@media print{.customer-quotation-position__bar,.customer-quotation-page__footer,.customer-quotation-page__quote span,.customer-quotation-position__facts .is-total{-webkit-print-color-adjust:exact;print-color-adjust:exact}}

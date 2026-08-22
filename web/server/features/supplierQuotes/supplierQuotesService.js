@@ -99,6 +99,40 @@ export function createSupplierQuotesService(db, { attachmentRoot = resolveAttach
     const normalizedName = normalizeReference(first.quote.supplier_name); const candidates = suppliers.filter(item => normalizeReference(item.supplierName) === normalizedName || normalizeReference(item.supplierName).includes(normalizedName) || normalizedName.includes(normalizeReference(item.supplierName))); const suggestedSupplierCode = candidates.length === 1 ? candidates[0].supplierCode : suppliers.some(item => item.supplierCode === first.quote.supplier_code) ? first.quote.supplier_code : null;
     return { estimateId, documents: reviewedDocuments.map(({ fields: _fields, quote: _quote, revision: _revision, ...item }) => item), metadata: { supplierName: first.quote.supplier_name, supplierCode: suggestedSupplierCode, quotationNumber: detectedReference, revision: detectedRevision, currency: first.revision.currency }, canonicalSuppliers: suppliers, positionCount: reviewedDocuments.reduce((sum, item) => sum + item.rows.length, 0) };
   }
+  async function regenerateManufacturerVisuals(estimateId, quoteId, revisionId, attachmentId) {
+    const attachment = await attachmentRow(estimateId, quoteId, revisionId, attachmentId);
+    const revision = attachment && await revisionRow(estimateId, quoteId, revisionId);
+    if (!attachment || !revision || attachment.role === 'derived_artifact' || !attachment.parser_eligible) return null;
+    const extracted = await extractDocument(resolveManagedPath(attachment.storage_key, attachmentRoot), { id: attachment.id, sessionId: estimateId, mediaType: attachment.media_type }, { visualRoot: path.join(attachmentRoot, 'manufacturer-position-visuals') });
+    if (!extracted.textAvailable) throw Object.assign(new Error('OCR required — unsupported for this document.'), { code: 'ocr_required' });
+    const fields = parseFields(extracted, { currency: revision.currency });
+    const positions = await db.all('SELECT id,display_reference FROM supplier_quote_positions WHERE estimate_id=? AND revision_id=? ORDER BY source_sequence,rowid', estimateId, revisionId);
+    const positionsByReference = new Map();
+    for (const position of positions) { const key = normalizeReference(position.display_reference); positionsByReference.set(key, [...(positionsByReference.get(key) || []), position]); }
+    const updates = [];
+    for (const row of fields.rows) {
+      const visual = row.manufacturerEvidence?.sourceVisual;
+      const matches = positionsByReference.get(normalizeReference(row.displayReference)) || [];
+      if (matches.length === 1 && visual?.status === 'available' && visual.url) updates.push({ sourcePositionId: matches[0].id, visual });
+    }
+    let updatedCostingRows = 0;
+    await db.exec('BEGIN IMMEDIATE');
+    try {
+      for (const update of updates) {
+        const costingRows = await db.all('SELECT id,source_snapshot_json FROM project_calculator_estimate_product_rows WHERE source_position_id=? AND source_revision_id=?', update.sourcePositionId, revisionId);
+        for (const costingRow of costingRows) {
+          const snapshot = JSON.parse(costingRow.source_snapshot_json || '{}');
+          snapshot.manufacturerEvidence = { ...(snapshot.manufacturerEvidence || {}), sourceVisual: update.visual };
+          snapshot.sourceVisual = update.visual;
+          snapshot.originalExtractedSnapshot = { ...(snapshot.originalExtractedSnapshot || {}), manufacturerEvidence: { ...(snapshot.originalExtractedSnapshot?.manufacturerEvidence || {}), sourceVisual: update.visual } };
+          await db.run('UPDATE project_calculator_estimate_product_rows SET source_snapshot_json=?,updated_at=? WHERE id=?', JSON.stringify(snapshot), nowIso(), costingRow.id);
+          updatedCostingRows += 1;
+        }
+      }
+      await db.exec('COMMIT');
+    } catch (error) { await db.exec('ROLLBACK'); throw error; }
+    return { estimateId, quoteId, revisionId, attachmentId, positionCount: fields.rows.length, availablePreviews: fields.rows.filter(row => row.manufacturerEvidence?.sourceVisual?.status === 'available').length, retainedSources: extracted.manufacturerVisualCandidates.filter(item => item.originalAsset).length, updatedCostingRows, warnings: extracted.warnings };
+  }
   async function extractAndLoadSupplierCosts(estimateId, scenarioId, documents, confirmation = {}) {
     if (!(await estimateExists(estimateId))) return null;
     const scenario = await db.get('SELECT * FROM project_calculator_lab_scenarios WHERE id=? AND estimate_id=?', scenarioId, estimateId);
@@ -222,5 +256,5 @@ export function createSupplierQuotesService(db, { attachmentRoot = resolveAttach
     return Boolean(row);
   }
   async function deleteAttachmentMetadata(estimateId, quoteId, revisionId, attachmentId) { const row = await attachmentRow(estimateId, quoteId, revisionId, attachmentId); if (!row) return null; if (await attachmentIsInUse(estimateId, attachmentId)) throw Object.assign(new Error('Attachment is referenced by supplier evidence.'), { code: 'attachment_in_use' }); const result = await db.run('DELETE FROM supplier_quote_attachments WHERE id=? AND estimate_id=? AND revision_id=?', attachmentId, estimateId, revisionId); return result.changes ? { storageKey: row.storage_key } : null; }
-  return { estimateExists, createQuote, listQuotes, getQuote, createRevision, listRevisions, getRevision, listAttachments, getAttachment, insertAttachments, createImportRuns, prepareImportReview, extractAndLoadSupplierCosts, deleteAttachmentMetadata };
+  return { estimateExists, createQuote, listQuotes, getQuote, createRevision, listRevisions, getRevision, listAttachments, getAttachment, insertAttachments, createImportRuns, prepareImportReview, regenerateManufacturerVisuals, extractAndLoadSupplierCosts, deleteAttachmentMetadata };
 }

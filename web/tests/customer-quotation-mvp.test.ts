@@ -139,6 +139,35 @@ test("imported evidence is customer-safe while native drawing remains unavailabl
   assert.deepEqual(imported?.sectionDetailIds, []);
 });
 
+test("customer-safe specification suppresses duplicate product, retains distinct product and projects retained glass sealing evidence", () => {
+  const input = scenario();
+  const row = input.products[0];
+  row.sourceSnapshot.manufacturerEvidence.product = "Eco Therm+";
+  row.sourceSnapshot.manufacturerEvidence.productSystem = "  eco therm+  ";
+  row.sourceSnapshot.manufacturerEvidence.customerSafeSpecification = [
+    { ordinal: 1, label: "Product", value: "Eco Therm+" },
+    { ordinal: 2, label: "Glass unit", value: "Triple glazing" },
+    { ordinal: 12, label: "Uw", value: "0.98" },
+  ];
+  row.sourceSnapshot.sourceTrace = [
+    { extractedText: "9. Glass sealing:" },
+    { extractedText: "internally: Glazing gasket Black," },
+    { extractedText: "externally: Glazing gasket Black" },
+    { extractedText: "10. Routing: for sill outside only" },
+  ];
+  let position = buildCustomerQuotationProjection({ scenario: input, client, estimate }).positions[0];
+  assert.equal(position.specification.some((item) => item.label.toLowerCase() === "product"), false);
+  assert.deepEqual(position.specification.find((item) => item.label === "Glass sealing"), { label: "Glass sealing", value: "Internally: Glazing gasket Black\nExternally: Glazing gasket Black" });
+  assert.equal(position.specification.some((item) => /^(?:ug|uw|u-value)$/i.test(item.label)), false);
+  assert.equal(position.configurationDescription, "View from inside Left opening");
+
+  row.sourceSnapshot.manufacturerEvidence.productSystem = "Europa 92 Alu";
+  row.sourceSnapshot.sourceTrace = [];
+  position = buildCustomerQuotationProjection({ scenario: input, client, estimate }).positions[0];
+  assert.deepEqual(position.specification.find((item) => item.label === "Product"), { label: "Product", value: "Eco Therm+" });
+  assert.equal(position.specification.some((item) => item.label === "Glass sealing"), false);
+});
+
 test("reviewed manufacturer image is the customer-safe fallback without source evidence leakage", () => {
   const input = scenario(); const row = input.products.find((item) => item.displayReference === "D01")!;
   const evidence: Record<string, unknown> = {}; row.sourceSnapshot!.manufacturerEvidence = evidence;
@@ -218,6 +247,7 @@ test("the canonical entry point and A4 print path are present and misleading leg
   assert.match(css, /grid-template-rows:repeat\(2,minmax\(0,1fr\)\)/);
   assert.match(css, /no-print/);
   assert.match(css, /estimate-commercial>:not\(\.customer-quotation__scrim\)/);
+  assert.match(css, /customer-quotation-position__bar[\s\S]*-webkit-print-color-adjust:exact;print-color-adjust:exact/);
 });
 
 test("dedicated Estimate containment and simplified thermal-aware Products columns use shared canonical evidence", async () => {

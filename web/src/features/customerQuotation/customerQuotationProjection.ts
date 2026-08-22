@@ -72,17 +72,42 @@ const nonZero = (value: string | null | undefined) => Math.abs(Number(value ?? 0
 const safeSpecificationLabels = new Set(["product", "system", "alu cladded", "timber", "surface finishing", "glass unit", "fittings", "trickle ventilator", "drip rail", "sash sealing", "glass sealing", "routing", "opening", "threshold", "locking", "weight"]);
 const record = (value: unknown): Record<string, unknown> => value && typeof value === "object" ? value as Record<string, unknown> : {};
 const textValue = (value: unknown) => typeof value === "string" ? value.trim() : "";
+const specificationOrder = ["alu cladded", "external finish", "timber", "material", "surface finishing", "glass unit", "fittings", "trickle ventilator", "drip rail", "sash sealing", "glass sealing", "routing", "opening", "threshold", "locking", "weight"];
+const normalizedSpecificationValue = (value: string) => value.trim().toLocaleLowerCase("en-GB").replace(/[\s\u00a0]+/g, " ").replace(/\s*([/+&-])\s*/g, "$1").replace(/[.:;,]+$/g, "");
 
 function manufacturerEvidenceFor(row: { sourceSnapshot: Record<string, unknown> | null }) {
   const snapshot = record(row.sourceSnapshot);
   return record(snapshot.manufacturerEvidence);
 }
 
-function customerSafeSpecification(evidence: Record<string, unknown>) {
-  return (Array.isArray(evidence.customerSafeSpecification) ? evidence.customerSafeSpecification : []).flatMap((value) => {
+function glassSealingFromSourceTrace(snapshot: Record<string, unknown>) {
+  const lines = (Array.isArray(snapshot.sourceTrace) ? snapshot.sourceTrace : []).map((value) => textValue(record(value).extractedText)).filter(Boolean);
+  const headingIndex = lines.findIndex((line) => /^\s*(?:\d+\.\s*)?glass sealing\s*:?\s*$/i.test(line));
+  if (headingIndex < 0) return "";
+  const values: string[] = [];
+  for (const line of lines.slice(headingIndex + 1)) {
+    if (/^\s*\d+\.\s*/.test(line)) break;
+    const match = line.match(/^\s*(internally|externally)\s*:\s*(.+?)\s*,?\s*$/i);
+    if (match) values.push(`${match[1][0].toUpperCase()}${match[1].slice(1).toLowerCase()}: ${match[2]}`);
+  }
+  return values.join("\n");
+}
+
+function customerSafeSpecification(evidence: Record<string, unknown>, snapshot: Record<string, unknown>, productSystem: string) {
+  const items = (Array.isArray(evidence.customerSafeSpecification) ? evidence.customerSafeSpecification : []).flatMap((value) => {
     const item = record(value); const label = textValue(item.label); const content = textValue(item.value);
     return label && content && safeSpecificationLabels.has(label.toLowerCase()) ? [{ label, value: content }] : [];
   });
+  const glassSealing = glassSealingFromSourceTrace(snapshot);
+  if (glassSealing && !items.some((item) => item.label.toLowerCase() === "glass sealing")) items.push({ label: "Glass sealing", value: glassSealing });
+  return items
+    .filter((item) => !/^(?:ug|uw|u-value)$/i.test(item.label.trim()))
+    .filter((item) => item.label.toLowerCase() !== "product" || normalizedSpecificationValue(item.value) !== normalizedSpecificationValue(productSystem))
+    .sort((left, right) => {
+      const leftIndex = specificationOrder.indexOf(left.label.toLowerCase());
+      const rightIndex = specificationOrder.indexOf(right.label.toLowerCase());
+      return (leftIndex < 0 ? Number.MAX_SAFE_INTEGER : leftIndex) - (rightIndex < 0 ? Number.MAX_SAFE_INTEGER : rightIndex);
+    });
 }
 
 function drawingForPosition(estimatePosition: Position | null, evidence: Record<string, unknown>): CustomerQuotationDrawing {
@@ -126,6 +151,7 @@ export function buildCustomerQuotationProjection(input: {
   const estimateById = new Map(input.estimate.positions.map((position) => [String(position.id), position]));
   const positions = result.productPricing.map(({ row, unitSellingPrice, totalSellingPrice }, index): CustomerQuotationPosition => {
     const estimatePosition = row.estimatePositionId ? estimateById.get(String(row.estimatePositionId)) ?? null : null;
+    const snapshot = record(row.sourceSnapshot);
     const evidence = manufacturerEvidenceFor(row);
     const configured = estimatePosition ? getConfiguredPositionContract(estimatePosition) : null;
     const manufacturerUg = textValue(evidence.manufacturerQuotedUg);
@@ -147,7 +173,7 @@ export function buildCustomerQuotationProjection(input: {
         : customerProductDescription(row),
       productSystem,
       configurationDescription: textValue(evidence.configurationDescription),
-      specification: customerSafeSpecification(evidence),
+      specification: customerSafeSpecification(evidence, snapshot, productSystem),
       drawing,
       unitSellingPriceGbp: unitSellingPrice,
       totalSellingPriceGbp: totalSellingPrice,
