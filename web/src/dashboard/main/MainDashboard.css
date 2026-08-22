@@ -119,14 +119,18 @@
   min-height: 36px;
   border-radius: var(--radius-button);
   padding: 0 18px;
-  background: var(--qs-theme-primary);
-  color: var(--qs-text-on-primary);
-  box-shadow: 0 14px 28px color-mix(in srgb, var(--qs-theme-primary) 22%, transparent);
+  background: var(--qs-theme-action-primary);
+  color: var(--qs-theme-action-primary-text);
+  box-shadow: 0 14px 28px color-mix(in srgb, var(--qs-theme-action-primary) 22%, transparent);
+}
+
+.qs-dashboard-primary-action:hover {
+  background: var(--qs-theme-action-primary-hover);
 }
 
 .qs-link-button {
   background: transparent;
-  color: var(--qs-operational-quotes);
+  color: var(--qs-theme-accent-text);
   white-space: nowrap;
 }
 

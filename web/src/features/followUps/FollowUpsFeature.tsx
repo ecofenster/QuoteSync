@@ -496,9 +496,11 @@ export default function FollowUpsFeature({
         <div className="follow-ups__panel">
           <div className="follow-ups__panel-header follow-ups__panel-header--split">
             <button
-              className="follow-ups__nav-button"
+              className="follow-ups__nav-button ui-button ui-button--icon"
               type="button"
               onClick={gotoPrevMonth}
+              aria-label="Previous month"
+              title="Previous month"
             >
               ←
             </button>
@@ -506,9 +508,11 @@ export default function FollowUpsFeature({
               {now.toLocaleString(undefined, { month: "long", year: "numeric" })}
             </div>
             <button
-              className="follow-ups__nav-button"
+              className="follow-ups__nav-button ui-button ui-button--icon"
               type="button"
               onClick={gotoNextMonth}
+              aria-label="Next month"
+              title="Next month"
             >
               →
             </button>
@@ -535,7 +539,7 @@ export default function FollowUpsFeature({
                     key={iso}
                     type="button"
                     onClick={() => setSelectedDateISO(iso)}
-                    className={`follow-ups__calendar-day${isSelected ? " follow-ups__calendar-day--selected" : ""}`}
+                    className={`follow-ups__calendar-day ui-interactive-row${isSelected ? " follow-ups__calendar-day--selected" : ""}`}
                     data-month={inMonth ? "current" : "adjacent"}
                     title={iso}
                   >
@@ -570,7 +574,15 @@ export default function FollowUpsFeature({
                 <div
                   key={fu.id}
                   onClick={() => setSelectedFollowUpId(fu.id)}
-                  className={`follow-ups__item${active ? " follow-ups__item--active" : overdue ? " follow-ups__item--overdue" : ""}`}
+                  className={`follow-ups__item ui-interactive-row${active ? " follow-ups__item--active" : overdue ? " follow-ups__item--overdue" : ""}`}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setSelectedFollowUpId(fu.id);
+                    }
+                  }}
                 >
                   <div className="follow-ups__item-head">
                     <div className="follow-ups__item-title">{fu.title || "Follow-up"}</div>
@@ -622,14 +634,14 @@ export default function FollowUpsFeature({
 
                 <div className="follow-ups__actions">
                   <button
-                    className="follow-ups__secondary-button"
+                    className="follow-ups__secondary-button ui-button"
                     type="button"
                     onClick={() => onOpenClient(selectedFollowUp.clientId)}
                   >
                     Open client
                   </button>
                   <button
-                    className="follow-ups__primary-button"
+                    className="follow-ups__primary-button ui-button ui-button--primary"
                     type="button"
                     onClick={() => markDone(selectedFollowUp.id)}
                   >
@@ -676,7 +688,7 @@ export default function FollowUpsFeature({
             />
 
             <button
-              className="follow-ups__save-button"
+              className="follow-ups__save-button ui-button ui-button--primary"
               type="button"
               onClick={addFollowUpNoteFromPanel}
               disabled={!selectedFollowUp || !noteText.trim()}

@@ -39,8 +39,10 @@ import { resolveManufacturerVisualAssetUrl } from "../manufacturerVisuals/manufa
 import { useCustomerViewPolicy } from "../estimateCommercial/customerViewPolicy";
 import {
   deriveProjectCostingCommercialResult,
+  percentageAmount,
   type ProjectCostingScenarioView,
 } from "./domain/projectCostingCommercialResult";
+import { resolveVatTreatment, VAT_TREATMENTS, type VatTreatmentCode } from "./domain/vatTreatment";
 
 type WorksheetScenario = ProjectCostingScenarioView & {
   commercialMarginPolicy?: CommercialMarginPolicy;
@@ -460,6 +462,7 @@ function Section({
 export default function ScenarioCostingWorksheet({
   scenario,
   commercialView = "internal",
+  estimateMetrics,
   onNew,
   onSaveMarkups,
   onUpdateProduct,
@@ -472,6 +475,13 @@ export default function ScenarioCostingWorksheet({
 }: {
   scenario: WorksheetScenario;
   commercialView?: "internal" | "customer";
+  estimateMetrics?: {
+    positions: number;
+    totalAreaSquareMetres: number;
+    totalLinearMetres: number;
+    totalQuantity: number;
+    customerEstimateValue: string;
+  };
   onNew?: () => void;
   onSaveMarkups: (
     markups: ProjectCostingMarkups & { targetGrossMarginPercent: string },
@@ -894,6 +904,8 @@ export default function ScenarioCostingWorksheet({
     Boolean(
       scenario.options?.useIllbruck || scenario.options?.bracketsRequired,
     );
+  const vatTreatment=resolveVatTreatment(scenario.options?.vatTreatment,scenario.options?.projectType),vatAmount=percentageAmount(actualSale,vatTreatment.percentage),totalIncludingVat=addDecimalAmounts([actualSale,vatAmount]);
+  const saveVatTreatment=async(code:VatTreatmentCode)=>{setSaving(true);setError("");try{const selected=VAT_TREATMENTS[code],updated=await projectCalculatorLabApi.updateVatTreatment(scenario.id,{code,percentage:selected.percentage,source:"manual_override",manuallyOverridden:true});window.dispatchEvent(new CustomEvent("quotesuite:costing-updated",{detail:updated}));}catch(reason){setError(reason instanceof Error?reason.message:"VAT Treatment could not be saved.");}finally{setSaving(false);}};
   const nav = [
     "Quotation",
     "Extraction Review",
@@ -1503,50 +1515,23 @@ export default function ScenarioCostingWorksheet({
                 <div className="costing-sheet__detail-list">
                   <div className="costing-sheet__product-actions"><span>Installation required?</span><Toggle ariaLabel="Installation required" value={Boolean(scenario.options?.installationRequired)} onChange={(value)=>void updateInstallationRequired(value)} /><ConfigureInstallation scenario={scenario}/>{scenario.installationProgramme?.status==="review_required"?<span className="ui-badge">Review Required</span>:null}</div>
                   {scenario.installationProgramme ? <>
+                    <h4 className="costing-sheet__group-title">Team / Programme</h4>
                     <div className="costing-sheet__facts"><span>Team <b>{scenario.selectedInstallationTeam?`${scenario.selectedInstallationTeam.companyName} · ${scenario.selectedInstallationTeam.name}`:"Select team"}</b></span><span>Crew <b>{scenario.installationProgramme.crewSize}</b></span><span>Programme <b>{scenario.installationProgramme.programmeDays} full day(s)</b></span><span>Travel <b>{scenario.installationProgramme.travel.mode.replaceAll("_"," ")}</b></span><span>Vehicles <b>{scenario.installationProgramme.travel.vehicleCount}</b></span></div>
+                    <h4 className="costing-sheet__group-title">Labour</h4>
                     <CommercialRow description="Installer labour · full-day charging" cost={money(scenario.installationProgramme.costs.labour)} converted={`${scenario.installationProgramme.crewSize} people · ${scenario.installationProgramme.programmeDays} day(s)`} rate={`${markupDraft.installation}%`} sale={money(applyMarkupPercentage(scenario.installationProgramme.costs.labour,markupDraft.installation)?.sellingPrice)} />
+                    <h4 className="costing-sheet__group-title">Travel / Vehicles</h4>
                     <CommercialRow description="Mileage" cost={money(scenario.installationProgramme.costs.mileage)} converted={`${scenario.installationProgramme.travel.chargeableMiles} mi · ${scenario.installationProgramme.travel.vehicleCount} vehicle(s)`} rate={`${markupDraft.installation}%`} sale={money(applyMarkupPercentage(scenario.installationProgramme.costs.mileage,markupDraft.installation)?.sellingPrice)} />
+                    <h4 className="costing-sheet__group-title">Food / Accommodation</h4>
                     <CommercialRow description="Food allowance" cost={money(scenario.installationProgramme.costs.food)} converted={`${scenario.installationProgramme.allowances.foodDays} day(s)`} rate={`${markupDraft.installation}%`} sale={money(applyMarkupPercentage(scenario.installationProgramme.costs.food,markupDraft.installation)?.sellingPrice)} />
                     <CommercialRow description="Accommodation" cost={money(scenario.installationProgramme.costs.accommodation)} converted={`${scenario.installationProgramme.allowances.nights} night(s)`} rate={`${markupDraft.installation}%`} sale={money(applyMarkupPercentage(scenario.installationProgramme.costs.accommodation,markupDraft.installation)?.sellingPrice)} />
+                    <h4 className="costing-sheet__group-title">Survey / Support / Cills</h4>
                     <CommercialRow description="Installation Support" cost={money(scenario.installationProgramme.costs.support)} converted={`${scenario.installationProgramme.allowances.supportDays} full day(s)`} rate={`${markupDraft.installation}%`} sale={money(applyMarkupPercentage(scenario.installationProgramme.costs.support,markupDraft.installation)?.sellingPrice)} />
                     <CommercialRow description="Retrofit Survey" cost={money(scenario.installationProgramme.costs.survey)} converted={`${scenario.installationProgramme.allowances.surveyDays} day(s)`} rate={`${markupDraft.installation}%`} sale={money(applyMarkupPercentage(scenario.installationProgramme.costs.survey,markupDraft.installation)?.sellingPrice)} />
                     <CommercialRow description="Cill Installation" cost={money(scenario.installationProgramme.costs.cillInstallation)} converted={`${scenario.installationProgramme.allowances.cillApplicableQuantity} applicable window(s)`} rate={`${markupDraft.installation}%`} sale={money(applyMarkupPercentage(scenario.installationProgramme.costs.cillInstallation,markupDraft.installation)?.sellingPrice)} />
-                    {scenario.installationProgramme.reviewRequired.length?<details><summary>Review Required ({scenario.installationProgramme.reviewRequired.length})</summary><ul>{scenario.installationProgramme.reviewRequired.map(item=><li key={item}>{item}</li>)}</ul></details>:null}
+                    <h4 className="costing-sheet__group-title">Skip / Lifting Review</h4>{scenario.installationProgramme.reviewRequired.length?<details><summary>Review Required ({scenario.installationProgramme.reviewRequired.length})</summary><ul>{scenario.installationProgramme.reviewRequired.map(item=><li key={item}>{item}</li>)}</ul></details>:<p>No skip or lifting review outstanding.</p>}
                     <details><summary>Programme calculation trail</summary>{scenario.installationProgramme.days.map((day,index)=><div className="costing-sheet__facts" key={index}><span><b>Day {String(day.day)}</b> · {String(day.capacityHours)} productive hours available</span><span>{Array.isArray(day.tasks)?day.tasks.map(task=>`${String(task.reference)} (${String(task.durationHours)} h / ${String(task.minimumCrew)} people)`).join(" · "):""}</span></div>)}</details>
                   </> : <p>Configure Installation to create the Estimate-owned programme and costing snapshot.</p>}
                   {equipment.map(item=><CommercialRow key={item.id} description={item.label} cost={money(item.unitCost,item.currency)} converted={money(item.unitCost)} rate={`${markupDraft.equipment}%`} sale={money(applyMarkupPercentage(item.unitCost??"0",markupDraft.equipment)?.sellingPrice)}/>)}
-                  {[
-                    "labour",
-                    "travel",
-                    "accommodation",
-                    "food allowance",
-                    "staying-away allowance",
-                  ].map((label) => {
-                    const row = installation.find(
-                      (item) =>
-                        item.category === label ||
-                        item.label.toLowerCase().includes(label.split(" ")[0]),
-                    );
-                    return (
-                      <CommercialRow
-                        key={label}
-                        description={label.replace(/^./, (c) =>
-                          c.toUpperCase(),
-                        )}
-                        cost={
-                          row
-                            ? money(
-                                row.originalAmount,
-                                row.originalCurrency ?? scenario.currency,
-                              )
-                            : "Not configured"
-                        }
-                        converted={row ? money(row.gbpAmount) : "—"}
-                        rate={`${scenario.markups.installation}%`}
-                        sale={row ? money(row.markedUpAmount) : "—"}
-                      />
-                    );
-                  })}
                 </div>
                 <div className="costing-sheet__facts">
                   <span>
@@ -1604,38 +1589,18 @@ export default function ScenarioCostingWorksheet({
                       sale={money(applyMarkupPercentage(item.unitCost??"0",markupDraft.materials)?.sellingPrice)}
                     />
                   ))}
-                  {scenario.me508Calculation ? (
-                    <CommercialRow
-                      description={`ME508 internal membrane · ${scenario.me508Calculation.rollsRequired} rolls / ${scenario.me508Calculation.boxesRequired} boxes`}
-                      cost={
-                        scenario.me508Calculation.totalCost
-                          ? money(scenario.me508Calculation.totalCost)
-                          : "Price required"
-                      }
-                      converted={
-                        scenario.me508Calculation.totalCost
-                          ? money(scenario.me508Calculation.totalCost)
-                          : "Price required"
-                      }
-                      rate={`${markupDraft.materials}%`}
-                      sale={
-                        scenario.me508Calculation.totalCost
-                          ? money(applyMarkupPercentage(scenario.me508Calculation.totalCost,markupDraft.materials)?.sellingPrice)
-                          : "Price required"
-                      }
-                    />
-                  ) : null}
                   {scenario.installationMaterials ? <>
-                    <h4>Sealing &amp; Airtightness</h4>
-                    {Object.entries(scenario.installationMaterials.sealing).filter(([product])=>product!=="ME508").map(([product,requirement])=><CommercialRow key={product} description={product} cost={requirement.status} converted={requirement.requiredLengthM==null?"—":`${requirement.requiredLengthM} m required`} rate={`${markupDraft.materials}%`} sale="—"/>)}
-                    <h4>Mechanical Fixings</h4>
+                    <h4 className="costing-sheet__group-title">Sealing &amp; Airtightness</h4>
+                    {Object.entries(scenario.installationMaterials.sealingPurchasing).map(([product,requirement])=><CommercialRow key={product} description={requirement.label} cost={requirement.purchaseCost?money(requirement.purchaseCost):requirement.status} converted={`${requirement.requiredLengthM} m · ${requirement.rollsRequired??"—"} rolls / ${requirement.packsRequired??"—"} packs`} rate={`${markupDraft.materials}%`} sale={requirement.purchaseCost?money(applyMarkupPercentage(requirement.purchaseCost,markupDraft.materials)?.sellingPrice):"—"}/>)}
+                    <h4 className="costing-sheet__group-title">Mechanical Fixings</h4>
                     <CommercialRow description={`Bracket ${scenario.installationMaterials.bracketLengthMm??"—"} mm`} cost={scenario.installationMaterials.purchasing.brackets.purchaseCost?money(scenario.installationMaterials.purchasing.brackets.purchaseCost):scenario.installationMaterials.purchasing.brackets.status} converted={`${scenario.installationMaterials.purchasing.brackets.requiredQuantity??"—"} required / ${scenario.installationMaterials.purchasing.brackets.packsRequired??"—"} packs`} rate={`${markupDraft.materials}%`} sale={scenario.installationMaterials.purchasing.brackets.purchaseCost?money(applyMarkupPercentage(scenario.installationMaterials.purchasing.brackets.purchaseCost,markupDraft.materials)?.sellingPrice):"—"}/>
                     <CommercialRow description={`Frame screws · ${scenario.installationMaterials.frameScrewsPerBracket} per bracket (Admin rule)`} cost={scenario.installationMaterials.purchasing.frameScrews.purchaseCost?money(scenario.installationMaterials.purchasing.frameScrews.purchaseCost):scenario.installationMaterials.purchasing.frameScrews.status} converted={`${scenario.installationMaterials.purchasing.frameScrews.requiredQuantity??"—"} required / ${scenario.installationMaterials.purchasing.frameScrews.packsRequired??"—"} packs`} rate={`${markupDraft.materials}%`} sale={scenario.installationMaterials.purchasing.frameScrews.purchaseCost?money(applyMarkupPercentage(scenario.installationMaterials.purchasing.frameScrews.purchaseCost,markupDraft.materials)?.sellingPrice):"—"}/>
                     <CommercialRow description="Substrate fixings" cost={scenario.installationMaterials.purchasing.substrateFixings.purchaseCost?money(scenario.installationMaterials.purchasing.substrateFixings.purchaseCost):scenario.installationMaterials.purchasing.substrateFixings.status} converted={`${scenario.installationMaterials.purchasing.substrateFixings.requiredQuantity??"—"} required / ${scenario.installationMaterials.purchasing.substrateFixings.packsRequired??"—"} packs`} rate={`${markupDraft.materials}%`} sale={scenario.installationMaterials.purchasing.substrateFixings.purchaseCost?money(applyMarkupPercentage(scenario.installationMaterials.purchasing.substrateFixings.purchaseCost,markupDraft.materials)?.sellingPrice):"—"}/>
                     <CommercialRow description="Installation packers" cost={scenario.installationMaterials.packers.purchaseCost?money(String(scenario.installationMaterials.packers.purchaseCost)):scenario.installationMaterials.packers.status==="available"?`${scenario.installationMaterials.packers.finalRequiredQuantity} required`:scenario.installationMaterials.packers.reason??"Pending product specification"} converted={scenario.installationMaterials.packers.status==="available"?`${scenario.installationMaterials.packers.allocatedQuantity} allocated`:"—"} rate={`${markupDraft.materials}%`} sale={scenario.installationMaterials.packers.purchaseCost?money(applyMarkupPercentage(String(scenario.installationMaterials.packers.purchaseCost),markupDraft.materials)?.sellingPrice):"—"}/>
-                    <h4>Tools</h4>
+                    <h4 className="costing-sheet__group-title">Tools</h4>
                     {(scenario.catalogueSnapshot?.catalogue??[]).filter(item=>item.category==="tool").map(item=><CommercialRow key={item.id} description={item.label} cost={item.priceAmount?money(item.priceAmount):"Price required"} converted="Select when required" rate={`${markupDraft.materials}%`} sale={item.priceAmount?money(applyMarkupPercentage(item.priceAmount,markupDraft.materials)?.sellingPrice):"—"}/>)}
-                    <details><summary>Position calculation trail</summary><div className="costing-sheet__detail-list">{scenario.installationMaterials.positionCalculations.map((item,index)=><div className="costing-sheet__facts" key={`${String(item.reference)}-${index}`}><span><b>{String(item.reference)}</b> · {String(item.widthMm)} × {String(item.heightMm)} · Qty {String(item.quantity)}</span><span>Rule <b>{String(item.fixing?.ruleSource??item.fixing?.reason??"Unavailable")}</b></span><span>Left <b>{String(item.fixing?.leftJambFixingCount??"—")}</b></span><span>Right <b>{String(item.fixing?.rightJambFixingCount??"—")}</b></span><span>Head <b>{String(item.fixing?.headFixingCount??"—")}</b></span><span>Sill <b>{String(item.fixing?.sillFixingCount??"—")}</b></span><span>Per frame <b>{String(item.fixing?.totalFixingPositionsPerFrame??"—")}</b></span><span>Total brackets <b>{String(item.bracketQuantity??"—")}</b></span></div>)}</div></details>
+                    <div className="costing-sheet__material-totals"><span>Total installation perimeter <b>{scenario.installationMaterials.totalPerimeterM} m</b></span><span>Total brackets required <b>{scenario.installationMaterials.totals.brackets}</b></span><span>Total frame screws required <b>{scenario.installationMaterials.totals.frameScrews}</b></span><span>Total substrate fixings required <b>{scenario.installationMaterials.totals.substrateFixings}</b></span><span>Total packers required <b>{scenario.installationMaterials.packers.finalRequiredQuantity??"Packer product specification required"}</b></span></div>
+                    <details className="costing-sheet__diagnostic"><summary>Position calculation trail · internal diagnostic</summary><div className="costing-sheet__detail-list">{scenario.installationMaterials.positionCalculations.map((item,index)=><div className="costing-sheet__facts" key={`${String(item.reference)}-${index}`}><span><b>{String(item.reference)}</b> · {String(item.widthMm)} × {String(item.heightMm)} · Qty {String(item.quantity)}</span><span>Rule <b>{String(item.fixing?.ruleSource??item.fixing?.reason??"Unavailable")}</b></span><span>Per frame <b>{String(item.fixing?.totalFixingPositionsPerFrame??"—")}</b></span><span>Total brackets <b>{String(item.bracketQuantity??"—")}</b></span></div>)}</div></details>
                   </> : <p>Installation calculation unavailable until an Estimate installation rule and frame material are selected.</p>}
                 </div>
               </Section>
@@ -1675,6 +1640,15 @@ export default function ScenarioCostingWorksheet({
             ) : null}
             <section className="costing-sheet__summary">
               <h2>Commercial Summary</h2>
+              {estimateMetrics ? (
+                <div className="costing-sheet__estimate-metrics" aria-label="Estimate metrics">
+                  <span><small>Positions</small><b>{estimateMetrics.positions}</b></span>
+                  <span><small>Total area</small><b>{estimateMetrics.totalAreaSquareMetres.toFixed(2)} m²</b></span>
+                  <span><small>Linear metreage</small><b>{estimateMetrics.totalLinearMetres.toFixed(2)} lm</b></span>
+                  <span><small>Total quantity</small><b>{estimateMetrics.totalQuantity}</b></span>
+                  <span><small>Customer Estimate value</small><b>{money(estimateMetrics.customerEstimateValue)}</b></span>
+                </div>
+              ) : null}
               <div className="costing-sheet__margin-control">
                 <label>
                   Target Gross Margin %
@@ -1706,6 +1680,10 @@ export default function ScenarioCostingWorksheet({
                 </small>
               </div>
               <div className="costing-sheet__summary-categories">
+                <div className="costing-sheet__purchase-total">
+                  <strong>Actual GBP Purchase Cost</strong>
+                  <b>{money(supplierPurchaseGbp)}</b>
+                </div>
                 <div>
                   <span>Products / Supply Only</span>
                   <b>{money(productSale)}</b>
@@ -1783,53 +1761,16 @@ export default function ScenarioCostingWorksheet({
                   </div>
                 ))}
               </div>
-              <div className="costing-sheet__summary-cost">
-                {hasPackagePricing ? (
-                  <div>
-                    <strong>Base Supply Only Cost</strong>
-                    <b>{money(productGbp)}</b>
-                  </div>
-                ) : null}
-                {hasPackagePricing ? (
-                  <div>
-                    <strong>Selected Supplier Package Uplift</strong>
-                    <b>
-                      {money(
-                        addDecimalAmounts(
-                          packageUplifts.map((item) => item.purchaseAmountGbp),
-                        ),
-                      )}
-                    </b>
-                  </div>
-                ) : null}
-                <div>
-                  <strong>
-                    {hasPackagePricing
-                      ? "Total Supplier Direct Cost"
-                      : "Actual GBP Purchase Cost"}
-                  </strong>
-                  <b>{money(supplierPurchaseGbp)}</b>
-                </div>
-                <div>
-                  <strong>Project Cost (Ex VAT)</strong>
-                  <b>{money(projectCost)}</b>
-                </div>
-                <div>
-                  <span>
-                    VAT <small>0% · not configured</small>
-                  </span>
-                  <b>{money("0")}</b>
-                </div>
-                <div className="costing-sheet__summary-highlight">
-                  <strong>Project Cost (Inc VAT)</strong>
-                  <b>{money(projectCost)}</b>
-                </div>
-              </div>
               <div className="costing-sheet__summary-profit">
                 <div className="costing-sheet__summary-sale">
-                  <strong>Selling Price</strong>
+                  <strong>Selling Price (Ex VAT)</strong>
                   <b>{money(sale)}</b>
                 </div>
+                <div className="costing-sheet__vat-treatment">
+                  <label>VAT Treatment<select className="ui-input" aria-label="VAT Treatment" value={vatTreatment.code} disabled={saving} onChange={event=>void saveVatTreatment(event.currentTarget.value as VatTreatmentCode)}>{Object.entries(VAT_TREATMENTS).map(([code,item])=><option key={code} value={code}>{item.label} — {item.percentage}%</option>)}</select></label>
+                  <b>{money(vatAmount)}</b><small>{vatTreatment.manuallyOverridden?"Selected for this Estimate":`${vatTreatment.source.replaceAll("_"," ")} · review eligibility`}</small>
+                </div>
+                <div className="costing-sheet__summary-highlight"><strong>Total Including VAT</strong><b>{money(totalIncludingVat)}</b></div>
                 <div>
                   <strong>Gross Profit</strong>
                   <b>{money(profit)}</b>

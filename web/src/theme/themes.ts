@@ -93,12 +93,12 @@ export const DEFAULT_QUOTESYNC_THEME_CONFIGURATION: QuoteSyncThemeConfiguration 
   primary: "#55b948",
   accent: "#b5da9c",
   light: {
-    background: "#f4f7f2",
+    background: "#eef1ed",
     surface: "#ffffff",
-    elevatedSurface: "#f7f8f7",
-    card: "#ffffff",
-    control: "#f8faf7",
-    border: "#d7ded2",
+    elevatedSurface: "#f5f7f4",
+    card: "#f5f7f4",
+    control: "#f8f9f7",
+    border: "#aeb8ae",
     primaryText: "#231f20",
     secondaryText: "#6b6768",
   },
@@ -313,6 +313,18 @@ export function applyThemeConfiguration(configuration: QuoteSyncThemeConfigurati
   activeConfiguration = normaliseThemeConfiguration(configuration);
   const resolved = resolveTheme(requestedMode);
   const palette = activeConfiguration[resolved];
+  const interactiveHover = resolved === "dark"
+    ? `color-mix(in srgb, ${activeConfiguration.primary} 20%, ${palette.surface})`
+    : `color-mix(in srgb, var(--qs-theme-action-primary) 14%, ${palette.elevatedSurface})`;
+  const isDefaultBrand = activeConfiguration.primary.toLowerCase() === DEFAULT_QUOTESYNC_THEME_CONFIGURATION.primary;
+  const actionPrimary = resolved === "dark"
+    ? (isDefaultBrand ? "#275c32" : `color-mix(in srgb, ${activeConfiguration.primary} 58%, #102519)`)
+    : `color-mix(in srgb, ${activeConfiguration.primary} 78%, #173c22)`;
+  const selected = resolved === "dark" ? actionPrimary : `color-mix(in srgb, ${actionPrimary} 90%, #000)`;
+  const accentText = resolved === "dark"
+    ? activeConfiguration.primary
+    : `color-mix(in srgb, ${activeConfiguration.primary} 66%, #173c22)`;
+  const actionPrimaryHover = `color-mix(in srgb, ${actionPrimary} 82%, #000)`;
   applyFontFamily(activeConfiguration.fontFamily);
   document.documentElement.dataset.qsTheme = resolved;
   document.documentElement.dataset.qsThemePreference = requestedMode;
@@ -321,16 +333,27 @@ export function applyThemeConfiguration(configuration: QuoteSyncThemeConfigurati
     "--qs-theme-surface": palette.surface,
     "--qs-theme-elevated": palette.elevatedSurface,
     "--qs-theme-card": palette.card,
+    "--qs-theme-sidebar": resolved === "dark" ? palette.surface : "#e7ece6",
+    "--qs-theme-row": resolved === "dark" ? "transparent" : palette.control,
     "--qs-theme-border": palette.border,
-    "--qs-theme-border-strong": activeConfiguration.primary,
+    "--qs-theme-border-strong": accentText,
     "--qs-theme-text": palette.primaryText,
     "--qs-theme-text-secondary": palette.secondaryText,
     "--qs-theme-text-muted": palette.secondaryText,
     "--qs-theme-input": palette.control,
     "--qs-theme-button": palette.elevatedSurface,
-    "--qs-theme-button-hover": activeConfiguration.accent,
+    "--qs-theme-button-hover": interactiveHover,
+    "--qs-theme-row-hover": resolved === "dark" ? "#2e3638" : "#dde4df",
+    "--qs-theme-selected": selected,
+    "--qs-theme-selected-text": "#ffffff",
+    "--qs-theme-control-border": resolved === "dark" ? "#2e3638" : palette.border,
+    "--qs-theme-action-primary": actionPrimary,
+    "--qs-theme-action-primary-hover": actionPrimaryHover,
+    "--qs-theme-action-primary-text": "#ffffff",
+    "--qs-theme-primary-hover": actionPrimaryHover,
     "--qs-theme-primary": activeConfiguration.primary,
     "--qs-theme-accent": activeConfiguration.accent,
+    "--qs-theme-accent-text": accentText,
     "--qs-theme-selling": activeConfiguration.semantic.sellingPrice,
     "--qs-semantic-success": activeConfiguration.semantic.success,
     "--qs-semantic-warning": activeConfiguration.semantic.warning,

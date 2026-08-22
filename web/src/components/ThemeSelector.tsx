@@ -11,14 +11,14 @@ type Props = {
 };
 
 export default function ThemeSelector({ className }: Props) {
-  const [selectedTheme, setSelectedTheme] = useState<QuoteSyncThemeId>(() => readStoredQuoteSyncTheme());
-  const themeOrder: QuoteSyncThemeId[] = ["light", "dark", "system"];
+  const [selectedTheme, setSelectedTheme] = useState<QuoteSyncThemeId>(() => readStoredQuoteSyncTheme() === "dark" ? "dark" : "light");
+  const themeOrder: QuoteSyncThemeId[] = ["light", "dark"];
   const nextTheme = themeOrder[(themeOrder.indexOf(selectedTheme) + 1) % themeOrder.length];
 
   useEffect(() => {
     const syncTheme = (event: Event) => {
       const requestedMode = (event as CustomEvent<{ requestedMode?: QuoteSyncThemeId }>).detail?.requestedMode;
-      if (requestedMode && requestedMode !== selectedTheme) setSelectedTheme(requestedMode);
+      if ((requestedMode === "light" || requestedMode === "dark") && requestedMode !== selectedTheme) setSelectedTheme(requestedMode);
     };
     window.addEventListener("quotesync-theme-change", syncTheme);
     return () => window.removeEventListener("quotesync-theme-change", syncTheme);

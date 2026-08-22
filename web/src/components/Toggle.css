@@ -39,7 +39,7 @@
 }
 
 .toggle__input:checked + .toggle__track {
-  background: var(--qs-theme-primary);
+  background: var(--qs-bg-selected);
 }
 
 .toggle__input:checked ~ .toggle__thumb {

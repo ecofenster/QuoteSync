@@ -281,8 +281,8 @@
   border: none;
   border-radius: 18px;
   padding: 0 16px;
-  background: var(--qs-theme-text);
-  color: var(--qs-text-on-primary);
+  background: var(--qs-theme-action-primary);
+  color: var(--qs-theme-action-primary-text);
   font-size: 14px;
   font-weight: 800;
 }
@@ -961,8 +961,8 @@
 
 .ep-button--primary {
   border: none;
-  background: var(--qs-theme-text);
-  color: var(--qs-text-on-primary);
+  background: var(--qs-theme-action-primary);
+  color: var(--qs-theme-action-primary-text);
 }
 
 .ep-button--secondary,
@@ -1159,7 +1159,42 @@
 }
 
 .estimate-index-table-wrap { max-height: calc(100vh - 310px); overflow: auto; border: 1px solid var(--qs-border-standard); border-radius: var(--radius-card); background: var(--qs-bg-card); }
-.estimate-index-table { width: 100%; min-width: 1180px; border-collapse: collapse; font-size: var(--qs-type-body); }
+.estimate-index-table { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0 4px; font-size: var(--qs-type-body); }
 .estimate-index-table th { position: sticky; top: 0; z-index: 2; padding: var(--qs-space-2); background: var(--qs-bg-surface-elevated); color: var(--qs-theme-text-muted); text-align: left; white-space: nowrap; }
-.estimate-index-table td { padding: var(--qs-space-2); border-top: 1px solid var(--qs-border-subtle); vertical-align: middle; }
-.estimate-index-table tbody tr:hover { background: var(--qs-bg-hover); }
+.estimate-index-table td { padding: calc(var(--qs-space-2) + 2px) var(--qs-space-2); border-top: 1px solid var(--qs-border-subtle); border-bottom: 1px solid var(--qs-border-subtle); background: var(--qs-bg-row); vertical-align: middle; }
+.estimate-index-table tbody td:first-child { border-left: 1px solid var(--qs-border-subtle); border-radius: var(--radius-control) 0 0 var(--radius-control); }
+.estimate-index-table tbody td:last-child { border-right: 1px solid var(--qs-border-subtle); border-radius: 0 var(--radius-control) var(--radius-control) 0; }
+.estimate-index-table th:not(.estimate-index-actions-cell),
+.estimate-index-table td:not(.estimate-index-actions-cell) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.estimate-index-table tbody tr:hover td { background: var(--qs-bg-row-hover); }
+.estimate-index-actions-cell { width: 44%; }
+.estimate-index-action-headings,
+.estimate-index-actions {
+  display: grid;
+  grid-template-columns: minmax(54px, 0.7fr) minmax(72px, 0.9fr) minmax(120px, 1.5fr) minmax(54px, 0.7fr) minmax(58px, 0.75fr) minmax(72px, 0.9fr);
+  align-items: stretch;
+  gap: clamp(4px, 0.55vw, 10px);
+  white-space: nowrap;
+}
+.estimate-index-action-headings > span { color: var(--qs-theme-text-muted); font-size: var(--qs-type-meta); font-weight: 600; text-align: center; }
+.estimate-index-actions .ui-button { width: 100%; min-width: 0; min-height: 40px; padding-inline: var(--qs-space-2); }
+.estimate-index-actions .ui-button:nth-child(1),
+.estimate-index-actions .ui-button:nth-child(2),
+.estimate-index-actions .ui-button:nth-child(4),
+.estimate-index-actions .ui-button:nth-child(5) { font-size: 20px; line-height: 1; }
+.estimate-index-actions .ui-input { width: 100%; min-width: 0; min-height: 40px; }
+.estimate-index-actions .ui-input:has(option[value="Open"]:checked) { border-color:var(--qs-warning-border); background:var(--qs-warning-surface); color:var(--qs-semantic-warning); }
+.estimate-index-actions .ui-input:has(option[value="Order"]:checked) { border-color:var(--qs-operational-success-border); background:var(--qs-operational-success-surface); color:var(--qs-semantic-success); }
+.estimate-index-actions .ui-input:has(option[value="Lost"]:checked) { border-color:var(--qs-error-border); background:var(--qs-error-surface); color:var(--qs-semantic-error); }
+.estimate-index-actions .ui-button:nth-child(5) { border-color:var(--qs-semantic-error); color:var(--qs-semantic-error); }
+.estimate-index-actions .ui-button:nth-child(5):hover { background:var(--qs-error-surface); }
+
+@media (max-width: 1400px) {
+  .estimate-index-secondary-column { display: none; }
+  .estimate-index-actions-cell { width: 44%; }
+  .estimate-index-action-headings,
+  .estimate-index-actions {
+    grid-template-columns: minmax(48px, 0.65fr) minmax(66px, 0.85fr) minmax(108px, 1.45fr) minmax(48px, 0.65fr) minmax(52px, 0.7fr) minmax(66px, 0.85fr);
+    gap: 4px;
+  }
+}

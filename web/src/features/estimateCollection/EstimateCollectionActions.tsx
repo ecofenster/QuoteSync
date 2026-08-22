@@ -136,7 +136,7 @@ export default function EstimateCollectionActions(props: Props) {
 
       <div className="ep-estimate-action-group">
         <div className="ep-estimate-action-label">Delete estimate</div>
-        <Button variant="outline" onClick={() => confirmDeleteEstimate(item.id)}>
+        <Button variant="danger" onClick={() => confirmDeleteEstimate(item.id)}>
           Delete
         </Button>
       </div>

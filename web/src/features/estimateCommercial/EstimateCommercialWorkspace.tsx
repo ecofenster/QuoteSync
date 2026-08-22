@@ -83,22 +83,20 @@ export default function EstimateCommercialWorkspace({
           <span>Project Costing</span>
         </span>
         <div className="estimate-commercial__view-switch" role="group" aria-label="Commercial view">
-          <button type="button" className={`ui-button${commercialView === "internal" ? " ui-button--primary" : ""}`} aria-pressed={commercialView === "internal"} onClick={() => setCommercialView("internal")}>Internal View</button>
-          <button type="button" className={`ui-button${commercialView === "customer" ? " ui-button--primary" : ""}`} aria-pressed={commercialView === "customer"} onClick={() => setCommercialView("customer")}>Customer View</button>
+          <button type="button" className={`ui-button${commercialView === "internal" ? " ui-button--selected" : ""}`} aria-pressed={commercialView === "internal"} onClick={() => setCommercialView("internal")}>Internal View</button>
+          <button type="button" className={`ui-button${commercialView === "customer" ? " ui-button--selected" : ""}`} aria-pressed={commercialView === "customer"} onClick={() => setCommercialView("customer")}>Customer View</button>
         </div>
         {commercialView==="internal"||customerViewPolicy.manufacturerImport?<button type="button" className="ui-button" onClick={openImport}>Import Manufacturer Quote</button>:null}
         {client && estimate && (commercialView==="internal"||customerViewPolicy.customerQuotation) ? (
           <button
             type="button"
-            className="ui-button ui-button--primary"
+            className="ui-button ui-button--primary estimate-commercial__document-action"
             onClick={() => setQuotationOpen(true)}
           >
             Customer Quotation
           </button>
         ) : null}
       </div>
-      <div className="estimate-commercial__action-bar" aria-label="Estimate actions">{onEmail?<button className="ui-button" onClick={onEmail}>Email</button>:null}{onFollowUp?<button className="ui-button" onClick={onFollowUp}>Follow Up</button>:null}{onStatus?<select className="ui-input" aria-label="Estimate Status" value={estimate?.outcome??"Open"} onChange={event=>onStatus(event.currentTarget.value as "Open"|"Order"|"Lost")}><option>Open</option><option>Order</option><option>Lost</option></select>:null}{onCopy?<button className="ui-button" onClick={onCopy}>Copy Estimate</button>:null}{onDelete?<button className="ui-button" onClick={onDelete}>Delete Estimate</button>:null}</div>
-      <div className="estimate-commercial__metrics"><span><small>Positions</small><b>{estimate?.positions.length??0}</b></span><span><small>Total area</small><b>{totals.totalSquareMetres.toFixed(2)} m²</b></span><span><small>Linear meterage</small><b>{totals.totalLinearMetres.toFixed(2)} lm</b></span><span><small>Total quantity</small><b>{totals.totalQty}</b></span><span><small>Customer Estimate value</small><b>{new Intl.NumberFormat("en-GB",{style:"currency",currency:"GBP"}).format(Number(customerValue))}</b></span></div>
       <div
         className="estimate-commercial__content"
         onClickCapture={(event) => {
@@ -130,6 +128,13 @@ export default function EstimateCommercialWorkspace({
                 estimateId={estimateId}
                 estimateRef={estimateRef}
                 commercialView={commercialView}
+                estimateMetrics={{
+                  positions: estimate?.positions.length ?? 0,
+                  totalAreaSquareMetres: totals.totalSquareMetres,
+                  totalLinearMetres: totals.totalLinearMetres,
+                  totalQuantity: totals.totalQty,
+                  customerEstimateValue: customerValue,
+                }}
               /></CustomerViewPolicyProvider></EstimateCommercialActionsProvider>
             )}
           </EstimatePositionBridge>

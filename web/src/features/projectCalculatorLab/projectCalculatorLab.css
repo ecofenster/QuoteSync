@@ -20,8 +20,10 @@
 .project-costing--customer .costing-sheet__detail-table td.is-dimension { width: 68px; min-width: 68px; text-align: right; }
 .project-costing--customer .costing-sheet__product-image { min-width: 170px; }
 .project-costing--customer .costing-sheet__summary { grid-template-columns: minmax(0, 1fr); }
-.costing-sheet__position-actions { display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; }
-.costing-sheet__position-actions .ui-button { min-height:28px; padding:3px 6px; font-size:var(--qs-type-meta); }
+.costing-sheet__position-actions { display:grid; grid-template-columns:repeat(4,32px); gap:6px; margin-top:4px; }
+.costing-sheet__position-actions .ui-button { width:32px; min-width:32px; height:32px; min-height:32px; padding:0; place-content:center; font-size:var(--qs-type-body); }
+.costing-sheet__position-actions .ui-button:last-child { border-color:var(--qs-semantic-error); color:var(--qs-semantic-error); }
+.costing-sheet__position-actions .ui-button:last-child:hover { background:var(--qs-error-surface); }
 .costing-sheet__alternative-control { display:flex; align-items:center; gap:4px; font-size:var(--qs-type-meta); }
 .calculator-lab > .calculator-lab__supplier-import { display: none; }
 
@@ -38,6 +40,37 @@
   align-items: end;
 }
 
+.calculator-lab__form--installation { grid-template-columns:repeat(4,minmax(0,1fr)); align-items:stretch; }
+
+.calculator-lab__installation-top-grid {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(12,minmax(0,1fr));
+  align-items: end;
+}
+
+.calculator-lab__installation-top-grid > label:nth-child(1) { grid-column:span 3; }
+.calculator-lab__installation-top-grid > label:nth-child(2) { grid-column:span 6; }
+.calculator-lab__installation-top-grid > label:nth-child(3) { grid-column:span 3; }
+.calculator-lab__installation-top-grid > label:nth-child(n+4) { grid-column:span 3; }
+
+@media (max-width: 860px) {
+  .calculator-lab__installation-top-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .calculator-lab__installation-top-grid > label { grid-column:auto!important; }
+
+  .calculator-lab__form--installation { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+
+@media (max-width: 560px) {
+  .calculator-lab__installation-top-grid {
+    grid-template-columns: 1fr;
+  }
+  .calculator-lab__form--installation { grid-template-columns:1fr; }
+}
+
 .calculator-lab__form label,
 .calculator-lab__catalogue,
 .calculator-admin__row span {
@@ -51,8 +84,33 @@
 }
 .supplier-commercial-review__amend{justify-self:end;margin-block:var(--space-1)}
 .ui-modal-backdrop{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:var(--space-4);background:var(--qs-overlay-scrim)}
-.ui-modal{width:min(900px,calc(100vw - 32px));max-height:calc(100vh - 32px);overflow:auto;padding:var(--space-4);color:var(--qs-theme-text);background:var(--qs-bg-card);border:var(--qs-border-width) solid var(--qs-border-standard);border-radius:var(--radius-dialog);box-shadow:var(--shadow-overlay);display:grid;gap:var(--space-3)}
+.ui-modal{width:min(1240px,calc(100vw - 32px));max-height:calc(100vh - 32px);overflow:auto;padding:var(--space-4);color:var(--qs-theme-text);background:var(--qs-bg-card);border:var(--qs-border-width) solid var(--qs-border-standard);border-radius:var(--radius-dialog);box-shadow:var(--shadow-overlay);display:grid;gap:var(--space-3)}
 .ui-modal>header,.ui-modal>footer{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3)}
+.workforce-admin{gap:var(--space-3)}
+.workforce-admin__header h3,.workforce-admin__header p,.workforce-admin__section-heading h4,.workforce-admin__modal h3,.workforce-admin__modal p{margin:0}
+.workforce-admin__header p,.workforce-admin__modal p{color:var(--qs-theme-text-muted)}
+.workforce-admin__tabs,.workforce-admin__section-heading,.workforce-admin__context,.workforce-admin__actions{display:flex;align-items:center;gap:var(--space-2)}
+.workforce-admin__tabs{border-bottom:1px solid var(--qs-border-standard);padding-bottom:var(--space-2)}
+.workforce-admin__tabs button span{display:inline-grid;place-items:center;min-width:22px;padding:1px 6px;border-radius:999px;background:var(--qs-bg-surface);font-size:var(--qs-type-meta)}
+.workforce-admin__section{display:grid;gap:var(--space-3);min-width:0}.workforce-admin__section-heading{justify-content:space-between}
+.workforce-admin__context{justify-content:space-between;padding:var(--space-2) var(--space-3);border:1px solid var(--qs-border-standard);border-radius:var(--radius-control);background:var(--qs-bg-surface)}
+.workforce-admin__table-wrap{width:100%;overflow:auto}.workforce-admin__table{width:100%;font-size:var(--qs-type-meta)}
+.workforce-admin__table th,.workforce-admin__table td{padding:8px 10px;vertical-align:middle}.workforce-admin__table th{white-space:nowrap}.workforce-admin__table td:last-child{width:1%;white-space:nowrap}
+.workforce-admin__capability-summary{display:block;max-width:280px;line-height:1.35;color:var(--qs-theme-text-muted)}
+.workforce-admin__status{margin:0}.workforce-admin__modal{width:min(820px,calc(100vw - 32px))}.workforce-admin__modal>header{align-items:flex-start}
+.workforce-admin__editor-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-3)}.workforce-admin__editor-grid label{display:grid;align-content:start;gap:var(--space-1)}
+.workforce-admin__editor-grid .workforce-admin__wide{grid-column:1/-1}.workforce-admin__editor-grid .workforce-admin__active{display:flex;align-items:center;align-self:end;min-height:38px;gap:var(--space-2)}
+.workforce-admin__fieldset{margin:0;padding:var(--space-3);border:1px solid var(--qs-border-standard);border-radius:var(--radius-control)}
+.workforce-admin__check-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 14px}.workforce-admin__check-grid label{display:flex;align-items:center;gap:8px;min-width:0}.workforce-admin__check-grid input{flex:0 0 auto}.workforce-admin__check-grid span{line-height:1.25}
+.calculator-admin__catalogue-table{width:100%;font-size:var(--qs-type-meta)}.calculator-admin__catalogue-table td,.calculator-admin__catalogue-table th{padding:8px 10px;vertical-align:middle}.calculator-admin__catalogue-table td:first-child{display:grid;gap:2px;min-width:220px}.calculator-admin__catalogue-table td:first-child small{color:var(--qs-theme-text-muted)}
+.costing-sheet__group-title{margin:var(--space-3) 0 0;padding-top:var(--space-3);border-top:1px solid var(--qs-border-standard);font-size:var(--qs-type-body);color:var(--qs-theme-text)}
+.costing-sheet__material-totals{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:var(--space-2);margin-top:var(--space-3);padding:var(--space-3);border-top:1px solid var(--qs-border-standard);border-bottom:1px solid var(--qs-border-standard);background:var(--qs-bg-surface-elevated)}
+.costing-sheet__material-totals span{display:grid;gap:var(--space-1);color:var(--qs-theme-text-muted)}
+.costing-sheet__material-totals b{color:var(--qs-theme-text);font-variant-numeric:tabular-nums}
+.costing-sheet__diagnostic{margin-top:var(--space-3);color:var(--qs-theme-text-muted)}
+.costing-sheet__vat-treatment{display:grid!important;grid-template-columns:minmax(180px,1fr) auto;gap:4px var(--space-3)!important}.costing-sheet__vat-treatment label{display:grid;gap:4px}.costing-sheet__vat-treatment small{grid-column:1/-1;color:var(--qs-theme-text-muted)}
+@media(max-width:900px){.workforce-admin__check-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.workforce-admin__capability-summary{max-width:190px}}
+@media(max-width:620px){.workforce-admin__tabs{overflow-x:auto}.workforce-admin__section-heading{align-items:flex-start;flex-direction:column}.workforce-admin__editor-grid,.workforce-admin__check-grid{grid-template-columns:1fr}.workforce-admin__editor-grid .workforce-admin__wide{grid-column:auto}}
 .supplier-commercial-review--compact{padding:0;overflow:hidden}
 .supplier-commercial-review--compact>summary{cursor:pointer;padding:var(--space-3) var(--space-4);list-style:none}
 .supplier-commercial-review--compact>summary span:first-child{display:grid;gap:var(--space-1)}
@@ -108,7 +166,7 @@
 
 .supplier-package-option:hover,
 .supplier-package-option.is-selected {
-  border-color: var(--qs-theme-primary);
+  border-color: var(--qs-border-focus);
   background: var(--qs-bg-selected);
 }
 
@@ -236,7 +294,7 @@
 
 .project-costing__brand > span {
   grid-row: 1 / 3;
-  color: var(--qs-theme-primary);
+  color: var(--qs-theme-accent-text);
   font-size: 25px;
 }
 
@@ -326,8 +384,8 @@
 .project-costing nav button.is-active {
   padding-inline: 9px;
   border-radius: var(--radius-control);
-  background: var(--qs-gradient-brand);
-  color: var(--qs-text-on-primary);
+  background: var(--qs-bg-selected);
+  color: var(--qs-theme-selected-text);
 }
 .project-costing nav button.is-active small { color: currentColor; opacity: .78; }
 
@@ -380,6 +438,8 @@
   background: var(--qs-commercial-surface);
   box-shadow: var(--shadow-card);
 }
+.costing-sheet__section--open { border-left:3px solid var(--qs-semantic-scheduled-border); }
+.costing-sheet__section--installation .ui-badge { border-color:var(--qs-warning-border); background:var(--qs-warning-surface); color:var(--qs-semantic-warning); }
 
 .costing-sheet__section-row {
   width: 100%;
@@ -394,7 +454,7 @@
   transition: background-color var(--motion-fast) ease;
 }
 
-.costing-sheet__section-row:hover { background: var(--qs-bg-hover); }
+.costing-sheet__section-row:hover { background: var(--qs-bg-row-hover); }
 .costing-sheet__section-label { display: flex; align-items: center; gap: 13px; padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; text-align: left; }
 .costing-sheet__section-label > span:last-child { display: grid; gap: 4px; }
 .costing-sheet__section-label b { font-size: var(--qs-type-important); line-height: 1.25; letter-spacing: -.01em; }
@@ -523,6 +583,8 @@
 .costing-sheet__detail-table table { min-width: 880px; font-size: var(--qs-type-body); line-height: 1.35; }
 .costing-sheet__detail-table th { padding: 10px 9px; font-size: var(--qs-type-body); white-space: nowrap; }
 .costing-sheet__detail-table td { padding: 9px; font-variant-numeric: tabular-nums; }
+.costing-sheet__detail-table th:last-child,
+.costing-sheet__detail-table td:last-child { min-width:146px; width:146px; }
 .costing-sheet__detail-table td > span,
 .costing-sheet__detail-table td > small { display: block; }
 .costing-sheet__detail-table td > small { color: var(--qs-theme-text-muted); }
@@ -545,20 +607,32 @@
 .costing-sheet__summary {
   margin-top: 20px;
   display: grid;
-  grid-template-columns: 1.05fr 1fr 1fr;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
   gap: 24px;
   padding: 20px;
-  border: 1px solid var(--qs-commercial-border);
+  border: 1px solid var(--qs-border-standard);
   border-radius: var(--radius-card);
   background: linear-gradient(135deg, var(--qs-commercial-surface), var(--qs-bg-page));
   box-shadow: var(--shadow-elevated);
 }
 
 .costing-sheet__summary h2 { grid-column: 1 / -1; margin: 0 0 2px; font-size: var(--qs-type-page-title); line-height: 1.2; }
-.costing-sheet__margin-control { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: end; gap: var(--qs-space-3); padding: var(--qs-space-3); border: 1px solid var(--qs-border-standard); border-radius: var(--radius-control); background: var(--qs-bg-surface-elevated); }
-.costing-sheet__margin-control label { display: grid; gap: var(--qs-space-1); font-weight: 700; }
+.costing-sheet__estimate-metrics { grid-column:1 / -1; display:flex; flex-wrap:wrap; gap:var(--space-3); align-items:stretch; width:min(100%,48rem); }
+.costing-sheet__estimate-metrics span { display:grid; align-content:center; gap:3px; min-height:58px; padding:var(--space-2) var(--space-3); border:1px solid var(--qs-border-subtle); border-radius:var(--radius-control); background:var(--qs-bg-card); }
+.costing-sheet__estimate-metrics span:nth-child(1) { min-width:6rem; }
+.costing-sheet__estimate-metrics span:nth-child(2) { min-width:7.5rem; }
+.costing-sheet__estimate-metrics span:nth-child(3) { min-width:9rem; }
+.costing-sheet__estimate-metrics span:nth-child(4) { min-width:6.5rem; }
+.costing-sheet__estimate-metrics span:nth-child(5) { min-width:11rem; }
+.costing-sheet__estimate-metrics small { color:var(--qs-theme-text-muted); }
+.costing-sheet__estimate-metrics b { font-variant-numeric:tabular-nums; }
+.calculator-lab__cill-summary { display:grid; align-content:center; gap:4px; min-height:100%; padding:var(--qs-space-2); border:1px solid var(--qs-border-subtle); border-radius:var(--radius-control); background:var(--qs-bg-surface-elevated); }
+.calculator-lab__cill-summary span,.calculator-lab__cill-summary small { color:var(--qs-theme-text-muted); }
+.costing-sheet__margin-control { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-top:var(--space-1); padding: var(--space-3) var(--space-4); border: 1px solid var(--qs-border-standard); border-radius: var(--radius-control); background: var(--qs-bg-surface-elevated); }
+.costing-sheet__margin-control label { display: grid; gap: var(--space-1); font-weight: 700; }
 .costing-sheet__margin-control input { width: 110px; }
-.costing-sheet__margin-control small { margin-left: auto; color: var(--qs-theme-text-muted); }
+.costing-sheet__margin-control small { margin-left: auto; padding-inline-start:var(--space-2); color: var(--qs-theme-text-muted); }
+.costing-sheet__margin-status { margin-inline-start:var(--space-1); }
 .costing-sheet__margin-status--low { color: var(--qs-semantic-error); border-color: var(--qs-error-border); background: var(--qs-error-surface); }
 .costing-sheet__margin-status--caution { color: var(--qs-semantic-warning); border-color: var(--qs-warning-border); background: var(--qs-warning-surface); }
 .costing-sheet__margin-status--healthy,
@@ -567,13 +641,10 @@
 .costing-sheet__variance--below b { color: var(--qs-semantic-warning); }
 .costing-sheet__variance--above b { color: var(--qs-semantic-success); }
 .costing-sheet__summary-categories,
-.costing-sheet__summary-cost,
 .costing-sheet__summary-profit { display: grid; gap: 9px; }
 .costing-sheet__summary-categories > div,
-.costing-sheet__summary-cost > div,
 .costing-sheet__summary-profit > div { display: flex; justify-content: space-between; gap: 12px; font-size: var(--qs-type-body); line-height: 1.4; }
 .costing-sheet__summary-categories b,
-.costing-sheet__summary-cost b,
 .costing-sheet__summary-profit b { font-variant-numeric: tabular-nums; }
 .costing-sheet__client-discount {
   align-items: center;
@@ -602,10 +673,9 @@
   padding-bottom: var(--space-2);
   border-bottom: 1px solid var(--qs-border-standard);
 }
-.costing-sheet__summary-cost,
 .costing-sheet__summary-profit { padding-left: 24px; border-left: 1px solid var(--qs-border-standard); }
-.costing-sheet__summary-cost > div,
 .costing-sheet__summary-profit > div { padding: 8px 0; border-bottom: 1px solid var(--qs-border-subtle); }
+.costing-sheet__purchase-total { margin-bottom: var(--space-1); padding: var(--space-2) 0; border-bottom: 1px solid var(--qs-border-standard); }
 .costing-sheet__summary-highlight { padding: 12px; border: 1px solid var(--qs-commercial-positive-border); border-radius: var(--radius-control); background: var(--qs-commercial-positive-surface); color: var(--qs-theme-selling); font-size: var(--qs-type-important); }
 .costing-sheet__summary-sale { font-size: var(--qs-type-important); }
 .costing-sheet__summary-profit > .costing-sheet__summary-sale { display: grid; grid-template-columns: 1fr auto; align-items: center; }
@@ -652,7 +722,7 @@
 .project-costing :is(button, a, input, select):focus-visible { outline: 2px solid var(--qs-border-focus); outline-offset: 2px; }
 .project-costing :is(.ui-button, input, select) { font-size: var(--qs-type-body); }
 .project-costing .ui-button { min-height: 36px; padding-block: 8px; color: var(--qs-theme-text); }
-.project-costing .ui-button--primary { color: var(--qs-text-on-primary); }
+.project-costing .ui-button--primary { color: var(--qs-theme-action-primary-text); }
 
 .calculator-lab__supplier-import {
   display: grid;
@@ -700,6 +770,7 @@
   .costing-sheet__commercial-row > span:first-child { grid-column: 1 / -1; }
   .costing-sheet__summary { grid-template-columns: 1fr; gap: 18px; padding: 17px; }
   .costing-sheet__summary h2 { grid-column: auto; }
+  .costing-sheet__estimate-metrics span { flex:1 1 10rem; }
   .costing-sheet__summary-cost,
   .costing-sheet__summary-profit { padding: 12px 0 0; border-top: 1px solid var(--qs-border-standard); border-left: 0; }
   .project-costing__rate { margin-left: auto; }

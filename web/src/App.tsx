@@ -684,7 +684,7 @@ function Button({
 }: {
   children: React.ReactNode;
   onClick?: () => void;
-  variant?: "primary" | "secondary";
+  variant?: "primary" | "secondary" | "selected" | "danger";
   disabled?: boolean;
   className?: string;
 }) {
@@ -693,7 +693,7 @@ function Button({
       type="button"
       disabled={!!disabled}
       onClick={onClick}
-      className={`ui-button${variant === "primary" ? " ui-button--primary" : ""} ${className}`.trim()}
+      className={`ui-button${variant === "primary" ? " ui-button--primary" : variant === "selected" ? " ui-button--selected" : variant === "danger" ? " ui-button--danger" : ""} ${className}`.trim()}
     >
       {children}
     </button>
@@ -781,6 +781,8 @@ type TopShellPage =
   | "tools"
   | "admin"
   | "help";
+
+type TopShellNavKey = "home" | "tools" | "create" | "admin" | "help";
 
 function TopShellPlaceholder({
   title,
@@ -1326,6 +1328,7 @@ export default function App() {
 
   const [systemSettings, setSystemSettings] = useState(() => loadSettings());
   const [topShellPage, setTopShellPage] = useState<TopShellPage>("app");
+  const [activeTopShellNavKey, setActiveTopShellNavKey] = useState<TopShellNavKey>("home");
   const [initialToolsTab, setInitialToolsTab] = useState("phpp");
   const [integrationStatuses, setIntegrationStatuses] = useState<IntegrationStatus[]>([]);
 
@@ -2083,6 +2086,7 @@ async function handleWhat3WordsMapPick(lat: number, lng: number) {
 
   function selectMenu(k: Models.MenuKey) {
     setTopShellPage("app");
+    setActiveTopShellNavKey("home");
     setMenu(k);
     setView("customers");
     setSelectedClientId(null);
@@ -2093,34 +2097,53 @@ async function handleWhat3WordsMapPick(lat: number, lng: number) {
   }
 
   function handleTopShellMenuClick(key: string) {
+    const leaveOperationalWorkspace = () => {
+      setView("customers");
+      setSelectedClientId(null);
+      setSelectedEstimateId(null);
+      setEstimatePickerClientId(null);
+      estimatePickerRef.current?.clear();
+      setShowAddClient(false);
+    };
     if (key === "tools") {
+      leaveOperationalWorkspace();
       setTopShellPage("tools");
+      setActiveTopShellNavKey("tools");
       return;
     }
     if (key === "phpp" || key === "glass_calculator") {
+      leaveOperationalWorkspace();
       setInitialToolsTab(key === "phpp" ? "phpp" : "glass");
       setTopShellPage("tools");
+      setActiveTopShellNavKey("tools");
       return;
     }
     if (key === "admin") {
+      leaveOperationalWorkspace();
       setTopShellPage("admin");
+      setActiveTopShellNavKey("admin");
       return;
     }
     if (key === "create_client") {
       setTopShellPage("app");
+      setActiveTopShellNavKey("create");
       openAddClientPanel();
       return;
     }
     if (key === "create_estimate") {
       setTopShellPage("app");
+      setActiveTopShellNavKey("create");
       openAddEstimateModal();
       return;
     }
     if (key === "help") {
+      leaveOperationalWorkspace();
       setTopShellPage("help");
+      setActiveTopShellNavKey("help");
       return;
     }
     setTopShellPage("app");
+    setActiveTopShellNavKey("home");
     setMenu("dashboard");
     setView("customers");
   }
@@ -3288,7 +3311,7 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
 
           <div className="qs-migrated-19">
             <Button variant="secondary" onClick={() => restoreDeletedClient(clientId)}>Restore Client</Button>
-            <Button variant="secondary" onClick={() => purgeDeletedClient(clientId)}>Delete Permanently</Button>
+            <Button variant="danger" onClick={() => purgeDeletedClient(clientId)}>Delete Permanently</Button>
           </div>
         </div>
       ));
@@ -3321,7 +3344,7 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
 
           <div className="qs-migrated-19">
             <Button variant="secondary" onClick={() => restoreDeletedEstimatesForClient(clientId, [estimate.id])}>Restore Estimate</Button>
-            <Button variant="secondary" onClick={() => purgeDeletedEstimatesForClient(clientId, [estimate.id])}>Delete Permanently</Button>
+            <Button variant="danger" onClick={() => purgeDeletedEstimatesForClient(clientId, [estimate.id])}>Delete Permanently</Button>
           </div>
         </div>
       ));
@@ -3367,7 +3390,7 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
                           <Button variant="secondary" onClick={() => restoreDeletedClient(clientId)}>Restore</Button>
                         </td>
                         <td className="qs-migrated-31">
-                          <Button variant="secondary" onClick={() => purgeDeletedClient(clientId)}>Delete Permanently</Button>
+                          <Button variant="danger" onClick={() => purgeDeletedClient(clientId)}>Delete Permanently</Button>
                         </td>
                       </tr>
                     ))}
@@ -3422,7 +3445,7 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
                           <Button variant="secondary" onClick={() => restoreDeletedEstimatesForClient(clientId, [estimate.id])}>Restore</Button>
                         </td>
                         <td className="qs-migrated-31">
-                          <Button variant="secondary" onClick={() => purgeDeletedEstimatesForClient(clientId, [estimate.id])}>Delete Permanently</Button>
+                          <Button variant="danger" onClick={() => purgeDeletedEstimatesForClient(clientId, [estimate.id])}>Delete Permanently</Button>
                         </td>
                       </tr>
                     ))}
@@ -3452,7 +3475,7 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
             </div>
             <div className="qs-migrated-19">
               <Button variant="secondary" onClick={restoreSelectedRecycleItems} disabled={!hasSelection}>Restore Selected</Button>
-              <Button variant="secondary" onClick={purgeSelectedRecycleItems} disabled={!hasSelection}>Delete Selected</Button>
+              <Button variant="danger" onClick={purgeSelectedRecycleItems} disabled={!hasSelection}>Delete Selected</Button>
               <Button variant="secondary" onClick={clearRecycleSelection} disabled={!hasSelection}>Clear Selection</Button>
             </div>
           </div>
@@ -3460,14 +3483,13 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
           <div className="qs-migrated-37">
             <Small>Filter</Small>
             {filterButtons.map((item) => (
-              <button
+              <Button
                 key={item.key}
-                type="button"
                 onClick={() => setRecycleBinFilter(item.key)}
-                className={`operational-toggle${recycleBinFilter === item.key ? " operational-toggle--active" : ""}`}
+                variant={recycleBinFilter === item.key ? "selected" : "secondary"}
               >
                 {item.label}
-              </button>
+              </Button>
             ))}
           </div>
 
@@ -3490,14 +3512,13 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
             <div className="qs-migrated-37">
               <Small>View</Small>
               {viewButtons.map((item) => (
-                <button
+                <Button
                   key={item.key}
-                  type="button"
                   onClick={() => setRecycleBinView(item.key)}
-                  className={`operational-toggle${recycleBinView === item.key ? " operational-toggle--active" : ""}`}
+                  variant={recycleBinView === item.key ? "selected" : "secondary"}
                 >
                   {item.label}
-                </button>
+                </Button>
               ))}
             </div>
           </div>
@@ -3690,14 +3711,13 @@ function renderInstallationBoard() {
                           ] as const).map(([tabKey, label]) => {
                             const active = activeTab === tabKey;
                             return (
-                              <button
+                              <Button
                                 key={tabKey}
-                                type="button"
                                 onClick={() => setInstallationTabByEstimateId((prev) => ({ ...prev, [estimate.id]: tabKey }))}
-                                className={`operational-toggle${active ? " operational-toggle--active" : ""}`}
+                                variant={active ? "selected" : "secondary"}
                               >
                                 {label}
-                              </button>
+                              </Button>
                             );
                           })}
                         </div>
@@ -3816,18 +3836,19 @@ function renderProjectMapBoard() {
             {([[
               "all", "All"
             ], ["enquiry", "Enquiry"], ["estimate", "Estimate / Quotation"], ["order", "Order / Sold"], ["installation", "Installation"], ["completed", "Completed"], ["lost", "Lost"]] as Array<[ProjectMapStage, string]>).map(([value, label]) => (
-              <button
+              <Button
                 key={value}
-                type="button"
-                className={`operational-toggle${projectMapStage === value ? " operational-toggle--active" : ""}`}
+                variant={projectMapStage === value ? "selected" : "secondary"}
+                className={`project-map-filter project-map-filter--${value}`}
                 onClick={() => setProjectMapStage(value)}
               >
                 {label}
-              </button>
+              </Button>
             ))}
           </div>
 
-          <div className="qs-migrated-44">
+          <div className="project-map-summary-grid">
+            <div className="project-map-summary-group">
             <div className="operational-stat">
               <div className="operational-stat__label">Mapped projects</div>
               <div className="operational-stat__value">{mapItems.length}</div>
@@ -3836,6 +3857,8 @@ function renderProjectMapBoard() {
               <div className="operational-stat__label">Visible projects</div>
               <div className="operational-stat__value">{rows.length}</div>
             </div>
+            </div>
+            <div className="project-map-summary-group">
             <div className="operational-stat">
               <div className="operational-stat__label">Unresolved locations</div>
               <div className="operational-stat__value">{rows.length - mapItems.length}</div>
@@ -3843,6 +3866,7 @@ function renderProjectMapBoard() {
             <div className="operational-stat">
               <div className="operational-stat__label">Total cost</div>
               <div className="operational-stat__value">{formatMoney(summary.totalCost)}</div>
+            </div>
             </div>
           </div>
 
@@ -3855,15 +3879,24 @@ function renderProjectMapBoard() {
                 const resolved = resolvedLocationsByClientId[estimate.id];
                 const stageLabel = stage === "estimate" ? "Estimate / Quotation" : stage === "order" ? "Order / Sold" : stage.replace(/^./, (value) => value.toUpperCase());
                 return (
-                  <button
+                  <div
                     id={`estimate-map-row-${estimate.id}`}
                     key={estimate.id}
-                    type="button"
+                    role="button"
+                    tabIndex={0}
+                    aria-selected={selected}
                     onClick={() => {
                       setSelectedMapEstimateId(estimate.id);
                       scrollMapRowIntoView("estimate-map-row", estimate.id);
                     }}
-                    className={[`operational-card${selected ? " operational-card--selected" : ""}`, "qs-migrated-72"].filter(Boolean).join(" ")}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelectedMapEstimateId(estimate.id);
+                        scrollMapRowIntoView("estimate-map-row", estimate.id);
+                      }
+                    }}
+                    className={[`operational-card${selected ? " operational-card--selected" : ""}`, "ui-interactive-row", "qs-migrated-72"].filter(Boolean).join(" ")}
                   >
                     <div className="qs-migrated-73">
                       <div className="qs-migrated-17">
@@ -3882,17 +3915,18 @@ function renderProjectMapBoard() {
                       <Small>{formatMeasure(totals.totalSquareMetres)} m² {formatMoney(totals.estimateTotal)}</Small>
                     </div>
                     <div className="qs-migrated-74">
-                      <span
+                      <button
+                        type="button"
                         onClick={(ev) => {
                           ev.stopPropagation();
                           openEstimateFromGlobalMenu(client.id, estimate.id);
                         }}
-                        className="operational-toggle"
+                        className="ui-button ui-button--primary"
                       >
                         Open
-                      </span>
+                      </button>
                     </div>
-                  </button>
+                  </div>
                 );
               })}
 
@@ -4000,7 +4034,7 @@ function renderProjectMapBoard() {
                   {menuKey !== "installation" && (
                     <ControlToolbarGroup label="Scope">
                       <Button
-                        variant={creatorFilter === "mine" ? "primary" : "secondary"}
+                        variant={creatorFilter === "mine" ? "selected" : "secondary"}
                         onClick={() =>
                           setGlobalCreatorFilterByMenu((prev) => ({ ...prev, [menuKey]: "mine" }))
                         }
@@ -4008,7 +4042,7 @@ function renderProjectMapBoard() {
                         My {title}
                       </Button>
                       <Button
-                        variant={creatorFilter === "all" ? "primary" : "secondary"}
+                        variant={creatorFilter === "all" ? "selected" : "secondary"}
                         onClick={() =>
                           setGlobalCreatorFilterByMenu((prev) => ({ ...prev, [menuKey]: "all" }))
                         }
@@ -4020,7 +4054,7 @@ function renderProjectMapBoard() {
                   {menuKey !== "installation" && (
                     <ControlToolbarGroup label="View">
                       <Button
-                        variant={viewMode === "list" ? "primary" : "secondary"}
+                        variant={viewMode === "list" ? "selected" : "secondary"}
                         onClick={() =>
                           setGlobalEstimateViewModeByMenu((prev) => ({ ...prev, [menuKey]: "list" }))
                         }
@@ -4028,7 +4062,7 @@ function renderProjectMapBoard() {
                         List
                       </Button>
                       <Button
-                        variant={viewMode === "grid" ? "primary" : "secondary"}
+                        variant={viewMode === "grid" ? "selected" : "secondary"}
                         onClick={() =>
                           setGlobalEstimateViewModeByMenu((prev) => ({ ...prev, [menuKey]: "grid" }))
                         }
@@ -4049,7 +4083,7 @@ function renderProjectMapBoard() {
                       <option value="total_cost">Total Cost</option>
                     </select>
                     <Button
-                      variant={sortDirection === "asc" ? "primary" : "secondary"}
+                      variant={sortDirection === "asc" ? "selected" : "secondary"}
                       onClick={() =>
                         menuKey === "installation"
                           ? setGlobalSort("asc")
@@ -4059,7 +4093,7 @@ function renderProjectMapBoard() {
                       Ascending
                     </Button>
                     <Button
-                      variant={sortDirection === "desc" ? "primary" : "secondary"}
+                      variant={sortDirection === "desc" ? "selected" : "secondary"}
                       onClick={() =>
                         menuKey === "installation"
                           ? setGlobalSort("desc")
@@ -4078,14 +4112,14 @@ function renderProjectMapBoard() {
                   const isSelected = globalMonthFilter === month;
                   const isCurrentMonth = month === currentMonthName;
                   return (
-                    <button
+                    <Button
                       key={month}
-                      type="button"
                       onClick={() => setGlobalMonthFilter(month)}
-                      className={`operational-toggle${isSelected ? " operational-toggle--active" : isCurrentMonth ? " operational-toggle--current" : ""}`}
+                      variant={isSelected ? "selected" : "secondary"}
+                      className={isCurrentMonth && !isSelected ? "ui-button--current" : ""}
                     >
                       {month}
-                    </button>
+                    </Button>
                   );
                 })}
               </div>
@@ -4325,8 +4359,8 @@ function renderProjectMapBoard() {
     );
   }
 
-  return (
-<AppShell title="QuoteSuite" onMenuClick={handleTopShellMenuClick}>
+return (
+<AppShell title="QuoteSuite" onMenuClick={handleTopShellMenuClick} activeNavKey={activeTopShellNavKey}>
   { topShellPage === "admin" ? (
     <AdminPlaceholderPage />
   ) : topShellPage === "help" ? (
@@ -4339,7 +4373,7 @@ function renderProjectMapBoard() {
           <div className="app-workspace-shell__inner">
         <div className="app-workspace-grid">
           {/* Sidebar */}
-          <Card className="qs-migrated-6">
+          <Card className="qs-migrated-6 app-workspace-sidebar">
             <div className="qs-migrated-84">
             </div>
 
@@ -4899,7 +4933,7 @@ function renderProjectMapBoard() {
             {menu === "recycle_bin" && view === "customers" && renderRecycleBinMenu()}
 
             {/* ESTIMATE PICKER */}
-            {view === "estimate_picker" && (
+            {topShellPage === "app" && view === "estimate_picker" && (
               <EstimatePickerFeature
 				ref={estimatePickerRef}
 				clientId={estimatePickerClientId}
@@ -4927,7 +4961,7 @@ function renderProjectMapBoard() {
 			/>
             )}
             {/* ESTIMATE DEFAULTS */}
-            {view === "estimate_defaults" && selectedClient && selectedEstimate && (
+            {topShellPage === "app" && view === "estimate_defaults" && selectedClient && selectedEstimate && (
               <Card className="qs-migrated-2">
                 <div className="qs-migrated-94">
                   <div>
@@ -4960,7 +4994,7 @@ function renderProjectMapBoard() {
             {menu === "installation" && view === "customers" && renderInstallationBoard()}
 
             {/* ESTIMATE WORKSPACE */}
-            {view === "estimate_workspace" && selectedClient && selectedEstimate && (
+            {topShellPage === "app" && view === "estimate_workspace" && selectedClient && selectedEstimate && (
                 <Card className="qs-migrated-98 dedicated-estimate-workspace">
                   <div className="qs-migrated-94">
                     <div>

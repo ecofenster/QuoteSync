@@ -64,11 +64,11 @@ button {
 }
 
 :focus-visible {
-  outline: 2px solid var(--qs-theme-primary);
+  outline: 2px solid var(--qs-border-focus);
   outline-offset: 2px;
   box-shadow: 0 0 0 4px var(--qs-focus-ring);
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--qs-theme-primary) 24%, transparent);
+  background: color-mix(in srgb, var(--qs-theme-accent-text) 24%, transparent);
 }

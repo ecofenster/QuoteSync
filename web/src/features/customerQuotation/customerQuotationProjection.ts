@@ -3,6 +3,7 @@ import { getConfiguredPositionContract } from "../configurator/configuredPositio
 import { configuratorDocumentDrawingRegistry } from "../configurator/documentDrawing";
 import { deriveProjectCostingCommercialResult, customerProductDescription, percentageAmount, type ProjectCostingScenarioView } from "../projectCalculatorLab/domain/projectCostingCommercialResult";
 import { addDecimalAmounts, subtractDecimalAmounts } from "../projectCalculatorLab/domain/projectCostingMarkup";
+import { resolveVatTreatment } from "../projectCalculatorLab/domain/vatTreatment";
 import { CUSTOMER_QUOTATION_POLICY } from "./quotationPolicy";
 import { DEFAULT_CUSTOMER_QUOTATION_DISPLAY_OPTIONS, type CustomerQuotationDisplayOptions, type CustomerQuotationPositionThermal } from "./customerQuotationDisplay";
 import { ECOFENSTER_DEVELOPMENT_DOCUMENT_BRAND, type CustomerDocumentBrand } from "./documentBrand";
@@ -51,6 +52,7 @@ export type CustomerQuotationProjection = {
   alternatives: Array<Pick<CustomerQuotationPosition, "id" | "reference" | "quantity" | "widthMm" | "heightMm" | "description">>;
   charges: CustomerQuotationCharge[];
   customerDiscountGbp: string;
+  showCustomerDiscount: boolean;
   fixedPriceAdjustmentGbp: string;
   fixedSellingPriceEnabled: boolean;
   subtotalExVatGbp: string;
@@ -154,7 +156,7 @@ export function buildCustomerQuotationProjection(input: {
   if (nonZero(result.installationSale)) charges.push({ id: "installation", label: "Installation", amountGbp: result.installationSale });
   if (nonZero(result.materialsSale)) charges.push({ id: "materials", label: "Installation materials", amountGbp: result.materialsSale });
   if (nonZero(result.feeSale)) charges.push({ id: "duties", label: "Import fees and duties", amountGbp: result.feeSale });
-  const vatGbp = percentageAmount(result.actualSale, CUSTOMER_QUOTATION_POLICY.vatRatePercent);
+  const vatTreatment=resolveVatTreatment(input.scenario.options?.vatTreatment,input.scenario.options?.projectType),vatGbp = percentageAmount(result.actualSale, vatTreatment.percentage);
   const limitations: string[] = [];
   if (positions.some((position) => !position.drawing.available)) limitations.push("Positions without a trusted native or manufacturer drawing are shown with a clean unavailable state; no drawing is fabricated.");
   if (result.unpricedTotals.length) limitations.push("Supplier totals without safe position allocation are presented as a project-level Products / Supply Only balance.");
@@ -173,10 +175,11 @@ export function buildCustomerQuotationProjection(input: {
     alternatives,
     charges,
     customerDiscountGbp: result.customerDiscountAmount,
+    showCustomerDiscount: nonZero(result.customerDiscountAmount),
     fixedPriceAdjustmentGbp: result.commercialAdjustment,
     fixedSellingPriceEnabled: result.customerPricing.fixedSellingPrice.enabled,
     subtotalExVatGbp: result.actualSale,
-    vatRatePercent: CUSTOMER_QUOTATION_POLICY.vatRatePercent,
+    vatRatePercent: vatTreatment.percentage,
     vatGbp,
     totalIncVatGbp: addDecimalAmounts([result.actualSale, vatGbp]),
     limitations,

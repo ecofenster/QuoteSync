@@ -113,11 +113,19 @@ export default function ProjectCalculatorLabWorkspace({
   estimateId,
   estimateRef,
   commercialView = "internal",
+  estimateMetrics,
 }: {
   initialScenarioId?: string;
   estimateId?: string;
   estimateRef?: string;
   commercialView?: "internal" | "customer";
+  estimateMetrics?: {
+    positions: number;
+    totalAreaSquareMetres: number;
+    totalLinearMetres: number;
+    totalQuantity: number;
+    customerEstimateValue: string;
+  };
 } = {}) {
   const [sources, setSources] = useState<ImportSource[]>([]);
   const [workspaceView, setWorkspaceView] = useState<"scenarios" | "admin">(
@@ -440,6 +448,7 @@ export default function ProjectCalculatorLabWorkspace({
         <ScenarioCostingWorksheet
           scenario={stage2b!}
           commercialView={commercialView}
+          estimateMetrics={estimateMetrics}
           onNew={estimateId ? undefined : () => setActive(null)}
           onUpdateProduct={async (rowId, input) =>
             setActive(

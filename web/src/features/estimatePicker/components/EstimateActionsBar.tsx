@@ -119,7 +119,7 @@ export default function EstimateActionsBar(props: Props) {
       </div>
       <div className="ep-estimate-action-group">
         <div className="ep-estimate-action-label">Delete estimate</div>
-        <Button variant="outline" onClick={() => confirmDeleteEstimate(e.id)}>Delete</Button>
+        <Button variant="danger" onClick={() => confirmDeleteEstimate(e.id)}>Delete</Button>
       </div>
       <div className="ep-estimate-action-group">
         <div className="ep-estimate-action-label">Open estimate</div>

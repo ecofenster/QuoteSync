@@ -1,7 +1,6 @@
 export type AppShellMenuItem = {
   key: string;
   label: string;
-  accent?: boolean;
   children?: AppShellMenuItem[];
 };
 
@@ -19,5 +18,5 @@ export const appShellMenuItems: AppShellMenuItem[] = [
   },
   { key: "tools", label: "Tools" },
   { key: "help", label: "Help" },
-  { key: "admin", label: "Admin", accent: true },
+  { key: "admin", label: "Admin" },
 ];

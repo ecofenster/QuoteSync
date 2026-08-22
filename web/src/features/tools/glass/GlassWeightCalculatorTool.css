@@ -109,6 +109,11 @@
   background: color-mix(in srgb, var(--qs-semantic-info) 10%, var(--qs-bg-surface));
 }
 
+.glass-shape-option:hover {
+  border-color: var(--qs-info-border);
+  background: var(--qs-info-surface);
+}
+
 .glass-shape-option__label {
   margin-top: 4px;
   font-size: 13px;

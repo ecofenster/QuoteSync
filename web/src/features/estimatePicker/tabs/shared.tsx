@@ -15,12 +15,12 @@ export function Button({
 }: {
   children: React.ReactNode;
   onClick?: () => void;
-  variant?: "primary" | "secondary" | "outline";
+  variant?: "primary" | "secondary" | "outline" | "selected" | "danger";
   disabled?: boolean;
   className?: string;
   "data-testid"?: string;
 }) {
-  const variantClassName = `ep-button ${variant === "primary" ? "ep-button--primary" : variant === "outline" ? "ep-button--outline" : "ep-button--secondary"}`;
+  const variantClassName = `ep-button ui-button ${variant === "primary" ? "ui-button--primary" : variant === "selected" ? "ui-button--selected" : variant === "danger" ? "ui-button--danger" : ""}`;
   return (
     <button
       type="button"

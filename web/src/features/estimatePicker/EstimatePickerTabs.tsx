@@ -147,11 +147,11 @@ function Button({
 }: {
   children: React.ReactNode;
   onClick?: () => void;
-  variant?: "primary" | "secondary" | "outline";
+  variant?: "primary" | "secondary" | "outline" | "selected" | "danger";
   disabled?: boolean;
   className?: string;
 }) {
-  const variantClassName = `ep-button ${variant === "primary" ? "ep-button--primary" : variant === "outline" ? "ep-button--outline" : "ep-button--secondary"}`;
+  const variantClassName = `ep-button ui-button ${variant === "primary" ? "ui-button--primary" : variant === "selected" ? "ui-button--selected" : variant === "danger" ? "ui-button--danger" : ""}`;
   return (
     <button
       type="button"
@@ -770,22 +770,22 @@ export default function EstimatePickerTabs(props: Props) {
     <>
       <div className="qs-migrated-36">
         <div className="ep-tab-list">
-          <Button variant={estimatePickerTab === "client_info" ? "primary" : "secondary"} onClick={() => setEstimatePickerTab("client_info")}>
+          <Button variant={estimatePickerTab === "client_info" ? "selected" : "secondary"} onClick={() => setEstimatePickerTab("client_info")}>
             Client Info
           </Button>
-          <Button variant={estimatePickerTab === "estimates" ? "primary" : "secondary"} onClick={() => setEstimatePickerTab("estimates")}>
+          <Button variant={estimatePickerTab === "estimates" ? "selected" : "secondary"} onClick={() => setEstimatePickerTab("estimates")}>
             Client Estimates
           </Button>
-          <Button variant={estimatePickerTab === "orders" ? "primary" : "secondary"} onClick={() => setEstimatePickerTab("orders")}>
+          <Button variant={estimatePickerTab === "orders" ? "selected" : "secondary"} onClick={() => setEstimatePickerTab("orders")}>
             Client Orders
           </Button>
-          <Button variant={estimatePickerTab === "lost" ? "primary" : "secondary"} onClick={() => setEstimatePickerTab("lost")}>
+          <Button variant={estimatePickerTab === "lost" ? "selected" : "secondary"} onClick={() => setEstimatePickerTab("lost")}>
             Client Lost
           </Button>
-          <Button variant={estimatePickerTab === "client_notes" ? "primary" : "secondary"} onClick={() => setEstimatePickerTab("client_notes")}>
+          <Button variant={estimatePickerTab === "client_notes" ? "selected" : "secondary"} onClick={() => setEstimatePickerTab("client_notes")}>
             Client Notes
           </Button>
-          <Button variant={estimatePickerTab === "files" ? "primary" : "secondary"} onClick={() => setEstimatePickerTab("files")}>
+          <Button variant={estimatePickerTab === "files" ? "selected" : "secondary"} onClick={() => setEstimatePickerTab("files")}>
             Files
           </Button>
         </div>
@@ -795,7 +795,7 @@ export default function EstimatePickerTabs(props: Props) {
             {estimatePickerTab === "estimates" ? <ControlToolbarGroup label="Create"><Button variant="primary" onClick={() => createEstimateForClient(pickerClient)}>+ New Estimate</Button><Button variant="secondary" onClick={() => createEstimateForClient(pickerClient, { openManufacturerImport: true })}>Import Manufacturer Quote</Button></ControlToolbarGroup> : null}
             <ControlToolbarGroup label="Scope">
               <Button
-                variant={estimateCreatorFilterByTab[estimatePickerTab] === "mine" ? "primary" : "secondary"}
+                variant={estimateCreatorFilterByTab[estimatePickerTab] === "mine" ? "selected" : "secondary"}
                 onClick={() =>
                   setEstimateCreatorFilterByTab((prev) => ({ ...prev, [estimatePickerTab]: "mine" }))
                 }
@@ -803,7 +803,7 @@ export default function EstimatePickerTabs(props: Props) {
                 My {estimatePickerTab === "orders" ? "Orders" : estimatePickerTab === "lost" ? "Lost" : "Estimates"}
               </Button>
               <Button
-                variant={estimateCreatorFilterByTab[estimatePickerTab] === "all" ? "primary" : "secondary"}
+                variant={estimateCreatorFilterByTab[estimatePickerTab] === "all" ? "selected" : "secondary"}
                 onClick={() =>
                   setEstimateCreatorFilterByTab((prev) => ({ ...prev, [estimatePickerTab]: "all" }))
                 }
@@ -814,7 +814,7 @@ export default function EstimatePickerTabs(props: Props) {
 
             <ControlToolbarGroup label="View">
               <Button
-                variant={estimateCollectionViewModeByTab[estimatePickerTab] === "list" ? "primary" : "secondary"}
+                variant={estimateCollectionViewModeByTab[estimatePickerTab] === "list" ? "selected" : "secondary"}
                 onClick={() =>
                   setEstimateCollectionViewModeByTab((prev) => ({ ...prev, [estimatePickerTab]: "list" }))
                 }
@@ -822,7 +822,7 @@ export default function EstimatePickerTabs(props: Props) {
                 List
               </Button>
               <Button
-                variant={estimateCollectionViewModeByTab[estimatePickerTab] === "grid" ? "primary" : "secondary"}
+                variant={estimateCollectionViewModeByTab[estimatePickerTab] === "grid" ? "selected" : "secondary"}
                 onClick={() =>
                   setEstimateCollectionViewModeByTab((prev) => ({ ...prev, [estimatePickerTab]: "grid" }))
                 }
@@ -833,7 +833,7 @@ export default function EstimatePickerTabs(props: Props) {
 
             <ControlToolbarGroup label="Sort by">
               <Button
-                variant={estimateSortDirectionByTab[estimatePickerTab] === "asc" ? "primary" : "secondary"}
+                variant={estimateSortDirectionByTab[estimatePickerTab] === "asc" ? "selected" : "secondary"}
                 onClick={() =>
                   setEstimateSortDirectionByTab((prev) => ({ ...prev, [estimatePickerTab]: "asc" }))
                 }
@@ -841,7 +841,7 @@ export default function EstimatePickerTabs(props: Props) {
                 Ascending
               </Button>
               <Button
-                variant={estimateSortDirectionByTab[estimatePickerTab] === "desc" ? "primary" : "secondary"}
+                variant={estimateSortDirectionByTab[estimatePickerTab] === "desc" ? "selected" : "secondary"}
                 onClick={() =>
                   setEstimateSortDirectionByTab((prev) => ({ ...prev, [estimatePickerTab]: "desc" }))
                 }

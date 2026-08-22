@@ -2,6 +2,7 @@ import express from 'express';
 import { createProjectCalculatorLabService } from '../features/projectCalculatorLab/projectCalculatorLabService.js';
 import { createCalculatorAdminService } from '../features/projectCalculatorLab/calculatorAdminService.js';
 import { createInstallationWorkforceService } from '../features/projectCalculatorLab/installationWorkforceService.js';
+import { createVatTreatmentService } from '../features/projectCalculatorLab/vatTreatmentService.js';
 
 const fail=(res,status,code,message)=>res.status(status).json({code,error:message});
 
@@ -10,6 +11,7 @@ export async function createProjectCalculatorLabRouter({dbPromise, exchangeRateP
   const service=createProjectCalculatorLabService(await dbPromise,{exchangeRateProvider});
   const admin=createCalculatorAdminService(await dbPromise);
   const workforce=createInstallationWorkforceService(await dbPromise);
+  const vatTreatment=createVatTreatmentService(await dbPromise);
   router.get('/admin-configuration',async(_req,res,next)=>{try{res.json(await admin.getConfiguration());}catch(error){next(error);}});
   router.get('/supplier-commercial-defaults',async(_req,res,next)=>{try{res.json(await service.listSupplierCommercialDefaults());}catch(error){next(error);}});
   router.put('/supplier-commercial-defaults/:supplierCode',async(req,res,next)=>{try{res.json(await service.saveSupplierCommercialDefault({...req.body,supplierCode:req.params.supplierCode}));}catch(error){if(error.code==='invalid_commercial_policy')return fail(res,400,error.code,error.message);next(error);}});
@@ -26,6 +28,7 @@ export async function createProjectCalculatorLabRouter({dbPromise, exchangeRateP
   router.get('/scenarios/:scenarioId',async(req,res,next)=>{try{const value=await service.getScenario(req.params.scenarioId);const estimateId=typeof req.query.estimate_id==='string'?req.query.estimate_id:'';return value&&(!estimateId||value.estimateId===estimateId)?res.json(value):fail(res,404,'scenario_not_found','Project Costing record not found for this estimate.');}catch(error){next(error);}});
   router.post('/scenarios/:scenarioId/sync-estimate-positions',async(req,res,next)=>{try{const value=await service.syncEstimatePositions(req.params.scenarioId);return value?res.json(value):fail(res,404,'scenario_not_found','Project Costing record not found.');}catch(error){next(error);}});
   router.patch('/scenarios/:scenarioId',async(req,res,next)=>{try{const value=await service.updateScenario(req.params.scenarioId,req.body||{});return value?res.json(value):fail(res,404,'scenario_not_found','Calculator scenario not found.');}catch(error){if(error.code==='invalid_scenario')return fail(res,400,error.code,error.message);next(error);}});
+  router.patch('/scenarios/:scenarioId/vat-treatment',async(req,res,next)=>{try{const changed=await vatTreatment.update(req.params.scenarioId,req.body||{});return changed?res.json(await service.createRevision(req.params.scenarioId)):fail(res,404,'scenario_not_found','Calculator scenario not found.');}catch(error){if(error.code==='invalid_options')return fail(res,400,error.code,error.message);next(error);}});
   router.patch('/scenarios/:scenarioId/products/:rowId',async(req,res,next)=>{try{const value=await service.updateProduct(req.params.scenarioId,req.params.rowId,req.body||{});return value?res.json(value):fail(res,404,'product_not_found','Calculator product row not found.');}catch(error){if(error.code==='invalid_product')return fail(res,400,error.code,error.message);next(error);}});
   router.patch('/scenarios/:scenarioId/supplier-costs/:rowId',async(req,res,next)=>{try{const value=await service.updateSupplierCost(req.params.scenarioId,req.params.rowId,req.body||{});return value?res.json(value):fail(res,404,'supplier_cost_not_found','Supplier cost row not found.');}catch(error){if(error.code==='invalid_cost')return fail(res,400,error.code,error.message);next(error);}});
   router.patch('/scenarios/:scenarioId/manual-costs/:rowId',async(req,res,next)=>{try{const value=await service.updateManualCost(req.params.scenarioId,req.params.rowId,req.body||{});return value?res.json(value):fail(res,404,'manual_cost_not_found','Manual cost row not found.');}catch(error){if(error.code==='invalid_cost')return fail(res,400,error.code,error.message);next(error);}});
@@ -42,6 +45,6 @@ export async function createProjectCalculatorLabRouter({dbPromise, exchangeRateP
   router.patch('/scenarios/:scenarioId/installation-materials',async(req,res,next)=>{try{const value=await service.updateInstallationMaterials(req.params.scenarioId,req.body||{});return value?res.json(value):fail(res,404,'scenario_not_found','Calculator scenario not found.');}catch(error){if(error.code==='invalid_options')return fail(res,400,error.code,error.message);next(error);}});
   router.patch('/scenarios/:scenarioId/package-items/:itemId',async(req,res,next)=>{try{const value=await service.updatePackageItem(req.params.scenarioId,req.params.itemId,req.body||{});return value?res.json(value):fail(res,404,'package_item_not_found','Package item not found.');}catch(error){if(error.code==='invalid_cost')return fail(res,400,error.code,error.message);next(error);}});
   router.post('/scenarios/:scenarioId/route-snapshots',async(req,res,next)=>{try{const value=await service.appendRouteSnapshot(req.params.scenarioId,req.body||{});return value?res.status(201).json(value):fail(res,404,'scenario_not_found','Calculator scenario not found.');}catch(error){if(error.code==='invalid_route')return fail(res,400,error.code,error.message);next(error);}});
-  router.use((error,req,res,_next)=>{console.error('Project Calculator Lab request failed',{method:req.method,code:error?.code||'calculator_lab_failure'});return fail(res,500,'calculator_lab_failure','Project Calculator Lab operation failed.');});
+  router.use((error,req,res,_next)=>{console.error('Project Calculator Lab request failed',{method:req.method,path:req.originalUrl,code:error?.code||'calculator_lab_failure',message:error instanceof Error?error.message:String(error)});return fail(res,500,'calculator_lab_failure','Unable to complete the Project Costing operation. Please retry or contact support with the time of the failure.');});
   return router;
 }

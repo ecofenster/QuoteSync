@@ -64,6 +64,20 @@ test("fixed selling price, discount and VAT reconcile exactly", () => {
   assert.equal(quote.totalIncVatGbp, "2400.00");
 });
 
+test("saved Estimate VAT treatment drives customer totals and zero discounts collapse at the shared projection", () => {
+  const input = scenario();
+  input.options.vatTreatment = { code: "reduced_rate", percentage: "5", source: "manual_override", manuallyOverridden: true };
+  input.customerPricing.discount = { mode: "percentage", percentage: "0", amount: "0" };
+  const quote = buildCustomerQuotationProjection({ scenario: input, client, estimate });
+  assert.equal(quote.vatRatePercent, "5");
+  assert.equal(quote.vatGbp, "100.00");
+  assert.equal(quote.totalIncVatGbp, "2100.00");
+  assert.equal(quote.showCustomerDiscount, false);
+
+  input.customerPricing.discount = { mode: "fixed", percentage: "0", amount: "50" };
+  assert.equal(buildCustomerQuotationProjection({ scenario: input, client, estimate }).showCustomerDiscount, true);
+});
+
 test("save/reload JSON round-trip reproduces the same customer total without provider refresh", () => {
   const before = buildCustomerQuotationProjection({ scenario: scenario(), client, estimate });
   const reloaded = JSON.parse(JSON.stringify(scenario()));
@@ -143,16 +157,23 @@ test("manufacturer visual URLs use the API origin without altering external asse
 });
 
 test("the canonical entry point and A4 print path are present and misleading legacy outputs are not exposed", async () => {
-  const [workspace, preview, css, pickerActions, collectionActions, costing, adminPreview] = await Promise.all([
+  const [workspace, preview, css, pickerActions, collectionActions, collectionView, costing, adminPreview] = await Promise.all([
     readFile("src/features/estimateCommercial/EstimateCommercialWorkspace.tsx", "utf8"),
     readFile("src/features/customerQuotation/CustomerQuotationPreview.tsx", "utf8"),
     readFile("src/features/customerQuotation/customerQuotation.css", "utf8"),
     readFile("src/features/estimatePicker/components/EstimateActionsBar.tsx", "utf8"),
     readFile("src/features/estimateCollection/EstimateCollectionActions.tsx", "utf8"),
+    readFile("src/features/estimateCollection/EstimateCollectionView.tsx", "utf8"),
     readFile("src/features/projectCalculatorLab/ScenarioCostingWorksheet.tsx", "utf8"),
     readFile("src/features/admin/AdminSupplierQuoteImportBeta.tsx", "utf8"),
   ]);
   assert.match(workspace, /Customer Quotation\s*<\/button>/);
+  assert.doesNotMatch(workspace, /aria-label="Estimate actions"/);
+  for (const action of ["Email", "Follow up", "Estimate Status", "Copy", "Delete"]) assert.match(collectionView, new RegExp(action));
+  assert.match(collectionView, /estimate-index-action-headings/);
+  assert.match(collectionView, /<span>Email<\/span><span>Follow Up<\/span><span>Status<\/span><span>Copy<\/span><span>Delete<\/span><span>Open<\/span>/);
+  assert.doesNotMatch(collectionView, /<th>Actions<\/th>/);
+  assert.match(collectionView, /aria-label={`Open \$\{item\.estimateRef\}`}/);
   assert.match(preview, /window\.print\(\)/);
   assert.match(preview, /Print \/ Save PDF/);
   assert.match(preview, /Technical Schedule/);
@@ -160,6 +181,7 @@ test("the canonical entry point and A4 print path are present and misleading leg
   assert.match(preview, /data-document-template/);
   assert.match(preview, /data-thermal-mode/);
   assert.match(preview, /data-section-details/);
+  assert.match(preview, /projection\.showCustomerDiscount/);
   assert.match(workspace, /aria-label="Commercial view"/);
   assert.match(workspace, /Internal View<\/button>/);
   assert.match(workspace, /Customer View<\/button>/);

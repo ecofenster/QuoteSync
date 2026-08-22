@@ -14,6 +14,35 @@ export function classifyInstallationPosition(position, override = {}) {
   return { family, specialist: family !== 'standard', reviewed, source: override.installationClass ? 'estimate_override' : family === 'standard' ? 'canonical_product_class' : 'product_evidence' };
 }
 
+const explicitCillRequirement = position => {
+  const source = position.sourceSnapshot ?? {};
+  const canonical = source.canonicalPosition ?? {};
+  const overrides = canonical.overrides ?? source.overrides ?? {};
+  for (const value of [canonical.cillRequired, source.cillRequired, source.requiresCill, overrides.externalSillRequired]) {
+    if (typeof value === 'boolean') return value;
+  }
+  const sillMode = source.configurationState?.externalWindowSill?.mode;
+  if (sillMode === 'none') return false;
+  if (sillMode === 'default' || sillMode === 'custom') return true;
+  return null;
+};
+
+export function calculateApplicableCillQuantity(positions = []) {
+  return positions
+    .filter(position => position.includedInCurrentEstimate !== false && position.classification !== 'alternative')
+    .reduce((total, position) => {
+      const explicit = explicitCillRequirement(position);
+      if (explicit === false) return total;
+      const source = position.sourceSnapshot ?? {};
+      const evidence = source.manufacturerEvidence ?? {};
+      const identity = `${position.productClass ?? ''} ${source.canonicalPosition?.positionType ?? ''} ${source.configuredContract?.estimateContext?.positionType ?? ''} ${evidence.productType ?? ''} ${evidence.product ?? ''} ${evidence.productSystem ?? ''} ${evidence.configurationDescription ?? ''}`.toLowerCase();
+      const doorOnly = /\b(?:entrance|single|patio|sliding|gliding|lift[ -]?(?:and[ -]?)?slide|bi[ -]?fold)\b.*\bdoor\b|\b(?:door|bifold)\b|lift[ -]?(?:and[ -]?)?slide|sliding|gliding/.test(identity);
+      const window = /\bwindow\b|fixed glazing|tilt[ -]?(?:and[ -]?)?turn/.test(identity);
+      if (doorOnly || (explicit !== true && !window)) return total;
+      return total + clampInt(position.quantity, 0);
+    }, 0);
+}
+
 function taskList(positions, profile, rules, crewSize) {
   const overrides = profile.positionRequirements ?? {};
   const capacity = number(rules.standardUnitsPerDayByCrew?.[String(crewSize)], crewSize >= 4 ? rules.standardUnitsPerDayByCrew?.['4'] : rules.standardUnitsPerDayByCrew?.['2']);
@@ -93,8 +122,9 @@ export function calculateInstallationProgramme({ positions = [], rules = {}, pro
   const supportCost = supportDays * number(profile.supportDayRate ?? rules.supportDayRate, 350);
   const surveyDays = Math.max(0, number(profile.surveyDays));
   const surveyCost = surveyDays * number(profile.surveyDayRate ?? rules.surveyDayRate, 400);
-  const cillQuantity = Math.max(0, number(profile.cillApplicableQuantity));
-  const cillCost = cillQuantity * number(profile.cillInstallationRate ?? rules.cillInstallationRate, 25);
+  const cillQuantity = calculateApplicableCillQuantity(positions);
+  const cillInstallationRate = number(profile.cillInstallationRate ?? rules.cillInstallationRate, 25);
+  const cillCost = cillQuantity * cillInstallationRate;
   const purchaseCost = labourCost + mileageCost + foodCost + accommodationCost + supportCost + surveyCost + cillCost;
   const returnByMinutes = 17 * 60 + routeMinutes;
   if (returnByMinutes > number(rules.latestReturnHomeMinutes, 23 * 60)) reviewRequired.push('Final return is forecast after 23:00 and requires programme review.');
@@ -108,7 +138,7 @@ export function calculateInstallationProgramme({ positions = [], rules = {}, pro
     tasks: derived.tasks, days: days.map((day, index) => ({ day: index + 1, capacityHours: day.capacityHours, tasks: day.tasks })), requiredCapabilities,
     travel: { mode: travelMode, recommendation: routeMinutes > number(rules.stayAwayThresholdMinutes, 90) ? 'stay_away' : 'daily_travel', oneWayMiles: money(oneWayMiles), oneWayDurationMinutes: routeMinutes, vehicleCount, chargeableMiles: money(chargeableMiles), mileageRate: money(profile.mileageRate ?? rules.mileageRate ?? 0.55), cost: money(mileageCost), finalReturnBy: `${String(Math.floor(returnByMinutes / 60)).padStart(2,'0')}:${String(returnByMinutes % 60).padStart(2,'0')}`, returnsBy2300: returnByMinutes <= number(rules.latestReturnHomeMinutes, 23 * 60) },
     costs: { labour: money(labourCost), mileage: money(mileageCost), food: money(foodCost), accommodation: money(accommodationCost), support: money(supportCost), survey: money(surveyCost), cillInstallation: money(cillCost), purchaseCost: money(purchaseCost) },
-    allowances: { nights, foodDays: programmeDays, supportDays, surveyDays, cillApplicableQuantity: cillQuantity },
+    allowances: { nights, foodDays: programmeDays, supportDays, surveyDays, cillApplicableQuantity: cillQuantity, cillInstallationRate: money(cillInstallationRate) },
     selectedTeamId: profile.selectedTeamId ?? null, ruleVersion: profile.capturedRuleVersion ?? null, reviewRequired,
     provenance: { productivity: 'administration_snapshot', positionOverrides: 'estimate_snapshot', route: profile.route?.snapshotId ? 'google_route_snapshot' : profile.route?.manuallyOverridden ? 'estimate_override' : 'missing' },
   };

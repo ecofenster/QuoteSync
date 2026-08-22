@@ -607,7 +607,8 @@ const tables = [
     supplier_name TEXT NOT NULL,
     policy_json TEXT NOT NULL,
     pricing_display_policy_json TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    active INTEGER NOT NULL DEFAULT 1
   )`,
   `CREATE TABLE IF NOT EXISTS project_calculator_supplier_fx_snapshots (
     id TEXT PRIMARY KEY,
@@ -938,6 +939,8 @@ export async function initializeSupplierCommercialSchema(db) {
   if(!manualCostColumns.some(item=>item.name==='included_in_current_estimate'))await db.exec('ALTER TABLE project_calculator_lab_manual_cost_lines ADD COLUMN included_in_current_estimate INTEGER NOT NULL DEFAULT 1');
   const installationCompanyColumns=await db.all('PRAGMA table_info(installation_companies)');
   if(!installationCompanyColumns.some(item=>item.name==='day_rate'))await db.exec('ALTER TABLE installation_companies ADD COLUMN day_rate TEXT');
+  const supplierCommercialDefaultColumns=await db.all('PRAGMA table_info(supplier_commercial_defaults)');
+  if(!supplierCommercialDefaultColumns.some(item=>item.name==='active'))await db.exec('ALTER TABLE supplier_commercial_defaults ADD COLUMN active INTEGER NOT NULL DEFAULT 1');
   const now=new Date().toISOString();
   for(const [id,category,label,rateType,price,variant] of CALCULATOR_CATALOGUE_DEFAULTS)await db.run('INSERT OR IGNORE INTO project_calculator_admin_catalogue_items(id,category,label,rate_type,price_amount,currency,variant_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)',id,category,label,rateType,price,'GBP',JSON.stringify(variant||{}),now,now);
   await db.run("UPDATE project_calculator_admin_catalogue_items SET active=0,updated_at=? WHERE id='me508_unconfigured' AND price_amount IS NULL",now);

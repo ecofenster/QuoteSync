@@ -184,10 +184,10 @@ export default function CustomerQuotationPreview({
             </div>
           ) : null}
           <div className="customer-quotation__totals">
-            <div>
+            {projection.showCustomerDiscount ? <div>
               <span>Customer discount</span>
               <strong>−{money(projection.customerDiscountGbp)}</strong>
-            </div>
+            </div> : null}
             {projection.fixedSellingPriceEnabled &&
             Number(projection.fixedPriceAdjustmentGbp) !== 0 ? (
               <div>

@@ -8,10 +8,11 @@ type Props = {
   title?: string;
   children: React.ReactNode;
   onMenuClick?: (key: string) => void;
+  activeNavKey?: string;
 };
 
 export default function AppShell(props: Props) {
-  const { title = "QuoteSuite", children, onMenuClick } = props;
+  const { title = "QuoteSuite", children, onMenuClick, activeNavKey = "" } = props;
 
   return (
     <div className="app-shell">
@@ -23,36 +24,47 @@ export default function AppShell(props: Props) {
 
           <div className="app-shell__actions">
             <nav className="app-shell__nav">
-              {appShellMenuItems.map((item) => item.children ? (
-                <details key={item.key} className="app-shell__nav-menu">
-                  <summary className="app-shell__nav-button ui-button">{item.label}</summary>
-                  <div className="app-shell__nav-menu-panel">
-                    {item.children.map((child) => (
-                      <button
-                        key={child.key}
-                        type="button"
-                        onClick={(event) => {
-                          onMenuClick?.(child.key);
-                          event.currentTarget.closest("details")?.removeAttribute("open");
-                        }}
-                        className="app-shell__nav-menu-item"
+              {appShellMenuItems.map((item) => {
+                if (item.children) {
+                  return (
+                    <details key={item.key} className="app-shell__nav-menu">
+                      <summary
+                        className="app-shell__nav-button ui-button"
+                        data-state={activeNavKey === item.key ? "active" : undefined}
                       >
-                        {child.label}
-                      </button>
-                    ))}
-                  </div>
-                </details>
-              ) : (
-                <button
-                  key={item.key}
-                  type="button"
-                  onClick={() => onMenuClick?.(item.key)}
-                  className="app-shell__nav-button ui-button"
-                  data-accent={item.accent ? "true" : undefined}
-                >
-                  {item.label}
-                </button>
-              ))}
+                        {item.label}
+                      </summary>
+                      <div className="app-shell__nav-menu-panel">
+                        {item.children.map((child) => (
+                          <button
+                            key={child.key}
+                            type="button"
+                            onClick={(event) => {
+                              onMenuClick?.(child.key);
+                              event.currentTarget.closest("details")?.removeAttribute("open");
+                            }}
+                            className="app-shell__nav-menu-item"
+                          >
+                            {child.label}
+                          </button>
+                        ))}
+                      </div>
+                    </details>
+                  );
+                }
+
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => onMenuClick?.(item.key)}
+                    className="app-shell__nav-button ui-button"
+                    data-state={activeNavKey === item.key ? "active" : undefined}
+                  >
+                    {item.label}
+                  </button>
+                );
+              })}
             </nav>
 
             <ThemeSelector className="app-shell__theme-selector" />

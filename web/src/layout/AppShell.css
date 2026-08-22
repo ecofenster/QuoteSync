@@ -7,7 +7,7 @@
 .app-shell__header {
   position: sticky;
   top: 0;
-  z-index: 20;
+  z-index: 40;
   background: var(--qs-bg-surface);
   border-bottom: 1px solid var(--qs-border-standard);
   backdrop-filter: var(--qs-backdrop-filter, none);
@@ -70,9 +70,18 @@
   padding: 8px 12px;
 }
 
-.app-shell__nav-button[data-accent="true"] {
-  border-color: var(--qs-theme-accent);
-  color: var(--qs-theme-accent);
+.app-shell__nav-button[data-state="active"],
+.app-shell__nav-menu > summary[data-state="active"] {
+  border-color: var(--qs-bg-selected);
+  background: var(--qs-bg-selected);
+  color: var(--qs-theme-selected-text);
+}
+
+.app-shell__nav-button[data-state="active"]:hover,
+.app-shell__nav-menu > summary[data-state="active"]:hover {
+  border-color: var(--qs-bg-selected);
+  background: var(--qs-bg-selected);
+  color: var(--qs-theme-selected-text);
 }
 
 .app-shell__nav-menu {
@@ -120,7 +129,7 @@
 
 .app-shell__nav-menu-item:hover,
 .app-shell__nav-menu-item:focus-visible {
-  background: var(--qs-bg-surface-hover);
+  background: var(--qs-bg-hover);
   outline: none;
 }
 
