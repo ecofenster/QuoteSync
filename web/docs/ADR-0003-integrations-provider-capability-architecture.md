@@ -21,6 +21,12 @@ OAuth access and refresh tokens must remain backend-only. Status responses expos
 
 The current local-server implementation stores managed Google Maps and what3words keys as plaintext JSON values in the local SQLite settings table. They are filtered from generic Settings, never returned unmasked, and are not stored in browser storage. This is not encryption at rest. A future deployment requiring a stronger boundary should replace only the credential repository with operating-system or deployment secret storage while retaining the provider/capability service contract.
 
+Google Workspace provider settings are entered once through Administration → Integrations. The OAuth client ID, authorised redirect URI, root folder IDs, folder template, capability metadata and safe account/connection metadata persist in SQLite. The OAuth client secret and access/refresh tokens persist only as AES-256-GCM ciphertext. Status APIs never return the client secret, tokens, ciphertext or master key.
+
+The master QuoteSuite integration encryption key is infrastructure-owned and remains outside the application database. Startup resolves it through a secret-provider bootstrap boundary before integration services are used, validates its format without logging it, and exposes only safe availability state. The local-development provider loads the application-relative ignored `.env.local` file independently of the process working directory. Production providers can later obtain the same secret through Windows secure/DPAPI-backed service configuration, Azure Key Vault, AWS Secrets Manager, Docker/Kubernetes secrets or an equivalent managed server secret store without changing provider persistence or OAuth services.
+
+Missing, invalid or incorrect infrastructure encryption material never deletes persisted integration rows and never generates a replacement key. In that condition, status distinguishes stored provider configuration from operational availability. Restoring the correct infrastructure key makes the existing configuration and connection usable again without re-entering credentials or reconnecting OAuth.
+
 Google Maps is one user-facing integration experience but not necessarily one physical credential:
 
 - Tenant/company business integration: Administration-managed and server-only. It supplies Geocoding API and Routes API capabilities to Web, future iOS and future Android clients through QuoteSuite APIs. The tenant credential never reaches a client.
@@ -36,4 +42,4 @@ OneDrive, SharePoint and Google Drive are true API integrations. Network paths a
 
 ## Deferred work
 
-OAuth connection flows, mail synchronisation, calendars, webhooks/change notifications, Site Visit & Travel, and customer-facing document workflows are explicitly deferred.
+Additional platform secret-provider implementations, calendars, webhooks/change notifications, Site Visit & Travel, and customer-facing document workflows are explicitly deferred.

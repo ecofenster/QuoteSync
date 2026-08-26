@@ -12,7 +12,7 @@ import { loadSettings } from "../../system/settings";
 import { CURRENT_APP_USER } from "../../system/currentUser";
 import { getPreference, setPreference } from "../../utils/userPreferences";
 import { createDefaultTimeline } from "../../system/orderTimeline";
-import type { Client, ClientId, EstimateId, EstimateOutcome, EstimatePickerTab, ClientFile } from "../../models/types";
+import type { Client, ClientId, EstimateId, EstimateOutcome, EstimatePickerTab } from "../../models/types";
 import { estimateTotals, estimateCostTotal } from '../../domain/estimates/estimateCalculations';
 import { addFollowUpForEstimate as addFollowUpForEstimateService } from '../../services/followups/followupService';
 import { buildSendEmailText as buildSendEmailTextService, openMailClient as openMailClientService } from '../../services/email/emailService';
@@ -128,14 +128,6 @@ type Props = {
   notesSaving: boolean;
   activeUserName: string;
 
-  clientFileLabel: string;
-  setClientFileLabel: (v: string) => void;
-  clientFileUrl: string;
-  setClientFileUrl: (v: string) => void;
-  clientFileNames: string[];
-  setClientFileNames: (v: string[]) => void;
-  clientFiles: ClientFile[];
-  setClientFiles: React.Dispatch<React.SetStateAction<ClientFile[]>>;
 };
 
 function Button({
@@ -449,14 +441,6 @@ export default function EstimatePickerTabs(props: Props) {
     saveEstimateNotes,
     notesSaving,
     activeUserName,
-    clientFileLabel,
-    setClientFileLabel,
-    clientFileUrl,
-    setClientFileUrl,
-    clientFileNames,
-    setClientFileNames,
-    clientFiles,
-    setClientFiles,
   } = props;
 
   const [sendModalOpen, setSendModalOpen] = useState(false);
@@ -913,15 +897,7 @@ export default function EstimatePickerTabs(props: Props) {
 
       {estimatePickerTab === "files" && (
         <FilesTab
-          clientFileLabel={clientFileLabel}
-          setClientFileLabel={setClientFileLabel}
-          clientFileUrl={clientFileUrl}
-          setClientFileUrl={setClientFileUrl}
-          clientFileNames={clientFileNames}
-          setClientFileNames={setClientFileNames}
-          clientFiles={clientFiles}
-          setClientFiles={setClientFiles}
-          activeUserName={activeUserName}
+          clientId={String(pickerClient.id)}
         />
       )}
 

@@ -7,15 +7,18 @@ export const GOOGLE_WORKSPACE_SCOPES = Object.freeze([
   "email",
   "profile",
   "https://www.googleapis.com/auth/gmail.readonly",
-  "https://www.googleapis.com/auth/gmail.modify",
   "https://www.googleapis.com/auth/gmail.compose",
-  "https://www.googleapis.com/auth/gmail.send",
   "https://www.googleapis.com/auth/drive",
 ]);
 
 const parse = (value, fallback) => { try { return JSON.parse(value ?? ""); } catch { return fallback; } };
 const nowIso = () => new Date().toISOString();
 const providerError = (message, status = 502, code = "google_workspace_error") => Object.assign(new Error(message), { status, code });
+const GMAIL_REQUIRED_SCOPES = Object.freeze([
+  "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/gmail.compose",
+]);
+const DRIVE_REQUIRED_SCOPES = Object.freeze(["https://www.googleapis.com/auth/drive"]);
 
 export function createGoogleWorkspaceService(db, { fetchImpl = fetch, environment = process.env, encryptionKey, now = () => new Date() } = {}) {
   const vault = createIntegrationSecretVault({ environment, encryptionKey });
@@ -40,29 +43,71 @@ export function createGoogleWorkspaceService(db, { fetchImpl = fetch, environmen
     const encryptedSecret = secretInput === undefined ? current?.encrypted_client_secret ?? null : vault.encrypt(secretInput);
     if (!encryptedSecret && !environment.GOOGLE_WORKSPACE_CLIENT_SECRET) throw providerError("Google OAuth client secret is required.", 400, "invalid_oauth_configuration");
     const template = input.folderTemplate ?? parse(current?.folder_template_json, {});
+    const estimatesRootFolderId = Object.hasOwn(input, "estimatesRootFolderId") ? input.estimatesRootFolderId : current?.estimates_root_folder_id ?? null;
+    const ordersRootFolderId = Object.hasOwn(input, "ordersRootFolderId") ? input.ordersRootFolderId : current?.orders_root_folder_id ?? null;
     await db.run(`INSERT INTO integration_provider_config(provider,client_id,encrypted_client_secret,redirect_uri,capabilities_json,estimates_root_folder_id,orders_root_folder_id,folder_template_json,created_at,updated_at)
       VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(provider) DO UPDATE SET client_id=excluded.client_id,encrypted_client_secret=excluded.encrypted_client_secret,redirect_uri=excluded.redirect_uri,capabilities_json=excluded.capabilities_json,estimates_root_folder_id=excluded.estimates_root_folder_id,orders_root_folder_id=excluded.orders_root_folder_id,folder_template_json=excluded.folder_template_json,updated_at=excluded.updated_at`,
-      GOOGLE_WORKSPACE_PROVIDER, clientId, encryptedSecret, redirectUri, JSON.stringify(GOOGLE_WORKSPACE_SCOPES), input.estimatesRootFolderId ?? current?.estimates_root_folder_id ?? null, input.ordersRootFolderId ?? current?.orders_root_folder_id ?? null, JSON.stringify(template), timestamp, timestamp);
+      GOOGLE_WORKSPACE_PROVIDER, clientId, encryptedSecret, redirectUri, JSON.stringify(GOOGLE_WORKSPACE_SCOPES), estimatesRootFolderId, ordersRootFolderId, JSON.stringify(template), timestamp, timestamp);
     return status();
   }
 
   async function connection() { return db.get("SELECT * FROM integration_oauth_connections WHERE provider=?", GOOGLE_WORKSPACE_PROVIDER); }
   async function status() {
-    const config = await resolvedConfig(), connected = await connection();
+    const stored = await storedConfig(), connected = await connection();
+    const clientId = String(stored?.client_id || environment.GOOGLE_WORKSPACE_CLIENT_ID || "").trim();
+    const redirectUri = String(stored?.redirect_uri || environment.GOOGLE_WORKSPACE_REDIRECT_URI || "").trim();
+    const hasClientSecret = Boolean(stored?.encrypted_client_secret || String(environment.GOOGLE_WORKSPACE_CLIENT_SECRET || "").trim());
+    const configured = Boolean(clientId && hasClientSecret && redirectUri);
+    let encryptionState = vault.state;
+    if (vault.configured) {
+      const protectedValues = [stored?.encrypted_client_secret, connected?.encrypted_access_token, connected?.encrypted_refresh_token].filter(Boolean);
+      try { for (const value of protectedValues) vault.decrypt(value); }
+      catch { encryptionState = "decryption_failed"; }
+    }
+    const connectedScopes = parse(connected?.scopes_json, []);
+    const encryptionAvailable = encryptionState === "available";
+    const persistedConnected = connected?.status === "connected";
+    const reconnectRequired = connected?.status === "error" || (persistedConnected && (!connected.encrypted_access_token || !connected.encrypted_refresh_token));
+    const state = !configured
+      ? "not_configured"
+      : !encryptionAvailable
+        ? "configured_encryption_unavailable"
+        : reconnectRequired
+          ? "reconnect_required"
+          : persistedConnected
+            ? "connected"
+            : "configured_disconnected";
+    const isConnected = state === "connected";
+    const capability = (required) => ({
+      available: isConnected && required.every((scope) => connectedScopes.includes(scope)),
+      missingScopes: required.filter((scope) => !connectedScopes.includes(scope)),
+    });
+    const infrastructureMessage = state === "configured_encryption_unavailable"
+      ? "Google Workspace configuration is stored, but the server encryption service is unavailable."
+      : null;
     return {
       provider: GOOGLE_WORKSPACE_PROVIDER,
-      configured: Boolean(config.clientId && config.clientSecret && config.redirectUri),
-      encryptionConfigured: vault.configured,
-      connected: connected?.status === "connected",
+      state,
+      configured,
+      configurationStored: Boolean(stored),
+      encryptionConfigured: encryptionAvailable,
+      encryptionState,
+      connected: isConnected,
       connectionStatus: connected?.status ?? "disconnected",
-      account: connected?.status === "connected" ? { id: connected.account_id, email: connected.account_email, name: connected.account_name } : null,
-      scopes: parse(connected?.scopes_json, GOOGLE_WORKSPACE_SCOPES),
-      redirectUri: config.redirectUri || null,
-      clientIdHint: config.clientId ? `${config.clientId.slice(0, 8)}…${config.clientId.slice(-6)}` : null,
-      estimatesRootFolderId: config.stored?.estimates_root_folder_id ?? null,
-      ordersRootFolderId: config.stored?.orders_root_folder_id ?? null,
-      folderTemplate: parse(config.stored?.folder_template_json, {}),
-      error: connected?.error_message ?? null,
+      account: connected ? { id: connected.account_id, email: connected.account_email, name: connected.account_name } : null,
+      scopes: connectedScopes.length ? connectedScopes : GOOGLE_WORKSPACE_SCOPES,
+      capabilities: {
+        gmail: capability(GMAIL_REQUIRED_SCOPES),
+        drive: { ...capability(DRIVE_REQUIRED_SCOPES), rootConfigured: Boolean(stored?.estimates_root_folder_id) },
+      },
+      clientId: clientId || null,
+      redirectUri: redirectUri || null,
+      clientIdHint: clientId ? `${clientId.slice(0, 8)}…${clientId.slice(-6)}` : null,
+      estimatesRootFolderId: stored?.estimates_root_folder_id ?? null,
+      ordersRootFolderId: stored?.orders_root_folder_id ?? null,
+      folderTemplate: parse(stored?.folder_template_json, {}),
+      infrastructureMessage,
+      error: infrastructureMessage || (reconnectRequired ? "Google Workspace must be reconnected by an administrator." : null),
     };
   }
 

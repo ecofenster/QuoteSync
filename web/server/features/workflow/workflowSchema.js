@@ -1,3 +1,30 @@
+import { COMMUNICATION_FOLDER_CHECK_SQL } from "../communications/communicationFolder.js";
+
+const communicationMessagesTableSql = (tableName, ifNotExists = true) => `CREATE TABLE ${ifNotExists ? "IF NOT EXISTS " : ""}${tableName} (
+    id TEXT PRIMARY KEY,
+    provider TEXT NOT NULL,
+    provider_message_id TEXT,
+    provider_thread_id TEXT,
+    mailbox_id TEXT,
+    direction TEXT NOT NULL CHECK (direction IN ('inbound','outbound')),
+    folder TEXT NOT NULL CHECK (folder IN (${COMMUNICATION_FOLDER_CHECK_SQL})),
+    status TEXT NOT NULL CHECK (status IN ('draft','sending','sent','failed','received')),
+    from_json TEXT NOT NULL DEFAULT '[]',
+    to_json TEXT NOT NULL DEFAULT '[]',
+    cc_json TEXT NOT NULL DEFAULT '[]',
+    bcc_json TEXT NOT NULL DEFAULT '[]',
+    subject TEXT NOT NULL DEFAULT '',
+    body_html TEXT NOT NULL DEFAULT '',
+    body_text TEXT NOT NULL DEFAULT '',
+    in_reply_to_provider_message_id TEXT,
+    links_json TEXT NOT NULL DEFAULT '[]',
+    error_message TEXT,
+    sent_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(provider, provider_message_id)
+  )`;
+
 const tableStatements = [
   `CREATE TABLE IF NOT EXISTS integration_provider_config (
     provider TEXT PRIMARY KEY,
@@ -33,30 +60,7 @@ const tableStatements = [
     expires_at TEXT NOT NULL,
     created_at TEXT NOT NULL
   )`,
-  `CREATE TABLE IF NOT EXISTS communication_messages (
-    id TEXT PRIMARY KEY,
-    provider TEXT NOT NULL,
-    provider_message_id TEXT,
-    provider_thread_id TEXT,
-    mailbox_id TEXT,
-    direction TEXT NOT NULL CHECK (direction IN ('inbound','outbound')),
-    folder TEXT NOT NULL CHECK (folder IN ('inbox','sent','drafts','other')),
-    status TEXT NOT NULL CHECK (status IN ('draft','sending','sent','failed','received')),
-    from_json TEXT NOT NULL DEFAULT '[]',
-    to_json TEXT NOT NULL DEFAULT '[]',
-    cc_json TEXT NOT NULL DEFAULT '[]',
-    bcc_json TEXT NOT NULL DEFAULT '[]',
-    subject TEXT NOT NULL DEFAULT '',
-    body_html TEXT NOT NULL DEFAULT '',
-    body_text TEXT NOT NULL DEFAULT '',
-    in_reply_to_provider_message_id TEXT,
-    links_json TEXT NOT NULL DEFAULT '[]',
-    error_message TEXT,
-    sent_at TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    UNIQUE(provider, provider_message_id)
-  )`,
+  communicationMessagesTableSql("communication_messages"),
   `CREATE TABLE IF NOT EXISTS communication_attachments (
     id TEXT PRIMARY KEY,
     communication_message_id TEXT NOT NULL,
@@ -131,7 +135,6 @@ const tableStatements = [
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     UNIQUE(provider, estimate_id, logical_key),
-    UNIQUE(provider, provider_folder_id),
     FOREIGN KEY (estimate_id) REFERENCES estimates(id) ON DELETE CASCADE
   )`,
   `CREATE TABLE IF NOT EXISTS drive_document_links (
@@ -170,8 +173,61 @@ async function ensureColumn(db, table, name, definition) {
   if (!columns.some((column) => column.name === name)) await db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
 }
 
+async function allowSharedDriveFolderMappings(db) {
+  const current = await db.get("SELECT sql FROM sqlite_master WHERE type='table' AND name='drive_project_folders'");
+  if (!current?.sql?.includes("UNIQUE(provider, provider_folder_id)")) return;
+  await db.exec(`
+    BEGIN;
+    CREATE TABLE drive_project_folders_next (
+      id TEXT PRIMARY KEY,
+      provider TEXT NOT NULL,
+      estimate_id TEXT NOT NULL,
+      logical_key TEXT NOT NULL,
+      name TEXT NOT NULL,
+      parent_logical_key TEXT,
+      provider_folder_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(provider, estimate_id, logical_key),
+      FOREIGN KEY (estimate_id) REFERENCES estimates(id) ON DELETE CASCADE
+    );
+    INSERT INTO drive_project_folders_next SELECT id,provider,estimate_id,logical_key,name,parent_logical_key,provider_folder_id,created_at,updated_at FROM drive_project_folders;
+    DROP TABLE drive_project_folders;
+    ALTER TABLE drive_project_folders_next RENAME TO drive_project_folders;
+    COMMIT;
+  `);
+}
+
+async function expandCommunicationFolderDomain(db) {
+  const current = await db.get("SELECT sql FROM sqlite_master WHERE type='table' AND name='communication_messages'");
+  if (!current?.sql || (current.sql.includes("'trash'") && current.sql.includes("'spam'"))) return;
+  const foreignKeysEnabled = Number((await db.get("PRAGMA foreign_keys"))?.foreign_keys || 0) === 1;
+  if (foreignKeysEnabled) await db.exec("PRAGMA foreign_keys=OFF");
+  try {
+    await db.exec(`
+      BEGIN IMMEDIATE;
+      ${communicationMessagesTableSql("communication_messages_next", false)};
+      INSERT INTO communication_messages_next(id,provider,provider_message_id,provider_thread_id,mailbox_id,direction,folder,status,from_json,to_json,cc_json,bcc_json,subject,body_html,body_text,in_reply_to_provider_message_id,links_json,error_message,sent_at,created_at,updated_at)
+      SELECT id,provider,provider_message_id,provider_thread_id,mailbox_id,direction,
+        CASE lower(folder) WHEN 'inbox' THEN 'inbox' WHEN 'sent' THEN 'sent' WHEN 'drafts' THEN 'drafts' WHEN 'trash' THEN 'trash' WHEN 'bin' THEN 'trash' WHEN 'spam' THEN 'spam' ELSE 'other' END,
+        status,from_json,to_json,cc_json,bcc_json,subject,body_html,body_text,in_reply_to_provider_message_id,links_json,error_message,sent_at,created_at,updated_at
+      FROM communication_messages;
+      DROP TABLE communication_messages;
+      ALTER TABLE communication_messages_next RENAME TO communication_messages;
+      COMMIT;
+    `);
+  } catch (error) {
+    await db.exec("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    if (foreignKeysEnabled) await db.exec("PRAGMA foreign_keys=ON");
+  }
+}
+
 export async function initializeWorkflowSchema(db) {
   for (const statement of tableStatements) await db.exec(statement);
+  await expandCommunicationFolderDomain(db);
+  await allowSharedDriveFolderMappings(db);
   await ensureColumn(db, "followups", "issued_quotation_id", "TEXT");
   await ensureColumn(db, "followups", "communication_message_id", "TEXT");
   await ensureColumn(db, "followups", "origin_event_id", "TEXT");

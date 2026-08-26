@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { normalizeCommunicationFolder } from "./communicationFolder.js";
 
 const parse = (value, fallback = []) => { try { return JSON.parse(value || ""); } catch { return fallback; } };
 const nowIso = () => new Date().toISOString();
@@ -19,10 +20,10 @@ export function createCommunicationRepository(db) {
   }
 
   async function save(message) {
-    const timestamp = nowIso(), id = String(message.id || randomUUID());
+    const timestamp = nowIso(), id = String(message.id || randomUUID()), folder = normalizeCommunicationFolder(message.folder, { strict: true });
     await db.run(`INSERT INTO communication_messages(id,provider,provider_message_id,provider_thread_id,mailbox_id,direction,folder,status,from_json,to_json,cc_json,bcc_json,subject,body_html,body_text,in_reply_to_provider_message_id,links_json,error_message,sent_at,created_at,updated_at)
       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET provider_message_id=excluded.provider_message_id,provider_thread_id=excluded.provider_thread_id,mailbox_id=excluded.mailbox_id,direction=excluded.direction,folder=excluded.folder,status=excluded.status,from_json=excluded.from_json,to_json=excluded.to_json,cc_json=excluded.cc_json,bcc_json=excluded.bcc_json,subject=excluded.subject,body_html=excluded.body_html,body_text=excluded.body_text,in_reply_to_provider_message_id=excluded.in_reply_to_provider_message_id,links_json=excluded.links_json,error_message=excluded.error_message,sent_at=excluded.sent_at,updated_at=excluded.updated_at`,
-      id, message.provider, message.providerMessageId ?? null, message.threadId ?? null, message.mailboxId ?? null, message.direction ?? "outbound", message.folder ?? "other", message.status, JSON.stringify(message.from ?? []), JSON.stringify(message.to ?? []), JSON.stringify(message.cc ?? []), JSON.stringify(message.bcc ?? []), String(message.subject ?? ""), String(message.bodyHtml ?? ""), String(message.bodyText ?? ""), message.inReplyToProviderMessageId ?? null, JSON.stringify(message.links ?? []), message.error ?? null, message.sentAt ?? null, message.createdAt ?? timestamp, timestamp);
+      id, message.provider, message.providerMessageId ?? null, message.threadId ?? null, message.mailboxId ?? null, message.direction ?? "outbound", folder, message.status, JSON.stringify(message.from ?? []), JSON.stringify(message.to ?? []), JSON.stringify(message.cc ?? []), JSON.stringify(message.bcc ?? []), String(message.subject ?? ""), String(message.bodyHtml ?? ""), String(message.bodyText ?? ""), message.inReplyToProviderMessageId ?? null, JSON.stringify(message.links ?? []), message.error ?? null, message.sentAt ?? null, message.createdAt ?? timestamp, timestamp);
     if (Array.isArray(message.attachments)) for (const attachment of message.attachments) {
       const attachmentId = String(attachment.id || randomUUID());
       await db.run(`INSERT INTO communication_attachments(id,communication_message_id,file_name,media_type,size_bytes,storage_key,provider_attachment_id,drive_file_id,sha256,created_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET provider_attachment_id=excluded.provider_attachment_id,drive_file_id=excluded.drive_file_id`, attachmentId, id, String(attachment.fileName || "attachment"), String(attachment.mediaType || "application/octet-stream"), Number(attachment.sizeBytes || 0), attachment.storageKey ?? null, attachment.providerAttachmentId ?? null, attachment.driveFileId ?? null, attachment.sha256 ?? null, timestamp);
@@ -45,5 +46,15 @@ export function createCommunicationRepository(db) {
     return Promise.all(rows.map((row) => get(row.id)));
   }
 
-  return { get, save, findByProviderId, list };
+  async function addLink(id, link) {
+    const current = await get(id);
+    if (!current) return null;
+    const normalized = { kind: String(link?.kind || "").trim(), id: String(link?.id || "").trim() };
+    if (!normalized.kind || !normalized.id) throw Object.assign(new Error("A canonical relationship kind and ID are required."), { status: 400, code: "invalid_communication_link" });
+    const links = [...current.links.filter((item) => !(item.kind === normalized.kind && item.id === normalized.id)), normalized];
+    await db.run("UPDATE communication_messages SET links_json=?,updated_at=? WHERE id=?", JSON.stringify(links), nowIso(), id);
+    return get(id);
+  }
+
+  return { get, save, findByProviderId, list, addLink };
 }

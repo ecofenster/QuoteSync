@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
+import { normalizeCommunicationFolder } from "./communicationFolder.js";
 
 const API = "https://gmail.googleapis.com/gmail/v1/users/me";
 const fromBase64Url = (value) => Buffer.from(String(value || "").replaceAll("-", "+").replaceAll("_", "/"), "base64");
@@ -9,22 +11,23 @@ const cleanHeader = (value) => String(value || "").replace(/[\r\n]+/g, " ").trim
 
 function collectParts(part, result) {
   if (!part) return;
-  const mediaType = String(part.mimeType || "");
-  if (part.filename && part.body?.attachmentId) result.attachments.push({ id: part.body.attachmentId, fileName: part.filename, mediaType: mediaType || "application/octet-stream", sizeBytes: Number(part.body.size || 0), providerAttachmentId: part.body.attachmentId });
+  const mediaType = String(part.mimeType || ""), contentId = headerValue(part.headers, "Content-ID").replace(/^<|>$/g, "") || null, disposition = headerValue(part.headers, "Content-Disposition");
+  if (part.body?.attachmentId) result.attachments.push({ id: part.body.attachmentId, fileName: part.filename || contentId || "inline-image", mediaType: mediaType || "application/octet-stream", sizeBytes: Number(part.body.size || 0), providerAttachmentId: part.body.attachmentId, contentId, inline: /^inline/i.test(disposition) || Boolean(contentId) });
   else if (part.body?.data && mediaType === "text/html") result.bodyHtml += fromBase64Url(part.body.data).toString("utf8");
   else if (part.body?.data && mediaType === "text/plain") result.bodyText += fromBase64Url(part.body.data).toString("utf8");
   for (const child of part.parts || []) collectParts(child, result);
 }
 
-export function mapGmailMessage(message, folder = "other") {
+export function mapGmailMessage(message, folder = "other", labelNames = new Map()) {
   const headers = message.payload?.headers || [], content = { bodyHtml: "", bodyText: "", attachments: [] };
   collectParts(message.payload, content);
-  const labels = new Set(message.labelIds || []), resolvedFolder = labels.has("INBOX") ? "inbox" : labels.has("SENT") ? "sent" : labels.has("DRAFT") ? "drafts" : folder;
+  const labels = new Set(message.labelIds || []), resolvedFolder = labels.has("TRASH") ? "trash" : labels.has("SPAM") ? "spam" : labels.has("INBOX") ? "inbox" : labels.has("SENT") ? "sent" : labels.has("DRAFT") ? "drafts" : normalizeCommunicationFolder(folder);
   return {
-    provider: "google_workspace", providerMessageId: message.id, threadId: message.threadId ?? null, direction: resolvedFolder === "inbox" ? "inbound" : "outbound", folder: resolvedFolder,
+    provider: "google_workspace", providerMessageId: message.id, threadId: message.threadId ?? null, direction: labels.has("SENT") || labels.has("DRAFT") ? "outbound" : "inbound", folder: resolvedFolder,
     status: resolvedFolder === "drafts" ? "draft" : resolvedFolder === "sent" ? "sent" : "received", from: addresses(headerValue(headers, "From")), to: addresses(headerValue(headers, "To")), cc: addresses(headerValue(headers, "Cc")), bcc: addresses(headerValue(headers, "Bcc")),
-    subject: headerValue(headers, "Subject"), bodyHtml: content.bodyHtml, bodyText: content.bodyText || String(message.snippet || ""), inReplyToProviderMessageId: headerValue(headers, "In-Reply-To") || null,
+    subject: headerValue(headers, "Subject"), snippet: String(message.snippet || ""), bodyHtml: content.bodyHtml, bodyText: content.bodyText || String(message.snippet || ""), inReplyToProviderMessageId: headerValue(headers, "In-Reply-To") || null,
     attachments: content.attachments, sentAt: message.internalDate ? new Date(Number(message.internalDate)).toISOString() : null,
+    unread: labels.has("UNREAD"), starred: labels.has("STARRED"), important: labels.has("IMPORTANT"), labels: [...labels].map((id) => ({ id, name: labelNames.get(id) || id, system: !String(id).startsWith("Label_") })), threadCount: 1, links: [],
   };
 }
 
@@ -43,17 +46,54 @@ export function createGmailProvider(googleWorkspace, { pageSize = 30 } = {}) {
     if (!response.ok) throw Object.assign(new Error(body?.error?.message || "Gmail request failed."), { status: response.status >= 500 ? 502 : response.status, providerBody: body });
     return body;
   }
-  async function readMessage(id, folder = "other") { return mapGmailMessage(await json(await googleWorkspace.googleFetch(`${API}/messages/${encodeURIComponent(id)}?format=full`)), folder); }
+  async function labels() {
+    const listed = await json(await googleWorkspace.googleFetch(`${API}/labels`));
+    const labels = listed.labels || [], detailed = new Array(labels.length); let cursor = 0;
+    const load = async (label) => {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try { return await json(await googleWorkspace.googleFetch(`${API}/labels/${encodeURIComponent(label.id)}`)); }
+        catch (error) {
+          if (error?.status !== 429) throw error;
+          if (attempt < 2) await delay(150 * (2 ** attempt));
+        }
+      }
+      return label;
+    };
+    const worker = async () => { while (cursor < labels.length) { const index = cursor; cursor += 1; detailed[index] = await load(labels[index]); } };
+    await Promise.all(Array.from({ length: Math.min(4, labels.length) }, worker));
+    return detailed.map((label) => ({ id: label.id, name: label.name, type: String(label.type || "system").toLowerCase(), messagesTotal: Number(label.messagesTotal || 0), messagesUnread: Number(label.messagesUnread || 0), colour: label.color ?? null }));
+  }
+  async function readMessage(id, folder = "other", names = new Map()) { return mapGmailMessage(await json(await googleWorkspace.googleFetch(`${API}/messages/${encodeURIComponent(id)}?format=full`)), folder, names); }
+  async function readThread(id, folder = "other", names) {
+    const body = await json(await googleWorkspace.googleFetch(`${API}/threads/${encodeURIComponent(id)}?format=full`)), labelNames = names ?? new Map();
+    const messages = (body.messages || []).map((message) => mapGmailMessage(message, folder, labelNames)).sort((a, b) => String(a.sentAt).localeCompare(String(b.sentAt)));
+    const latest = messages.at(-1);
+    if (!latest) throw Object.assign(new Error("Gmail thread contains no messages."), { status: 404 });
+    return { ...latest, threadId: body.id || latest.threadId, threadMessages: messages, threadCount: messages.length };
+  }
+  const mailboxLabels = Object.freeze({ inbox: "INBOX", sent: "SENT", drafts: "DRAFT", starred: "STARRED", snoozed: "SNOOZED", important: "IMPORTANT", all: null, spam: "SPAM", trash: "TRASH", social: "CATEGORY_SOCIAL", updates: "CATEGORY_UPDATES", forums: "CATEGORY_FORUMS", promotions: "CATEGORY_PROMOTIONS" });
+  const folderLabel = (folder) => {
+    const view = String(folder || "").trim();
+    if (Object.hasOwn(mailboxLabels, view)) return mailboxLabels[view];
+    if (view.startsWith("label:") && view.slice(6)) return view.slice(6);
+    throw Object.assign(new Error("Unsupported mailbox view."), { status: 400, code: "invalid_mailbox_view" });
+  };
   async function list({ folder = "inbox", query = "", pageToken = null } = {}) {
-    if (folder === "drafts") {
-      const url = new URL(`${API}/drafts`); url.searchParams.set("maxResults", String(pageSize)); if (query) url.searchParams.set("q", query); if (pageToken) url.searchParams.set("pageToken", pageToken);
-      const body = await json(await googleWorkspace.googleFetch(url));
-      const messages = await Promise.all((body.drafts || []).map(async (draft) => ({ ...(await readMessage(draft.message?.id, "drafts")), providerDraftId: draft.id })));
-      return { messages, nextPageToken: body.nextPageToken ?? null };
-    }
-    const label = folder === "sent" ? "SENT" : "INBOX", url = new URL(`${API}/messages`); url.searchParams.set("maxResults", String(pageSize)); url.searchParams.set("labelIds", label); if (query) url.searchParams.set("q", query); if (pageToken) url.searchParams.set("pageToken", pageToken);
+    const label = folderLabel(folder), url = new URL(`${API}/threads`); url.searchParams.set("maxResults", String(pageSize)); if (label) url.searchParams.set("labelIds", label); if (query) url.searchParams.set("q", query); if (pageToken) url.searchParams.set("pageToken", pageToken); if (folder === "spam" || folder === "trash") url.searchParams.set("includeSpamTrash", "true");
     const body = await json(await googleWorkspace.googleFetch(url));
-    return { messages: await Promise.all((body.messages || []).map((item) => readMessage(item.id, folder))), nextPageToken: body.nextPageToken ?? null };
+    return { messages: await Promise.all((body.threads || []).map((item) => readThread(item.id, folder))), nextPageToken: body.nextPageToken ?? null };
+  }
+  async function command({ threadIds, command, labelId }) {
+    const changes = { archive: { removeLabelIds: ["INBOX"] }, mark_read: { removeLabelIds: ["UNREAD"] }, mark_unread: { addLabelIds: ["UNREAD"] }, star: { addLabelIds: ["STARRED"] }, unstar: { removeLabelIds: ["STARRED"] }, label: { addLabelIds: [labelId] }, move: { addLabelIds: [labelId], removeLabelIds: ["INBOX"] } };
+    for (const threadId of threadIds || []) {
+      if (command === "trash") await json(await googleWorkspace.googleFetch(`${API}/threads/${encodeURIComponent(threadId)}/trash`, { method: "POST" }));
+      else {
+        const change = changes[command];
+        if (!change || ((command === "label" || command === "move") && !labelId)) throw Object.assign(new Error("Unsupported mailbox command."), { status: 400 });
+        await json(await googleWorkspace.googleFetch(`${API}/threads/${encodeURIComponent(threadId)}/modify`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(change) }));
+      }
+    }
+    return { ok: true };
   }
   async function send(input) {
     const payload = { raw: buildMime(input), ...(input.threadId ? { threadId: input.threadId } : {}) };
@@ -66,5 +106,5 @@ export function createGmailProvider(googleWorkspace, { pageSize = 30 } = {}) {
     return { providerDraftId: draft.id, providerMessageId: draft.message?.id ?? null, threadId: draft.message?.threadId ?? input.threadId ?? null };
   }
   async function attachment(messageId, attachmentId) { const body = await json(await googleWorkspace.googleFetch(`${API}/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`)); return fromBase64Url(body.data); }
-  return { list, readMessage, send, createDraft, attachment };
+  return { labels, list, readMessage, readThread, command, send, createDraft, attachment };
 }

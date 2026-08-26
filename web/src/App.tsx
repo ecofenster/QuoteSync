@@ -4908,7 +4908,7 @@ return (
             )}
 
             {menu === "email" && view === "customers" && (
-              <EmailWorkspace onOpenIntegrations={()=>{setAdminInitialSection("integrations");setTopShellPage("admin");setActiveTopShellNavKey("admin")}} />
+              <EmailWorkspace onOpenIntegrations={()=>{setAdminInitialSection("integrations");setTopShellPage("admin");setActiveTopShellNavKey("admin")}} onOpenFollowUps={()=>selectMenu("follow_ups")} />
             )}
 
             {menu === "estimates" && view === "customers" && renderGlobalEstimateMenu(

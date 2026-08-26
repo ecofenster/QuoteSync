@@ -1,5 +1,5 @@
 import React, { useEffect, useImperativeHandle, useMemo, useState } from "react";
-import type { Client, ClientId, EstimateId, EstimateOutcome, EstimatePickerTab, ClientFile } from "../../models/types";
+import type { Client, ClientId, EstimateId, EstimateOutcome, EstimatePickerTab } from "../../models/types";
 import { apiFetch } from "../../services/api/apiClient";
 import { CURRENT_APP_USER } from "../../system/currentUser";
 import EstimatePickerTabs from "./EstimatePickerTabs";
@@ -201,10 +201,6 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
 
   const [notesSaving, setNotesSaving] = useState(false);
 
-  const [clientFiles, setClientFiles] = useState<ClientFile[]>([]);
-  const [clientFileLabel, setClientFileLabel] = useState<string>("");
-  const [clientFileUrl, setClientFileUrl] = useState<string>("");
-  const [clientFileNames, setClientFileNames] = useState<string[]>([]);
   const activeUserName = CURRENT_APP_USER.name;
 
   useImperativeHandle(
@@ -509,14 +505,6 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
           saveEstimateNotes={saveEstimateNotes}
           notesSaving={notesSaving}
           activeUserName={activeUserName}
-          clientFileLabel={clientFileLabel}
-          setClientFileLabel={setClientFileLabel}
-          clientFileUrl={clientFileUrl}
-          setClientFileUrl={setClientFileUrl}
-          clientFileNames={clientFileNames}
-          setClientFileNames={setClientFileNames}
-          clientFiles={clientFiles}
-          setClientFiles={setClientFiles}
         />
       </div>
     </Card>

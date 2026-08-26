@@ -158,3 +158,41 @@ test("browser rendering and tenant Google business capabilities remain isolated"
   assert.doesNotMatch(mapPanel, /Add VITE_GOOGLE_MAPS_API_KEY to \.env\.local/);
   assert.doesNotMatch(serverService, /VITE_GOOGLE_MAPS_API_KEY|GOOGLE_MAPS_API_KEY/);
 });
+
+test("integration credential handlers capture primitives before functional state updates and use forms", async () => {
+  const [panel, routes] = await Promise.all([
+    readFile(new URL("../src/features/admin/AdminIntegrationsPanel.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../server/routes/integrations.js", import.meta.url), "utf8"),
+  ]);
+  for (const field of ["clientId", "clientSecret", "redirectUri", "estimatesRootFolderId", "ordersRootFolderId"]) {
+    assert.match(panel, new RegExp(`const value=event\\.currentTarget\\.value;setGoogleField\\("${field}",value\\)`));
+  }
+  assert.match(panel, /const nextValue=event\.currentTarget\.value;setGoogleTemplateField\(key,nextValue\)/);
+  assert.match(panel, /const value=event\.currentTarget\.value;setKeys\(current=>\(\{\.\.\.current,\[provider\.id\]:value\}\)\)/);
+  assert.match(panel, /const enabled=event\.currentTarget\.checked;void run/);
+  for (const unsafe of [
+    /clientId\s*:\s*event\./,
+    /clientSecret\s*:\s*event\./,
+    /redirectUri\s*:\s*event\./,
+    /estimatesRootFolderId\s*:\s*event\./,
+    /ordersRootFolderId\s*:\s*event\./,
+    /\[provider\.id\]\s*:\s*event\./,
+    /\[key\]\s*:\s*event\./,
+    /enabled\s*:\s*event\./,
+  ]) assert.doesNotMatch(panel, unsafe);
+  assert.equal((panel.match(/<form\b/g) ?? []).length, 2);
+  assert.match(panel, /<form[^>]+onSubmit=\{event=>\{event\.preventDefault\(\)/);
+  assert.match(panel, /type="password"[^>]+autoComplete="new-password"/);
+  assert.match(panel, /type="submit"[^>]*>Save configuration<\/button>/);
+  assert.match(panel, /Stored securely •••••••• · leave blank to retain/);
+  assert.match(panel, /Configured · encryption unavailable/);
+  assert.match(panel, /loadFailed\?"Unavailable":"Loading"/);
+  assert.match(panel, /Promise\.allSettled/);
+  assert.match(panel, /setGoogleLoadFailed\(true\)/);
+  assert.match(panel, /workspace\.status==="fulfilled"/);
+  assert.match(panel, /google\.infrastructureMessage/);
+  assert.match(panel, /server administrator must restore the encryption service/i);
+  assert.match(panel, /clientId:status\.clientId\|\|""/);
+  assert.doesNotMatch(panel, /Set QUOTESUITE_INTEGRATION_ENCRYPTION_KEY/);
+  assert.match(routes, /router\.get\("\/googleWorkspace\/status"/);
+});

@@ -16,6 +16,7 @@ import { deriveProjectCostingCommercialResult } from "../projectCalculatorLab/do
 import type { CalculatorScenario } from "../projectCalculatorLab/domain/projectCalculatorLab.types";
 import { deriveNextAction } from "../workflow/workflowFoundation";
 import { quotationWorkflowApi, type EstimateWorkflowState } from "../../services/quotations/quotationWorkflowApi";
+import CanonicalDocumentsPanel from "../documents/CanonicalDocumentsPanel";
 
 type CommercialTab = "costing" | "import";
 type CommercialView = "internal" | "customer";
@@ -42,6 +43,7 @@ export default function EstimateCommercialWorkspace({
   const addPositionRequest = 0;
   const [scenarioId, setScenarioId] = useState("");
   const [quotationOpen, setQuotationOpen] = useState(false);
+  const [documentsOpen, setDocumentsOpen] = useState(false);
   const [handoffMessage, setHandoffMessage] = useState("");
   const [commercialView, setCommercialView] =
     useState<CommercialView>(initialCommercialView);
@@ -95,6 +97,7 @@ export default function EstimateCommercialWorkspace({
           <button type="button" className={`ui-button${commercialView === "customer" ? " ui-button--selected" : ""}`} aria-pressed={commercialView === "customer"} onClick={() => setCommercialView("customer")}>Customer View</button>
         </div>
         {commercialView==="internal"||customerViewPolicy.manufacturerImport?<button type="button" className="ui-button" onClick={openImport}>Import Manufacturer Quote</button>:null}
+        <button type="button" className="ui-button" onClick={()=>setDocumentsOpen(true)}>Files / Documents</button>
         {client && estimate && (commercialView==="internal"||customerViewPolicy.customerQuotation) ? (
           <button
             type="button"
@@ -207,6 +210,7 @@ export default function EstimateCommercialWorkspace({
           onWorkflowChanged={()=>void refreshWorkflow()}
         />
       ) : null}
+      {documentsOpen ? <div className="estimate-commercial__modal-scrim" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)setDocumentsOpen(false)}}><section className="estimate-commercial__modal ui-card" role="dialog" aria-modal="true" aria-label="Estimate Files and Documents"><header><div><h2>Files / Documents</h2><p>Canonical document records linked to {estimateRef}.</p></div><button className="ui-button" onClick={()=>setDocumentsOpen(false)}>Close</button></header><CanonicalDocumentsPanel estimateId={estimateId}/></section></div> : null}
     </section>
   );
 }

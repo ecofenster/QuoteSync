@@ -4,7 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "api": "node server/index.js",
     "dev": "vite",
+    "configure:integration-key": "node scripts/ensure-local-integration-key.mjs",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --noEmit",
     "check:design-system": "node scripts/check-design-system-compliance.mjs",
