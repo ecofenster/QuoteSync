@@ -1,5 +1,5 @@
 export type CommunicationProviderId = "google_workspace" | "microsoft_365";
-export type CommunicationEntityKind = "client" | "estimate" | "order" | "supplier_quotation" | "project";
+export type CommunicationEntityKind = "client" | "estimate" | "issued_quotation" | "order" | "supplier_quotation" | "project";
 
 export type CommunicationEntityLink = {
   kind: CommunicationEntityKind;

@@ -107,6 +107,7 @@ import { ControlToolbar, ControlToolbarGroup } from "./components/ControlToolbar
 import GoogleMapPanel, { type GoogleMapMarkerItem } from "./components/GoogleMapPanel";
 import AppShell from "./layout/AppShell";
 import AdminPlaceholderPage from "./features/admin/AdminPlaceholderPage";
+import EmailWorkspace from "./features/communications/EmailWorkspace";
 import ClientPortalPlaceholderPage from "./features/clientPortal/ClientPortalPlaceholderPage";
 import { buildClientLocationLabel, convertCoordinatesToWhat3Words, resolveClientLocation, resolveEstimateLocation, type ResolvedClientLocation } from "./services/locationService";
 import { rankInstallersByDistance } from "./services/distance";
@@ -1329,6 +1330,7 @@ export default function App() {
   const [systemSettings, setSystemSettings] = useState(() => loadSettings());
   const [topShellPage, setTopShellPage] = useState<TopShellPage>("app");
   const [activeTopShellNavKey, setActiveTopShellNavKey] = useState<TopShellNavKey>("home");
+  const [adminInitialSection,setAdminInitialSection]=useState<"settings"|"integrations">("settings");
   const [initialToolsTab, setInitialToolsTab] = useState("phpp");
   const [integrationStatuses, setIntegrationStatuses] = useState<IntegrationStatus[]>([]);
 
@@ -2120,6 +2122,7 @@ async function handleWhat3WordsMapPick(lat: number, lng: number) {
     }
     if (key === "admin") {
       leaveOperationalWorkspace();
+      setAdminInitialSection("settings");
       setTopShellPage("admin");
       setActiveTopShellNavKey("admin");
       return;
@@ -4362,7 +4365,7 @@ function renderProjectMapBoard() {
 return (
 <AppShell title="QuoteSuite" onMenuClick={handleTopShellMenuClick} activeNavKey={activeTopShellNavKey}>
   { topShellPage === "admin" ? (
-    <AdminPlaceholderPage />
+    <AdminPlaceholderPage initialSection={adminInitialSection} />
   ) : topShellPage === "help" ? (
         <TopShellPlaceholder
           title="Help"
@@ -4905,7 +4908,7 @@ return (
             )}
 
             {menu === "email" && view === "customers" && (
-              <Card className="qs-migrated-2"><H2>Email</H2><Small>Provider-neutral communications workspace foundation. Inbox, Sent, Drafts, labels/folders, search, compose, reply, forward and attachments require an Administrator-configured Gmail/Google Workspace or future Microsoft 365 provider. No live mailbox is connected.</Small></Card>
+              <EmailWorkspace onOpenIntegrations={()=>{setAdminInitialSection("integrations");setTopShellPage("admin");setActiveTopShellNavKey("admin")}} />
             )}
 
             {menu === "estimates" && view === "customers" && renderGlobalEstimateMenu(
@@ -5020,7 +5023,7 @@ return (
                   </div>
 
                   <div className="qs-migrated-99">
-                    <EstimateCommercialWorkspace estimateId={String(selectedEstimate.id)} estimateRef={selectedEstimate.estimateRef} client={selectedClient} estimate={selectedEstimate} PositionPreview={PositionPreview} onEmail={()=>{setGlobalSendModalEstimateId(selectedEstimate.id);setGlobalSendModalOpen(true)}} onFollowUp={()=>addFollowUpForEstimateService({pickerClient:selectedClient,estimateId:selectedEstimate.id,opts:{days:3,sendEmail:true,needsCall:true},apiFetchJson,activeUserName,alertFn:alert,logError:console.error})} onStatus={status=>persistEstimateOutcome(selectedClient.id,selectedEstimate.id,status)} onCopy={()=>copyEstimateForClient(selectedClient,selectedEstimate.id)} onDelete={()=>confirmDeleteGlobalEstimate(selectedEstimate.id)} />
+                    <EstimateCommercialWorkspace estimateId={String(selectedEstimate.id)} estimateRef={selectedEstimate.estimateRef} client={selectedClient} estimate={selectedEstimate} PositionPreview={PositionPreview} onOpenFollowUps={()=>selectMenu("follow_ups")} onStatus={status=>persistEstimateOutcome(selectedClient.id,selectedEstimate.id,status)} onCopy={()=>copyEstimateForClient(selectedClient,selectedEstimate.id)} onDelete={()=>confirmDeleteGlobalEstimate(selectedEstimate.id)} />
                   </div>
 
                   <div className="qs-migrated-100">

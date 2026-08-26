@@ -18,7 +18,7 @@ export type WorkflowEvent = {
   evidenceId?: string | null;
 };
 
-export type NextActionId = "import_manufacturer_quote" | "review_costing" | "review_customer_quotation" | "send_to_client" | "complete_follow_up" | "schedule_next_follow_up" | "prepare_order";
+export type NextActionId = "import_manufacturer_quote" | "review_costing" | "review_customer_quotation" | "send_to_client" | "complete_send_quotation" | "complete_follow_up" | "schedule_next_follow_up" | "prepare_order";
 
 export type NextAction = {
   id: NextActionId;
@@ -31,8 +31,10 @@ export function deriveNextAction(state: {
   manufacturerQuoteImported: boolean;
   costingReady: boolean;
   quotationReviewed: boolean;
+  quotationPrepared?: boolean;
   quotationIssued: boolean;
   followUpDue: boolean;
+  followUpDueDate?: string | null;
   followUpCompleted: boolean;
   customerAccepted: boolean;
   orderCreated: boolean;
@@ -40,8 +42,9 @@ export function deriveNextAction(state: {
   if (!state.manufacturerQuoteImported) return { id: "import_manufacturer_quote", label: "Import Manufacturer Quote", reason: "No reviewed manufacturer quotation is linked to this Estimate.", critical: false };
   if (!state.costingReady) return { id: "review_costing", label: "Review Project Costing", reason: "Manufacturer evidence is available and commercial costing requires review.", critical: true };
   if (!state.quotationReviewed) return { id: "review_customer_quotation", label: "Review Customer Quotation", reason: "Costing is ready for customer-safe document review.", critical: false };
+  if (state.quotationPrepared && !state.quotationIssued) return { id: "complete_send_quotation", label: "Complete / Send Quotation", reason: "A persisted quotation and exact PDF are prepared but have not been confirmed as sent.", critical: true };
   if (!state.quotationIssued) return { id: "send_to_client", label: "Send to Client", reason: "The reviewed quotation is ready to be prepared for issue.", critical: true };
-  if (state.followUpDue && !state.followUpCompleted) return { id: "complete_follow_up", label: "Complete Follow Up", reason: "The issued quotation follow-up is due.", critical: false };
+  if (state.followUpDue && !state.followUpCompleted) return { id: "complete_follow_up", label: "Complete Follow Up", reason: `The issued quotation follow-up is due${state.followUpDueDate ? ` ${state.followUpDueDate}` : ""}.`, critical: false };
   if (state.followUpCompleted && !state.customerAccepted) return { id: "schedule_next_follow_up", label: "Schedule Next Follow Up", reason: "Keep the Client and Estimate relationship when planning the next contact.", critical: false };
   if (state.customerAccepted && !state.orderCreated) return { id: "prepare_order", label: "Prepare Order", reason: "Customer acceptance must be converted from the immutable accepted quotation snapshot.", critical: true };
   return null;
@@ -102,6 +105,7 @@ export function prepareQuotationIssue(input: {
 }
 
 export type IssuedQuotationRecord = Readonly<{
+  id: string;
   estimateId: string;
   estimateRevision: number;
   quotationRevision: number;
@@ -114,13 +118,15 @@ export type IssuedQuotationRecord = Readonly<{
 }>;
 
 export function recordIssuedQuotation(input: QuotationIssuePreparation & {
+  issuedQuotationId: string;
   documentId: string;
   communicationMessageId: string;
   issuedAt: string;
   termsSnapshot: string;
 }): IssuedQuotationRecord {
-  if (!input.documentId || !input.communicationMessageId || !input.issuedAt || !input.communication.to[0]) throw new Error("Issued quotation requires document, recipient, timestamp and communication evidence.");
+  if (!input.issuedQuotationId || !input.documentId || !input.communicationMessageId || !input.issuedAt || !input.communication.to[0]) throw new Error("Issued quotation requires identity, document, recipient, timestamp and communication evidence.");
   return Object.freeze({
+    id: input.issuedQuotationId,
     estimateId: input.estimateId,
     estimateRevision: input.estimateRevision,
     quotationRevision: input.quotationRevision,
@@ -131,6 +137,19 @@ export function recordIssuedQuotation(input: QuotationIssuePreparation & {
     commercialSnapshot: Object.freeze({ ...input.commercialSnapshot }),
     termsSnapshot: input.termsSnapshot,
   });
+}
+
+export function buildQuotationIssuedEvent(record: IssuedQuotationRecord, clientId: string): WorkflowEvent {
+  return {
+    name: "quotation.issued",
+    occurredAt: record.issuedAt,
+    evidenceId: record.id,
+    links: [
+      { kind: "client", id: clientId },
+      { kind: "estimate", id: record.estimateId },
+      { kind: "issued_quotation", id: record.id },
+    ],
+  };
 }
 
 export function workflowEffects(event: WorkflowEvent): Array<Record<string, unknown>> {

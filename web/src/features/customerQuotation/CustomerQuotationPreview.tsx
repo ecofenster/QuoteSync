@@ -19,7 +19,7 @@ import {
   type CustomerQuotationProjection,
 } from "./customerQuotationProjection";
 import CustomerQuotationPositionCard from "./CustomerQuotationPositionCard";
-import { prepareQuotationIssue, type QuotationIssuePreparation } from "../workflow/workflowFoundation";
+import { quotationWorkflowApi, type IssuedQuotationView } from "../../services/quotations/quotationWorkflowApi";
 import "./customerQuotation.css";
 import "./customerQuotationBrand.css";
 
@@ -106,18 +106,23 @@ export default function CustomerQuotationPreview({
   estimate,
   PositionPreview,
   onClose,
-  onPrepareEmail,
+  onWorkflowChanged,
 }: {
   client: Client;
   estimate: Estimate;
   PositionPreview?: ComponentType<{ position: Position }>;
   onClose: () => void;
-  onPrepareEmail?: () => void;
+  onWorkflowChanged?: () => void;
 }) {
   const [projection, setProjection] =
     useState<CustomerQuotationProjection | null>(null);
   const [error, setError] = useState("");
-  const [issuePreparation, setIssuePreparation] = useState<QuotationIssuePreparation | null>(null);
+  const [issuePreparation, setIssuePreparation] = useState<IssuedQuotationView | null>(null);
+  const [issueBusy,setIssueBusy]=useState(false);
+  const [issueError,setIssueError]=useState("");
+  const [issueRecipient,setIssueRecipient]=useState("");
+  const [issueSubject,setIssueSubject]=useState("");
+  const [issueBody,setIssueBody]=useState("");
   const [options, setOptions] = useState<CustomerQuotationDisplayOptions>(
     DEFAULT_CUSTOMER_QUOTATION_DISPLAY_OPTIONS,
   );
@@ -169,6 +174,22 @@ export default function CustomerQuotationPreview({
         "--document-accent": projection.brand.accentColour,
       } as CSSProperties)
     : undefined;
+  const prepareForSend=async()=>{
+    if(!projection)return;
+    setIssueBusy(true);setIssueError("");
+    try{
+      const prepared=await quotationWorkflowApi.prepare({estimateId:String(estimate.id),clientId:String(client.id),estimateRevision:estimate.revisionNo,quotationRevision:projection.commercialRevision,projection,recipient:client.email});
+      setIssuePreparation(prepared);setIssueRecipient(prepared.recipient);setIssueSubject(prepared.subject);setIssueBody(prepared.communication?.bodyHtml||"");onWorkflowChanged?.();
+    }catch(reason){setIssueError(reason instanceof Error?reason.message:"Quotation email could not be prepared.")}
+    finally{setIssueBusy(false)}
+  };
+  const sendPrepared=async()=>{
+    if(!issuePreparation)return;
+    setIssueBusy(true);setIssueError("");
+    try{const issued=await quotationWorkflowApi.send(issuePreparation.id,{recipient:issueRecipient,subject:issueSubject,bodyHtml:issueBody});setIssuePreparation(issued);onWorkflowChanged?.()}
+    catch(reason){setIssueError(reason instanceof Error?reason.message:"The provider did not send the quotation.");try{setIssuePreparation(await quotationWorkflowApi.get(issuePreparation.id))}catch{/* retain current preparation */}onWorkflowChanged?.()}
+    finally{setIssueBusy(false)}
+  };
   const summary = projection ? (
     <section className="customer-quotation-page customer-quotation-page--summary">
       <PageHeader projection={projection} />
@@ -288,9 +309,9 @@ export default function CustomerQuotationPreview({
             <button
               className="ui-button"
               disabled={!projection}
-              onClick={() => projection && setIssuePreparation(prepareQuotationIssue({ estimateId: String(estimate.id), estimateRevision: estimate.revisionNo, quotationRevision: projection.commercialRevision, estimateReference: projection.estimateReference, clientId: String(client.id), clientName: projection.clientName, recipient: client.email, subtotalExVatGbp: projection.subtotalExVatGbp, vatRatePercent: projection.vatRatePercent, vatGbp: projection.vatGbp, totalIncVatGbp: projection.totalIncVatGbp }))}
+              onClick={() => void prepareForSend()}
             >
-              Send to Client
+              {issueBusy?"Preparing…":"Send to Client"}
             </button>
             <button
               className="ui-button ui-button--primary"
@@ -301,7 +322,8 @@ export default function CustomerQuotationPreview({
             </button>
           </div>
         </div>
-        {issuePreparation ? <section className="customer-quotation__issue-preparation no-print" role="status"><div><strong>Send to Client preparation</strong><span>Recipient: {issuePreparation.communication.to[0] || "Customer email required"}</span><span>Estimate revision {issuePreparation.estimateRevision} · Quotation revision {issuePreparation.quotationRevision}</span><span>PDF generation and provider delivery are required before this can become an issued quotation.</span></div>{onPrepareEmail ? <button type="button" className="ui-button ui-button--primary" onClick={onPrepareEmail}>Open Email composer</button> : null}</section> : null}
+        {issuePreparation ? <section className="customer-quotation__issue-preparation customer-quotation__email-composer no-print" role="status"><div className="customer-quotation__email-evidence"><strong>{issuePreparation.status==="issued"?"Quotation issued":issuePreparation.status==="failed"?"Send failed — review and retry":"QuoteSuite Email composer · prepared, not sent"}</strong><span>Immutable Estimate revision {issuePreparation.estimateRevision} · quotation revision {issuePreparation.quotationRevision}</span>{issuePreparation.document?<a href={issuePreparation.document.downloadUrl} target="_blank" rel="noreferrer">{issuePreparation.document.fileName} · {Math.ceil(issuePreparation.document.sizeBytes/1024)} KB · exact issued-document candidate</a>:null}{issuePreparation.issuedAt?<span>Provider confirmed send at {new Date(issuePreparation.issuedAt).toLocaleString()} · message {issuePreparation.providerMessageId}</span>:<span>Opening this composer does not issue the quotation. Review all fields, then send.</span>}</div>{issuePreparation.status!=="issued"?<div className="customer-quotation__email-fields"><label>To<input className="ui-input" type="email" value={issueRecipient} onChange={event=>setIssueRecipient(event.currentTarget.value)}/></label><label>Subject<input className="ui-input" value={issueSubject} onChange={event=>setIssueSubject(event.currentTarget.value)}/></label><label>Formatted message<textarea className="ui-input" rows={8} value={issueBody} onChange={event=>setIssueBody(event.currentTarget.value)}/></label><div className="ui-action-row"><button type="button" className="ui-button" disabled={issueBusy} onClick={()=>setIssuePreparation(null)}>Close composer</button><button type="button" className="ui-button ui-button--primary" disabled={issueBusy||!issueRecipient.trim()||!issueSubject.trim()||!issueBody.trim()} onClick={()=>void sendPrepared()}>{issueBusy?"Sending…":"Review complete · Send"}</button></div></div>:null}</section> : null}
+        {issueError?<p role="alert" className="customer-quotation__error no-print">{issueError}</p>:null}
         {error ? (
           <p role="alert" className="customer-quotation__error">
             {error}

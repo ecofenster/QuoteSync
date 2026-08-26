@@ -13,6 +13,9 @@ import { createSupplierQuotesRouter } from './routes/supplierQuotes.js';
 import { createSupplierImportLabRouter } from './routes/supplierImportLab.js';
 import { createProjectCalculatorLabRouter } from './routes/projectCalculatorLab.js';
 import { createManufacturerPositionVisualsRouter } from './routes/manufacturerPositionVisuals.js';
+import { createCommunicationsRouter } from './routes/communications.js';
+import { createDriveRouter } from './routes/drive.js';
+import { createQuotationWorkflowRouter } from './routes/quotationWorkflow.js';
 import { fetchCentralExchangeRate } from './features/projectCalculatorLab/exchangeRateProvider.js';
 import { dbPromise } from './db.js';
 import { startApiServer } from './apiServerStartup.js';
@@ -20,7 +23,7 @@ import { startApiServer } from './apiServerStartup.js';
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '25mb' }));
 
 app.use('/api/clients', clientsRoute);
 app.use('/api/estimates', estimatesRoute);
@@ -32,6 +35,9 @@ app.use('/api/settings', settingsRoute);
 app.use('/api/integrations', integrationsRoute);
 app.use('/api/configurator-catalog', configuratorCatalogRoute);
 app.use('/api/manufacturer-position-visuals', createManufacturerPositionVisualsRouter());
+app.use('/api/communications', createCommunicationsRouter());
+app.use('/api/drive', createDriveRouter());
+app.use('/api/quotation-workflow', createQuotationWorkflowRouter());
 app.use('/api/estimates', await createSupplierQuotesRouter({ dbPromise }));
 app.use('/api/admin/supplier-import-lab', await createSupplierImportLabRouter({ dbPromise }));
 app.use('/api/admin/project-calculator-lab', await createProjectCalculatorLabRouter({ dbPromise }));

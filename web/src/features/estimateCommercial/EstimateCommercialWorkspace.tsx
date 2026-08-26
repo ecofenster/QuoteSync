@@ -15,6 +15,7 @@ import { estimateTotals } from "../../domain/estimates/estimateCalculations";
 import { deriveProjectCostingCommercialResult } from "../projectCalculatorLab/domain/projectCostingCommercialResult";
 import type { CalculatorScenario } from "../projectCalculatorLab/domain/projectCalculatorLab.types";
 import { deriveNextAction } from "../workflow/workflowFoundation";
+import { quotationWorkflowApi, type EstimateWorkflowState } from "../../services/quotations/quotationWorkflowApi";
 
 type CommercialTab = "costing" | "import";
 type CommercialView = "internal" | "customer";
@@ -26,7 +27,7 @@ export default function EstimateCommercialWorkspace({
   estimate,
   PositionPreview,
   initialCommercialView = "internal",
-  onEmail,onFollowUp,onStatus,onCopy,onDelete,
+  onOpenFollowUps,onStatus,onCopy,onDelete,
 }: {
   estimateId: string;
   estimateRef: string;
@@ -34,7 +35,7 @@ export default function EstimateCommercialWorkspace({
   estimate?: Estimate;
   PositionPreview?: ComponentType<{ position: Position }>;
   initialCommercialView?: CommercialView;
-  onEmail?:()=>void;onFollowUp?:()=>void;onStatus?:(status:"Open"|"Order"|"Lost")=>void;onCopy?:()=>void;onDelete?:()=>void;
+  onOpenFollowUps?:()=>void;onStatus?:(status:"Open"|"Order"|"Lost")=>void;onCopy?:()=>void;onDelete?:()=>void;
 }) {
   const [tab, setTab] = useState<CommercialTab>("costing");
   const [positionRevision, setPositionRevision] = useState(0);
@@ -48,10 +49,13 @@ export default function EstimateCommercialWorkspace({
   const [customerValue,setCustomerValue]=useState("0");
   const [currentScenario,setCurrentScenario]=useState<CalculatorScenario|null>(null);
   const [quotationReviewed,setQuotationReviewed]=useState(false);
+  const [workflowState,setWorkflowState]=useState<EstimateWorkflowState|null>(null);
+  const refreshWorkflow=useCallback(()=>quotationWorkflowApi.state(estimateId).then(setWorkflowState).catch(()=>setWorkflowState(null)),[estimateId]);
   useEffect(()=>{void apiFetch("/api/settings/projectPreferences").then(rows=>{const row=(Array.isArray(rows)?rows:[]).find((item:any)=>item.key==="estimate.customerViewPolicy");if(row)setCustomerViewPolicy({...DEFAULT_CUSTOMER_VIEW_POLICY,...row.value})}).catch(()=>{})},[]);
   useEffect(()=>{void apiFetch(`/api/admin/project-calculator-lab/scenarios?estimate_id=${encodeURIComponent(estimateId)}`).then(async rows=>{const first=Array.isArray(rows)?rows[0]:null;if(!first)return;const scenario=await apiFetch(`/api/admin/project-calculator-lab/scenarios/${encodeURIComponent(first.id)}?estimate_id=${encodeURIComponent(estimateId)}`) as CalculatorScenario;setCurrentScenario(scenario);setCustomerValue(deriveProjectCostingCommercialResult(scenario).actualSale)}).catch(()=>{})},[estimateId,positionRevision]);
+  useEffect(()=>{void refreshWorkflow()},[refreshWorkflow,positionRevision]);
   const totals=estimate?estimateTotals(estimate):{totalSquareMetres:0,totalLinearMetres:0,totalQty:0};
-  const nextAction=deriveNextAction({manufacturerQuoteImported:Boolean(currentScenario&&currentScenario.origin==="supplier_import"&&currentScenario.products.length),costingReady:Boolean(currentScenario?.products.length),quotationReviewed,quotationIssued:false,followUpDue:false,followUpCompleted:false,customerAccepted:false,orderCreated:false});
+  const nextAction=deriveNextAction({manufacturerQuoteImported:workflowState?.manufacturerQuoteImported??Boolean(currentScenario&&currentScenario.origin==="supplier_import"&&currentScenario.products.length),costingReady:workflowState?.costingReady??Boolean(currentScenario?.products.length),quotationReviewed:workflowState?.quotationReviewed??quotationReviewed,quotationPrepared:workflowState?.quotationPrepared,quotationIssued:workflowState?.quotationIssued??false,followUpDue:workflowState?.followUpDue??false,followUpDueDate:workflowState?.followUpDueDate,followUpCompleted:workflowState?.followUpCompleted??false,customerAccepted:workflowState?.customerAccepted??false,orderCreated:workflowState?.orderCreated??false});
   const openImport = useCallback(() => {
     setTab("import");
     void ensureEstimateCosting(estimateId, estimateRef).then((scenario) =>
@@ -101,7 +105,7 @@ export default function EstimateCommercialWorkspace({
           </button>
         ) : null}
       </div>
-      {nextAction ? <aside className="estimate-commercial__next-action"><div><strong>Next Action</strong><span>{nextAction.reason}</span></div><button type="button" className="ui-button ui-button--primary" onClick={() => { if(nextAction.id==="import_manufacturer_quote")openImport(); else if(nextAction.id==="review_customer_quotation"||nextAction.id==="send_to_client"){setQuotationReviewed(true);setQuotationOpen(true);} else setTab("costing"); }}>{nextAction.label}</button></aside> : null}
+      {nextAction ? <aside className="estimate-commercial__next-action"><div><strong>Next Action</strong><span>{nextAction.reason}</span></div><button type="button" className="ui-button ui-button--primary" onClick={() => { if(nextAction.id==="import_manufacturer_quote")openImport(); else if(nextAction.id==="review_customer_quotation"||nextAction.id==="send_to_client"||nextAction.id==="complete_send_quotation"){setQuotationReviewed(true);setQuotationOpen(true);} else if(nextAction.id==="complete_follow_up"||nextAction.id==="schedule_next_follow_up")onOpenFollowUps?.(); else setTab("costing"); }}>{nextAction.label}</button></aside> : null}
       <div
         className="estimate-commercial__content"
         onClickCapture={(event) => {
@@ -200,7 +204,7 @@ export default function EstimateCommercialWorkspace({
           estimate={estimate}
           PositionPreview={PositionPreview}
           onClose={() => setQuotationOpen(false)}
-          onPrepareEmail={onEmail}
+          onWorkflowChanged={()=>void refreshWorkflow()}
         />
       ) : null}
     </section>

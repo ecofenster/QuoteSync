@@ -5,6 +5,7 @@ import { parseCommercialFields, FIELD_PARSER_VERSION } from '../supplierImportLa
 import { parseCommercialSummary, SUMMARY_PARSER_VERSION } from '../supplierImportLab/commercialSummaryParser.js';
 import { resolveAttachmentRoot, resolveManagedPath } from './managedAttachmentStorage.js';
 import { linkSupplierPositionToEstimate, syncEstimatePositionProjections } from '../estimatePositions/canonicalEstimatePositions.js';
+import { createDriveIntegrationService } from '../documents/driveIntegrationService.js';
 
 function nowIso() { return new Date().toISOString(); }
 function mapQuote(row) { return { id: row.id, estimateId: row.estimate_id, supplierCode: row.supplier_code, supplierName: row.supplier_name, createdAt: row.created_at, updatedAt: row.updated_at, archivedAt: row.archived_at }; }
@@ -242,6 +243,8 @@ export function createSupplierQuotesService(db, { attachmentRoot = resolveAttach
           await syncEstimatePositionProjections(db,scenarioId);
           await db.exec('COMMIT');
         } catch (error) { await db.exec('ROLLBACK'); throw error; }
+        try { const drive=createDriveIntegrationService(db,{attachmentRoot});for(const attachment of attachments)await drive.fileSupplierAttachment({estimateId,quoteId:quote.id,revisionId:revision.id,attachmentId:attachment.id,supplierName:quote.supplier_name}); }
+        catch (driveError) { warnings.push(`Google Drive filing pending: ${driveError instanceof Error ? driveError.message : 'provider unavailable'}`); }
         results.push({ runId, attachmentIds: attachments.map(({ id }) => id), quoteId: quote.id, revisionId: revision.id, status: warnings.length ? 'completed_with_warnings' : 'completed', extractedProducts: products.size, extractedCosts: costs.size, loadedProducts, loadedCosts, duplicateProducts: products.size - loadedProducts, duplicateCosts: costs.size - loadedCosts, invalidProducts, invalidCosts, summaryUpdated: Object.values(summary).some((value) => value != null), warnings });
       } catch (error) {
         const code = error?.code || 'document_extraction_failed'; const completedAt = nowIso();

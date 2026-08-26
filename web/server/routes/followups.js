@@ -27,6 +27,9 @@ function mapRow(row) {
     notes: normalizeText(row.notes),
     due_at: row.due_at ? String(row.due_at) : null,
     status: normalizeStatus(row.status),
+    issued_quotation_id: row.issued_quotation_id ? String(row.issued_quotation_id) : null,
+    communication_message_id: row.communication_message_id ? String(row.communication_message_id) : null,
+    origin_event_id: row.origin_event_id ? String(row.origin_event_id) : null,
     created_at: row.created_at ? String(row.created_at) : null,
     updated_at: row.updated_at ? String(row.updated_at) : null,
   };
@@ -72,6 +75,9 @@ router.get('/', async (req, res) => {
             notes,
             due_at,
             status,
+            issued_quotation_id,
+            communication_message_id,
+            origin_event_id,
             created_at,
             updated_at
           FROM followups
@@ -111,6 +117,9 @@ router.get('/', async (req, res) => {
             notes,
             due_at,
             status,
+            issued_quotation_id,
+            communication_message_id,
+            origin_event_id,
             created_at,
             updated_at
           FROM followups
@@ -142,6 +151,9 @@ router.post('/', async (req, res) => {
     const notes = normalizeText(req.body?.notes);
     const dueAt = normalizeNullableText(req.body?.due_at);
     const status = normalizeStatus(req.body?.status);
+    const issuedQuotationId = normalizeNullableText(req.body?.issued_quotation_id);
+    const communicationMessageId = normalizeNullableText(req.body?.communication_message_id);
+    const originEventId = normalizeNullableText(req.body?.origin_event_id);
 
     if (!id) {
       return res.status(400).json({ error: 'id is required' });
@@ -198,11 +210,14 @@ router.post('/', async (req, res) => {
           notes,
           due_at,
           status,
+          issued_quotation_id,
+          communication_message_id,
+          origin_event_id,
           created_at,
           updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
-      [id, clientId, estimateId, title, notes, dueAt, status, now, now]
+      [id, clientId, estimateId, title, notes, dueAt, status, issuedQuotationId, communicationMessageId, originEventId, now, now]
     );
 
     const created = await db.get(
@@ -215,6 +230,9 @@ router.post('/', async (req, res) => {
           notes,
           due_at,
           status,
+          issued_quotation_id,
+          communication_message_id,
+          origin_event_id,
           created_at,
           updated_at
         FROM followups
@@ -331,6 +349,9 @@ router.put('/:id', async (req, res) => {
           notes,
           due_at,
           status,
+          issued_quotation_id,
+          communication_message_id,
+          origin_event_id,
           created_at,
           updated_at
         FROM followups

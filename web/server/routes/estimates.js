@@ -4,6 +4,7 @@ import { APP_USER_ROLES, CURRENT_APP_USER } from '../currentUser.js';
 import { addConfiguredEstimatePosition, normalizeCanonicalEstimatePosition, saveConfiguredEstimatePosition, syncEstimatePositionProjections } from '../features/estimatePositions/canonicalEstimatePositions.js';
 import { randomUUID } from 'node:crypto';
 import { purgeEstimateOwnedGraph } from '../features/estimatePositions/estimatePurgeService.js';
+import { createDriveIntegrationService } from '../features/documents/driveIntegrationService.js';
 
 const router = express.Router();
 
@@ -338,6 +339,9 @@ router.post('/', async (req, res) => {
     if (!created) {
       return res.status(500).json({ error: 'Estimate was created but could not be reloaded' });
     }
+
+    try { await createDriveIntegrationService(db).provisionEstimate(created.id); }
+    catch (driveError) { console.warn('Estimate created; Google Drive provisioning remains pending.', driveError instanceof Error ? driveError.message : driveError); }
 
     res.json(mapEstimateRow(created));
   } catch (error) {

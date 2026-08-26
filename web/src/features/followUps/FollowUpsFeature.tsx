@@ -18,6 +18,8 @@ type FollowUp = {
   createdAt: string;
   sendEmail?: boolean;
   needsCall?: boolean;
+  issuedQuotationId?: string;
+  communicationMessageId?: string;
 };
 
 type ApiFollowUp = {
@@ -30,6 +32,9 @@ type ApiFollowUp = {
   status?: string;
   created_at?: string | null;
   updated_at?: string | null;
+  issued_quotation_id?: string | null;
+  communication_message_id?: string | null;
+  origin_event_id?: string | null;
 };
 
 type ApiNote = {
@@ -137,6 +142,8 @@ function mapApiFollowUp(row: ApiFollowUp, clients: Client[]): FollowUp {
     createdAt: String(row.created_at || row.updated_at || new Date().toISOString()),
     sendEmail: /follow-up email/i.test(String(row.notes || "")),
     needsCall: /telephone call/i.test(String(row.notes || "")),
+    issuedQuotationId: row.issued_quotation_id ? String(row.issued_quotation_id) : undefined,
+    communicationMessageId: row.communication_message_id ? String(row.communication_message_id) : undefined,
   };
 }
 
@@ -232,6 +239,7 @@ export default function FollowUpsFeature({
   const [followUps, setFollowUps] = useState<FollowUp[]>([]);
   const [noteEntries, setNoteEntries] = useState<NoteEntry[]>([]);
   const [reloadToken, setReloadToken] = useState(0);
+  const [nextFollowUpProposal,setNextFollowUpProposal]=useState<{completed:FollowUp;dueAt:string}|null>(null);
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 30000);
@@ -445,19 +453,13 @@ export default function FollowUpsFeature({
         }),
       });
 
-      let nextFollowUpCreated = false;
       if (existing.status !== "done") {
         await createFollowUpNote(existing, buildCompletionNoteText(existing));
-        const recommendation = buildNextFollowUpRecommendation(existing);
-        const nextDueAt = window.prompt("Next Follow Up date (default 7 days). Change the date, or Cancel for no further follow-up.", recommendation.dueAt);
-        if (nextDueAt?.trim()) {
-          await createNextFollowUpForCompleted({ apiFetchJson: apiFetch, activeUserName, completed: existing, dueAt: nextDueAt.trim() });
-          nextFollowUpCreated = true;
-        }
+        if(existing.issuedQuotationId){const recommendation=buildNextFollowUpRecommendation(existing);setNextFollowUpProposal({completed:existing,dueAt:recommendation.dueAt})}
       }
 
       setFollowUps((prev) => prev.map((item) => (item.id !== id ? item : { ...item, status: "done" })));
-      setNoteSavedToast(nextFollowUpCreated ? "Marked done and scheduled the next linked follow-up." : "Marked follow-up as done.");
+      setNoteSavedToast(existing.issuedQuotationId ? "Marked done. Confirm the proposed next quotation follow-up." : "Marked follow-up as done.");
       setTimeout(() => setNoteSavedToast(null), 1500);
       setReloadToken((value) => value + 1);
     } catch (error) {
@@ -706,6 +708,7 @@ export default function FollowUpsFeature({
           </div>
         </div>
       </div>
+      {nextFollowUpProposal?<div className="ui-modal-backdrop" role="presentation"><section className="ui-modal follow-ups__next-proposal" role="dialog" aria-modal="true" aria-labelledby="next-follow-up-title"><header><div><h3 id="next-follow-up-title">Schedule next Follow Up</h3><p>The completed quotation Follow Up remains linked to its Client, Estimate, issued quotation and communication.</p></div></header><label className="ui-field"><span>Next Follow Up date</span><input className="ui-input" type="date" value={nextFollowUpProposal.dueAt} onChange={event=>setNextFollowUpProposal(current=>current?{...current,dueAt:event.currentTarget.value}:current)}/></label><div className="ui-action-row"><button className="ui-button" type="button" onClick={()=>{setNextFollowUpProposal(null);setNoteSavedToast("No further follow-up scheduled.")}}>No further follow-up</button><button className="ui-button ui-button--primary" type="button" disabled={!/^\d{4}-\d{2}-\d{2}$/.test(nextFollowUpProposal.dueAt)} onClick={()=>void createNextFollowUpForCompleted({apiFetchJson:apiFetch,activeUserName,completed:nextFollowUpProposal.completed,dueAt:nextFollowUpProposal.dueAt}).then(()=>{setNextFollowUpProposal(null);setNoteSavedToast("Scheduled the next linked quotation follow-up.");setReloadToken(value=>value+1)}).catch(error=>{console.error("Failed to schedule next follow-up",error);setNoteSavedToast(error instanceof Error?error.message:"Failed to schedule next follow-up.")})}>Create Follow Up</button></div></section></div>:null}
     </div>
   );
 }

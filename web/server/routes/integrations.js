@@ -1,16 +1,30 @@
 import express from "express";
 import { dbPromise } from "../db.js";
 import { createIntegrationService } from "../features/integrations/integrationService.js";
+import { createGoogleWorkspaceService } from "../features/integrations/googleWorkspaceService.js";
 
 export function createIntegrationsRouter({ databasePromise = dbPromise, serviceOptions } = {}) {
   const router = express.Router();
   const withService = async () => createIntegrationService(await databasePromise, serviceOptions);
+  const withGoogleWorkspace = async () => createGoogleWorkspaceService(await databasePromise, serviceOptions);
   const fail = (res, error) => res.status(Number(error?.status) || 500).json({ error: Number(error?.status) ? error.message : "Integration request failed" });
 
   router.get("/", async (_req, res) => { try { res.json(await (await withService()).listStatuses()); } catch (error) { fail(res, error); } });
   router.put("/:provider", async (req, res) => { try { res.json(await (await withService()).configure(req.params.provider, req.body)); } catch (error) { fail(res, error); } });
   router.delete("/:provider/key", async (req, res) => { try { res.json(await (await withService()).clearCredential(req.params.provider)); } catch (error) { fail(res, error); } });
   router.post("/:provider/test", async (req, res) => { try { res.json(await (await withService()).testConnection(req.params.provider)); } catch (error) { fail(res, error); } });
+
+  router.get("/googleWorkspace/status", async (_req, res) => { try { res.json(await (await withGoogleWorkspace()).status()); } catch (error) { fail(res, error); } });
+  router.put("/googleWorkspace/config", async (req, res) => { try { res.json(await (await withGoogleWorkspace()).configure(req.body || {})); } catch (error) { fail(res, error); } });
+  router.post("/googleWorkspace/oauth/start", async (_req, res) => { try { res.json(await (await withGoogleWorkspace()).beginOAuth()); } catch (error) { fail(res, error); } });
+  router.get("/googleWorkspace/oauth/callback", async (req, res) => {
+    try {
+      if (req.query.error) throw Object.assign(new Error(`Google authorization was not completed: ${String(req.query.error)}`), { status: 400 });
+      await (await withGoogleWorkspace()).completeOAuth({ state: req.query.state, code: req.query.code });
+      res.type("html").send("<!doctype html><meta charset=\"utf-8\"><title>QuoteSuite connected</title><p>Google Workspace connected. You can close this window.</p><script>window.opener?.postMessage({type:'quotesuite:google-workspace-connected'},'*');window.close()</script>");
+    } catch (error) { fail(res, error); }
+  });
+  router.post("/googleWorkspace/disconnect", async (_req, res) => { try { res.json(await (await withGoogleWorkspace()).disconnect()); } catch (error) { fail(res, error); } });
 
   router.post("/googleMaps/geocode", async (req, res) => {
     try {

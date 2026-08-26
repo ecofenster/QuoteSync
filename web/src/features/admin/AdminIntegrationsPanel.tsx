@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { clearIntegrationKey, getIntegrationStatuses, saveIntegration, testIntegration, type IntegrationProvider, type IntegrationStatus } from "../../services/integrations/integrationService";
+import { googleWorkspaceIntegrationService } from "../../services/integrations/googleWorkspaceIntegrationService";
+import type { GoogleWorkspaceStatus } from "../../services/communications/communicationsApi";
 import { COMMUNICATION_PROVIDER_CONTRACTS } from "../communications/domain/communications";
 import { ESTIMATE_TO_ORDER_DOCUMENT_STRATEGY, PROJECT_FOLDER_PROVISIONING_TRIGGER } from "../documents/domain/projectDocumentArchitecture";
 
@@ -7,61 +9,46 @@ const PROVIDERS: Array<{ id: IntegrationProvider; title: string; description: st
   { id: "googleMaps", title: "Google Maps", description: "Server credential for geocoding, routes, distance, and travel time. Browser map display uses its separately deployed website-restricted key." },
   { id: "what3words", title: "what3words", description: "Resolve three-word addresses and coordinates for project locations." },
 ];
+const DEFAULT_TEMPLATE:Record<string,string>={drawingsClient:"Drawings (Client)",pdfTakeOffs:"PDF Auto Take Offs",drawingsEcofenster:"Drawings (Ecofenster)",supplierEstimates:"Estimates",invoices:"Invoices",pictures:"Pictures",videos:"Videos"};
+const TEMPLATE_LABELS:Record<string,string>={drawingsClient:"Customer drawings",pdfTakeOffs:"PDF auto take-offs",drawingsEcofenster:"Ecofenster drawings",supplierEstimates:"Supplier estimates",invoices:"Invoices",pictures:"Pictures",videos:"Videos"};
 
-function sourceLabel(status?: IntegrationStatus) {
-  if (!status?.configured) return "Not configured";
-  return status.source === "quotesync" ? "QuoteSuite managed" : "Environment fallback";
-}
+function sourceLabel(status?: IntegrationStatus) { if (!status?.configured) return "Not configured"; return status.source === "quotesync" ? "QuoteSuite managed" : "Environment fallback"; }
 
 export default function AdminIntegrationsPanel() {
-  const [statuses, setStatuses] = useState<IntegrationStatus[]>([]);
-  const [keys, setKeys] = useState<Record<IntegrationProvider, string>>({ googleMaps: "", what3words: "" });
-  const [busy, setBusy] = useState<IntegrationProvider | null>(null);
-  const [message, setMessage] = useState<Record<string, string>>({});
-
-  const refresh = async () => setStatuses(await getIntegrationStatuses());
-  useEffect(() => { void refresh().catch(() => setMessage({ general: "Integration status could not be loaded." })); }, []);
-
-  const run = async (provider: IntegrationProvider, action: () => Promise<IntegrationStatus | void>) => {
-    setBusy(provider); setMessage((current) => ({ ...current, [provider]: "" }));
-    try { const next = await action(); if (next) setStatuses((current) => current.map((item) => item.provider === provider ? next : item)); }
-    catch (error) { setMessage((current) => ({ ...current, [provider]: error instanceof Error ? error.message : "Integration request failed." })); }
-    finally { setBusy(null); }
-  };
+  const [statuses,setStatuses]=useState<IntegrationStatus[]>([]),[keys,setKeys]=useState<Record<IntegrationProvider,string>>({googleMaps:"",what3words:""}),[busy,setBusy]=useState<IntegrationProvider|null>(null),[message,setMessage]=useState<Record<string,string>>({});
+  const [google,setGoogle]=useState<GoogleWorkspaceStatus|null>(null),[googleBusy,setGoogleBusy]=useState(false),[googleMessage,setGoogleMessage]=useState("");
+  const [googleForm,setGoogleForm]=useState({clientId:"",clientSecret:"",redirectUri:"http://localhost:3001/api/integrations/googleWorkspace/oauth/callback",estimatesRootFolderId:"",ordersRootFolderId:"",folderTemplate:{...DEFAULT_TEMPLATE}});
+  const applyGoogle=useCallback((status:GoogleWorkspaceStatus)=>{setGoogle(status);setGoogleForm(current=>({...current,redirectUri:status.redirectUri||current.redirectUri,estimatesRootFolderId:status.estimatesRootFolderId||"",ordersRootFolderId:status.ordersRootFolderId||"",folderTemplate:{...DEFAULT_TEMPLATE,...status.folderTemplate}}))},[]);
+  const refresh=useCallback(async()=>{const [regular,workspace]=await Promise.all([getIntegrationStatuses(),googleWorkspaceIntegrationService.status()]);setStatuses(regular);applyGoogle(workspace)},[applyGoogle]);
+  useEffect(()=>{void refresh().catch(()=>setMessage({general:"Integration status could not be loaded."}))},[refresh]);
+  useEffect(()=>{const receive=(event:MessageEvent)=>{if(event.data?.type==="quotesuite:google-workspace-connected"){void googleWorkspaceIntegrationService.status().then(applyGoogle);setGoogleMessage("Google Workspace connected.")}};window.addEventListener("message",receive);return()=>window.removeEventListener("message",receive)},[applyGoogle]);
+  const run=async(provider:IntegrationProvider,action:()=>Promise<IntegrationStatus|void>)=>{setBusy(provider);setMessage(current=>({...current,[provider]:""}));try{const next=await action();if(next)setStatuses(current=>current.map(item=>item.provider===provider?next:item))}catch(error){setMessage(current=>({...current,[provider]:error instanceof Error?error.message:"Integration request failed."}))}finally{setBusy(null)}};
+  const runGoogle=async(action:()=>Promise<void>)=>{setGoogleBusy(true);setGoogleMessage("");try{await action()}catch(error){setGoogleMessage(error instanceof Error?error.message:"Google Workspace request failed.")}finally{setGoogleBusy(false)}};
 
   return <div className="admin-integrations">
-    <div className="admin-card admin-card--content ui-card">
-      <div className="admin-section-title">Integrations</div>
-      <p>Company-managed credentials are stored by the QuoteSuite server. Saved keys are masked and are not exposed through general Settings.</p>
-      {message.general ? <div className="ui-status ui-status--error">{message.general}</div> : null}
-    </div>
-    <div className="admin-integrations__grid">
-      {PROVIDERS.map((provider) => {
-        const status = statuses.find((item) => item.provider === provider.id);
-        const disabled = busy === provider.id;
-        return <section className="admin-card admin-card--content ui-card admin-integration-card" key={provider.id}>
-          <div className="admin-integration-card__header">
-            <div><h3>{provider.title}</h3><p>{provider.description}</p></div>
-            <span className={`ui-status ${status?.configured ? "ui-status--success" : "ui-status--muted"}`}>{sourceLabel(status)}</span>
-          </div>
-          <label className="admin-integration-card__toggle"><input type="checkbox" checked={status?.enabled ?? true} disabled={!status || disabled} onChange={(event) => void run(provider.id, () => saveIntegration(provider.id, { enabled: event.target.checked }))} /> Enabled</label>
-          {status?.capabilities?.length ? <div className="admin-integration-card__capabilities" aria-label={`${provider.title} capabilities`}>{status.capabilities.map((capability) => <span className="ui-chip" key={capability}>{capability.replaceAll("_", " ")}</span>)}</div> : null}
-          <label className="ui-field"><span>{provider.id === "googleMaps" ? "Server API Key" : "API Key"}</span><input className="ui-input" type="password" autoComplete="new-password" placeholder={status?.maskedKey || "Enter API key"} value={keys[provider.id]} onChange={(event) => setKeys((current) => ({ ...current, [provider.id]: event.target.value }))} /></label>
-          {status?.maskedKey ? <div className="admin-integration-card__metadata">Saved credential: <strong>{status.maskedKey}</strong></div> : null}
-          {status?.lastTestedAt ? <div className="admin-integration-card__metadata">Last tested: {new Date(status.lastTestedAt).toLocaleString()} — {status.lastTestSuccessful ? "successful" : "failed"}</div> : null}
-          {message[provider.id] ? <div className="ui-status ui-status--warning">{message[provider.id]}</div> : null}
-          <div className="ui-action-row">
-            <button className="ui-button ui-button--primary" disabled={disabled || !keys[provider.id].trim()} onClick={() => void run(provider.id, async () => { const next = await saveIntegration(provider.id, { enabled: status?.enabled ?? true, apiKey: keys[provider.id] }); setKeys((current) => ({ ...current, [provider.id]: "" })); setMessage((current) => ({ ...current, [provider.id]: "Configuration saved." })); return next; })}>Save / Update</button>
-            <button className="ui-button" disabled={disabled || !status?.configured || !status.enabled} onClick={() => void run(provider.id, async () => { const result = await testIntegration(provider.id); setMessage((current) => ({ ...current, [provider.id]: result.message })); await refresh(); })}>Test Connection</button>
-            <button className="ui-button ui-button--danger" disabled={disabled || status?.source !== "quotesync"} onClick={() => void run(provider.id, () => clearIntegrationKey(provider.id))}>Remove key</button>
-          </div>
-        </section>;
-      })}
-    </div>
-    <div className="admin-card admin-card--content ui-card"><div className="admin-section-title">Planned communication and document providers</div><p>These provider-neutral contracts are architectural only. OAuth credentials, consent and live access are not configured or simulated.</p></div>
-    <div className="admin-integrations__grid">
-      {COMMUNICATION_PROVIDER_CONTRACTS.map((provider) => <section className="admin-card admin-card--content ui-card admin-integration-card" key={provider.id}><div className="admin-integration-card__header"><div><h3>{provider.label}</h3><p>Future connected Email workspace with entity-linked messages and attachments.</p></div><span className="ui-status ui-status--muted">Planned · OAuth required</span></div><div className="admin-integration-card__capabilities">{provider.capabilities.map((capability) => <span className="ui-chip" key={capability}>{capability}</span>)}</div><small>Delegated capabilities: {provider.delegatedScopes.join(" · ")}</small></section>)}
-      <section className="admin-card admin-card--content ui-card admin-integration-card"><div className="admin-integration-card__header"><div><h3>Google Drive project documents</h3><p>Future Drive API integration stores canonical folder/file IDs and entity relationships, not embedded pages or path-only references.</p></div><span className="ui-status ui-status--muted">Planned · OAuth required</span></div><div className="admin-integration-card__capabilities"><span className="ui-chip">Configurable folder template</span><span className="ui-chip">Dynamic supplier folders</span><span className="ui-chip">Immutable issued documents</span></div><small>Provisioning trigger: {PROJECT_FOLDER_PROVISIONING_TRIGGER.replaceAll("_", " ")} · Order strategy: {ESTIMATE_TO_ORDER_DOCUMENT_STRATEGY.mode.replaceAll("_", " ")}</small></section>
-    </div>
+    <div className="admin-card admin-card--content ui-card"><div className="admin-section-title">Integrations</div><p>Company-managed credentials and encrypted OAuth tokens are stored by the QuoteSuite server. Secrets and tokens are never returned to this screen.</p>{message.general?<div className="ui-status ui-status--error">{message.general}</div>:null}</div>
+    <section className="admin-card admin-card--content ui-card admin-integration-card">
+      <div className="admin-integration-card__header"><div><h3>Google Workspace</h3><p>One OAuth connection powers the provider-neutral Email workspace and Google Drive project documents.</p></div><span className={`ui-status ${google?.connected?"ui-status--success":"ui-status--muted"}`}>{google?.connected?`Connected · ${google.account?.email}`:google?.configured?"Configured · not connected":"Not configured"}</span></div>
+      {!google?.encryptionConfigured?<div className="ui-status ui-status--warning">Set QUOTESUITE_INTEGRATION_ENCRYPTION_KEY on the server before saving credentials or connecting.</div>:null}
+      <div className="admin-integrations__grid">
+        <label className="ui-field"><span>OAuth client ID</span><input className="ui-input" value={googleForm.clientId} placeholder={google?.clientIdHint||"Google OAuth web client ID"} onChange={event=>setGoogleForm(current=>({...current,clientId:event.currentTarget.value}))}/></label>
+        <label className="ui-field"><span>OAuth client secret</span><input className="ui-input" type="password" autoComplete="new-password" value={googleForm.clientSecret} placeholder={google?.configured?"Leave blank to retain saved secret":"Google OAuth client secret"} onChange={event=>setGoogleForm(current=>({...current,clientSecret:event.currentTarget.value}))}/></label>
+        <label className="ui-field"><span>Authorised redirect URI</span><input className="ui-input" value={googleForm.redirectUri} onChange={event=>setGoogleForm(current=>({...current,redirectUri:event.currentTarget.value}))}/></label>
+        <label className="ui-field"><span>Estimates root folder ID</span><input className="ui-input" value={googleForm.estimatesRootFolderId} placeholder="Required for provisioning" onChange={event=>setGoogleForm(current=>({...current,estimatesRootFolderId:event.currentTarget.value}))}/></label>
+        <label className="ui-field"><span>Orders root folder ID</span><input className="ui-input" value={googleForm.ordersRootFolderId} placeholder="Reserved for Estimate → Order" onChange={event=>setGoogleForm(current=>({...current,ordersRootFolderId:event.currentTarget.value}))}/></label>
+      </div>
+      <div className="admin-integration-card__capabilities">{["Inbox / Sent / Drafts","Search / compose / reply / forward","Email attachments","Drive API project folders","Dynamic supplier folders","Canonical Drive IDs"].map(item=><span className="ui-chip" key={item}>{item}</span>)}</div>
+      <details><summary>Project folder template</summary><div className="admin-integrations__grid">{Object.entries(googleForm.folderTemplate).map(([key,value])=><label className="ui-field" key={key}><span>{TEMPLATE_LABELS[key]||key}</span><input className="ui-input" value={value} onChange={event=>setGoogleForm(current=>({...current,folderTemplate:{...current.folderTemplate,[key]:event.currentTarget.value}}))}/></label>)}</div></details>
+      {googleMessage?<div className="ui-status ui-status--warning" role="status">{googleMessage}</div>:null}
+      <div className="ui-action-row">
+        <button className="ui-button ui-button--primary" disabled={googleBusy||!googleForm.redirectUri.trim()} onClick={()=>void runGoogle(async()=>{const input:{clientId?:string;clientSecret?:string;redirectUri:string;estimatesRootFolderId:string|null;ordersRootFolderId:string|null;folderTemplate:Record<string,string>}={redirectUri:googleForm.redirectUri.trim(),estimatesRootFolderId:googleForm.estimatesRootFolderId.trim()||null,ordersRootFolderId:googleForm.ordersRootFolderId.trim()||null,folderTemplate:googleForm.folderTemplate};if(googleForm.clientId.trim())input.clientId=googleForm.clientId.trim();if(googleForm.clientSecret.trim())input.clientSecret=googleForm.clientSecret.trim();applyGoogle(await googleWorkspaceIntegrationService.configure(input as Parameters<typeof googleWorkspaceIntegrationService.configure>[0]));setGoogleForm(current=>({...current,clientSecret:""}));setGoogleMessage("Google Workspace configuration saved.")})}>Save configuration</button>
+        <button className="ui-button" disabled={googleBusy||!google?.configured} onClick={()=>void runGoogle(async()=>{const oauth=await googleWorkspaceIntegrationService.beginOAuth();window.open(oauth.authorizationUrl,"quotesuite-google-oauth","popup=yes,width=640,height=760");setGoogleMessage("Complete consent in the Google window.")})}>{google?.connected?"Reconnect":"Connect Google"}</button>
+        <button className="ui-button ui-button--danger" disabled={googleBusy||!google?.connected} onClick={()=>void runGoogle(async()=>{applyGoogle(await googleWorkspaceIntegrationService.disconnect());setGoogleMessage("Google Workspace disconnected; saved OAuth configuration was retained.")})}>Disconnect</button>
+      </div>
+      <small>Requested delegated scopes: {google?.scopes.join(" · ")}. Provisioning trigger: {PROJECT_FOLDER_PROVISIONING_TRIGGER.replaceAll("_"," ")} · future Order document strategy: {ESTIMATE_TO_ORDER_DOCUMENT_STRATEGY.mode.replaceAll("_"," ")}.</small>
+    </section>
+    <div className="admin-integrations__grid">{PROVIDERS.map(provider=>{const status=statuses.find(item=>item.provider===provider.id),disabled=busy===provider.id;return <section className="admin-card admin-card--content ui-card admin-integration-card" key={provider.id}><div className="admin-integration-card__header"><div><h3>{provider.title}</h3><p>{provider.description}</p></div><span className={`ui-status ${status?.configured?"ui-status--success":"ui-status--muted"}`}>{sourceLabel(status)}</span></div><label className="admin-integration-card__toggle"><input type="checkbox" checked={status?.enabled??true} disabled={!status||disabled} onChange={event=>void run(provider.id,()=>saveIntegration(provider.id,{enabled:event.target.checked}))}/> Enabled</label>{status?.capabilities?.length?<div className="admin-integration-card__capabilities">{status.capabilities.map(capability=><span className="ui-chip" key={capability}>{capability.replaceAll("_"," ")}</span>)}</div>:null}<label className="ui-field"><span>{provider.id==="googleMaps"?"Server API Key":"API Key"}</span><input className="ui-input" type="password" autoComplete="new-password" placeholder={status?.maskedKey||"Enter API key"} value={keys[provider.id]} onChange={event=>setKeys(current=>({...current,[provider.id]:event.target.value}))}/></label>{message[provider.id]?<div className="ui-status ui-status--warning">{message[provider.id]}</div>:null}<div className="ui-action-row"><button className="ui-button ui-button--primary" disabled={disabled||!keys[provider.id].trim()} onClick={()=>void run(provider.id,async()=>{const next=await saveIntegration(provider.id,{enabled:status?.enabled??true,apiKey:keys[provider.id]});setKeys(current=>({...current,[provider.id]:""}));return next})}>Save / Update</button><button className="ui-button" disabled={disabled||!status?.configured||!status.enabled} onClick={()=>void run(provider.id,async()=>{const result=await testIntegration(provider.id);setMessage(current=>({...current,[provider.id]:result.message}));await refresh()})}>Test Connection</button><button className="ui-button ui-button--danger" disabled={disabled||status?.source!=="quotesync"} onClick={()=>void run(provider.id,()=>clearIntegrationKey(provider.id))}>Remove key</button></div></section>})}</div>
+    <div className="admin-card admin-card--content ui-card"><div className="admin-section-title">Additional communication providers</div><p>The domain remains provider-neutral. Microsoft 365 stays a planned provider; no Gmail-specific records leak into Client, Estimate, Order, supplier quotation or project links.</p></div>
+    <div className="admin-integrations__grid">{COMMUNICATION_PROVIDER_CONTRACTS.filter(provider=>provider.id!=="google_workspace").map(provider=><section className="admin-card admin-card--content ui-card admin-integration-card" key={provider.id}><div className="admin-integration-card__header"><div><h3>{provider.label}</h3></div><span className="ui-status ui-status--muted">Planned · OAuth required</span></div><div className="admin-integration-card__capabilities">{provider.capabilities.map(capability=><span className="ui-chip" key={capability}>{capability}</span>)}</div></section>)}</div>
   </div>;
 }
