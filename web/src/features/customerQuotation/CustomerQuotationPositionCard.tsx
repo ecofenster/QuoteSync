@@ -61,14 +61,15 @@ export default function CustomerQuotationPositionCard({
   const area = ((position.widthMm * position.heightMm) / 1_000_000).toFixed(2);
   return (
     <section
-      className={`customer-quotation-position${wide ? " customer-quotation-position--wide" : ""}`}
+      className={`customer-quotation-position${wide ? " customer-quotation-position--wide" : ""}${position.classification === "alternative" ? " customer-quotation-position--alternative" : ""}`}
       data-position-reference={position.customerReference}
+      data-position-classification={position.classification}
     >
       <header className="customer-quotation-position__bar">
         <b>{position.sequence}</b>
         <strong>{position.customerReference}</strong>
         <span>{position.roomName || "Location not supplied"}</span>
-        <span>{position.productSystem || position.description}</span>
+        <span>{position.classification === "alternative" ? `Alternative to ${position.alternativeToReference || "included position"}` : position.productSystem || position.description}</span>
         <span>
           Quantity: <b>{position.quantity}</b>
         </span>
@@ -137,6 +138,7 @@ export default function CustomerQuotationPositionCard({
         <aside className="customer-quotation-position__facts">
           <section>
             <h3>Price</h3>
+            {position.classification === "alternative" ? <p className="customer-quotation-position__alternative-note">Alternative option — not included in quotation total</p> : null}
             <dl>
               <div>
                 <dt>Unit price</dt>

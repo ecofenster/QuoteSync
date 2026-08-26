@@ -86,11 +86,25 @@ test("save/reload JSON round-trip reproduces the same customer total without pro
   assert.equal(after.totalIncVatGbp, before.totalIncVatGbp);
 });
 
-test("alternatives are visible separately and excluded from the primary total", () => {
+test("alternatives render as full customer-safe offers while remaining outside every quotation total", () => {
   const quote = buildCustomerQuotationProjection({ scenario: scenario(false), client, estimate });
   assert.equal(quote.alternatives.length, 1);
-  assert.equal(quote.alternatives[0].reference, "W01-ALT");
+  const alternative = quote.alternatives[0];
+  assert.equal(quote.positions.includes(alternative), true);
+  assert.equal(alternative.reference, "W01-ALT");
+  assert.equal(alternative.classification, "alternative");
+  assert.equal(alternative.includedInQuotationTotal, false);
+  assert.equal(alternative.alternativeToReference, "W01");
+  assert.equal(alternative.alternativeToPositionId, "position-1");
+  assert.equal(alternative.totalSellingPriceGbp, "672.00");
+  assert.equal(alternative.quantity, 1);
+  assert.equal(alternative.widthMm, 1200);
+  assert.equal(alternative.heightMm, 1400);
+  assert.equal(quote.productSupplySummary.some((row) => row.reference === "W01-ALT"), false);
+  assert.equal(quote.productsSupplyTotalGbp, "1800.00");
   assert.equal(quote.subtotalExVatGbp, "1965.00");
+  assert.equal(quote.vatGbp, "393.00");
+  assert.equal(quote.totalIncVatGbp, "2358.00");
 });
 
 test("included Extras and customer Transport are presented once without allocation mechanics", () => {
@@ -125,7 +139,7 @@ test("document-only penny residue does not create a fake Additional project item
 
 test("imported evidence is customer-safe while native drawing remains unavailable until a document-safe provider exists", () => {
   const quote = buildCustomerQuotationProjection({ scenario: scenario(), client, estimate });
-  assert.equal(quote.positions.length, 2);
+  assert.equal(quote.positions.length, 3);
   const configured = quote.positions.find((row) => row.reference === "W01");
   assert.equal(configured?.hasConfiguredDrawing, false);
   assert.equal(configured?.drawing.source, "unavailable");

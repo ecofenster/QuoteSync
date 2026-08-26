@@ -205,7 +205,7 @@ export default function ConfigureInstallation({ scenario }: { scenario: Calculat
   return (
     <>
       <button type="button" className="ui-button ui-button--secondary" onClick={() => setOpen(true)}>
-        Configure Installation
+        Review / Override Installation
       </button>
       {open &&
         createPortal(
@@ -213,8 +213,8 @@ export default function ConfigureInstallation({ scenario }: { scenario: Calculat
             <section className="ui-modal" role="dialog" aria-modal="true" aria-labelledby="installation-config-title">
               <header>
                 <div>
-                  <h3 id="installation-config-title">Configure Installation</h3>
-                  <small>Estimate-only snapshot · Administration defaults remain unchanged</small>
+                  <h3 id="installation-config-title">Installation Advanced Overrides</h3>
+                  <small>The normal programme is derived automatically. Override company, crew, travel, rates or specialist requirements only when needed.</small>
                 </div>
                 <button type="button" className="ui-button" onClick={() => setOpen(false)}>
                   Close

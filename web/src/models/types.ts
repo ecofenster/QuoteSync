@@ -23,6 +23,7 @@ export type MenuKey =
   | "dashboard"
   | "client_database"
   | "follow_ups"
+  | "email"
   | "estimates"
   | "orders"
   | "lost"

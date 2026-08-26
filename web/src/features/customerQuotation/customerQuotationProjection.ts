@@ -34,6 +34,10 @@ export type CustomerQuotationPosition = {
   hasConfiguredDrawing: boolean;
   thermal: CustomerQuotationPositionThermal | null;
   sectionDetailIds: string[];
+  classification: "included" | "alternative";
+  includedInQuotationTotal: boolean;
+  alternativeToPositionId: string | null;
+  alternativeToReference: string | null;
 };
 
 export type CustomerQuotationCharge = { id: string; label: string; amountGbp: string };
@@ -53,7 +57,7 @@ export type CustomerQuotationProjection = {
   productsSupplyTotalGbp: string;
   productSupplySummary: CustomerQuotationSupplySummary[];
   installationInclusions: string[];
-  alternatives: Array<Pick<CustomerQuotationPosition, "id" | "reference" | "quantity" | "widthMm" | "heightMm" | "description">>;
+  alternatives: CustomerQuotationPosition[];
   charges: CustomerQuotationCharge[];
   customerDiscountGbp: string;
   showCustomerDiscount: boolean;
@@ -149,7 +153,12 @@ export function buildCustomerQuotationProjection(input: {
 }): CustomerQuotationProjection {
   const result = deriveProjectCostingCommercialResult(input.scenario);
   const estimateById = new Map(input.estimate.positions.map((position) => [String(position.id), position]));
-  const positions = result.productPricing.map(({ row, unitSellingPrice, totalSellingPrice }, index): CustomerQuotationPosition => {
+  const scenarioOrder = new Map(input.scenario.products.map((row, index) => [row.id, index]));
+  const displayedPricing = [
+    ...result.productPricing.map((price) => ({ ...price, classification: "included" as const })),
+    ...result.alternativeProductPricing.map((price) => ({ ...price, classification: "alternative" as const })),
+  ].sort((left, right) => (scenarioOrder.get(left.row.id) ?? Number.MAX_SAFE_INTEGER) - (scenarioOrder.get(right.row.id) ?? Number.MAX_SAFE_INTEGER));
+  const positions = displayedPricing.map(({ row, unitSellingPrice, totalSellingPrice, classification }, index): CustomerQuotationPosition => {
     const estimatePosition = row.estimatePositionId ? estimateById.get(String(row.estimatePositionId)) ?? null : null;
     const snapshot = record(row.sourceSnapshot);
     const evidence = manufacturerEvidenceFor(row);
@@ -158,6 +167,9 @@ export function buildCustomerQuotationProjection(input: {
     const manufacturerUw = textValue(evidence.manufacturerQuotedUw);
     const productSystem = textValue(evidence.productSystem) || textValue(evidence.product) || configured?.product.productFamily || row.productClass;
     const drawing = drawingForPosition(estimatePosition, evidence);
+    const alternativeTarget = classification === "alternative" && row.alternativeTo
+      ? input.scenario.products.find((candidate) => candidate.id === row.alternativeTo || candidate.displayReference === row.alternativeTo || candidate.estimatePositionId === row.alternativeTo) ?? null
+      : null;
     return {
       sequence: index + 1,
       id: row.id,
@@ -181,12 +193,14 @@ export function buildCustomerQuotationProjection(input: {
       hasConfiguredDrawing: drawing.source === "configurator",
       thermal: manufacturerUg || manufacturerUw ? { ...(manufacturerUg ? { ug: manufacturerUg } : {}), ...(manufacturerUw ? { manufacturerQuotedUw: manufacturerUw } : {}) } : null,
       sectionDetailIds: [],
+      classification,
+      includedInQuotationTotal: classification === "included",
+      alternativeToPositionId: classification === "alternative" ? alternativeTarget?.estimatePositionId ?? alternativeTarget?.id ?? null : null,
+      alternativeToReference: classification === "alternative" ? alternativeTarget?.displayReference ?? row.alternativeTo ?? null : null,
     };
   });
-  const alternatives = result.alternativeProducts.map((row) => ({
-    id: row.id, reference: row.displayReference, quantity: row.quantity, widthMm: row.widthMm, heightMm: row.heightMm,
-    description: customerProductDescription(row),
-  }));
+  const alternatives = positions.filter((position) => position.classification === "alternative");
+  const includedPositions = positions.filter((position) => position.includedInQuotationTotal);
   const charges: CustomerQuotationCharge[] = [];
   charges.push({ id: "products", label: "Products / Supply Only", amountGbp: result.productSale });
   const extraRows = [
@@ -217,7 +231,7 @@ export function buildCustomerQuotationProjection(input: {
     currency: CUSTOMER_QUOTATION_POLICY.currency,
     positions,
     productsSupplyTotalGbp: result.productSale,
-    productSupplySummary: positions.map((position) => ({ reference: position.customerReference, description: position.productSystem || position.description, quantity: position.quantity, dimensions: `${position.widthMm} × ${position.heightMm} mm`, amountGbp: position.totalSellingPriceGbp })),
+    productSupplySummary: includedPositions.map((position) => ({ reference: position.customerReference, description: position.productSystem || position.description, quantity: position.quantity, dimensions: `${position.widthMm} × ${position.heightMm} mm`, amountGbp: position.totalSellingPriceGbp })),
     installationInclusions: installationInclusions(input.scenario),
     alternatives,
     charges,

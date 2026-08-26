@@ -19,6 +19,7 @@ import {
   type CustomerQuotationProjection,
 } from "./customerQuotationProjection";
 import CustomerQuotationPositionCard from "./CustomerQuotationPositionCard";
+import { prepareQuotationIssue, type QuotationIssuePreparation } from "../workflow/workflowFoundation";
 import "./customerQuotation.css";
 import "./customerQuotationBrand.css";
 
@@ -105,15 +106,18 @@ export default function CustomerQuotationPreview({
   estimate,
   PositionPreview,
   onClose,
+  onPrepareEmail,
 }: {
   client: Client;
   estimate: Estimate;
   PositionPreview?: ComponentType<{ position: Position }>;
   onClose: () => void;
+  onPrepareEmail?: () => void;
 }) {
   const [projection, setProjection] =
     useState<CustomerQuotationProjection | null>(null);
   const [error, setError] = useState("");
+  const [issuePreparation, setIssuePreparation] = useState<QuotationIssuePreparation | null>(null);
   const [options, setOptions] = useState<CustomerQuotationDisplayOptions>(
     DEFAULT_CUSTOMER_QUOTATION_DISPLAY_OPTIONS,
   );
@@ -158,6 +162,7 @@ export default function CustomerQuotationPreview({
     [projection],
   );
   const totalPages = pages.length + (projection ? 1 : 0);
+  const includedPositions = projection?.positions.filter((position) => position.includedInQuotationTotal) ?? [];
   const style = projection
     ? ({
         "--document-primary": projection.brand.primaryColour,
@@ -171,7 +176,7 @@ export default function CustomerQuotationPreview({
         <section className="customer-quotation-summary">
           <h2>Quotation Summary</h2>
           <p>
-            {projection.positions.length} quoted positions for{" "}
+            {includedPositions.length} included position(s) and {projection.alternatives.length} alternative option(s) for{" "}
             {projection.projectName || projection.clientName}.
           </p>
           {projection.charges.length ? (
@@ -182,7 +187,7 @@ export default function CustomerQuotationPreview({
                     <span>{charge.label}</span>
                     <strong>{money(charge.amountGbp)}</strong>
                   </div>
-                  {charge.id === "products" ? <div className="customer-quotation__scope-note"><span>{projection.positions.length} quoted position(s) · physical quantity {projection.positions.reduce((sum, position) => sum + position.quantity, 0)} · detailed product schedule follows</span></div> : null}
+                  {charge.id === "products" ? <div className="customer-quotation__scope-note"><span>{includedPositions.length} included position(s) · physical quantity {includedPositions.reduce((sum, position) => sum + position.quantity, 0)} · detailed product schedule follows</span></div> : null}
                   {charge.id === "installation" && projection.installationInclusions.length ? <div className="customer-quotation__scope-note"><span>Includes: {projection.installationInclusions.join(" · ")}</span></div> : null}
                 </Fragment>
               ))}
@@ -281,6 +286,13 @@ export default function CustomerQuotationPreview({
               Close
             </button>
             <button
+              className="ui-button"
+              disabled={!projection}
+              onClick={() => projection && setIssuePreparation(prepareQuotationIssue({ estimateId: String(estimate.id), estimateRevision: estimate.revisionNo, quotationRevision: projection.commercialRevision, estimateReference: projection.estimateReference, clientId: String(client.id), clientName: projection.clientName, recipient: client.email, subtotalExVatGbp: projection.subtotalExVatGbp, vatRatePercent: projection.vatRatePercent, vatGbp: projection.vatGbp, totalIncVatGbp: projection.totalIncVatGbp }))}
+            >
+              Send to Client
+            </button>
+            <button
               className="ui-button ui-button--primary"
               disabled={!projection}
               onClick={() => window.print()}
@@ -289,6 +301,7 @@ export default function CustomerQuotationPreview({
             </button>
           </div>
         </div>
+        {issuePreparation ? <section className="customer-quotation__issue-preparation no-print" role="status"><div><strong>Send to Client preparation</strong><span>Recipient: {issuePreparation.communication.to[0] || "Customer email required"}</span><span>Estimate revision {issuePreparation.estimateRevision} · Quotation revision {issuePreparation.quotationRevision}</span><span>PDF generation and provider delivery are required before this can become an issued quotation.</span></div>{onPrepareEmail ? <button type="button" className="ui-button ui-button--primary" onClick={onPrepareEmail}>Open Email composer</button> : null}</section> : null}
         {error ? (
           <p role="alert" className="customer-quotation__error">
             {error}

@@ -1502,7 +1502,7 @@ export default function ScenarioCostingWorksheet({
                 )}
               >
                 <div className="costing-sheet__detail-list">
-                  <div className="costing-sheet__product-actions"><span>Installation required?</span><Toggle ariaLabel="Installation required" value={Boolean(scenario.options?.installationRequired)} onChange={(value)=>void updateInstallationRequired(value)} /><ConfigureInstallation scenario={scenario}/>{scenario.installationProgramme?.status==="review_required"?<span className="ui-badge">Review Required</span>:null}</div>
+                  <div className="costing-sheet__product-actions"><span>Installation Included?</span><Toggle ariaLabel="Installation required" value={Boolean(scenario.options?.installationRequired)} onChange={(value)=>void updateInstallationRequired(value)} /><ConfigureInstallation scenario={scenario}/>{scenario.installationProgramme?.status==="review_required"?<span className="ui-badge">Review Required</span>:null}</div>
                   {scenario.installationProgramme ? <>
                     <h4 className="costing-sheet__group-title">Team / Programme</h4>
                     <div className="costing-sheet__facts"><span>Team <b>{scenario.selectedInstallationTeam?`${scenario.selectedInstallationTeam.companyName} · ${scenario.selectedInstallationTeam.name}`:"Select team"}</b></span><span>Crew <b>{scenario.installationProgramme.crewSize}</b></span><span>Programme <b>{scenario.installationProgramme.programmeDays} full day(s)</b></span><span>Travel <b>{scenario.installationProgramme.travel.mode.replaceAll("_"," ")}</b></span><span>Vehicles <b>{scenario.installationProgramme.travel.vehicleCount}</b></span></div>
@@ -1566,7 +1566,7 @@ export default function ScenarioCostingWorksheet({
                   validateMarkupPercentage(markupDraft.materials),
                 )}
               >
-                <div className="costing-sheet__product-actions"><InstallationMaterialsAssumptions scenario={scenario}/><span>Required</span><Toggle ariaLabel="Installation Materials required" value={Boolean(scenario.options?.installationMaterials&&String((scenario.options.installationMaterials as Record<string,unknown>).enabled)!=="false")} onChange={(value)=>void updateMaterialsRequired(value)}/><span>Building Type: <b>{String(scenario.installationMaterials?.buildingType??"Review required").replaceAll("_"," & ")}</b></span><span>Contingency: <b>{scenario.installationMaterials?.contingencyPercent??"—"}%</b></span></div>
+                <div className="costing-sheet__product-actions"><span>Installation Materials Included?</span><Toggle ariaLabel="Installation Materials required" value={Boolean(scenario.options?.installationMaterials&&String((scenario.options.installationMaterials as Record<string,unknown>).enabled)!=="false")} onChange={(value)=>void updateMaterialsRequired(value)}/><InstallationMaterialsAssumptions scenario={scenario}/><span>Building Type: <b>{String(scenario.installationMaterials?.buildingType??"Review required").replaceAll("_"," & ")}</b></span><span>Contingency: <b>{scenario.installationMaterials?.contingencyPercent??"—"}%</b></span></div>
                 <div className="costing-sheet__detail-list">
                   {materials.map((item) => (
                     <CommercialRow

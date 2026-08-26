@@ -14,6 +14,7 @@ import { CustomerViewPolicyProvider,DEFAULT_CUSTOMER_VIEW_POLICY,type CustomerVi
 import { estimateTotals } from "../../domain/estimates/estimateCalculations";
 import { deriveProjectCostingCommercialResult } from "../projectCalculatorLab/domain/projectCostingCommercialResult";
 import type { CalculatorScenario } from "../projectCalculatorLab/domain/projectCalculatorLab.types";
+import { deriveNextAction } from "../workflow/workflowFoundation";
 
 type CommercialTab = "costing" | "import";
 type CommercialView = "internal" | "customer";
@@ -45,9 +46,12 @@ export default function EstimateCommercialWorkspace({
     useState<CommercialView>(initialCommercialView);
   const [customerViewPolicy,setCustomerViewPolicy]=useState<CustomerViewPolicy>(DEFAULT_CUSTOMER_VIEW_POLICY);
   const [customerValue,setCustomerValue]=useState("0");
+  const [currentScenario,setCurrentScenario]=useState<CalculatorScenario|null>(null);
+  const [quotationReviewed,setQuotationReviewed]=useState(false);
   useEffect(()=>{void apiFetch("/api/settings/projectPreferences").then(rows=>{const row=(Array.isArray(rows)?rows:[]).find((item:any)=>item.key==="estimate.customerViewPolicy");if(row)setCustomerViewPolicy({...DEFAULT_CUSTOMER_VIEW_POLICY,...row.value})}).catch(()=>{})},[]);
-  useEffect(()=>{void apiFetch(`/api/admin/project-calculator-lab/scenarios?estimate_id=${encodeURIComponent(estimateId)}`).then(async rows=>{const first=Array.isArray(rows)?rows[0]:null;if(!first)return;const scenario=await apiFetch(`/api/admin/project-calculator-lab/scenarios/${encodeURIComponent(first.id)}?estimate_id=${encodeURIComponent(estimateId)}`) as CalculatorScenario;setCustomerValue(deriveProjectCostingCommercialResult(scenario).actualSale)}).catch(()=>{})},[estimateId,positionRevision]);
+  useEffect(()=>{void apiFetch(`/api/admin/project-calculator-lab/scenarios?estimate_id=${encodeURIComponent(estimateId)}`).then(async rows=>{const first=Array.isArray(rows)?rows[0]:null;if(!first)return;const scenario=await apiFetch(`/api/admin/project-calculator-lab/scenarios/${encodeURIComponent(first.id)}?estimate_id=${encodeURIComponent(estimateId)}`) as CalculatorScenario;setCurrentScenario(scenario);setCustomerValue(deriveProjectCostingCommercialResult(scenario).actualSale)}).catch(()=>{})},[estimateId,positionRevision]);
   const totals=estimate?estimateTotals(estimate):{totalSquareMetres:0,totalLinearMetres:0,totalQty:0};
+  const nextAction=deriveNextAction({manufacturerQuoteImported:Boolean(currentScenario&&currentScenario.origin==="supplier_import"&&currentScenario.products.length),costingReady:Boolean(currentScenario?.products.length),quotationReviewed,quotationIssued:false,followUpDue:false,followUpCompleted:false,customerAccepted:false,orderCreated:false});
   const openImport = useCallback(() => {
     setTab("import");
     void ensureEstimateCosting(estimateId, estimateRef).then((scenario) =>
@@ -91,12 +95,13 @@ export default function EstimateCommercialWorkspace({
           <button
             type="button"
             className="ui-button ui-button--primary estimate-commercial__document-action"
-            onClick={() => setQuotationOpen(true)}
+            onClick={() => { setQuotationReviewed(true); setQuotationOpen(true); }}
           >
             Customer Quotation
           </button>
         ) : null}
       </div>
+      {nextAction ? <aside className="estimate-commercial__next-action"><div><strong>Next Action</strong><span>{nextAction.reason}</span></div><button type="button" className="ui-button ui-button--primary" onClick={() => { if(nextAction.id==="import_manufacturer_quote")openImport(); else if(nextAction.id==="review_customer_quotation"||nextAction.id==="send_to_client"){setQuotationReviewed(true);setQuotationOpen(true);} else setTab("costing"); }}>{nextAction.label}</button></aside> : null}
       <div
         className="estimate-commercial__content"
         onClickCapture={(event) => {
@@ -195,6 +200,7 @@ export default function EstimateCommercialWorkspace({
           estimate={estimate}
           PositionPreview={PositionPreview}
           onClose={() => setQuotationOpen(false)}
+          onPrepareEmail={onEmail}
         />
       ) : null}
     </section>

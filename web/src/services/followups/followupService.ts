@@ -97,3 +97,21 @@ export async function addFollowUpForEstimate(args: {
     (args.alertFn ?? ((message: string) => window.alert(message)))("Failed to add follow-up.");
   }
 }
+
+
+export function buildNextFollowUpRecommendation(completed: { clientId: string; estimateId?: string; title: string }, days = 7) {
+  return { dueAt: isoDatePlusDays(days), clientId: String(completed.clientId), estimateId: completed.estimateId ? String(completed.estimateId) : null, title: completed.title.replace(/^Follow up:/i, "Follow up:") || "Follow up", defaultDays: days };
+}
+
+export async function createNextFollowUpForCompleted(args: {
+  apiFetchJson: (path: string, options?: RequestInit) => Promise<any>;
+  activeUserName: string;
+  completed: { clientId: string; clientName: string; estimateId?: string; estimateRef?: string; title: string };
+  dueAt: string;
+}) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(args.dueAt)) throw new Error("Next Follow Up date must use YYYY-MM-DD.");
+  const followupId = uid();
+  await args.apiFetchJson("/api/followups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: followupId, client_id: args.completed.clientId, estimate_id: args.completed.estimateId || null, title: `Follow up: ${args.completed.clientName}${args.completed.estimateRef ? ` · ${args.completed.estimateRef}` : ""}`, notes: "Telephone call • Follow-up email", due_at: args.dueAt, status: "pending" }) });
+  await createLinkedNoteEntry({ apiFetchJson: args.apiFetchJson, activeUserName: args.activeUserName, payload: { clientId: String(args.completed.clientId), estimateId: args.completed.estimateId || null, followupId, category: "follow_up", noteText: `Next follow-up scheduled\nDue: ${args.dueAt}${args.completed.estimateRef ? `\nEstimate: ${args.completed.estimateRef}` : ""}` } });
+  return { followupId, dueAt: args.dueAt };
+}

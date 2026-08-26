@@ -34,9 +34,9 @@ test("status rendering uses accessible text as well as colour", async () => {
 });
 
 test("chronology remains ordered and displays the current checkpoint", () => {
-  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 46 }, (_, index) => index + 1));
+  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 47 }, (_, index) => index + 1));
   assert.equal(ROADMAP_CHRONOLOGY.find((entry) => entry.title === "Checkpoint stabilization")?.checkpointSha, ROADMAP_CHECKPOINT_SHA);
-  assert.match(ROADMAP_CHRONOLOGY.at(-1)?.title ?? "", /Customer Quotation print fidelity and specification de-duplication/);
+  assert.match(ROADMAP_CHRONOLOGY.at(-1)?.title ?? "", /End-to-end quotation workflow programme foundation/);
   assert.equal(ROADMAP_CHECKPOINT_SHA, "ed6537b99f0930357e19ea1f505958e088385ce0");
 });
 
@@ -74,4 +74,12 @@ test("roadmap is static and has no database or production Client mutation depend
   const combined = sources.join("\n");
   assert.doesNotMatch(combined, /apiFetch|fetch\(|sqlite|\/api\/clients|INSERT INTO|UPDATE clients|DELETE FROM/);
   assert.match(combined, /Protected EF-CL-001 through EF-CL-008/);
+});
+
+
+test("end-to-end quotation programme is linked without duplicate canonical systems", () => {
+  const serialized = JSON.stringify(all);
+  for (const phrase of ["Alternative position customer offers", "Installation Materials Included", "Installation Included", "Enquiry → Qualified / Estimate → Quotation → Order", "Gmail/Google Workspace", "Microsoft 365/Outlook", "Google Drive API", "Contextual Next Action", "Automatic 3-day issued quotation Follow Up", "Customer Portal", "electronic acceptance", "Supplier Order Sent", "milestone", "canonical project/site pins"]) assert.match(serialized, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+  assert.equal(all.filter((item) => item.id === "workflow-orchestration").length, 1);
+  assert.equal(all.filter((item) => item.id === "customer-portal").length, 1);
 });

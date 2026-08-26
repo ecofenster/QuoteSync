@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { clearIntegrationKey, getIntegrationStatuses, saveIntegration, testIntegration, type IntegrationProvider, type IntegrationStatus } from "../../services/integrations/integrationService";
+import { COMMUNICATION_PROVIDER_CONTRACTS } from "../communications/domain/communications";
+import { ESTIMATE_TO_ORDER_DOCUMENT_STRATEGY, PROJECT_FOLDER_PROVISIONING_TRIGGER } from "../documents/domain/projectDocumentArchitecture";
 
 const PROVIDERS: Array<{ id: IntegrationProvider; title: string; description: string }> = [
   { id: "googleMaps", title: "Google Maps", description: "Server credential for geocoding, routes, distance, and travel time. Browser map display uses its separately deployed website-restricted key." },
@@ -55,6 +57,11 @@ export default function AdminIntegrationsPanel() {
           </div>
         </section>;
       })}
+    </div>
+    <div className="admin-card admin-card--content ui-card"><div className="admin-section-title">Planned communication and document providers</div><p>These provider-neutral contracts are architectural only. OAuth credentials, consent and live access are not configured or simulated.</p></div>
+    <div className="admin-integrations__grid">
+      {COMMUNICATION_PROVIDER_CONTRACTS.map((provider) => <section className="admin-card admin-card--content ui-card admin-integration-card" key={provider.id}><div className="admin-integration-card__header"><div><h3>{provider.label}</h3><p>Future connected Email workspace with entity-linked messages and attachments.</p></div><span className="ui-status ui-status--muted">Planned · OAuth required</span></div><div className="admin-integration-card__capabilities">{provider.capabilities.map((capability) => <span className="ui-chip" key={capability}>{capability}</span>)}</div><small>Delegated capabilities: {provider.delegatedScopes.join(" · ")}</small></section>)}
+      <section className="admin-card admin-card--content ui-card admin-integration-card"><div className="admin-integration-card__header"><div><h3>Google Drive project documents</h3><p>Future Drive API integration stores canonical folder/file IDs and entity relationships, not embedded pages or path-only references.</p></div><span className="ui-status ui-status--muted">Planned · OAuth required</span></div><div className="admin-integration-card__capabilities"><span className="ui-chip">Configurable folder template</span><span className="ui-chip">Dynamic supplier folders</span><span className="ui-chip">Immutable issued documents</span></div><small>Provisioning trigger: {PROJECT_FOLDER_PROVISIONING_TRIGGER.replaceAll("_", " ")} · Order strategy: {ESTIMATE_TO_ORDER_DOCUMENT_STRATEGY.mode.replaceAll("_", " ")}</small></section>
     </div>
   </div>;
 }

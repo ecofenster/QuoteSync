@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Client, ClientId } from "../../models/types";
+import { buildNextFollowUpRecommendation, createNextFollowUpForCompleted } from "../../services/followups/followupService";
 import "./FollowUpsFeature.css";
 
 type FollowUp = {
@@ -444,12 +445,19 @@ export default function FollowUpsFeature({
         }),
       });
 
+      let nextFollowUpCreated = false;
       if (existing.status !== "done") {
         await createFollowUpNote(existing, buildCompletionNoteText(existing));
+        const recommendation = buildNextFollowUpRecommendation(existing);
+        const nextDueAt = window.prompt("Next Follow Up date (default 7 days). Change the date, or Cancel for no further follow-up.", recommendation.dueAt);
+        if (nextDueAt?.trim()) {
+          await createNextFollowUpForCompleted({ apiFetchJson: apiFetch, activeUserName, completed: existing, dueAt: nextDueAt.trim() });
+          nextFollowUpCreated = true;
+        }
       }
 
       setFollowUps((prev) => prev.map((item) => (item.id !== id ? item : { ...item, status: "done" })));
-      setNoteSavedToast("Marked follow-up as done.");
+      setNoteSavedToast(nextFollowUpCreated ? "Marked done and scheduled the next linked follow-up." : "Marked follow-up as done.");
       setTimeout(() => setNoteSavedToast(null), 1500);
       setReloadToken((value) => value + 1);
     } catch (error) {

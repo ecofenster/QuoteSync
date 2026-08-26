@@ -116,13 +116,16 @@ export function deriveProjectCostingCommercialResult(
   const installationCommercialGbp = addDecimalAmounts([commercialGbp(includedInstallation), ...installationPackageUplifts.map((item) => item.sellingAmountGbp), calculatedInstallationCost]);
   const feeCommercialGbp = addDecimalAmounts([commercialGbp(includedFees), ...dutyPackageUplifts.map((item) => item.sellingAmountGbp)]);
   const equipmentCost = addDecimalAmounts([...equipment.map((row) => row.unitCost), ...equipmentPackageUplifts.map((item) => item.purchaseAmountGbp)]);
-  const materialsCost = addDecimalAmounts([...materials.map((row) => row.unitCost), ...materialsPackageUplifts.map((item) => item.purchaseAmountGbp), scenario.me508Calculation?.totalCost, scenario.installationMaterials?.purchaseCost]);
+  const automaticMaterialsEnabled = (scenario.options?.installationMaterials as { enabled?: unknown } | undefined)?.enabled !== false;
+  const materialsCost = addDecimalAmounts([...materials.map((row) => row.unitCost), ...materialsPackageUplifts.map((item) => item.purchaseAmountGbp), scenario.me508Calculation?.totalCost, automaticMaterialsEnabled ? scenario.installationMaterials?.purchaseCost : null]);
   const selling = (amount: string, category: keyof ProjectCostingMarkups) => applyMarkupPercentage(amount, markups[category])?.sellingPrice ?? "0";
-  const productPricing = includedProducts.map((row) => {
-    const amount = addDecimalAmounts([row.commercialGbpAmount, transportAllocationByProduct.get(row.id)?.commercialGbpAmount]);
+  const priceProduct = (row: CalculatorProductRow, includeAllocatedTransport: boolean) => {
+    const amount = addDecimalAmounts([row.commercialGbpAmount, includeAllocatedTransport ? transportAllocationByProduct.get(row.id)?.commercialGbpAmount : null]);
     const price = Number(amount) ? calculateProductSelling(amount, row.quantity, markups.product, (rowOverrides[row.id] ?? "") === "" ? null : rowOverrides[row.id]) : null;
     return { row, commercialAmountGbp: amount, unitSellingPrice: price?.unitSellingPrice ?? null, totalSellingPrice: price?.totalSellingPrice ?? null };
-  });
+  };
+  const productPricing = includedProducts.map((row) => priceProduct(row, true));
+  const alternativeProductPricing = alternativeProducts.map((row) => priceProduct(row, false));
   const baseProductSale = addDecimalAmounts([...productPricing.map((value) => value.totalSellingPrice), unpricedTotals.length ? selling(addDecimalAmounts(unpricedTotals.map((item) => item.sellingAmountGbp)), "product") : null]);
   const extrasSale = selling(extrasCommercialGbp, "extras");
   const transportSale = selling(transportCommercialGbp, "transport");
@@ -153,7 +156,7 @@ export function deriveProjectCostingCommercialResult(
     installationPackageUplifts, extraPackageUplifts, transportPackageUplifts, equipmentPackageUplifts, materialsPackageUplifts,
     dutyPackageUplifts, baseProductGbp, extrasGbp, transportAllocated, transportGbp, productGbp, installationGbp, feeGbp,
     extrasCommercialGbp, transportCommercialGbp, installationCommercialGbp, feeCommercialGbp, equipmentCost, materialsCost,
-    productPricing, baseProductSale, extrasSale, transportSale, supplierTransportSale, storageTransportSale, hiabTransportSale,
+    productPricing, alternativeProductPricing, baseProductSale, extrasSale, transportSale, supplierTransportSale, storageTransportSale, hiabTransportSale,
     equipmentSale, installationSale, materialsSale, feeSale, siteVisitCost, siteVisitAllocatedToProducts, siteVisitSale,
     productSale, customerDiscountAmount, customerDiscountPercentage, discountedProductSale, projectCost, calculatedSale,
     actualSale, commercialAdjustment, profit,

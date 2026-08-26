@@ -4389,6 +4389,7 @@ return (
               <div className="qs-migrated-86">
                 <SidebarItem label="Client Database" active={menu === "client_database"} onClick={() => selectMenu("client_database")} />
                 <SidebarItem label="Follow Ups" active={menu === "follow_ups"} onClick={() => selectMenu("follow_ups")} />
+                <SidebarItem label="Email" active={menu === "email"} onClick={() => selectMenu("email")} />
               </div>
             </div>
 
@@ -4903,6 +4904,10 @@ return (
               />
             )}
 
+            {menu === "email" && view === "customers" && (
+              <Card className="qs-migrated-2"><H2>Email</H2><Small>Provider-neutral communications workspace foundation. Inbox, Sent, Drafts, labels/folders, search, compose, reply, forward and attachments require an Administrator-configured Gmail/Google Workspace or future Microsoft 365 provider. No live mailbox is connected.</Small></Card>
+            )}
+
             {menu === "estimates" && view === "customers" && renderGlobalEstimateMenu(
               "Estimates",
               "estimates",
@@ -5115,7 +5120,7 @@ return (
             )}
 
             {/* Fallback for other menus */}
-            {menu !== "dashboard" && menu !== "client_database" && menu !== "follow_ups" && menu !== "estimates" && menu !== "orders" && menu !== "lost" && menu !== "installation" && menu !== "project_map" && menu !== "completed_projects" && menu !== "recycle_bin" && menu !== "project_preferences" && (
+            {menu !== "dashboard" && menu !== "client_database" && menu !== "follow_ups" && menu !== "email" && menu !== "estimates" && menu !== "orders" && menu !== "lost" && menu !== "installation" && menu !== "project_map" && menu !== "completed_projects" && menu !== "recycle_bin" && menu !== "project_preferences" && (
               <Card className="qs-migrated-2">
                 <H2>{menu.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase())}</H2>
                 <Small>Placeholder screen.</Small>
