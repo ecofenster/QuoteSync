@@ -24,14 +24,29 @@ export async function findRelationshipSuggestions(db, message) {
   if (emails.length) {
     const clients = await db.all(`SELECT id,name,email FROM clients WHERE deleted_at IS NULL AND lower(email) IN (${emails.map(() => "?").join(",")})`, ...emails);
     for (const client of clients) suggestions.push({ kind: "client", id: client.id, label: client.name, evidence: `Exact contact email: ${client.email}`, autoLinkAllowed: false });
+    const enquiries = await db.all(`SELECT id,enquiry_ref,display_name,email FROM enquiries WHERE deleted_at IS NULL AND status='new' AND lower(email) IN (${emails.map(() => "?").join(",")})`, ...emails).catch(() => []);
+    for (const enquiry of enquiries) suggestions.push({ kind: "enquiry", id: enquiry.id, label: `${enquiry.enquiry_ref} · ${enquiry.display_name}`, evidence: `Exact Enquiry contact email: ${enquiry.email}`, autoLinkAllowed: false });
+  }
+  const enquiryReferences = [...new Set(text.match(/\bEF-ENQ-\d{3}\b/gi) || [])];
+  if (enquiryReferences.length) {
+    const enquiries = await db.all(`SELECT id,enquiry_ref,display_name FROM enquiries WHERE deleted_at IS NULL AND upper(enquiry_ref) IN (${enquiryReferences.map(() => "?").join(",")})`, ...enquiryReferences.map((value) => value.toUpperCase())).catch(() => []);
+    for (const enquiry of enquiries) suggestions.push({ kind: "enquiry", id: enquiry.id, label: `${enquiry.enquiry_ref} · ${enquiry.display_name}`, evidence: "Exact Enquiry reference", autoLinkAllowed: false });
   }
   const estimateReferences = [...new Set(text.match(/\bEF-EST-\d{4}-\d+\b/gi) || [])];
   if (estimateReferences.length) {
-    const estimates = await db.all(`SELECT id,estimate_ref,outcome FROM estimates WHERE deleted_at IS NULL AND upper(estimate_ref) IN (${estimateReferences.map(() => "?").join(",")})`, ...estimateReferences.map((value) => value.toUpperCase()));
+    const estimateParams = estimateReferences.map((value) => value.toUpperCase());
+    const estimates = await db.all(`SELECT id,project_id,estimate_ref,outcome FROM estimates WHERE deleted_at IS NULL AND upper(estimate_ref) IN (${estimateReferences.map(() => "?").join(",")})`, ...estimateParams)
+      .catch(async () => (await db.all(`SELECT id,estimate_ref,outcome FROM estimates WHERE deleted_at IS NULL AND upper(estimate_ref) IN (${estimateReferences.map(() => "?").join(",")})`, ...estimateParams)).map((row) => ({ ...row, project_id: null })));
     for (const estimate of estimates) {
       suggestions.push({ kind: "estimate", id: estimate.id, label: estimate.estimate_ref, evidence: "Exact Estimate reference", autoLinkAllowed: false });
+      if (estimate.project_id) suggestions.push({ kind: "project", id: estimate.project_id, label: estimate.estimate_ref, evidence: "Canonical Project owning the exact Estimate reference", autoLinkAllowed: false });
       if (estimate.outcome === "Order") suggestions.push({ kind: "order", id: estimate.id, label: estimate.estimate_ref, evidence: "Exact reference for an Estimate promoted to Order", autoLinkAllowed: false });
     }
+  }
+  const orderReferences = [...new Set(text.match(/\bEF-ORD-\d{4}-\d{3}\b/gi) || [])];
+  if (orderReferences.length) {
+    const orders = await db.all(`SELECT id,order_ref FROM orders WHERE upper(order_ref) IN (${orderReferences.map(() => "?").join(",")})`, ...orderReferences.map((value) => value.toUpperCase())).catch(() => []);
+    for (const order of orders) suggestions.push({ kind: "order", id: order.id, label: order.order_ref, evidence: "Exact Order reference", autoLinkAllowed: false });
   }
   const supplierReferences = [...new Set(text.match(/\b\d{5,}-\d+\b/g) || [])];
   if (supplierReferences.length) {
@@ -46,9 +61,14 @@ export async function findRelationshipSuggestions(db, message) {
 }
 
 export async function resolveCanonicalRelationship(db, kind, id) {
+  if (kind === "enquiry") return db.get("SELECT id FROM enquiries WHERE id=? AND deleted_at IS NULL", id);
   if (kind === "client") return db.get("SELECT id FROM clients WHERE id=? AND deleted_at IS NULL", id);
+  if (kind === "project") return db.get("SELECT id FROM projects WHERE id=? AND deleted_at IS NULL", id);
   if (kind === "estimate") return db.get("SELECT id FROM estimates WHERE id=? AND deleted_at IS NULL", id);
-  if (kind === "order") return db.get("SELECT id FROM estimates WHERE id=? AND deleted_at IS NULL AND outcome='Order'", id);
+  if (kind === "order") {
+    const order = await db.get("SELECT id FROM orders WHERE id=?", id).catch(() => null);
+    return order || db.get("SELECT id FROM estimates WHERE id=? AND deleted_at IS NULL AND outcome='Order'", id);
+  }
   if (kind === "supplier") return db.get("SELECT supplier_code id FROM supplier_commercial_defaults WHERE supplier_code=? AND active<>0", id);
   if (kind === "supplier_quotation") return db.get("SELECT r.id FROM supplier_quote_revisions r JOIN supplier_quotes q ON q.id=r.supplier_quote_id JOIN estimates e ON e.id=r.estimate_id WHERE r.id=? AND q.archived_at IS NULL AND e.deleted_at IS NULL", id);
   throw Object.assign(new Error("Unsupported canonical communication relationship."), { status: 400, code: "unsupported_communication_link" });

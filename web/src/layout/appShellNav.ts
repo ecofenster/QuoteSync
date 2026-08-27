@@ -10,6 +10,7 @@ export const appShellMenuItems: AppShellMenuItem[] = [
     key: "create",
     label: "Create",
     children: [
+      { key: "create_enquiry", label: "Create Enquiry" },
       { key: "create_estimate", label: "Create Estimate" },
       { key: "create_client", label: "Create Client" },
       { key: "phpp", label: "PHPP" },

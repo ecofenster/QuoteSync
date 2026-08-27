@@ -5,10 +5,9 @@ import { addConfiguredEstimatePosition, normalizeCanonicalEstimatePosition, save
 import { randomUUID } from 'node:crypto';
 import { purgeEstimateOwnedGraph } from '../features/estimatePositions/estimatePurgeService.js';
 import { createDriveIntegrationService } from '../features/documents/driveIntegrationService.js';
+import { allocateCanonicalReference } from '../features/commercialIdentity/referenceAllocator.js';
 
 const router = express.Router();
-
-const DEFAULT_ESTIMATE_REF_PREFIX = 'EF-EST';
 
 function normalizeJsonValue(value, fallback) {
   if (value == null) return JSON.stringify(fallback);
@@ -49,54 +48,11 @@ function normalizeCreatorField(value, fallback) {
   return normalized || fallback;
 }
 
-function parseEstimateTrailingNumber(value) {
-  const trimmed = String(value || '').trim();
-  if (!trimmed) return 0;
-
-  const trailingNumber = trimmed.match(/-(\d+)$/);
-  if (trailingNumber) {
-    const n = Number(trailingNumber[1]);
-    return Number.isFinite(n) ? n : 0;
-  }
-
-  const fallbackDigits = trimmed.match(/\d+/g);
-  const fallback = fallbackDigits ? Number(fallbackDigits[fallbackDigits.length - 1]) : 0;
-  return Number.isFinite(fallback) ? fallback : 0;
-}
-
-function pad3(n) {
-  const s = String(Math.max(0, Number(n) || 0));
-  return s.length >= 3 ? s : '0'.repeat(3 - s.length) + s;
-}
-
-async function nextEstimateRefs(db, year, prefix = DEFAULT_ESTIMATE_REF_PREFIX) {
-  const rows = await db.all(
-    `
-      SELECT estimate_ref
-      FROM estimates
-      WHERE estimate_ref LIKE ?
-    `,
-    [`${prefix}-${year}-%`]
-  );
-
-  let maxNumber = 0;
-  for (const row of rows) {
-    const n = parseEstimateTrailingNumber(row?.estimate_ref);
-    if (n > maxNumber) maxNumber = n;
-  }
-
-  const nextNumber = maxNumber + 1;
-  const baseEstimateRef = `${prefix}-${year}-${pad3(nextNumber)}`;
-  return {
-    baseEstimateRef,
-    estimateRef: baseEstimateRef,
-    revisionNo: 0,
-  };
-}
-
 function mapEstimateRow(row) {
   return {
     ...row,
+    project_id: row.project_id || null,
+    project_name: row.project_name || null,
     defaults_json: (() => {
       try { return JSON.parse(row.defaults_json || '{}'); } catch { return {}; }
     })(),
@@ -143,6 +99,7 @@ router.get('/', async (req, res) => {
         SELECT
           e.id,
           e.client_id,
+          e.project_id,
           e.estimate_ref,
           e.base_estimate_ref,
           e.revision_no,
@@ -165,8 +122,10 @@ router.get('/', async (req, res) => {
           e.created_at,
           e.updated_at,
           e.deleted_at
+          ,p.name project_name
         FROM estimates e
         INNER JOIN clients c ON c.id = e.client_id
+        LEFT JOIN projects p ON p.id=e.project_id
         WHERE e.client_id = ?
           AND c.deleted_at IS NULL
           ${deletedFilterSql}
@@ -197,6 +156,7 @@ router.post('/', async (req, res) => {
     const {
       id,
       client_id,
+      project_id,
       revision_no,
       status,
       estimated_order_month,
@@ -219,6 +179,8 @@ router.post('/', async (req, res) => {
     } = req.body ?? {};
 
     const normalizedClientId = String(client_id ?? '').trim();
+    const normalizedProjectId = String(project_id ?? '').trim();
+    const estimateId = String(id || randomUUID());
 
     if (!normalizedClientId) {
       return res.status(400).json({ error: 'client_id is required' });
@@ -239,18 +201,26 @@ router.post('/', async (req, res) => {
       return res.status(404).json({ error: 'Active client not found for estimate' });
     }
 
+    if (!normalizedProjectId) return res.status(422).json({ error: 'project_id is required for a new canonical Estimate' });
+    const activeProject = await db.get('SELECT id,name FROM projects WHERE id=? AND client_id=? AND deleted_at IS NULL', normalizedProjectId, normalizedClientId);
+    if (!activeProject) return res.status(422).json({ error: 'Choose an active Project belonging to the selected Client' });
+
     const year =
       Number.isFinite(Number(estimated_order_year)) && Number(estimated_order_year) > 0
         ? Number(estimated_order_year)
         : new Date().getFullYear();
 
-    const refs = await nextEstimateRefs(db, year, DEFAULT_ESTIMATE_REF_PREFIX);
-
-    await db.run(
+    await db.exec('BEGIN IMMEDIATE');
+    let refs;
+    try {
+      const estimateRef = await allocateCanonicalReference(db, { kind: 'estimate', year, entityId: estimateId });
+      refs = { estimateRef, baseEstimateRef: estimateRef, revisionNo: 0 };
+      await db.run(
       `
         INSERT INTO estimates (
           id,
           client_id,
+          project_id,
           estimate_ref,
           base_estimate_ref,
           revision_no,
@@ -273,11 +243,12 @@ router.post('/', async (req, res) => {
           created_at,
           updated_at,
           deleted_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
       `,
       [
-        id ?? '',
+        estimateId,
         normalizedClientId,
+        normalizedProjectId,
         refs.estimateRef,
         refs.baseEstimateRef,
         Number.isFinite(Number(revision_no)) ? Number(revision_no) : refs.revisionNo,
@@ -300,13 +271,19 @@ router.post('/', async (req, res) => {
         created_at ?? new Date().toISOString(),
         updated_at ?? new Date().toISOString(),
       ]
-    );
+      );
+      await db.exec('COMMIT');
+    } catch (error) {
+      await db.exec('ROLLBACK').catch(() => {});
+      throw error;
+    }
 
     const created = await db.get(
       `
         SELECT
           id,
           client_id,
+          project_id,
           estimate_ref,
           base_estimate_ref,
           revision_no,
@@ -329,11 +306,12 @@ router.post('/', async (req, res) => {
           created_at,
           updated_at,
           deleted_at
+          ,(SELECT name FROM projects WHERE id=estimates.project_id) project_name
         FROM estimates
         WHERE id = ?
         LIMIT 1
       `,
-      [id ?? '']
+      [estimateId]
     );
 
     if (!created) {
@@ -355,6 +333,7 @@ router.put('/:id', async (req, res) => {
     const db = await dbPromise;
     const {
       client_id,
+      project_id,
       estimate_ref,
       base_estimate_ref,
       revision_no,
@@ -382,6 +361,7 @@ router.put('/:id', async (req, res) => {
         SELECT
           id,
           client_id,
+          project_id,
           estimate_ref,
           base_estimate_ref,
           revision_no,
@@ -398,6 +378,7 @@ router.put('/:id', async (req, res) => {
     }
 
     const normalizedClientId = String(client_id ?? current.client_id ?? '').trim();
+    const normalizedProjectId = String(project_id ?? current.project_id ?? '').trim();
     if (!normalizedClientId) {
       return res.status(400).json({ error: 'client_id is required' });
     }
@@ -415,6 +396,10 @@ router.put('/:id', async (req, res) => {
 
     if (!activeClient) {
       return res.status(404).json({ error: 'Active client not found for estimate' });
+    }
+    if (normalizedProjectId) {
+      const activeProject = await db.get('SELECT id FROM projects WHERE id=? AND client_id=? AND deleted_at IS NULL', normalizedProjectId, normalizedClientId);
+      if (!activeProject) return res.status(422).json({ error: 'Choose an active Project belonging to the selected Client' });
     }
 
     const normalizedEstimateRef = String(
@@ -455,6 +440,7 @@ router.put('/:id', async (req, res) => {
         UPDATE estimates
         SET
           client_id = ?,
+          project_id = ?,
           estimate_ref = ?,
           base_estimate_ref = ?,
           revision_no = ?,
@@ -479,6 +465,7 @@ router.put('/:id', async (req, res) => {
       `,
       [
         normalizedClientId,
+        normalizedProjectId || null,
         normalizedEstimateRef,
         normalizedBaseEstimateRef,
         normalizedRevisionNo,

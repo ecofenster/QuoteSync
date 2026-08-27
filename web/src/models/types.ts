@@ -6,6 +6,8 @@
 export type Brand<K, T> = K & { readonly __brand: T };
 
 export type ClientId = Brand<string, "ClientId">;
+export type EnquiryId = Brand<string, "EnquiryId">;
+export type ProjectId = Brand<string, "ProjectId">;
 export type EstimateId = Brand<string, "EstimateId">;
 export type PositionId = Brand<string, "PositionId">;
 export type NoteId = Brand<string, "NoteId">;
@@ -13,6 +15,8 @@ export type FileId = Brand<string, "FileId">;
 export type FollowUpId = Brand<string, "FollowUpId">;
 
 export const asClientId = (v: string) => v as ClientId;
+export const asEnquiryId = (v: string) => v as EnquiryId;
+export const asProjectId = (v: string) => v as ProjectId;
 export const asEstimateId = (v: string) => v as EstimateId;
 export const asPositionId = (v: string) => v as PositionId;
 export const asNoteId = (v: string) => v as NoteId;
@@ -22,6 +26,7 @@ export const asFollowUpId = (v: string) => v as FollowUpId;
 export type MenuKey =
   | "dashboard"
   | "client_database"
+  | "enquiries"
   | "follow_ups"
   | "email"
   | "estimates"
@@ -91,6 +96,8 @@ export type Client = {
 
   businessName?: string;
   contactPerson?: string;
+  commercialLifecycle?: "prospect" | "customer" | "lost_inactive_prospect" | "repeat_customer" | "unknown_review";
+  referenceNamespace?: "live" | "demo" | "test" | "migration";
 
   estimates: Estimate[];
 };
@@ -185,6 +192,8 @@ export type EstimateLocation = {
 
 export type Estimate = {
   id: EstimateId;
+  projectId?: ProjectId | null;
+  projectName?: string | null;
   estimateRef: string;
   baseEstimateRef: string;
   revisionNo: number;

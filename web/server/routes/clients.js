@@ -1,6 +1,8 @@
 import express from 'express';
+import { randomUUID } from 'node:crypto';
 import { dbPromise } from '../db.js';
 import { purgeClientOwnedGraph } from '../features/estimatePositions/estimatePurgeService.js';
+import { allocateCanonicalReference } from '../features/commercialIdentity/referenceAllocator.js';
 
 const router = express.Router();
 
@@ -26,13 +28,19 @@ function isProtectedClientRef(value) {
 async function getClientIdentity(db, id) {
   return db.get(
     `
-      SELECT id, client_ref, deleted_at
+      SELECT id, client_ref, reference_namespace, deleted_at
       FROM clients
       WHERE id = ?
       LIMIT 1
     `,
     [id]
   );
+}
+
+async function isProtectedClientIdentity(db, client) {
+  if (!client) return false;
+  if (isProtectedClientRef(client.client_ref)) return true;
+  return Boolean(await db.get('SELECT 1 FROM protected_client_identities WHERE client_id=?', client.id));
 }
 
 async function findClientByRef(db, clientRef, excludeId = null) {
@@ -134,6 +142,8 @@ router.get('/', async (req, res) => {
         what3words,
         latitude,
         longitude,
+        commercial_lifecycle,
+        reference_namespace,
         deleted_at
       FROM clients
       ${whereSql}
@@ -165,7 +175,7 @@ router.post('/', async (req, res) => {
   try {
     const db = await dbPromise;
     const {
-      id,
+      id: requestedId,
       name,
       email,
       phone,
@@ -190,15 +200,15 @@ router.post('/', async (req, res) => {
       longitude,
     } = req.body ?? {};
 
-    const normalizedClientRef = normalizeClientRef(client_ref);
-    if (normalizedClientRef) {
-      const existingRef = await findClientByRef(db, normalizedClientRef);
-      if (existingRef) {
-        return res.status(409).json({ error: 'A client with this reference already exists' });
-      }
-    }
+    const id = String(requestedId || randomUUID());
+    let normalizedClientRef = normalizeClientRef(client_ref);
+    if (normalizedClientRef && !/^EF-CL-\d{3}$/.test(normalizedClientRef)) return res.status(422).json({ error: 'Client references use EF-CL-###' });
+    if (normalizedClientRef) return res.status(422).json({ error: 'Client references are allocated automatically. Protected reassignment is available only through controlled reconciliation.' });
 
-    await db.run(
+    await db.exec('BEGIN IMMEDIATE');
+    try {
+      if (!normalizedClientRef) normalizedClientRef = await allocateCanonicalReference(db, { kind: 'client', entityId: id });
+      await db.run(
       `
         INSERT INTO clients (
           id,
@@ -224,11 +234,14 @@ router.post('/', async (req, res) => {
           what3words,
           latitude,
           longitude,
-          deleted_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+          deleted_at,
+          commercial_lifecycle,
+          reference_namespace,
+          updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 'live', ?)
       `,
       [
-        id ?? '',
+        id,
         name ?? '',
         email ?? '',
         phone ?? '',
@@ -251,10 +264,17 @@ router.post('/', async (req, res) => {
         String(what3words || ''),
         normalizeCoordinate(latitude),
         normalizeCoordinate(longitude),
+        String(req.body?.commercial_lifecycle || 'prospect'),
+        new Date().toISOString(),
       ]
-    );
+      );
+      await db.exec('COMMIT');
+    } catch (error) {
+      await db.exec('ROLLBACK').catch(() => {});
+      throw error;
+    }
 
-    res.json({ success: true });
+    res.status(201).json(await db.get('SELECT id,client_ref,name,commercial_lifecycle,reference_namespace FROM clients WHERE id=?', id));
   } catch (error) {
     console.error('POST /api/clients failed', error);
     res.status(500).json({ error: 'Failed to save client' });
@@ -293,11 +313,12 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Client not found' });
     }
 
-    if (isProtectedClientRef(current.client_ref)) {
+    if (await isProtectedClientIdentity(db, current)) {
       return res.status(403).json({ error: 'Protected live clients cannot be overwritten' });
     }
 
     const normalizedClientRef = normalizeClientRef(client_ref);
+    if (normalizedClientRef !== normalizeClientRef(current.client_ref)) return res.status(403).json({ error: 'Client references can only be changed through the controlled reconciliation migration' });
     if (normalizedClientRef) {
       const existingRef = await findClientByRef(db, normalizedClientRef, req.params.id);
       if (existingRef) {
@@ -375,7 +396,7 @@ router.delete('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Client not found' });
     }
 
-    if (isProtectedClientRef(current.client_ref)) {
+    if (await isProtectedClientIdentity(db, current)) {
       return res.status(403).json({ error: 'Protected live clients cannot be deleted' });
     }
 
@@ -450,7 +471,7 @@ router.delete('/:id/purge', async (req, res) => {
       return res.status(404).json({ error: 'Client not found' });
     }
 
-    if (isProtectedClientRef(current.client_ref)) {
+    if (await isProtectedClientIdentity(db, current)) {
       return res.status(403).json({ error: 'Protected live clients cannot be purged' });
     }
 

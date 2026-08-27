@@ -7,6 +7,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import sqlite3 from "sqlite3";
 import { open } from "sqlite";
 import { initializeWorkflowSchema } from "../server/features/workflow/workflowSchema.js";
+import { initializeCommercialIdentitySchema } from "../server/features/commercialIdentity/commercialIdentitySchema.js";
 import { createGoogleWorkspaceService, GOOGLE_WORKSPACE_SCOPES } from "../server/features/integrations/googleWorkspaceService.js";
 import { createGmailProvider, mapGmailMessage } from "../server/features/communications/gmailProvider.js";
 import { buildEstimateProjectFolderName, createDriveIntegrationService, DEFAULT_PROJECT_FOLDER_NAMES, resolveEstimateYear } from "../server/features/documents/driveIntegrationService.js";
@@ -20,15 +21,16 @@ const opaqueFixture=(byte)=>Buffer.alloc(24,byte).toString("base64url");
 async function databaseFixture(t){
   const root=await mkdtemp(path.join(os.tmpdir(),"qs-google-")),filename=path.join(root,"test.db"),db=await open({filename,driver:sqlite3.Database}),openDatabases=new Set([db]);
   await db.exec(`
-    CREATE TABLE clients(id TEXT PRIMARY KEY,name TEXT,email TEXT,project_name TEXT,deleted_at TEXT);
+    CREATE TABLE clients(id TEXT PRIMARY KEY,name TEXT,email TEXT,project_name TEXT,client_ref TEXT,created_at TEXT,deleted_at TEXT);
     CREATE TABLE estimates(id TEXT PRIMARY KEY,client_id TEXT,estimate_ref TEXT,revision_no INTEGER,created_at TEXT,deleted_at TEXT);
     CREATE TABLE followups(id TEXT PRIMARY KEY,client_id TEXT,estimate_id TEXT,title TEXT,notes TEXT,due_at TEXT,status TEXT,created_at TEXT,updated_at TEXT);
     CREATE TABLE supplier_quotes(id TEXT PRIMARY KEY,estimate_id TEXT,supplier_name TEXT,archived_at TEXT);
     CREATE TABLE supplier_quote_attachments(id TEXT PRIMARY KEY,estimate_id TEXT,original_file_name TEXT,media_type TEXT,storage_key TEXT);
   `);
   await initializeWorkflowSchema(db);
-  await db.run("INSERT INTO clients VALUES(?,?,?,?,NULL)","client-1","John Smith","john@example.com","The Aviary");
-  await db.run("INSERT INTO estimates VALUES(?,?,?,?,?,NULL)","estimate-1","client-1","EF-EST-2026-041",2,"2025-12-20T09:00:00.000Z");
+  await initializeCommercialIdentitySchema(db);
+  await db.run("INSERT INTO clients(id,name,email,project_name,client_ref,created_at,deleted_at) VALUES(?,?,?,?,?,?,NULL)","client-1","John Smith","john@example.com","The Aviary","EF-CL-025","2025-12-01T09:00:00.000Z");
+  await db.run("INSERT INTO estimates(id,client_id,estimate_ref,revision_no,created_at,deleted_at) VALUES(?,?,?,?,?,NULL)","estimate-1","client-1","EF-EST-2026-041",2,"2025-12-20T09:00:00.000Z");
   await db.run("INSERT INTO supplier_quotes VALUES(?,?,?,NULL)","quote-1","estimate-1","Zyle Fenster");
   const reopen=async()=>{if(openDatabases.has(db)){await db.close();openDatabases.delete(db)}const next=await open({filename,driver:sqlite3.Database});openDatabases.add(next);return next};
   t.after(async()=>{for(const database of openDatabases)await database.close();await rm(root,{recursive:true,force:true})});
@@ -66,9 +68,9 @@ test("Google OAuth configuration and tokens are encrypted, reconnectable and dis
   const {db}=await databaseFixture(t),fetchImpl=async url=>String(url).includes("oauth2.googleapis.com")?response({access_token:accessFixture,refresh_token:refreshFixture,token_type:"Bearer",expires_in:3600,scope:GOOGLE_WORKSPACE_SCOPES.join(" ")}):response({sub:"account-1",email:"sales@example.com",name:"Sales"});
   const service=createGoogleWorkspaceService(db,{fetchImpl,environment:{},encryptionKey});
   assert.equal((await service.status()).state,"not_configured");
-  let status=await service.configure({clientId:"fixture-client",clientSecret:secretFixture,redirectUri:"http://localhost:3001/api/integrations/googleWorkspace/oauth/callback",estimatesRootFolderId:"estimates-root",ordersRootFolderId:"orders-root",folderTemplate:{pictures:"Site Pictures"}});
+  let status=await service.configure({clientId:"fixture-client",clientSecret:secretFixture,redirectUri:"http://localhost:3001/api/integrations/googleWorkspace/oauth/callback",enquiriesRootFolderId:"enquiries-root",estimatesRootFolderId:"estimates-root",ordersRootFolderId:"orders-root",folderTemplate:{pictures:"Site Pictures"}});
   assert.equal(status.state,"configured_disconnected");assert.equal(status.configured,true);assert.equal(status.connected,false);assert.equal(JSON.stringify(status).includes("plain-client-secret"),false);
-  status=await service.configure({clientId:"fixture-client",redirectUri:"http://localhost:3001/api/integrations/googleWorkspace/oauth/callback",ordersRootFolderId:null});assert.equal(status.ordersRootFolderId,null);assert.equal(status.estimatesRootFolderId,"estimates-root");assert.equal(status.configured,true);
+  status=await service.configure({clientId:"fixture-client",redirectUri:"http://localhost:3001/api/integrations/googleWorkspace/oauth/callback",ordersRootFolderId:null});assert.equal(status.ordersRootFolderId,null);assert.equal(status.enquiriesRootFolderId,"enquiries-root");assert.equal(status.estimatesRootFolderId,"estimates-root");assert.equal(status.configured,true);
   const oauth=await service.beginOAuth();assert.equal(new URL(oauth.authorizationUrl).searchParams.get("access_type"),"offline");assert.ok(GOOGLE_WORKSPACE_SCOPES.every(scope=>new URL(oauth.authorizationUrl).searchParams.get("scope").includes(scope)));
   status=await service.completeOAuth({state:oauth.state,code:"authorisation-code"});assert.equal(status.connected,true);assert.equal(status.account.email,"sales@example.com");
   assert.equal(status.capabilities.gmail.available,true);assert.equal(status.capabilities.drive.available,true);assert.equal(status.capabilities.drive.rootConfigured,true);
@@ -160,10 +162,10 @@ test("workflow schema migration permits one discovered year folder ID to serve m
     INSERT INTO clients VALUES('client-1');
     INSERT INTO estimates VALUES('estimate-1');
     INSERT INTO estimates VALUES('estimate-2');
-    INSERT INTO drive_project_folders VALUES('mapping-1','google_drive','estimate-1','year:2026','2026','estimates_root','existing-year-2026','now','now');
+    INSERT INTO drive_project_folders(id,provider,estimate_id,logical_key,name,parent_logical_key,provider_folder_id,created_at,updated_at) VALUES('mapping-1','google_drive','estimate-1','year:2026','2026','estimates_root','existing-year-2026','now','now');
   `);
   await initializeWorkflowSchema(db);
-  await db.run("INSERT INTO drive_project_folders VALUES(?,?,?,?,?,?,?,?,?)","mapping-2","google_drive","estimate-2","year:2026","2026","estimates_root","existing-year-2026","now","now");
+  await db.run("INSERT INTO drive_project_folders(id,provider,estimate_id,logical_key,name,parent_logical_key,provider_folder_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)","mapping-2","google_drive","estimate-2","year:2026","2026","estimates_root","existing-year-2026","now","now");
   assert.equal((await db.get("SELECT COUNT(*) count FROM drive_project_folders WHERE provider_folder_id='existing-year-2026'")).count,2);
   t.after(async()=>{await db.close();await rm(root,{recursive:true,force:true})});
 });
@@ -188,10 +190,10 @@ test("Drive reuses existing years and historical projects, provisions the exact 
   const rows=await db.all("SELECT logical_key,name,provider_folder_id FROM drive_project_folders WHERE estimate_id='estimate-1'");assert.equal(rows.length,9);assert.equal(rows.filter(row=>row.name==="Zyle Fenster").length,1);assert.equal(rows.filter(row=>row.name==="Other Supplier").length,1);
   const projectChildren=rows.filter(row=>["drawings_client","drawings_ecofenster","supplier_estimates","invoices","orders"].includes(row.logical_key)).map(row=>row.name).sort();assert.deepEqual(projectChildren,["Drawings (Client)","Drawings (Ecofenster)","Estimates","Invoices","Orders"].sort());for(const excluded of ["PDF Auto Take Offs","Pictures","Videos","Legacy Pictures setting must not provision"])assert.equal(rows.some(row=>row.name===excluded),false);
 
-  await db.run("INSERT INTO clients VALUES(?,?,?,?,NULL)","client-2","Jane Smith","jane@example.com","");await db.run("INSERT INTO estimates VALUES(?,?,?,?,?,NULL)","estimate-2","client-2","EF-EST-2027-001",1,"2026-02-01T09:00:00.000Z");
+  await db.run("INSERT INTO clients(id,name,email,project_name,client_ref,created_at,deleted_at) VALUES(?,?,?,?,?,?,NULL)","client-2","Jane Smith","jane@example.com","","EF-CL-030","2026-02-01T09:00:00.000Z");await db.run("INSERT INTO estimates(id,client_id,estimate_ref,revision_no,created_at,deleted_at) VALUES(?,?,?,?,?,NULL)","estimate-2","client-2","EF-EST-2027-001",1,"2026-02-01T09:00:00.000Z");
   const before2027=folderCreates,year2027=await drive.provisionEstimate("estimate-2");assert.equal(year2027.folders.find(folder=>folder.logical_key==="year:2027").name,"2027");assert.equal(folderCreates,before2027+7);await drive.provisionEstimate("estimate-2");assert.equal(folderCreates,before2027+7);assert.equal(providerFolders.filter(folder=>folder.name==="2027"&&folder.parents.includes("estimates-root")).length,1);
 
-  await db.run("INSERT INTO clients VALUES(?,?,?,?,NULL)","client-3","John Wingfield","john.w@example.com","");await db.run("INSERT INTO estimates VALUES(?,?,?,?,?,NULL)","estimate-3","client-3","EF-EST-2026-009",1,"2026-03-01T09:00:00.000Z");
+  await db.run("INSERT INTO clients(id,name,email,project_name,client_ref,created_at,deleted_at) VALUES(?,?,?,?,?,?,NULL)","client-3","John Wingfield","john.w@example.com","","EF-CL-031","2026-03-01T09:00:00.000Z");await db.run("INSERT INTO estimates(id,client_id,estimate_ref,revision_no,created_at,deleted_at) VALUES(?,?,?,?,?,NULL)","estimate-3","client-3","EF-EST-2026-009",1,"2026-03-01T09:00:00.000Z");
   const beforeHistorical=folderCreates,historical=await drive.provisionEstimate("estimate-3");const historicalProject=historical.folders.find(folder=>folder.logical_key==="project");assert.equal(historicalProject.provider_folder_id,"historical-project-009");assert.equal(historicalProject.name,"EF-EST-2026-009 - John Wingfield (Buildhub)");assert.equal(folderCreates,beforeHistorical+5);assert.equal(createdFolders.slice(beforeHistorical).some(folder=>folder.name.includes("EF-EST-2026-009")),false);
 
   await mkdir(path.join(attachmentRoot,"supplier"),{recursive:true});await writeFile(path.join(attachmentRoot,"supplier","quote.pdf"),"supplier evidence");await db.run("INSERT INTO supplier_quote_attachments VALUES(?,?,?,?,?)","attachment-1","estimate-1","supplier-quote.pdf","application/pdf","supplier/quote.pdf");

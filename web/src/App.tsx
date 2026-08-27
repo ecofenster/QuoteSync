@@ -108,6 +108,8 @@ import GoogleMapPanel, { type GoogleMapMarkerItem } from "./components/GoogleMap
 import AppShell from "./layout/AppShell";
 import AdminPlaceholderPage from "./features/admin/AdminPlaceholderPage";
 import EmailWorkspace from "./features/communications/EmailWorkspace";
+import { EnquiryWorkspace } from "./features/commercialIdentity/EnquiryWorkspace";
+import { commercialIdentityApi, type ProjectRecord } from "./services/commercialIdentity/commercialIdentityApi";
 import ClientPortalPlaceholderPage from "./features/clientPortal/ClientPortalPlaceholderPage";
 import { buildClientLocationLabel, convertCoordinatesToWhat3Words, resolveClientLocation, resolveEstimateLocation, type ResolvedClientLocation } from "./services/locationService";
 import { rankInstallersByDistance } from "./services/distance";
@@ -392,6 +394,8 @@ function mapDbClientToClient(row: any): Client {
     longitude,
     businessName: type === "Business" ? String(row?.company_name || "") : undefined,
     contactPerson: type === "Business" ? String(row?.contact_name || "") : undefined,
+    commercialLifecycle: String(row?.commercial_lifecycle || "unknown_review") as Client["commercialLifecycle"],
+    referenceNamespace: String(row?.reference_namespace || "live") as Client["referenceNamespace"],
     estimates: [],
   };
 }
@@ -472,6 +476,7 @@ function buildDbEstimatePayload(clientId: string, estimate: Estimate) {
   return {
     id: normalizedEstimate.id,
     client_id: clientId,
+    project_id: normalizedEstimate.projectId || null,
     estimate_ref: normalizedEstimate.estimateRef || "",
     base_estimate_ref: normalizedEstimate.baseEstimateRef || normalizedEstimate.estimateRef || "",
     revision_no: Number.isFinite(Number(normalizedEstimate.revisionNo)) ? Number(normalizedEstimate.revisionNo) : 0,
@@ -505,6 +510,8 @@ function mapDbEstimateToEstimate(row: any): Estimate {
 
   return {
     id: Models.asEstimateId(String(row?.id || uid())),
+    projectId: row?.project_id ? Models.asProjectId(String(row.project_id)) : null,
+    projectName: row?.project_name ? String(row.project_name) : null,
     estimateRef: String(row?.estimate_ref || ""),
     baseEstimateRef: String(row?.base_estimate_ref || row?.estimate_ref || ""),
     revisionNo: Number.isFinite(Number(row?.revision_no)) ? Number(row.revision_no) : 0,
@@ -1529,6 +1536,9 @@ export default function App() {
   const [clientSaving, setClientSaving] = useState(false);
   const [showAddEstimateModal, setShowAddEstimateModal] = useState(false);
   const [createEstimateClientId, setCreateEstimateClientId] = useState<string>("");
+  const [createEstimateProjectId, setCreateEstimateProjectId] = useState<string>("");
+  const [createEstimateProjects, setCreateEstimateProjects] = useState<ProjectRecord[]>([]);
+  const [createEstimateProjectsLoading, setCreateEstimateProjectsLoading] = useState(false);
   const [createEstimateSubmitting, setCreateEstimateSubmitting] = useState(false);
   const [resumeEstimateCreationAfterClientCreate, setResumeEstimateCreationAfterClientCreate] = useState(false);
 
@@ -1820,6 +1830,18 @@ export default function App() {
       setCreateEstimateClientId(clients[0].id);
     }
   }, [clients, clientsLoaded, createEstimateClientId, showAddEstimateModal]);
+
+  useEffect(() => {
+    if (!showAddEstimateModal || !createEstimateClientId) { setCreateEstimateProjects([]); setCreateEstimateProjectId(""); return; }
+    let cancelled = false;
+    setCreateEstimateProjectsLoading(true);
+    void commercialIdentityApi.listProjects(createEstimateClientId).then((projects) => {
+      if (cancelled) return;
+      setCreateEstimateProjects(projects);
+      setCreateEstimateProjectId((current) => projects.some((project) => project.id === current) ? current : projects[0]?.id || "");
+    }).catch(() => { if (!cancelled) { setCreateEstimateProjects([]); setCreateEstimateProjectId(""); } }).finally(() => { if (!cancelled) setCreateEstimateProjectsLoading(false); });
+    return () => { cancelled = true; };
+  }, [createEstimateClientId, showAddEstimateModal]);
 
   useEffect(() => {
     setPreference(GLOBAL_ESTIMATE_PREF_KEYS.viewMode.estimates, globalEstimateViewModeByMenu.estimates);
@@ -2133,6 +2155,11 @@ async function handleWhat3WordsMapPick(lat: number, lng: number) {
       openAddClientPanel();
       return;
     }
+    if (key === "create_enquiry") {
+      selectMenu("enquiries");
+      setActiveTopShellNavKey("create");
+      return;
+    }
     if (key === "create_estimate") {
       setTopShellPage("app");
       setActiveTopShellNavKey("create");
@@ -2159,11 +2186,17 @@ function openEstimateDefaults(clientId: Models.ClientId, estimateId: Models.Esti
 }
 
   
-async function createEstimateForClient(client: Client, options: { openManufacturerImport?: boolean } = {}) {
+async function createEstimateForClient(client: Client, options: { openManufacturerImport?: boolean; projectId?: string; projectName?: string } = {}) {
+    if (!options.projectId) {
+      openAddEstimateModal(client.id);
+      return;
+    }
     const estimateDefaults = systemSettings.loadDefaults ? makeDefaultEstimateDefaults() : makeBlankEstimateDefaults();
 
     const est: Estimate = mergeEstimateLocationState({
       id: Models.asEstimateId(uid()),
+      projectId: Models.asProjectId(options.projectId),
+      projectName: options.projectName || null,
       estimateRef: "",
       baseEstimateRef: "",
       revisionNo: 0,
@@ -2716,7 +2749,7 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
     const newClient: Client = {
       id: Models.asClientId(uid()),
       type,
-      clientRef: nextClientRef(clientCounter),
+      clientRef: "",
       clientName,
       email: draftEmail.trim(),
       mobile: draftMobile.trim(),
@@ -2737,13 +2770,14 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
 
     setClientSaving(true);
     try {
-      await apiFetch("/api/clients", {
+      const createdClient = await apiFetch("/api/clients", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(buildDbClientPayload(newClient)),
       });
+      const persistedClient = { ...newClient, clientRef: String(createdClient?.client_ref || "") };
 
-      setClients((prev) => [newClient, ...prev]);
+      setClients((prev) => [persistedClient, ...prev]);
       setClientCounter((n) => n + 1);
       setClientDbSearch("");
       setClientsLoaded(true);
@@ -2751,12 +2785,12 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
       resetClientDraftForm();
 
       if (resumeEstimateCreationAfterClientCreate) {
-        setCreateEstimateClientId(newClient.id);
+        setCreateEstimateClientId(persistedClient.id);
         setShowAddEstimateModal(true);
         setResumeEstimateCreationAfterClientCreate(false);
       }
 
-      return newClient;
+      return persistedClient;
     } catch (error) {
       if (error instanceof ApiRequestError) {
         console.error("Failed to create client", {
@@ -2782,6 +2816,7 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
   }
 
   function openAddEstimateModal(preselectedClientId?: Models.ClientId | null) {
+    setCreateEstimateProjectId("");
     if (clients.length > 0) {
       const nextClientId =
         preselectedClientId && clients.some((client) => client.id === preselectedClientId)
@@ -2805,12 +2840,14 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
 
     const selectedModalClient = clients.find((client) => client.id === createEstimateClientId) ?? null;
     if (!selectedModalClient) return;
+    const selectedModalProject = createEstimateProjects.find((project) => project.id === createEstimateProjectId) ?? null;
+    if (!selectedModalProject) return;
 
     setCreateEstimateSubmitting(true);
     try {
       setShowAddEstimateModal(false);
       setResumeEstimateCreationAfterClientCreate(false);
-      await createEstimateForClient(selectedModalClient);
+      await createEstimateForClient(selectedModalClient, { projectId: selectedModalProject.id, projectName: selectedModalProject.name });
     } finally {
       setCreateEstimateSubmitting(false);
     }
@@ -4390,6 +4427,7 @@ return (
             <div className="qs-migrated-85">
               <H3>Customers</H3>
               <div className="qs-migrated-86">
+                <SidebarItem label="Enquiries" active={menu === "enquiries"} onClick={() => selectMenu("enquiries")} />
                 <SidebarItem label="Client Database" active={menu === "client_database"} onClick={() => selectMenu("client_database")} />
                 <SidebarItem label="Follow Ups" active={menu === "follow_ups"} onClick={() => selectMenu("follow_ups")} />
                 <SidebarItem label="Email" active={menu === "email"} onClick={() => selectMenu("email")} />
@@ -4431,10 +4469,11 @@ return (
                 <div className="app-cluster app-cluster--between app-cluster--start">
                   <div>
                     <H2>Quick actions</H2>
-                    <Small>Start the core workflow from the main page: Client → Estimate → Order → Installation.</Small>
+                    <Small>Start the canonical workflow: Enquiry → Client → Project → Estimate → Order.</Small>
                   </div>
 
                   <div className="app-cluster">
+                    {menu === "enquiries" ? <Button variant="primary" onClick={() => selectMenu("enquiries")}>+ New Enquiry</Button> : null}
                     {menu === "estimates" ? <Button variant="primary" onClick={() => openAddEstimateModal()}>+ New Estimate</Button> : null}
                     <Button variant="primary" onClick={openAddClientPanel}>
                       Add Client
@@ -4793,11 +4832,19 @@ return (
           </div>
         )}
 
+        <div className="app-form-label">
+          <div className="qs-migrated-12">Project</div>
+          <select className="operational-select" value={createEstimateProjectId} disabled={createEstimateProjectsLoading || !createEstimateProjects.length} onChange={(event) => setCreateEstimateProjectId(event.currentTarget.value)}>
+            {createEstimateProjects.length ? createEstimateProjects.map((project) => <option key={project.id} value={project.id}>{project.contextYear || "Year review"} · {project.name}</option>) : <option value="">{createEstimateProjectsLoading ? "Loading Projects…" : "Create a named Project in Client Info first"}</option>}
+          </select>
+          <Small>Every new EF-EST belongs to one immutable Project; separate supplier options remain separate Estimates.</Small>
+        </div>
+
         <div className="app-action-row">
           <Button variant="secondary" onClick={closeAddEstimateModal}>
             Cancel
           </Button>
-          <Button variant="primary" disabled={!selectedCreateEstimateClient || createEstimateSubmitting} onClick={() => void handleCreateEstimateFromModal()}>
+          <Button variant="primary" disabled={!selectedCreateEstimateClient || !createEstimateProjectId || createEstimateSubmitting} onClick={() => void handleCreateEstimateFromModal()}>
             {createEstimateSubmitting ? "Creating..." : "Create Estimate"}
           </Button>
         </div>
@@ -4909,6 +4956,10 @@ return (
 
             {menu === "email" && view === "customers" && (
               <EmailWorkspace onOpenIntegrations={()=>{setAdminInitialSection("integrations");setTopShellPage("admin");setActiveTopShellNavKey("admin")}} onOpenFollowUps={()=>selectMenu("follow_ups")} />
+            )}
+
+            {menu === "enquiries" && view === "customers" && (
+              <EnquiryWorkspace clients={clients} onCommercialIdentityChanged={refreshClientsFromApi} />
             )}
 
             {menu === "estimates" && view === "customers" && renderGlobalEstimateMenu(
@@ -5123,7 +5174,7 @@ return (
             )}
 
             {/* Fallback for other menus */}
-            {menu !== "dashboard" && menu !== "client_database" && menu !== "follow_ups" && menu !== "email" && menu !== "estimates" && menu !== "orders" && menu !== "lost" && menu !== "installation" && menu !== "project_map" && menu !== "completed_projects" && menu !== "recycle_bin" && menu !== "project_preferences" && (
+            {menu !== "dashboard" && menu !== "enquiries" && menu !== "client_database" && menu !== "follow_ups" && menu !== "email" && menu !== "estimates" && menu !== "orders" && menu !== "lost" && menu !== "installation" && menu !== "project_map" && menu !== "completed_projects" && menu !== "recycle_bin" && menu !== "project_preferences" && (
               <Card className="qs-migrated-2">
                 <H2>{menu.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase())}</H2>
                 <Small>Placeholder screen.</Small>

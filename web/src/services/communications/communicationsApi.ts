@@ -9,12 +9,12 @@ export type CommunicationMessageView = { id:string;providerMessageId:string|null
 export type MailboxLabelView = { id:string;name:string;type:"system"|"user";messagesTotal?:number;messagesUnread?:number;colour?:{textColor?:string;backgroundColor?:string}|null };
 export type MailboxCapability = { id:"archive"|"trash"|"read_state"|"star"|"move"|"labels"|"scheduled";available:boolean };
 export type MailboxMetadata = { provider:"google_workspace"|"microsoft_365";labels:MailboxLabelView[];capabilities:MailboxCapability[] };
-export type CommunicationContextSuggestion = { kind:"client"|"estimate"|"order"|"supplier"|"supplier_quotation";id:string;label:string;evidence:string;autoLinkAllowed:false };
+export type CommunicationContextSuggestion = { kind:"enquiry"|"client"|"project"|"estimate"|"order"|"supplier"|"supplier_quotation";id:string;label:string;evidence:string;autoLinkAllowed:false };
 export type CommunicationContextResult = { links:CommunicationLinkView[];suggestions:CommunicationContextSuggestion[] };
 export type GoogleWorkspaceCapability = { available:boolean;missingScopes:string[];rootConfigured?:boolean };
 export type GoogleWorkspaceState = "not_configured"|"configured_encryption_unavailable"|"configured_disconnected"|"connected"|"reconnect_required";
 export type GoogleWorkspaceEncryptionState = "available"|"missing"|"invalid"|"decryption_failed";
-export type GoogleWorkspaceStatus = { provider:"google_workspace";state:GoogleWorkspaceState;configured:boolean;configurationStored:boolean;encryptionConfigured:boolean;encryptionState:GoogleWorkspaceEncryptionState;connected:boolean;connectionStatus:string;account:{id:string|null;email:string|null;name:string|null}|null;scopes:string[];capabilities:{gmail:GoogleWorkspaceCapability;drive:GoogleWorkspaceCapability};clientId:string|null;redirectUri:string|null;clientIdHint:string|null;estimatesRootFolderId:string|null;ordersRootFolderId:string|null;folderTemplate:Record<string,string>;infrastructureMessage:string|null;error:string|null };
+export type GoogleWorkspaceStatus = { provider:"google_workspace";state:GoogleWorkspaceState;configured:boolean;configurationStored:boolean;encryptionConfigured:boolean;encryptionState:GoogleWorkspaceEncryptionState;connected:boolean;connectionStatus:string;account:{id:string|null;email:string|null;name:string|null}|null;scopes:string[];capabilities:{gmail:GoogleWorkspaceCapability;drive:GoogleWorkspaceCapability};clientId:string|null;redirectUri:string|null;clientIdHint:string|null;enquiriesRootFolderId:string|null;estimatesRootFolderId:string|null;ordersRootFolderId:string|null;folderTemplate:Record<string,string>;infrastructureMessage:string|null;error:string|null };
 
 const json = { "Content-Type": "application/json" };
 export const communicationsApi = {

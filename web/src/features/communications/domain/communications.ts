@@ -1,7 +1,7 @@
 export type CommunicationProviderId = "google_workspace" | "microsoft_365";
 export type CommunicationFolder = "inbox" | "sent" | "drafts" | "trash" | "spam" | "other";
 export type CommunicationMailboxView = "inbox" | "sent" | "drafts" | "starred" | "snoozed" | "important" | "all" | "spam" | "trash" | "social" | "updates" | "forums" | "promotions" | `label:${string}` | `quotesuite:${string}`;
-export type CommunicationEntityKind = "client" | "estimate" | "issued_quotation" | "order" | "supplier_quotation" | "project";
+export type CommunicationEntityKind = "enquiry" | "client" | "project" | "estimate" | "issued_quotation" | "order" | "supplier" | "supplier_quotation";
 
 export type CommunicationEntityLink = {
   kind: CommunicationEntityKind;

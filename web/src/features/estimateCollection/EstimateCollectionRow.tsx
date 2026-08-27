@@ -46,6 +46,7 @@ export default function EstimateCollectionRow(props: Props) {
           {showClientIdentity && item.clientReference && (
             <Small>Client Ref: {item.clientReference}</Small>
           )}
+          {item.projectName ? <Small>Project: {item.projectName}</Small> : null}
         </div>
 
         <div className="ep-estimate-summary-meta">

@@ -43,11 +43,12 @@ export function createGoogleWorkspaceService(db, { fetchImpl = fetch, environmen
     const encryptedSecret = secretInput === undefined ? current?.encrypted_client_secret ?? null : vault.encrypt(secretInput);
     if (!encryptedSecret && !environment.GOOGLE_WORKSPACE_CLIENT_SECRET) throw providerError("Google OAuth client secret is required.", 400, "invalid_oauth_configuration");
     const template = input.folderTemplate ?? parse(current?.folder_template_json, {});
+    const enquiriesRootFolderId = Object.hasOwn(input, "enquiriesRootFolderId") ? input.enquiriesRootFolderId : current?.enquiries_root_folder_id ?? null;
     const estimatesRootFolderId = Object.hasOwn(input, "estimatesRootFolderId") ? input.estimatesRootFolderId : current?.estimates_root_folder_id ?? null;
     const ordersRootFolderId = Object.hasOwn(input, "ordersRootFolderId") ? input.ordersRootFolderId : current?.orders_root_folder_id ?? null;
-    await db.run(`INSERT INTO integration_provider_config(provider,client_id,encrypted_client_secret,redirect_uri,capabilities_json,estimates_root_folder_id,orders_root_folder_id,folder_template_json,created_at,updated_at)
-      VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(provider) DO UPDATE SET client_id=excluded.client_id,encrypted_client_secret=excluded.encrypted_client_secret,redirect_uri=excluded.redirect_uri,capabilities_json=excluded.capabilities_json,estimates_root_folder_id=excluded.estimates_root_folder_id,orders_root_folder_id=excluded.orders_root_folder_id,folder_template_json=excluded.folder_template_json,updated_at=excluded.updated_at`,
-      GOOGLE_WORKSPACE_PROVIDER, clientId, encryptedSecret, redirectUri, JSON.stringify(GOOGLE_WORKSPACE_SCOPES), estimatesRootFolderId, ordersRootFolderId, JSON.stringify(template), timestamp, timestamp);
+    await db.run(`INSERT INTO integration_provider_config(provider,client_id,encrypted_client_secret,redirect_uri,capabilities_json,enquiries_root_folder_id,estimates_root_folder_id,orders_root_folder_id,folder_template_json,created_at,updated_at)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(provider) DO UPDATE SET client_id=excluded.client_id,encrypted_client_secret=excluded.encrypted_client_secret,redirect_uri=excluded.redirect_uri,capabilities_json=excluded.capabilities_json,enquiries_root_folder_id=excluded.enquiries_root_folder_id,estimates_root_folder_id=excluded.estimates_root_folder_id,orders_root_folder_id=excluded.orders_root_folder_id,folder_template_json=excluded.folder_template_json,updated_at=excluded.updated_at`,
+      GOOGLE_WORKSPACE_PROVIDER, clientId, encryptedSecret, redirectUri, JSON.stringify(GOOGLE_WORKSPACE_SCOPES), enquiriesRootFolderId, estimatesRootFolderId, ordersRootFolderId, JSON.stringify(template), timestamp, timestamp);
     return status();
   }
 
@@ -103,6 +104,7 @@ export function createGoogleWorkspaceService(db, { fetchImpl = fetch, environmen
       clientId: clientId || null,
       redirectUri: redirectUri || null,
       clientIdHint: clientId ? `${clientId.slice(0, 8)}…${clientId.slice(-6)}` : null,
+      enquiriesRootFolderId: stored?.enquiries_root_folder_id ?? null,
       estimatesRootFolderId: stored?.estimates_root_folder_id ?? null,
       ordersRootFolderId: stored?.orders_root_folder_id ?? null,
       folderTemplate: parse(stored?.folder_template_json, {}),

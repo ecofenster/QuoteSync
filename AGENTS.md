@@ -25,8 +25,8 @@ The QuoteSuite Development Roadmap in **Administration → Development → Quote
 
 ## Protected live data
 
-- Clients `EF-CL-001` through `EF-CL-008` are protected live user data.
-- Do not edit, delete, merge, deduplicate, re-reference, deactivate or otherwise mutate these Clients or their persisted data.
+- Historical Clients that held `EF-CL-001` through `EF-CL-008` when protection was established are protected live user identities by immutable internal Client ID, not merely by whichever record currently owns those reference strings.
+- Do not edit, delete, merge, deduplicate, re-reference, deactivate or otherwise mutate these protected Client identities or their persisted data through ordinary operations. Client reference reassignment is allowed only through the dedicated, explicitly approved reconciliation boundary with a verified backup, versioned Drive inventory, approved plan hash, transaction, audit journal, relationship validation and rollback.
 - Do not attach disposable Estimates or other mutable test records to protected Clients.
 - Estimates already associated with these Clients may intentionally be controlled development representations of real Estimates used to verify QuoteSuite calculations and workflows against the established Excel costing method. Bounded Estimate-level acceptance is permitted when the specific Estimate/workflow is in scope, Client and Estimate identity are preserved, unrelated Estimate information is preserved, commercial changes are directly required, deterministic before/after evidence is retained, and no broad purge, reset, demo replacement or unrelated automation is performed. Do not block such bounded acceptance solely because the parent Client is protected.
 - This Estimate-level allowance does not weaken Client-level protection or authorise destructive Estimate operations. Explicit task authority is still required for material live commercial mutation, and the exact approved Estimate and workflow remain the limit of that authority.
@@ -36,7 +36,10 @@ The QuoteSuite Development Roadmap in **Administration → Development → Quote
 
 ## Canonical architecture boundaries
 
-- Estimate is the current canonical project and commercial container unless an approved architecture change explicitly supersedes it.
+- The canonical commercial hierarchy is Enquiry → Client → Project → Estimate → Order. Enquiry has permanent global `EF-ENQ-###`; Client has permanent global `EF-CL-###`; Project has an immutable internal ID and reviewed human-readable name with no public `EF-PRJ`; Estimate and Order retain year-based public references. A Client may own many Projects and a Project may own many separate Estimates, each with its own revisions.
+- Qualification must explicitly select an existing Client or create a new Client before creating a Project. Returning Clients reuse their permanent EF-CL, and Enquiry conversion evidence remains retained.
+- Client commercial lifecycle is independent of EF-CL allocation. Do not infer Customer merely because a Client reference exists; successful canonical Order evidence drives Customer status.
+- Demo and test Client identities must use a non-production reference namespace and must never consume, collide with or advance the live EF-CL sequence.
 - The dedicated Estimate workspace is the primary operational commercial UI. Internal View is the default staff workspace; Customer View is a customer-safe reduced presentation of the same Estimate-owned Project Costing scenario. Shared actions always modify canonical Estimate/Position state, and Administration Customer View controls must never enable internal commercial data.
 - Configurator is the generic product architecture. B92 is one currently proven product/system-specific implementation and must not be treated as universal coverage. `ConfiguredPositionContract` remains the canonical technical configuration contract where a position is genuinely configured.
 - Document drawings must resolve through product/system-specific providers behind a generic Configurator boundary. Providers may reuse proven geometry, but must return unavailable for unsupported families and must not persist duplicate drawing geometry or configuration state.

@@ -1,5 +1,7 @@
 import type { Client } from "../../../models/types";
 import { ClientDetailsReadonly } from "./shared";
+import { ClientProjectsPanel } from "../../commercialIdentity/ClientProjectsPanel";
+import "../../commercialIdentity/commercialIdentity.css";
 
 export default function ClientInfoTab({
   pickerClient,
@@ -11,6 +13,7 @@ export default function ClientInfoTab({
   return (
     <div className="ep-section-shell">
       <ClientDetailsReadonly c={pickerClient} onEdit={() => openEditClientPanel(pickerClient)} />
+      <ClientProjectsPanel clientId={String(pickerClient.id)} />
     </div>
   );
 }

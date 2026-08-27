@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import clientsRoute from './routes/clients.js';
 import estimatesRoute from './routes/estimates.js';
+import enquiriesRoute from './routes/enquiries.js';
+import projectsRoute from './routes/projects.js';
 import clientNotesRoute from './routes/clientNotes.js';
 import estimateNotesRoute from './routes/estimateNotes.js';
 import followupsRoute from './routes/followups.js';
@@ -28,6 +30,8 @@ app.use(express.json({ limit: '25mb' }));
 
 app.use('/api/clients', clientsRoute);
 app.use('/api/estimates', estimatesRoute);
+app.use('/api/enquiries', enquiriesRoute);
+app.use('/api/projects', projectsRoute);
 app.use('/api/client-notes', clientNotesRoute);
 app.use('/api/estimate-notes', estimateNotesRoute);
 app.use('/api/followups', followupsRoute);

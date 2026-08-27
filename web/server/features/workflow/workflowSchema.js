@@ -32,6 +32,7 @@ const tableStatements = [
     encrypted_client_secret TEXT,
     redirect_uri TEXT,
     capabilities_json TEXT NOT NULL DEFAULT '[]',
+    enquiries_root_folder_id TEXT,
     estimates_root_folder_id TEXT,
     orders_root_folder_id TEXT,
     folder_template_json TEXT NOT NULL DEFAULT '{}',
@@ -132,6 +133,12 @@ const tableStatements = [
     name TEXT NOT NULL,
     parent_logical_key TEXT,
     provider_folder_id TEXT NOT NULL,
+    provider_account_id TEXT,
+    provider_parent_folder_id TEXT,
+    folder_path TEXT,
+    last_seen_at TEXT,
+    last_seen_sync_id TEXT,
+    removed_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     UNIQUE(provider, estimate_id, logical_key),
@@ -152,6 +159,53 @@ const tableStatements = [
     UNIQUE(provider, quotation_document_id),
     FOREIGN KEY (estimate_id) REFERENCES estimates(id) ON DELETE CASCADE
   )`,
+  `CREATE TABLE IF NOT EXISTS drive_discovered_documents (
+    id TEXT PRIMARY KEY,
+    provider TEXT NOT NULL,
+    provider_account_id TEXT NOT NULL,
+    provider_file_id TEXT NOT NULL,
+    provider_folder_id TEXT,
+    estimate_id TEXT NOT NULL,
+    client_id TEXT NOT NULL,
+    project_id TEXT,
+    order_id TEXT,
+    supplier_id TEXT,
+    supplier_name TEXT,
+    document_type TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    provider_created_at TEXT,
+    provider_modified_at TEXT,
+    provider_version TEXT,
+    provider_revision TEXT,
+    md5_checksum TEXT,
+    web_view_link TEXT,
+    folder_path TEXT NOT NULL DEFAULT '',
+    trashed INTEGER NOT NULL DEFAULT 0 CHECK (trashed IN (0,1)),
+    removed_at TEXT,
+    discovered_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL,
+    last_seen_sync_id TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(provider, provider_account_id, provider_file_id),
+    FOREIGN KEY (estimate_id) REFERENCES estimates(id) ON DELETE CASCADE,
+    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+  )`,
+  `CREATE TABLE IF NOT EXISTS drive_document_sync_states (
+    provider TEXT NOT NULL,
+    provider_account_id TEXT NOT NULL,
+    estimate_id TEXT NOT NULL,
+    strategy TEXT NOT NULL DEFAULT 'full_enumeration',
+    change_token TEXT,
+    status TEXT NOT NULL CHECK (status IN ('syncing','synced','failed')),
+    last_attempt_at TEXT NOT NULL,
+    last_success_at TEXT,
+    error_message TEXT,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(provider, provider_account_id, estimate_id),
+    FOREIGN KEY (estimate_id) REFERENCES estimates(id) ON DELETE CASCADE
+  )`,
 ];
 
 const indexes = [
@@ -159,6 +213,8 @@ const indexes = [
   "CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_quotation_document_revision ON customer_quotation_documents(estimate_id, quotation_revision, projection_sha256)",
   "CREATE INDEX IF NOT EXISTS idx_communications_folder ON communication_messages(folder, updated_at DESC)",
   "CREATE INDEX IF NOT EXISTS idx_drive_folders_estimate ON drive_project_folders(estimate_id, logical_key)",
+  "CREATE INDEX IF NOT EXISTS idx_drive_discovered_documents_estimate ON drive_discovered_documents(estimate_id, provider_modified_at DESC)",
+  "CREATE INDEX IF NOT EXISTS idx_drive_discovered_documents_folder ON drive_discovered_documents(provider, provider_account_id, provider_folder_id)",
   "CREATE UNIQUE INDEX IF NOT EXISTS idx_followups_origin_event ON followups(origin_event_id) WHERE origin_event_id IS NOT NULL",
 ];
 const triggers = [
@@ -228,6 +284,16 @@ export async function initializeWorkflowSchema(db) {
   for (const statement of tableStatements) await db.exec(statement);
   await expandCommunicationFolderDomain(db);
   await allowSharedDriveFolderMappings(db);
+  await ensureColumn(db, "drive_project_folders", "provider_account_id", "TEXT");
+  await ensureColumn(db, "integration_provider_config", "enquiries_root_folder_id", "TEXT");
+  await ensureColumn(db, "drive_project_folders", "provider_parent_folder_id", "TEXT");
+  await ensureColumn(db, "drive_project_folders", "folder_path", "TEXT");
+  await ensureColumn(db, "drive_project_folders", "last_seen_at", "TEXT");
+  await ensureColumn(db, "drive_project_folders", "last_seen_sync_id", "TEXT");
+  await ensureColumn(db, "drive_project_folders", "removed_at", "TEXT");
+  await ensureColumn(db, "drive_discovered_documents", "client_id", "TEXT");
+  await ensureColumn(db, "drive_discovered_documents", "project_id", "TEXT");
+  await ensureColumn(db, "drive_discovered_documents", "order_id", "TEXT");
   await ensureColumn(db, "followups", "issued_quotation_id", "TEXT");
   await ensureColumn(db, "followups", "communication_message_id", "TEXT");
   await ensureColumn(db, "followups", "origin_event_id", "TEXT");
