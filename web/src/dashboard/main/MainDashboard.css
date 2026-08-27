@@ -49,7 +49,7 @@
 
 .qs-dashboard-eyebrow {
   color: var(--qs-operational-quotes);
-  font-size: 11px;
+  font-size: var(--qs-type-meta);
   font-weight: 900;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -73,7 +73,7 @@
 .qs-dashboard-callout p {
   margin: 0;
   color: var(--qs-theme-text-secondary);
-  font-size: 13px;
+  font-size: var(--qs-type-label);
 }
 
 .qs-dashboard-hero__actions {
@@ -89,7 +89,7 @@
   display: grid;
   gap: 6px;
   color: var(--qs-theme-text-muted);
-  font-size: 11px;
+  font-size: var(--qs-type-meta);
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -150,7 +150,7 @@
 
 .qs-section-header h2,
 .qs-dashboard-callout h2 {
-  font-size: 16px;
+  font-size: var(--qs-type-body);
   font-weight: 900;
 }
 
@@ -211,25 +211,25 @@
 }
 
 .qs-priority-card__value {
-  font-size: 27px;
+  font-size: var(--qs-type-dashboard-hero);
   line-height: 1;
   font-weight: 950;
 }
 
 .qs-priority-card__label {
-  font-size: 12px;
+  font-size: var(--qs-type-meta);
   font-weight: 900;
 }
 
 .qs-priority-card__text {
   color: var(--qs-theme-text-secondary);
-  font-size: 11px;
+  font-size: var(--qs-type-meta);
   line-height: 1.35;
 }
 
 .qs-priority-card__chevron {
   color: var(--qs-theme-text-muted);
-  font-size: 26px;
+  font-size: var(--qs-type-page-title);
 }
 
 .qs-priority-card--sales {
@@ -287,21 +287,21 @@
 
 .qs-kpi-card__trend {
   color: var(--qs-theme-text-muted);
-  font-size: 10px;
+  font-size: var(--qs-type-badge);
   font-weight: 800;
   text-align: right;
 }
 
 .qs-kpi-card__label {
   color: var(--qs-theme-text-secondary);
-  font-size: 10px;
+  font-size: var(--qs-type-badge);
   font-weight: 900;
   text-transform: uppercase;
 }
 
 .qs-kpi-card__value {
   color: var(--qs-theme-text);
-  font-size: 24px;
+  font-size: var(--qs-type-page-title);
   line-height: 1;
   font-weight: 950;
 }
@@ -377,7 +377,7 @@
 
 .qs-timeline-item__time {
   color: var(--qs-operational-installations);
-  font-size: 12px;
+  font-size: var(--qs-type-meta);
   font-weight: 900;
 }
 
@@ -400,20 +400,20 @@
 .qs-timeline-item__copy strong,
 .qs-activity-item__copy strong {
   color: var(--qs-theme-text);
-  font-size: 12px;
+  font-size: var(--qs-type-meta);
 }
 
 .qs-timeline-item__copy span,
 .qs-activity-item__copy span,
 .qs-timeline-item__copy em {
   color: var(--qs-theme-text-secondary);
-  font-size: 11px;
+  font-size: var(--qs-type-meta);
   font-style: normal;
 }
 
 .qs-pipeline-value {
   color: var(--qs-theme-selling);
-  font-size: 16px;
+  font-size: var(--qs-type-body);
   font-weight: 950;
 }
 
@@ -427,7 +427,7 @@
   justify-content: space-between;
   gap: 12px;
   color: var(--qs-theme-text-secondary);
-  font-size: 12px;
+  font-size: var(--qs-type-meta);
   font-weight: 850;
 }
 
@@ -468,7 +468,7 @@
 
 .qs-activity-item__time {
   color: var(--qs-theme-text-muted);
-  font-size: 11px;
+  font-size: var(--qs-type-meta);
   font-weight: 800;
 }
 

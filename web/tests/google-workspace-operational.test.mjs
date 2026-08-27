@@ -8,7 +8,7 @@ import sqlite3 from "sqlite3";
 import { open } from "sqlite";
 import { initializeWorkflowSchema } from "../server/features/workflow/workflowSchema.js";
 import { initializeCommercialIdentitySchema } from "../server/features/commercialIdentity/commercialIdentitySchema.js";
-import { createGoogleWorkspaceService, GOOGLE_WORKSPACE_SCOPES } from "../server/features/integrations/googleWorkspaceService.js";
+import { createGoogleWorkspaceService, GMAIL_MODIFY_SCOPE, GOOGLE_WORKSPACE_SCOPES } from "../server/features/integrations/googleWorkspaceService.js";
 import { createGmailProvider, mapGmailMessage } from "../server/features/communications/gmailProvider.js";
 import { buildEstimateProjectFolderName, createDriveIntegrationService, DEFAULT_PROJECT_FOLDER_NAMES, resolveEstimateYear } from "../server/features/documents/driveIntegrationService.js";
 import { loadLocalEnvironment, resolveLocalEnvironmentPath } from "../server/loadLocalEnvironment.js";
@@ -63,6 +63,14 @@ test("Gmail label metadata uses bounded concurrency and survives per-label rate 
   assert.equal(result.length,12);assert.ok(maxActive<=4);assert.equal(result.find(label=>label.id==="Label_3").messagesUnread,1);
 });
 
+test("read-state provider mutations use the provider-neutral thread command and surface failures",async()=>{
+  const calls=[],workspace={googleFetch:async(url,options={})=>{calls.push({url:String(url),options});return response({id:"thread-1"})}},gmail=createGmailProvider(workspace);
+  await gmail.command({threadIds:["thread-1"],command:"mark_read"});await gmail.command({threadIds:["thread-1"],command:"mark_unread"});
+  assert.deepEqual(JSON.parse(calls[0].options.body),{removeLabelIds:["UNREAD"]});assert.deepEqual(JSON.parse(calls[1].options.body),{addLabelIds:["UNREAD"]});assert.ok(calls.every(call=>call.url.endsWith("/threads/thread-1/modify")));
+  const denied=createGmailProvider({googleFetch:async()=>response({error:{message:"Request had insufficient authentication scopes."}},{ok:false,status:403})});
+  await assert.rejects(()=>denied.command({threadIds:["thread-1"],command:"mark_read"}),error=>error.status===403&&/insufficient authentication scopes/i.test(error.message));
+});
+
 test("Google OAuth configuration and tokens are encrypted, reconnectable and disconnectable",async t=>{
   const accessFixture=opaqueFixture(21),refreshFixture=opaqueFixture(22),secretFixture=opaqueFixture(23);
   const {db}=await databaseFixture(t),fetchImpl=async url=>String(url).includes("oauth2.googleapis.com")?response({access_token:accessFixture,refresh_token:refreshFixture,token_type:"Bearer",expires_in:3600,scope:GOOGLE_WORKSPACE_SCOPES.join(" ")}):response({sub:"account-1",email:"sales@example.com",name:"Sales"});
@@ -80,6 +88,29 @@ test("Google OAuth configuration and tokens are encrypted, reconnectable and dis
   status=await service.disconnect();assert.equal(status.connected,false);assert.equal(status.configured,true);
   assert.equal(status.state,"configured_disconnected");
   assert.equal(status.capabilities.gmail.available,false);assert.equal(status.capabilities.drive.available,false);
+});
+
+test("gmail.modify is minimally requested and an older grant requires non-destructive re-consent",async t=>{
+  assert.ok(GOOGLE_WORKSPACE_SCOPES.includes(GMAIL_MODIFY_SCOPE));
+  assert.ok(GOOGLE_WORKSPACE_SCOPES.includes("https://www.googleapis.com/auth/gmail.readonly"));
+  assert.ok(GOOGLE_WORKSPACE_SCOPES.includes("https://www.googleapis.com/auth/gmail.compose"));
+  assert.equal(GOOGLE_WORKSPACE_SCOPES.includes("https://mail.google.com/"),false);
+  const accessFixture=opaqueFixture(51),refreshFixture=opaqueFixture(52),secretFixture=opaqueFixture(53);
+  const fetchImpl=async url=>String(url).includes("oauth2.googleapis.com")?response({access_token:accessFixture,refresh_token:refreshFixture,token_type:"Bearer",expires_in:3600,scope:GOOGLE_WORKSPACE_SCOPES.join(" ")}):response({sub:"account-scope-upgrade",email:"scope@example.com",name:"Scope Upgrade"});
+  const {db}=await databaseFixture(t),service=createGoogleWorkspaceService(db,{fetchImpl,environment:{},encryptionKey});
+  await service.configure({clientId:"persisted-client",clientSecret:secretFixture,redirectUri:"http://localhost:3001/api/integrations/googleWorkspace/oauth/callback",estimatesRootFolderId:"persisted-estimates",ordersRootFolderId:"persisted-orders",folderTemplate:{orders:"Orders"}});
+  let oauth=await service.beginOAuth();await service.completeOAuth({state:oauth.state,code:"initial-code"});
+  const legacyScopes=GOOGLE_WORKSPACE_SCOPES.filter(scope=>scope!==GMAIL_MODIFY_SCOPE);
+  await db.run("UPDATE integration_oauth_connections SET scopes_json=? WHERE provider='google_workspace'",JSON.stringify(legacyScopes));
+  const configBefore=await db.get("SELECT * FROM integration_provider_config WHERE provider='google_workspace'"),connectionBefore=await db.get("SELECT * FROM integration_oauth_connections WHERE provider='google_workspace'");
+  const reconnect=await service.status();
+  assert.equal(reconnect.state,"reconnect_required");assert.equal(reconnect.connected,false);assert.equal(reconnect.configured,true);assert.equal(reconnect.configurationStored,true);
+  assert.equal(reconnect.capabilities.gmail.available,false);assert.deepEqual(reconnect.capabilities.gmail.missingScopes,[GMAIL_MODIFY_SCOPE]);assert.match(reconnect.error,/Existing configuration has been retained/);
+  assert.equal(reconnect.clientId,"persisted-client");assert.equal(reconnect.estimatesRootFolderId,"persisted-estimates");assert.equal(reconnect.ordersRootFolderId,"persisted-orders");assert.deepEqual(reconnect.folderTemplate,{orders:"Orders"});
+  assert.deepEqual(await db.get("SELECT * FROM integration_provider_config WHERE provider='google_workspace'"),configBefore);assert.deepEqual(await db.get("SELECT * FROM integration_oauth_connections WHERE provider='google_workspace'"),connectionBefore);
+  oauth=await service.beginOAuth();const requestedScopes=new URL(oauth.authorizationUrl).searchParams.get("scope").split(" ");assert.ok(requestedScopes.includes(GMAIL_MODIFY_SCOPE));assert.equal(requestedScopes.includes("https://mail.google.com/"),false);
+  assert.deepEqual(await db.get("SELECT * FROM integration_provider_config WHERE provider='google_workspace'"),configBefore);assert.deepEqual(await db.get("SELECT * FROM integration_oauth_connections WHERE provider='google_workspace'"),connectionBefore);
+  const restored=await service.completeOAuth({state:oauth.state,code:"upgrade-code"});assert.equal(restored.state,"connected");assert.equal(restored.connected,true);assert.equal(restored.capabilities.gmail.available,true);assert.equal(restored.capabilities.drive.available,true);assert.ok(restored.scopes.includes(GMAIL_MODIFY_SCOPE));
 });
 
 test("persisted Google configuration survives restart and safely recovers after encryption-key restoration",async t=>{

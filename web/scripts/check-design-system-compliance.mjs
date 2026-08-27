@@ -10,6 +10,9 @@ const documentOutputFiles = new Set([
   "features/customerQuotation/CustomerQuotationPreview.tsx",
   "features/customerQuotation/customerQuotation.css",
   "features/customerQuotation/customerQuotationBrand.css",
+  // Sandboxed Email srcdoc owns a safety-bounded, light document canvas. It
+  // does not style the QuoteSuite application chrome or sender-authored HTML.
+  "features/communications/domain/emailPresentation.ts",
 ]);
 const themeAuthorityFiles = new Set(["styles/tokens.css", "theme/themes.ts"]);
 const themeAuthoringFiles = new Set(["features/admin/AdminThemeColoursPanel.tsx"]);
@@ -25,6 +28,17 @@ const technicalPathFragments = [
   "/b92Configurator/B92ConfiguratorFinishPanel.tsx",
   "/configurator/components/WindowRenderer.tsx",
 ];
+const typographySpecialistFiles = new Set([
+  // Millimetre/A4 customer output and reviewed Configurator annotation geometry
+  // own bounded typography contracts outside the ordinary QuoteSuite UI scale.
+  "features/customerQuotation/customerQuotation.css",
+  "features/b92Configurator/B92Configurator.css",
+]);
+const approvedDynamicLayoutFiles = new Set([
+  // Context-menu viewport coordinates, nested-label depth and remembered
+  // preview divider sizes are runtime geometry, not visual design authoring.
+  "features/communications/EmailWorkspace.tsx",
+]);
 
 function walk(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -51,7 +65,7 @@ const violations = [];
 for (const absolute of walk(root)) {
   const file = relative(absolute);
   const source = fs.readFileSync(absolute, "utf8");
-  if (!documentOutputFiles.has(file)) {
+  if (!documentOutputFiles.has(file) && !approvedDynamicLayoutFiles.has(file)) {
     const inlinePatterns = [
       /\bstyle\s*=\s*\{/g,
       /React\.CSSProperties/g,
@@ -89,6 +103,12 @@ for (const absolute of walk(root)) {
       violations.push(`${file}:${lineFor(source, match.index)} feature-owned theme selector: ${match[0]}`);
     }
   }
+
+  if (path.extname(file) === ".css" && !themeAuthorityFiles.has(file) && !typographySpecialistFiles.has(file)) {
+    for (const match of source.matchAll(/font-size\s*:\s*-?(?:\d+(?:\.\d+)?|\.\d+)(?:px|rem|em|pt|pc|in|cm|mm|%)\b/g)) {
+      violations.push(`${file}:${lineFor(source, match.index)} arbitrary application typography; use a canonical --qs-type-* or --qs-icon-size* role: ${match[0]}`);
+    }
+  }
 }
 
 if (violations.length) {
@@ -96,5 +116,5 @@ if (violations.length) {
   console.error(violations.join("\n"));
   process.exitCode = 1;
 } else {
-  console.log("Design-system compliance passed: zero application inline CSS, zero unauthorised application colours, and no unresolved --color-primary token.");
+  console.log("Design-system compliance passed: semantic application typography, zero application inline CSS, zero unauthorised application colours, and no unresolved --color-primary token.");
 }

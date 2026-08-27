@@ -80,7 +80,7 @@ export function createGoogleDriveProvider(googleWorkspace) {
   async function uploadFile({ parentId, fileName, mediaType, bytes, appProperties }) {
     const boundary = `quotesuite_${Date.now().toString(36)}`, metadata = JSON.stringify({ name: fileName, parents: [parentId], appProperties });
     const body = Buffer.concat([Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: ${mediaType}\r\n\r\n`), Buffer.from(bytes), Buffer.from(`\r\n--${boundary}--`)]);
-    return json(await googleWorkspace.googleFetch(`${UPLOAD_API}/files?uploadType=multipart&fields=id,name,parents,appProperties`, { method: "POST", headers: { "Content-Type": `multipart/related; boundary=${boundary}` }, body }));
+    return json(await googleWorkspace.googleFetch(`${UPLOAD_API}/files?uploadType=multipart&supportsAllDrives=true&fields=id,name,mimeType,parents,size,createdTime,modifiedTime,version,md5Checksum,trashed,appProperties,webViewLink,driveId`, { method: "POST", headers: { "Content-Type": `multipart/related; boundary=${boundary}` }, body }));
   }
   return { listChildrenPage, listChildren, findFolder, findFolderByName, findProjectFolderByEstimateReference, createFolder, ensureFolder, uploadFile };
 }

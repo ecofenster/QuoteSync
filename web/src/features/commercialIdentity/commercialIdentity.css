@@ -11,7 +11,7 @@
 .commercial-identity-detail,.commercial-identity-form{padding:16px}
 .commercial-identity-detail dl{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 .commercial-identity-detail dl div{padding:12px;border:1px solid var(--qs-border-standard);border-radius:8px;background:var(--qs-bg-surface-elevated)}
-.commercial-identity-detail dt{font-size:.75rem;color:var(--qs-theme-text-secondary)}.commercial-identity-detail dd{margin:.25rem 0 0}
+.commercial-identity-detail dt{font-size:var(--qs-type-meta);color:var(--qs-theme-text-secondary)}.commercial-identity-detail dd{margin:.25rem 0 0}
 .commercial-identity-form__grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .commercial-identity-form label,.commercial-identity-qualify>label{display:grid;gap:4px}.commercial-identity-form__wide{grid-column:1/-1}
 .commercial-identity-qualify{display:grid;gap:12px;margin-top:16px;padding-top:16px;border-top:1px solid var(--qs-border-standard)}

@@ -231,16 +231,39 @@ export function createDriveIntegrationService(db, options = {}) {
   }
 
   async function syncDocuments({ enquiryId, estimateId, projectId, clientId } = {}) {
-    if (enquiryId) return { scope: { enquiryId }, results: [await commercialDrive.discoverEnquiry(enquiryId)] };
-    if (estimateId) return { scope: { estimateId }, results: [await discoverEstimate(estimateId)] };
-    if (projectId) return { scope: { projectId }, results: [await commercialDrive.discoverProject(projectId)] };
-    if (!clientId) throw Object.assign(new Error("client_id, project_id or estimate_id is required."), { status: 400, code: "document_scope_required" });
-    const projects = await db.all("SELECT id FROM projects WHERE client_id=? AND deleted_at IS NULL ORDER BY created_at", clientId);
-    const estimates = await db.all("SELECT id FROM estimates WHERE client_id=? AND project_id IS NULL AND deleted_at IS NULL ORDER BY created_at", clientId);
-    const results = [];
-    for (const project of projects) results.push(await commercialDrive.discoverProject(project.id));
-    for (const estimate of estimates) results.push(await discoverEstimate(estimate.id));
-    return { scope: { clientId }, results };
+    const scope = enquiryId ? { kind: "enquiry", id: enquiryId, response: { enquiryId } } : estimateId ? { kind: "estimate", id: estimateId, response: { estimateId } } : projectId ? { kind: "project", id: projectId, response: { projectId } } : clientId ? { kind: "client", id: clientId, response: { clientId } } : null;
+    if (!scope) throw Object.assign(new Error("enquiry_id, client_id, project_id or estimate_id is required."), { status: 400, code: "document_scope_required" });
+    const workspaceStatus = await workspace.status(), accountId = workspaceStatus.account?.id || "unavailable", timestamp = new Date().toISOString();
+    const writeCanonicalState = async (status, { errorMessage = null, details = {}, success = false } = {}) => db.run(`INSERT INTO canonical_document_sync_states(provider,provider_account_id,scope_kind,scope_id,strategy,status,last_attempt_at,last_success_at,error_message,details_json,updated_at)
+      VALUES('google_drive',?,?,?,?,?,?,?, ?,?,?) ON CONFLICT(provider,provider_account_id,scope_kind,scope_id) DO UPDATE SET strategy=excluded.strategy,status=excluded.status,last_attempt_at=excluded.last_attempt_at,last_success_at=CASE WHEN excluded.last_success_at IS NOT NULL THEN excluded.last_success_at ELSE canonical_document_sync_states.last_success_at END,error_message=excluded.error_message,details_json=excluded.details_json,updated_at=excluded.updated_at`,
+      accountId, scope.kind, scope.id, DRIVE_DISCOVERY_STRATEGY.current, status, timestamp, success ? timestamp : null, errorMessage, JSON.stringify(details), timestamp);
+    await writeCanonicalState("syncing");
+    try {
+      let results;
+      if (enquiryId) results = [await commercialDrive.discoverEnquiry(enquiryId)];
+      else if (estimateId) results = [await discoverEstimate(estimateId)];
+      else if (projectId) results = [await commercialDrive.discoverProject(projectId)];
+      else {
+        const projects = await db.all("SELECT id FROM projects WHERE client_id=? AND deleted_at IS NULL ORDER BY created_at", clientId);
+        const estimates = await db.all("SELECT id FROM estimates WHERE client_id=? AND project_id IS NULL AND deleted_at IS NULL ORDER BY created_at", clientId);
+        results = [];
+        if (!projects.length) results.push(await commercialDrive.discoverClient(clientId));
+        for (const project of projects) results.push(await commercialDrive.discoverProject(project.id));
+        for (const estimate of estimates) results.push(await discoverEstimate(estimate.id));
+      }
+      const filesDiscovered = results.reduce((total, result) => total + Number(result.filesDiscovered || 0), 0);
+      const status = results.some((result) => result.status === "project_assignment_pending") ? "project_assignment_pending"
+        : results.some((result) => result.status === "client_folder_not_matched") ? "client_folder_not_matched"
+          : results.every((result) => result.status === "synced") && filesDiscovered === 0 ? "synced_no_files"
+            : results.some((result) => result.status === "review_required") ? "client_folder_not_matched"
+              : "synced";
+      const details = { filesDiscovered, results };
+      await writeCanonicalState(status, { details, success: !["client_folder_not_matched"].includes(status) });
+      return { scope: scope.response, status, filesDiscovered, results };
+    } catch (reason) {
+      await writeCanonicalState("failed", { errorMessage: reason instanceof Error ? reason.message : "Drive sync failed." });
+      throw reason;
+    }
   }
 
   return { provisionEstimate, fileSupplierAttachment, syncDocuments, discoverEstimate, status: workspace.status, localFolder };

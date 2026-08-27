@@ -10,13 +10,13 @@
 
 .defaults-editor-heading {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--qs-type-body);
   font-weight: 800;
   color: var(--qs-theme-text);
 }
 
 .defaults-editor-small {
-  font-size: 12px;
+  font-size: var(--qs-type-meta);
   color: var(--qs-theme-text-muted);
 }
 
@@ -26,7 +26,7 @@
   padding: 10px 12px;
   border: 1px solid var(--qs-border-standard);
   border-radius: 12px;
-  font-size: 14px;
+  font-size: var(--qs-type-body);
   background: var(--qs-bg-surface);
   box-sizing: border-box;
   outline: none;
@@ -34,7 +34,7 @@
 
 .defaults-editor-label {
   margin-bottom: 6px;
-  font-size: 13px;
+  font-size: var(--qs-type-label);
   font-weight: 700;
   color: var(--qs-theme-text-secondary);
 }
@@ -129,7 +129,7 @@
   border-radius: 12px;
   background: var(--qs-bg-surface-elevated);
   color: var(--qs-theme-text-muted);
-  font-size: 12px;
+  font-size: var(--qs-type-meta);
   font-weight: 800;
 }
 
@@ -145,7 +145,7 @@
 }
 
 .defaults-editor-toggle-label {
-  font-size: 14px;
+  font-size: var(--qs-type-body);
   font-weight: 700;
   color: var(--qs-theme-text);
 }

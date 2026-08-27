@@ -1438,6 +1438,7 @@ export default function App() {
 
   const [deletedClientsById, setDeletedClientsById] =
     useState<Record<string, DeletedClientRecord>>({});
+  const [recycleOperationError, setRecycleOperationError] = useState("");
 
   useEffect(() => {
     const nextEstimateCounter = Math.max(
@@ -2331,11 +2332,13 @@ async function purgeDeletedEstimatesForClient(clientId: Models.ClientId, estimat
   const idsToPurge = estimateIds?.length ? estimateIds : records.map((record) => record.estimate.id);
   if (!idsToPurge.length) return;
 
+  setRecycleOperationError("");
   try {
     await Promise.all(idsToPurge.map((estimateId) => purgeEstimateAPI(estimateId)));
     await refreshClientsFromApi();
   } catch (error) {
     console.error("Failed to purge estimates", error);
+    setRecycleOperationError(error instanceof Error ? error.message : "The Estimate could not be permanently deleted.");
   }
 }
 
@@ -3520,6 +3523,8 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
             </div>
           </div>
 
+          {recycleOperationError ? <div className="ui-status ui-status--error" role="alert">{recycleOperationError}</div> : null}
+
           <div className="qs-migrated-37">
             <Small>Filter</Small>
             {filterButtons.map((item) => (
@@ -4450,7 +4455,7 @@ return (
           </Card>
 
           {/* Main */}
-          <div className="app-main-workspace" data-density={menu === "dashboard" && view === "customers" ? "compact" : "standard"}>
+          <div className="app-main-workspace" data-density={menu === "dashboard" && view === "customers" ? "compact" : "standard"} data-scroll-owner={view === "customers" && (menu === "email" || menu === "client_database" || menu === "enquiries") ? "feature" : "workspace"}>
             {demoClientsLoaded && (
               <div className="demo-mode-banner" role="status">
                 <strong>Demo mode active</strong>

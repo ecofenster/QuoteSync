@@ -1,5 +1,8 @@
 html {
   font-family: var(--qs-font-family);
+  /* Keep rem roles anchored to the browser's accessible root size. The
+     selected semantic preset belongs on application content, not the root. */
+  font-size: var(--qs-root-font-size);
   line-height: var(--line-height-base);
   color: var(--qs-theme-text);
   background: var(--qs-bg-page);
@@ -7,6 +10,7 @@ html {
 
 body {
   font-family: var(--qs-font-family);
+  font-size: var(--qs-type-body);
   line-height: var(--line-height-base);
   color: var(--qs-theme-text);
   background: var(--qs-bg-page);

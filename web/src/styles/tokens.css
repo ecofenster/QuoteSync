@@ -56,18 +56,34 @@
 
   /* Typography roles. themes.ts owns the runtime company font. */
   --qs-font-family: "Segoe UI", Arial, Helvetica, sans-serif;
-  --qs-type-page-title: 1.375rem;
-  --qs-type-section-title: 1.125rem;
-  --qs-type-important: 1rem;
-  --qs-type-body: 0.875rem;
-  --qs-type-meta: 0.8125rem;
+  --qs-root-font-size: 100%;
+  --qs-type-page-title: 1.5rem;
+  --qs-type-section-title: 1.25rem;
+  --qs-type-small-title: 1.125rem;
+  --qs-type-important: 1.0625rem;
+  --qs-type-body: 1rem;
+  --qs-type-secondary: 0.9375rem;
+  --qs-type-meta: 0.875rem;
+  --qs-type-label: 0.9375rem;
+  --qs-type-list: 1rem;
+  --qs-type-table: 0.9375rem;
+  --qs-type-button: 0.9375rem;
+  --qs-type-input: 1rem;
+  --qs-type-navigation: 0.9375rem;
+  --qs-type-badge: 0.8125rem;
+  --qs-icon-size-sm: 1rem;
+  --qs-icon-size: 1.1875rem;
+  --qs-icon-size-lg: 1.375rem;
+  --qs-control-height: 2.625rem;
+  --qs-control-height-compact: 2.25rem;
+  --qs-list-row-min-height: 3.25rem;
   --qs-type-dashboard-hero: clamp(1.75rem, 3vw, 2.625rem);
-  --font-size-xs: 0.75rem;
-  --font-size-sm: 0.875rem;
-  --font-size-md: 1rem;
-  --font-size-lg: 1.125rem;
-  --font-size-xl: 1.25rem;
-  --font-size-2xl: 1.5rem;
+  --font-size-xs: var(--qs-type-meta);
+  --font-size-sm: var(--qs-type-label);
+  --font-size-md: var(--qs-type-body);
+  --font-size-lg: var(--qs-type-small-title);
+  --font-size-xl: var(--qs-type-section-title);
+  --font-size-2xl: var(--qs-type-page-title);
   --font-weight-semibold: 600;
   --font-weight-bold: 700;
   --font-weight-extrabold: 800;
@@ -220,6 +236,24 @@
 :root[data-qs-elevation="minimal"] { --shadow-card: none; --shadow-elevated: var(--shadow-sm); --shadow-overlay: var(--shadow-md); }
 :root[data-qs-elevation="enhanced"] { --shadow-card: var(--shadow-md); --shadow-elevated: var(--shadow-lg); --shadow-overlay: 0 30px 80px color-mix(in srgb, var(--qs-theme-text) 24%, transparent); }
 :root[data-qs-motion="reduced"] { --motion-fast: 0ms; --motion-standard: 0ms; }
+
+/* User/device text-size presets. Features choose semantic roles; only these
+   selectors own ordinary application type and compatible control geometry. */
+:root[data-qs-text-size="compact"] {
+  --qs-type-page-title: 1.375rem; --qs-type-section-title: 1.125rem; --qs-type-small-title: 1rem; --qs-type-important: 0.9375rem;
+  --qs-type-body: 0.875rem; --qs-type-secondary: 0.8125rem; --qs-type-meta: 0.8125rem; --qs-type-label: 0.8125rem; --qs-type-list: 0.875rem; --qs-type-table: 0.8125rem; --qs-type-button: 0.8125rem; --qs-type-input: 0.875rem; --qs-type-navigation: 0.875rem; --qs-type-badge: 0.75rem;
+  --qs-icon-size-sm: 0.9375rem; --qs-icon-size: 1.125rem; --qs-icon-size-lg: 1.25rem; --qs-control-height: 2.5rem; --qs-control-height-compact: 2.125rem; --qs-list-row-min-height: 3rem;
+}
+:root[data-qs-text-size="large"] {
+  --qs-type-page-title: 1.75rem; --qs-type-section-title: 1.4375rem; --qs-type-small-title: 1.25rem; --qs-type-important: 1.1875rem;
+  --qs-type-body: 1.125rem; --qs-type-secondary: 1.0625rem; --qs-type-meta: 1rem; --qs-type-label: 1.0625rem; --qs-type-list: 1.125rem; --qs-type-table: 1.0625rem; --qs-type-button: 1.0625rem; --qs-type-input: 1.125rem; --qs-type-navigation: 1.0625rem; --qs-type-badge: 0.9375rem;
+  --qs-icon-size-sm: 1.125rem; --qs-icon-size: 1.25rem; --qs-icon-size-lg: 1.5rem; --qs-control-height: 2.875rem; --qs-control-height-compact: 2.5rem; --qs-list-row-min-height: 3.5rem;
+}
+:root[data-qs-text-size="extra-large"] {
+  --qs-type-page-title: 2rem; --qs-type-section-title: 1.625rem; --qs-type-small-title: 1.375rem; --qs-type-important: 1.3125rem;
+  --qs-type-body: 1.25rem; --qs-type-secondary: 1.125rem; --qs-type-meta: 1.0625rem; --qs-type-label: 1.125rem; --qs-type-list: 1.25rem; --qs-type-table: 1.125rem; --qs-type-button: 1.125rem; --qs-type-input: 1.25rem; --qs-type-navigation: 1.125rem; --qs-type-badge: 1rem;
+  --qs-icon-size-sm: 1.25rem; --qs-icon-size: 1.375rem; --qs-icon-size-lg: 1.625rem; --qs-control-height: 3.125rem; --qs-control-height-compact: 2.75rem; --qs-list-row-min-height: 3.75rem;
+}
 
 @media (prefers-reduced-motion: reduce) {
   :root { --motion-fast: 0ms; --motion-standard: 0ms; }

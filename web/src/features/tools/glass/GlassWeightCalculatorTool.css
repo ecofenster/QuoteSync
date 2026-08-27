@@ -116,11 +116,11 @@
 
 .glass-shape-option__label {
   margin-top: 4px;
-  font-size: 13px;
+  font-size: var(--qs-type-label);
 }
 
 .glass-pane-title {
-  font-size: 12px;
+  font-size: var(--qs-type-meta);
   font-weight: 700;
   margin-bottom: 4px;
 }

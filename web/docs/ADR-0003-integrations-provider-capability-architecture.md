@@ -17,6 +17,14 @@ Future provider families should extend this registry rather than introduce featu
 
 OAuth access and refresh tokens must remain backend-only. Status responses expose connection state, enabled state, capability grants and safe metadata, never tokens. Provider adapters own token refresh and API calls. Application features consume stable capability services such as `route_distance`, `cloud_file_storage`, `mail_send`, `mail_sync` or `calendar_events`.
 
+## Mailbox change notification boundary
+
+The canonical mailbox architecture has three layers: the local communication projection supplies immediate UI state; a provider cursor/delta adapter reconciles authoritative changes; and an optional authenticated notification adapter signals when reconciliation should run. Notifications never contain trusted canonical message state and can be duplicated, delayed, delivered out of order or missed.
+
+Gmail uses `users.watch` plus Google Cloud Pub/Sub as the first notification adapter. Safe watch history/expiration, notification-deduplication and projection-version metadata may be persisted, but OAuth tokens, webhook credentials and Pub/Sub authentication material may not. A notification is acknowledged only after its account and delivery authentication have passed the deployment verifier; its history position then drives the existing Gmail `history.list` reconciliation. QuoteSuite-originated mutations persist the provider-confirmed result immediately, while a later matching history event remains idempotent.
+
+Push mode is enabled only when deployment configuration provides a Pub/Sub topic, externally reachable HTTPS push audience and authenticated push service-account contract. Local development must not pretend this infrastructure exists: it uses cache-first projection plus bounded incremental reconciliation while Email is active, on return/focus and after network recovery. Periodic reconciliation remains required in every deployment as the recovery path for missed notifications and expired history cursors.
+
 ## Secret boundary
 
 The current local-server implementation stores managed Google Maps and what3words keys as plaintext JSON values in the local SQLite settings table. They are filtered from generic Settings, never returned unmasked, and are not stored in browser storage. This is not encryption at rest. A future deployment requiring a stronger boundary should replace only the credential repository with operating-system or deployment secret storage while retaining the provider/capability service contract.
@@ -42,4 +50,4 @@ OneDrive, SharePoint and Google Drive are true API integrations. Network paths a
 
 ## Deferred work
 
-Additional platform secret-provider implementations, calendars, webhooks/change notifications, Site Visit & Travel, and customer-facing document workflows are explicitly deferred.
+Additional platform secret-provider implementations, production Pub/Sub provisioning/authentication, calendars, non-Gmail change-notification adapters, Site Visit & Travel, and customer-facing document workflows are explicitly deferred.

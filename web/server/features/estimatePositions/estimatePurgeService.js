@@ -4,6 +4,25 @@ import { resolveAttachmentRoot, resolveManagedPath } from '../supplierQuotes/man
 
 const visualTokenPattern=/manufacturer-position-visuals\/([a-f0-9]{40})\//g;
 
+export class EstimatePurgeBlockedError extends Error{
+  constructor(message,dependencies,code="estimate_purge_blocked"){super(message);this.name="EstimatePurgeBlockedError";this.status=409;this.code=code;this.dependencies=dependencies;}
+}
+
+async function countRows(db,sql,estimateId){return Number((await db.get(sql,estimateId))?.count||0)}
+
+export async function inspectEstimatePurgeDependencies(db,estimateId){
+  const checks=[
+    ["order","Orders",()=>countRows(db,"SELECT count(*) count FROM orders WHERE source_estimate_id=?",estimateId)],
+    ["issued_quotation","Issued quotations",()=>countRows(db,"SELECT count(*) count FROM issued_quotations WHERE estimate_id=?",estimateId)],
+    ["customer_quotation_document","Customer quotation documents",()=>countRows(db,"SELECT count(*) count FROM customer_quotation_documents WHERE estimate_id=?",estimateId)],
+    ["canonical_document","Canonical documents",()=>countRows(db,"SELECT count(*) count FROM canonical_documents WHERE estimate_id=?",estimateId)],
+    ["communication","Linked communications",()=>countRows(db,`SELECT count(DISTINCT m.id) count FROM communication_messages m,json_each(CASE WHEN json_valid(m.links_json) THEN m.links_json ELSE '[]' END) link WHERE json_extract(link.value,'$.kind')='estimate' AND json_extract(link.value,'$.id')=?`,estimateId)],
+  ];
+  const dependencies=[];
+  for(const[kind,label,read]of checks){const count=await read().catch(()=>0);if(count>0)dependencies.push({kind,label,count});}
+  return dependencies;
+}
+
 async function collectEvidenceFiles(db,estimateId,attachmentRoot){
   const supplier=await db.all('SELECT storage_key FROM supplier_quote_attachments WHERE estimate_id=?',estimateId);
   const lab=await db.all('SELECT a.storage_key FROM supplier_import_lab_attachments a JOIN supplier_import_lab_sessions s ON s.id=a.session_id WHERE s.estimate_id=?',estimateId);
@@ -43,7 +62,10 @@ async function removeEvidenceFiles(evidence){
 }
 
 export async function purgeEstimateOwnedGraph(db,estimateId,{attachmentRoot=resolveAttachmentRoot()}={}){
-  const estimate=await db.get('SELECT id FROM estimates WHERE id=?',estimateId);if(!estimate)return null;
+  const estimate=await db.get('SELECT id,deleted_at FROM estimates WHERE id=?',estimateId);if(!estimate)return null;
+  if(!estimate.deleted_at)throw new EstimatePurgeBlockedError("Only an Estimate already in the Recycle Bin can be permanently deleted.",[],"estimate_not_deleted");
+  const dependencies=await inspectEstimatePurgeDependencies(db,estimateId);
+  if(dependencies.length)throw new EstimatePurgeBlockedError(`This Estimate cannot be permanently deleted because retained canonical evidence exists: ${dependencies.map(item=>`${item.label} (${item.count})`).join(", ")}.`,dependencies);
   const evidence=await collectEvidenceFiles(db,estimateId,path.resolve(attachmentRoot));
   await db.exec('BEGIN IMMEDIATE');
   try{await purgeEstimateRecords(db,estimateId);await db.exec('COMMIT');}catch(error){await db.exec('ROLLBACK');throw error;}

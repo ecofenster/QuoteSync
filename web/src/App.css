@@ -25,8 +25,13 @@
 .app-position-glyph--window { width: 28px; }
 .app-table-heading { position: sticky; top: 0; z-index: 2; padding: var(--space-3); border-bottom: var(--qs-border-width) solid var(--qs-border-standard); background: var(--qs-bg-surface-elevated); font-size: var(--qs-type-meta); text-align: left; }
 .app-table-heading--numeric { text-align: right; }
-.app-main-workspace { display: grid; min-height: 0; height: 100%; gap: var(--space-4); overflow-y: auto; padding-right: var(--space-1); align-content: start; }
+.app-main-workspace { display: grid; min-width: 0; min-height: 0; height: 100%; gap: var(--space-4); overflow-y: auto; padding-right: var(--space-1); align-content: start; }
 .app-main-workspace[data-density="compact"] { gap: var(--space-3); }
+.app-main-workspace[data-scroll-owner="feature"] { display: flex; flex-direction: column; overflow: hidden; }
+.app-main-workspace[data-scroll-owner="feature"] > * { flex: 0 0 auto; }
+.app-main-workspace[data-scroll-owner="feature"] > .email-workspace,
+.app-main-workspace[data-scroll-owner="feature"] > .qs-migrated-92 { flex: 1 1 auto; height: auto; min-height: 0; }
+.app-main-workspace[data-scroll-owner="feature"] > .qs-migrated-92 { overflow: hidden; }
 .google-map-panel { position: relative; width: 100%; min-height: 560px; }
 .google-map-panel[data-height="tall"] { min-height: 980px; }
 .google-map-panel--error { padding: var(--space-4); border: var(--qs-border-width) dashed var(--qs-border-standard); border-radius: var(--radius-card); background: var(--qs-bg-surface); }
@@ -65,15 +70,16 @@
 .app-empty-state { display: grid; gap: var(--space-2); padding: var(--space-4); border-radius: var(--radius-card); }
 
 .app-workspace-shell {
-  height: calc(100vh - 84px);
-  min-height: calc(100vh - 84px);
+  width: 100%;
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
   background: var(--qs-bg-page);
   color: var(--qs-theme-text);
   font-family: var(--qs-font-family);
 }
 
-.app-workspace-shell__inner { width: 100%; height: 100%; margin: 0; padding: 0; }
+.app-workspace-shell__inner { width: 100%; height: 100%; min-height: 0; margin: 0; padding: 0; }
 .app-workspace-grid { height: 100%; min-height: 0; display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: var(--space-4); align-items: stretch; }
 .app-workspace-grid > .app-card { position: sticky; top: 16px; align-self: stretch; height: 100%; min-height: 0; overflow-y: auto; }
 
@@ -194,7 +200,7 @@
   background: var(--qs-bg-control);
   color: var(--qs-theme-text);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--qs-type-meta);
   font-weight: 800;
 }
 

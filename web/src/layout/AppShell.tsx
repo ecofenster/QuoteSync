@@ -1,6 +1,7 @@
 import React from "react";
 import QuoteSyncLogo from "../components/QuoteSyncLogo";
 import ThemeSelector from "../components/ThemeSelector";
+import TextSizeSelector from "../components/TextSizeSelector";
 import { appShellMenuItems } from "./appShellNav";
 import "./AppShell.css";
 
@@ -68,6 +69,7 @@ export default function AppShell(props: Props) {
             </nav>
 
             <ThemeSelector className="app-shell__theme-selector" />
+            <TextSizeSelector />
           </div>
         </div>
       </header>

@@ -10,11 +10,11 @@
 
 .client-portal-placeholder__title {
   color: var(--qs-theme-text);
-  font-size: 20px;
+  font-size: var(--qs-type-section-title);
   font-weight: 900;
 }
 
 .client-portal-placeholder__copy {
   color: var(--qs-theme-text-secondary);
-  font-size: 14px;
+  font-size: var(--qs-type-body);
 }

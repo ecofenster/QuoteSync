@@ -1,5 +1,11 @@
 .app-shell {
-  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
   background: var(--qs-bg-page);
   color: var(--qs-theme-text);
 }
@@ -26,7 +32,7 @@
 .app-shell__brand {
   display: flex;
   align-items: center;
-  font-size: 18px;
+  font-size: var(--qs-type-small-title);
   font-weight: 900;
   color: var(--qs-theme-text);
 }
@@ -145,8 +151,33 @@
   flex: 0 0 auto;
 }
 
+.app-shell__display-menu { position: relative; flex: 0 0 auto; }
+.app-shell__display-menu > summary { list-style: none; cursor: pointer; }
+.app-shell__display-menu > summary::-webkit-details-marker { display: none; }
+.app-shell__display-summary { display: inline-flex; gap: var(--space-2); font-size: var(--qs-type-button); }
+.app-shell__display-summary::after { content: "▾"; }
+.app-shell__display-summary strong { color: var(--qs-theme-text-secondary); font-size: var(--qs-type-meta); }
+.app-shell__display-panel { position: absolute; top: calc(100% + var(--space-2)); right: 0; z-index: 45; display: grid; width: min(24rem, calc(100vw - 2rem)); gap: var(--space-3); padding: var(--space-4); box-shadow: var(--shadow-overlay); }
+.app-shell__display-panel > div:first-child { display: grid; gap: var(--space-1); }
+.app-shell__display-panel small { color: var(--qs-theme-text-muted); font-size: var(--qs-type-meta); }
+.app-shell__text-size-options { display: grid; gap: var(--space-2); }
+.app-shell__text-size-options .ui-button { display: grid; justify-items: start; min-height: var(--qs-control-height); text-align: left; }
+.app-shell__text-size-options .ui-button[aria-checked="true"] { border-color: var(--qs-border-focus); background: var(--qs-bg-selected); color: var(--qs-theme-selected-text); }
+.app-shell__text-size-options .ui-button[aria-checked="true"] small { color: inherit; }
+
 .app-shell__main {
   width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
   padding: 16px;
   background: var(--qs-bg-page);
+}
+
+@media (max-width: 760px) {
+  .app-shell__inner { align-items: flex-start; padding: var(--space-2) var(--space-3); }
+  .app-shell__actions { gap: var(--space-2); }
+  .app-shell__display-summary > span { display: none; }
+  .app-shell__display-panel { position: fixed; top: var(--header-height); right: var(--space-3); }
 }

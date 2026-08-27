@@ -83,6 +83,44 @@ export function createGmailProvider(googleWorkspace, { pageSize = 30 } = {}) {
     const body = await json(await googleWorkspace.googleFetch(url));
     return { messages: await Promise.all((body.threads || []).map((item) => readThread(item.id, folder))), nextPageToken: body.nextPageToken ?? null };
   }
+  async function currentHistoryId() {
+    const profile = await json(await googleWorkspace.googleFetch(`${API}/profile`));
+    return profile.historyId ? String(profile.historyId) : null;
+  }
+  async function watch({ topicName, labelIds = [] }) {
+    const body = await json(await googleWorkspace.googleFetch(`${API}/watch`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ topicName, ...(labelIds.length ? { labelIds } : {}) }) }));
+    return { historyId: body.historyId ? String(body.historyId) : null, expirationAt: body.expiration ? new Date(Number(body.expiration)).toISOString() : null };
+  }
+  async function stopWatch() { await json(await googleWorkspace.googleFetch(`${API}/stop`, { method: "POST" })); return { ok: true }; }
+  async function history({ startHistoryId, pageToken = null } = {}) {
+    const url = new URL(`${API}/history`);
+    url.searchParams.set("startHistoryId", String(startHistoryId));
+    url.searchParams.set("maxResults", "500");
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+    try {
+      return await json(await googleWorkspace.googleFetch(url));
+    } catch (error) {
+      if (error?.status === 404) error.historyExpired = true;
+      throw error;
+    }
+  }
+  async function listHistory({ startHistoryId }) {
+    const changedThreadIds = new Set(), deletedMessageIds = new Set();
+    let pageToken = null, historyId = String(startHistoryId);
+    do {
+      const page = await history({ startHistoryId, pageToken });
+      historyId = page.historyId ? String(page.historyId) : historyId;
+      for (const event of page.history || []) {
+        for (const item of [...(event.messages || []), ...(event.messagesAdded || []).map((entry) => entry.message), ...(event.labelsAdded || []).map((entry) => entry.message), ...(event.labelsRemoved || []).map((entry) => entry.message)]) if (item?.threadId) changedThreadIds.add(String(item.threadId));
+        for (const entry of event.messagesDeleted || []) {
+          if (entry.message?.id) deletedMessageIds.add(String(entry.message.id));
+          if (entry.message?.threadId) changedThreadIds.add(String(entry.message.threadId));
+        }
+      }
+      pageToken = page.nextPageToken ?? null;
+    } while (pageToken);
+    return { historyId, changedThreadIds:[...changedThreadIds], deletedMessageIds:[...deletedMessageIds] };
+  }
   async function command({ threadIds, command, labelId }) {
     const changes = { archive: { removeLabelIds: ["INBOX"] }, mark_read: { removeLabelIds: ["UNREAD"] }, mark_unread: { addLabelIds: ["UNREAD"] }, star: { addLabelIds: ["STARRED"] }, unstar: { removeLabelIds: ["STARRED"] }, label: { addLabelIds: [labelId] }, move: { addLabelIds: [labelId], removeLabelIds: ["INBOX"] } };
     for (const threadId of threadIds || []) {
@@ -106,5 +144,5 @@ export function createGmailProvider(googleWorkspace, { pageSize = 30 } = {}) {
     return { providerDraftId: draft.id, providerMessageId: draft.message?.id ?? null, threadId: draft.message?.threadId ?? input.threadId ?? null };
   }
   async function attachment(messageId, attachmentId) { const body = await json(await googleWorkspace.googleFetch(`${API}/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`)); return fromBase64Url(body.data); }
-  return { labels, list, readMessage, readThread, command, send, createDraft, attachment };
+  return { labels, list, readMessage, readThread, currentHistoryId, listHistory, watch, stopWatch, command, send, createDraft, attachment };
 }

@@ -6,7 +6,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import sqlite3 from "sqlite3";
 import { open } from "sqlite";
 import { createCommunicationRepository } from "../server/features/communications/communicationRepository.js";
-import { findRelationshipSuggestions, preserveCommunicationLinks, resolveCanonicalRelationship } from "../server/features/communications/communicationsService.js";
+import { findRelationshipSuggestions, preserveCommunicationLinks, resolveCanonicalRelationship, resolveMailboxCapabilities } from "../server/features/communications/communicationsService.js";
+import { GMAIL_MODIFY_SCOPE } from "../server/features/integrations/googleWorkspaceService.js";
 
 async function fixture(t) {
   const root=await mkdtemp(path.join(os.tmpdir(),"qs-communication-links-")),db=await open({filename:path.join(root,"test.db"),driver:sqlite3.Database});
@@ -22,9 +23,9 @@ async function fixture(t) {
     CREATE TABLE communication_messages(
       id TEXT PRIMARY KEY,provider TEXT NOT NULL,provider_message_id TEXT,provider_thread_id TEXT,mailbox_id TEXT,direction TEXT NOT NULL,folder TEXT NOT NULL,status TEXT NOT NULL,
       from_json TEXT NOT NULL,to_json TEXT NOT NULL,cc_json TEXT NOT NULL,bcc_json TEXT NOT NULL,subject TEXT NOT NULL,body_html TEXT NOT NULL,body_text TEXT NOT NULL,
-      in_reply_to_provider_message_id TEXT,links_json TEXT NOT NULL,error_message TEXT,sent_at TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL
+      in_reply_to_provider_message_id TEXT,links_json TEXT NOT NULL,error_message TEXT,sent_at TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,provider_state_json TEXT NOT NULL DEFAULT '{}'
     );
-    CREATE TABLE communication_attachments(id TEXT PRIMARY KEY,communication_message_id TEXT NOT NULL,file_name TEXT NOT NULL,media_type TEXT NOT NULL,size_bytes INTEGER NOT NULL,storage_key TEXT,provider_attachment_id TEXT,drive_file_id TEXT,sha256 TEXT,created_at TEXT NOT NULL);
+    CREATE TABLE communication_attachments(id TEXT PRIMARY KEY,communication_message_id TEXT NOT NULL,file_name TEXT NOT NULL,media_type TEXT NOT NULL,size_bytes INTEGER NOT NULL,storage_key TEXT,provider_attachment_id TEXT,drive_file_id TEXT,sha256 TEXT,created_at TEXT NOT NULL,content_id TEXT,is_inline INTEGER NOT NULL DEFAULT 0);
   `);
   await db.run("INSERT INTO clients VALUES(?,?,?,NULL)","client-1","Exact Client","exact.client@example.test");
   await db.run("INSERT INTO enquiries VALUES(?,?,?,?,?,NULL)","enquiry-1","EF-ENQ-012","Exact Enquiry","exact.client@example.test","new");
@@ -50,6 +51,8 @@ test("provider enrichment preserves explicit canonical links",async t=>{
   await repository.addLink("message-local-1",{kind:"estimate",id:"estimate-1"});
   await repository.addLink("message-local-1",{kind:"estimate",id:"estimate-1"});
   assert.deepEqual((await repository.get("message-local-1")).links,[clientLink,{kind:"estimate",id:"estimate-1"}]);
+  await repository.removeLink("message-local-1",clientLink);
+  assert.deepEqual((await repository.get("message-local-1")).links,[{kind:"estimate",id:"estimate-1"}]);
 });
 
 test("exact evidence produces conservative canonical suggestions without auto-linking",async t=>{
@@ -64,4 +67,12 @@ test("exact evidence produces conservative canonical suggestions without auto-li
   assert.equal((await resolveCanonicalRelationship(db,"order","estimate-1")).id,"estimate-1");
   assert.equal((await resolveCanonicalRelationship(db,"supplier","ZYLE")).id,"ZYLE");
   assert.equal(await resolveCanonicalRelationship(db,"order","missing"),undefined);
+});
+
+test("mutating mailbox capabilities follow the persisted gmail.modify grant",()=>{
+  const ids=["archive","trash","read_state","star","move","labels"];
+  const before=resolveMailboxCapabilities({connected:true,scopes:["https://www.googleapis.com/auth/gmail.readonly","https://www.googleapis.com/auth/gmail.compose"]});
+  assert.deepEqual(before.map(item=>item.id),ids);assert.ok(before.every(item=>item.available===false));
+  const after=resolveMailboxCapabilities({connected:true,scopes:["https://www.googleapis.com/auth/gmail.readonly",GMAIL_MODIFY_SCOPE]});assert.ok(after.every(item=>item.available===true));
+  const disconnected=resolveMailboxCapabilities({connected:false,scopes:[GMAIL_MODIFY_SCOPE]});assert.ok(disconnected.every(item=>item.available===false));
 });

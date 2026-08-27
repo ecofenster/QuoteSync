@@ -11,20 +11,25 @@ export type MailboxCapability = { id:"archive"|"trash"|"read_state"|"star"|"move
 export type MailboxMetadata = { provider:"google_workspace"|"microsoft_365";labels:MailboxLabelView[];capabilities:MailboxCapability[] };
 export type CommunicationContextSuggestion = { kind:"enquiry"|"client"|"project"|"estimate"|"order"|"supplier"|"supplier_quotation";id:string;label:string;evidence:string;autoLinkAllowed:false };
 export type CommunicationContextResult = { links:CommunicationLinkView[];suggestions:CommunicationContextSuggestion[] };
+export type CommunicationChangeState = { mode:"push"|"bounded_reconciliation";pushConfigured:boolean;projectionVersion:number;watchStatus:string;watchExpirationAt:string|null;lastNotificationAt:string|null;lastReconciledAt:string|null };
 export type GoogleWorkspaceCapability = { available:boolean;missingScopes:string[];rootConfigured?:boolean };
 export type GoogleWorkspaceState = "not_configured"|"configured_encryption_unavailable"|"configured_disconnected"|"connected"|"reconnect_required";
 export type GoogleWorkspaceEncryptionState = "available"|"missing"|"invalid"|"decryption_failed";
 export type GoogleWorkspaceStatus = { provider:"google_workspace";state:GoogleWorkspaceState;configured:boolean;configurationStored:boolean;encryptionConfigured:boolean;encryptionState:GoogleWorkspaceEncryptionState;connected:boolean;connectionStatus:string;account:{id:string|null;email:string|null;name:string|null}|null;scopes:string[];capabilities:{gmail:GoogleWorkspaceCapability;drive:GoogleWorkspaceCapability};clientId:string|null;redirectUri:string|null;clientIdHint:string|null;enquiriesRootFolderId:string|null;estimatesRootFolderId:string|null;ordersRootFolderId:string|null;folderTemplate:Record<string,string>;infrastructureMessage:string|null;error:string|null };
+export type MailboxProjection = {messages:CommunicationMessageView[];nextPageToken:string|null;source:"cache";sync?:{state:"synced";strategy:string;lastSuccessAt:string;cursorStored?:boolean}};
 
 const json = { "Content-Type": "application/json" };
 export const communicationsApi = {
   status:()=>apiFetch("/api/communications/status") as Promise<GoogleWorkspaceStatus>,
   mailbox:()=>apiFetch("/api/communications/mailbox") as Promise<MailboxMetadata>,
-  list:(folder:CommunicationMailboxView,q="",pageToken:string|null=null)=>apiFetch(`/api/communications/messages?folder=${encodeURIComponent(folder)}&q=${encodeURIComponent(q)}${pageToken?`&page_token=${encodeURIComponent(pageToken)}`:""}`) as Promise<{messages:CommunicationMessageView[];nextPageToken:string|null}>,
+  list:(folder:CommunicationMailboxView,q="",pageToken:string|null=null)=>apiFetch(`/api/communications/messages?folder=${encodeURIComponent(folder)}&q=${encodeURIComponent(q)}${pageToken?`&page_token=${encodeURIComponent(pageToken)}`:""}`) as Promise<MailboxProjection>,
+  sync:(folder:CommunicationMailboxView,q="",pageToken:string|null=null)=>apiFetch("/api/communications/sync",{method:"POST",headers:json,body:JSON.stringify({folder,query:q,pageToken})}) as Promise<MailboxProjection>,
   read:(id:string)=>apiFetch(`/api/communications/messages/${encodeURIComponent(id)}`) as Promise<CommunicationMessageView>,
   thread:(id:string)=>apiFetch(`/api/communications/threads/${encodeURIComponent(id)}`) as Promise<CommunicationMessageView>,
   context:(id:string)=>apiFetch(`/api/communications/messages/${encodeURIComponent(id)}/context`) as Promise<CommunicationContextResult>,
   link:(id:string,input:Pick<CommunicationContextSuggestion,"kind"|"id">)=>apiFetch(`/api/communications/messages/${encodeURIComponent(id)}/links`,{method:"POST",headers:json,body:JSON.stringify(input)}) as Promise<CommunicationContextResult>,
+  unlink:(id:string,input:CommunicationLinkView)=>apiFetch(`/api/communications/messages/${encodeURIComponent(id)}/links`,{method:"DELETE",headers:json,body:JSON.stringify(input)}) as Promise<CommunicationContextResult>,
+  changeState:()=>apiFetch("/api/communications/change-state") as Promise<CommunicationChangeState>,
   command:(threadIds:string[],command:string,labelId?:string)=>apiFetch("/api/communications/commands",{method:"POST",headers:json,body:JSON.stringify({threadIds,command,labelId})}) as Promise<{ok:true}>,
   draft:(input:Record<string,unknown>)=>apiFetch("/api/communications/drafts",{method:"POST",headers:json,body:JSON.stringify(input)}) as Promise<CommunicationMessageView>,
   send:(input:Record<string,unknown>)=>apiFetch("/api/communications/send",{method:"POST",headers:json,body:JSON.stringify(input)}) as Promise<CommunicationMessageView>,

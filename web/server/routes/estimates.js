@@ -596,6 +596,7 @@ router.delete('/:id/purge', async (req, res) => {
     }
     res.json(result);
   } catch (error) {
+    if (Number(error?.status) === 409) return res.status(409).json({ error: error.message, code: error.code || 'estimate_purge_blocked', dependencies: Array.isArray(error.dependencies) ? error.dependencies : [] });
     console.error('DELETE /api/estimates/:id/purge failed', error);
     res.status(500).json({ error: 'Failed to purge estimate' });
   }

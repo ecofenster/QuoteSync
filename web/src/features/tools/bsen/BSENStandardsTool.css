@@ -18,14 +18,14 @@
 
 .bsen-title {
   color: var(--qs-theme-text);
-  font-size: 20px;
+  font-size: var(--qs-type-section-title);
   font-weight: 900;
 }
 
 .bsen-intro {
   max-width: 900px;
   color: var(--qs-theme-text-secondary);
-  font-size: 13px;
+  font-size: var(--qs-type-label);
 }
 
 .bsen-search-grid {
@@ -62,7 +62,7 @@
 }
 
 .bsen-input {
-  font-size: 14px;
+  font-size: var(--qs-type-body);
   border-radius: 12px;
 }
 
@@ -71,13 +71,13 @@
   height: 40px;
   border-radius: 12px;
   padding: 0 12px;
-  font-size: 14px;
+  font-size: var(--qs-type-body);
   font-weight: 800;
 }
 
 .bsen-chip {
   border-radius: 999px;
-  font-size: 12px;
+  font-size: var(--qs-type-meta);
 }
 
 .bsen-chip--active {
@@ -92,12 +92,12 @@
 .bsen-section-title,
 .bsen-detail-section-title {
   color: var(--qs-theme-text);
-  font-size: 13px;
+  font-size: var(--qs-type-label);
   font-weight: 900;
 }
 
 .bsen-section-title {
-  font-size: 14px;
+  font-size: var(--qs-type-body);
 }
 
 .bsen-chip-row {
@@ -109,12 +109,12 @@
 .bsen-count,
 .bsen-eyebrow {
   color: var(--qs-theme-text-muted);
-  font-size: 12px;
+  font-size: var(--qs-type-meta);
   font-weight: 700;
 }
 
 .bsen-eyebrow {
-  font-size: 11px;
+  font-size: var(--qs-type-meta);
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -165,13 +165,13 @@
 
 .bsen-list-item__code {
   color: var(--qs-theme-text);
-  font-size: 13px;
+  font-size: var(--qs-type-label);
   font-weight: 900;
 }
 
 .bsen-list-item__title {
   color: var(--qs-theme-text-secondary);
-  font-size: 12px;
+  font-size: var(--qs-type-meta);
   line-height: 1.35;
 }
 
@@ -185,32 +185,32 @@
 }
 
 .bsen-badge {
-  font-size: 11px;
+  font-size: var(--qs-type-meta);
   font-weight: 800;
   white-space: nowrap;
 }
 
 .bsen-tag {
   padding: 6px 10px;
-  font-size: 12px;
+  font-size: var(--qs-type-meta);
   font-weight: 700;
   color: var(--qs-theme-text);
 }
 
 .bsen-detail-title {
   color: var(--qs-theme-text);
-  font-size: 16px;
+  font-size: var(--qs-type-important);
   font-weight: 800;
 }
 
 .bsen-detail-copy {
   color: var(--qs-theme-text-secondary);
-  font-size: 14px;
+  font-size: var(--qs-type-body);
   line-height: 1.6;
 }
 
 .bsen-empty {
   color: var(--qs-theme-text-secondary);
-  font-size: 14px;
+  font-size: var(--qs-type-body);
 }
 

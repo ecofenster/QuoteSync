@@ -47,6 +47,15 @@
   align-content: start;
 }
 
+.app-main-workspace[data-scroll-owner="feature"] > .qs-migrated-92 .clients-surface-header {
+  flex: 0 0 auto;
+}
+
+.app-main-workspace[data-scroll-owner="feature"] > .qs-migrated-92 .clients-surface-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .clients-surface-list {
   display: grid;
   gap: 12px;
@@ -131,7 +140,7 @@
 }
 
 .clients-surface-detail__label {
-  font-size: 11px;
+  font-size: var(--qs-type-meta);
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;

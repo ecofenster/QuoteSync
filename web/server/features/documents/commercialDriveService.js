@@ -46,6 +46,11 @@ export function createCommercialDriveService(db, options = {}) {
 
   async function recordFolder({ accountId = null, entityKind, entityId, logicalKey, name, parentLogicalKey = null, folder, parentId, path, provenance = "quotesuite" }) {
     const timestamp = now().toISOString();
+    const existingProviderFolder = await db.get("SELECT * FROM canonical_drive_folders WHERE provider='google_drive' AND entity_kind=? AND entity_id=? AND provider_folder_id=? ORDER BY created_at LIMIT 1", entityKind, entityId, folder.id);
+    if (existingProviderFolder) {
+      await db.run("UPDATE canonical_drive_folders SET provider_account_id=?,name=?,parent_logical_key=?,provider_parent_folder_id=?,folder_path=?,provenance=?,last_seen_at=?,removed_at=NULL,updated_at=? WHERE id=?", accountId, folder.name || name, parentLogicalKey, parentId || null, path || folder.name || name, provenance, timestamp, timestamp, existingProviderFolder.id);
+      return db.get("SELECT * FROM canonical_drive_folders WHERE id=?", existingProviderFolder.id);
+    }
     await db.run(`INSERT INTO canonical_drive_folders(id,provider,provider_account_id,entity_kind,entity_id,logical_key,name,parent_logical_key,provider_folder_id,provider_parent_folder_id,folder_path,provenance,last_seen_at,removed_at,created_at,updated_at)
       VALUES(?,'google_drive',?,?,?,?,?,?,?,?,?,?,?,NULL,?,?)
       ON CONFLICT(provider,entity_kind,entity_id,logical_key) DO UPDATE SET provider_account_id=excluded.provider_account_id,name=excluded.name,parent_logical_key=excluded.parent_logical_key,provider_folder_id=excluded.provider_folder_id,provider_parent_folder_id=excluded.provider_parent_folder_id,folder_path=excluded.folder_path,provenance=excluded.provenance,last_seen_at=excluded.last_seen_at,removed_at=NULL,updated_at=excluded.updated_at`,
@@ -121,6 +126,69 @@ export function createCommercialDriveService(db, options = {}) {
     return db.get(`SELECT p.*,c.client_ref,c.name client_name FROM projects p JOIN clients c ON c.id=p.client_id WHERE p.id=? AND p.deleted_at IS NULL AND c.deleted_at IS NULL`, projectId);
   }
 
+  async function clientContext(clientId) {
+    return db.get("SELECT id,client_ref,name FROM clients WHERE id=? AND deleted_at IS NULL", clientId);
+  }
+
+  async function locateClientFolders(context, rootId) {
+    const rootChildren = await provider.listChildren({ parentId: rootId });
+    const yearFolders = rootChildren.filter((item) => item.mimeType === GOOGLE_DRIVE_FOLDER_MIME_TYPE && /^\d{4}$/.test(String(item.name || "").trim()));
+    const matches = [];
+    for (const yearFolder of yearFolders) {
+      const yearChildren = await provider.listChildren({ parentId: yearFolder.id });
+      for (const clientFolder of yearChildren.filter((item) => item.mimeType === GOOGLE_DRIVE_FOLDER_MIME_TYPE && matchesReferencePrefix(item.name, context.client_ref))) matches.push({ yearFolder, clientFolder });
+    }
+    return { matches, yearsSearched: yearFolders.map((item) => String(item.name)).sort() };
+  }
+
+  async function discoverClient(clientId) {
+    const root = await availableRoot("project");
+    if (!root.rootId) throw error("Google Drive Estimates root is unavailable.", 409, "drive_root_required");
+    const context = await clientContext(clientId);
+    if (!context) throw error("Client not found.", 404, "client_not_found");
+    const located = await locateClientFolders(context, root.rootId);
+    if (!located.matches.length) return { status: "client_folder_not_matched", clientId, yearsSearched: located.yearsSearched, foldersVisited: 0, filesDiscovered: 0 };
+    const accountId = root.workspaceStatus.account?.id || "", timestamp = now().toISOString(), visited = new Set(), seenFiles = new Set();
+    const standardFolders = new Map([
+      [normalized("Drawings (Client)"), "client_drawing"],
+      [normalized("Drawings (Ecofenster)"), "ecofenster_drawing"],
+      [normalized("Estimates"), "estimate_document"],
+      [normalized("Invoices"), "invoice"],
+      [normalized("Orders"), "order_document"],
+    ]);
+    const queue = [];
+    for (const { yearFolder, clientFolder } of located.matches) {
+      const logicalKey = `client_root:${yearFolder.name}:${clientFolder.id}`, path = `${yearFolder.name}/${clientFolder.name}`;
+      await recordFolder({ accountId, entityKind: "client", entityId: clientId, logicalKey, name: clientFolder.name, parentLogicalKey: `year:${yearFolder.name}`, folder: clientFolder, parentId: yearFolder.id, path, provenance: "client_reference" });
+      queue.push({ folder: clientFolder, path, logicalKey, documentType: "client_document" });
+    }
+    while (queue.length) {
+      const parent = queue.shift();
+      if (!parent || visited.has(parent.folder.id)) continue;
+      visited.add(parent.folder.id);
+      if (visited.size > 1000) throw error("Drive Client discovery exceeded the safe folder limit.", 422, "drive_tree_limit");
+      for (const item of await provider.listChildren({ parentId: parent.folder.id, includeTrashed: true })) {
+        if (item.mimeType === GOOGLE_DRIVE_FOLDER_MIME_TYPE) {
+          if (item.trashed) continue;
+          const path = `${parent.path}/${item.name}`, logicalKey = `discovered:${item.id}`, documentType = standardFolders.get(normalized(item.name)) || parent.documentType;
+          await recordFolder({ accountId, entityKind: "client", entityId: clientId, logicalKey, name: item.name, parentLogicalKey: parent.logicalKey, folder: item, parentId: parent.folder.id, path, provenance: standardFolders.has(normalized(item.name)) ? "standard_folder" : "discovered_provider_id" });
+          queue.push({ folder: item, path, logicalKey, documentType });
+          continue;
+        }
+        seenFiles.add(item.id);
+        const fileTimestamp = item.modifiedTime || item.createdTime || timestamp;
+        await db.run(`INSERT INTO canonical_documents(id,provider,provider_account_id,provider_file_id,provider_folder_id,enquiry_id,client_id,project_id,estimate_id,order_id,supplier_id,supplier_quotation_id,document_type,file_name,mime_type,size_bytes,provider_created_at,provider_modified_at,provider_version,provider_revision,checksum,web_view_link,folder_path,trashed,removed_at,discovered_at,last_seen_at,updated_at)
+          VALUES(?,'google_drive',?,?,?,NULL,?,NULL,NULL,NULL,NULL,NULL,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?,?)
+          ON CONFLICT(provider,provider_account_id,provider_file_id) DO UPDATE SET provider_folder_id=excluded.provider_folder_id,client_id=excluded.client_id,document_type=CASE WHEN canonical_documents.project_id IS NULL THEN excluded.document_type ELSE canonical_documents.document_type END,file_name=excluded.file_name,mime_type=excluded.mime_type,size_bytes=excluded.size_bytes,provider_created_at=excluded.provider_created_at,provider_modified_at=excluded.provider_modified_at,provider_version=excluded.provider_version,provider_revision=excluded.provider_revision,checksum=excluded.checksum,web_view_link=excluded.web_view_link,folder_path=excluded.folder_path,trashed=excluded.trashed,removed_at=NULL,last_seen_at=excluded.last_seen_at,updated_at=excluded.updated_at`,
+          randomUUID(), accountId, item.id, parent.folder.id, clientId, parent.documentType, String(item.name || "Untitled Drive file"), String(item.mimeType || "application/octet-stream"), Number(item.size || 0), item.createdTime || null, fileTimestamp, item.version == null ? null : String(item.version), item.version == null ? null : String(item.version), item.md5Checksum || null, item.webViewLink || null, parent.path, item.trashed ? 1 : 0, timestamp, timestamp, timestamp);
+      }
+    }
+    if (seenFiles.size) await db.run(`UPDATE canonical_documents SET removed_at=COALESCE(removed_at,?),updated_at=? WHERE provider='google_drive' AND provider_account_id=? AND client_id=? AND project_id IS NULL AND estimate_id IS NULL AND provider_file_id NOT IN (${[...seenFiles].map(() => "?").join(",")})`, timestamp, timestamp, accountId, clientId, ...seenFiles);
+    else await db.run("UPDATE canonical_documents SET removed_at=COALESCE(removed_at,?),updated_at=? WHERE provider='google_drive' AND provider_account_id=? AND client_id=? AND project_id IS NULL AND estimate_id IS NULL", timestamp, timestamp, accountId, clientId);
+    if (visited.size) await db.run(`UPDATE canonical_drive_folders SET removed_at=COALESCE(removed_at,?),updated_at=? WHERE provider='google_drive' AND provider_account_id=? AND entity_kind='client' AND entity_id=? AND provider_folder_id NOT IN (${[...visited].map(() => "?").join(",")})`, timestamp, timestamp, accountId, clientId, ...visited);
+    return { status: "project_assignment_pending", clientId, yearsSearched: located.yearsSearched, clientFoldersMatched: located.matches.length, foldersVisited: visited.size, filesDiscovered: seenFiles.size };
+  }
+
   async function provisionProject(projectId) {
     const root = await availableRoot("project");
     if (!root.rootId) return { status: root.status, projectId };
@@ -182,6 +250,10 @@ export function createCommercialDriveService(db, options = {}) {
       const matches = children.filter((item) => item.mimeType === GOOGLE_DRIVE_FOLDER_MIME_TYPE && normalized(item.name) === projectName);
       if (matches.length === 1) return { yearFolder, clientFolder, projectFolder: matches[0], provenance: "canonical_project_folder" };
     }
+    const clientProjects = await db.get("SELECT COUNT(*) count FROM projects WHERE client_id=? AND context_year=? AND deleted_at IS NULL", context.client_id, Number(year));
+    const clientMappings = await db.all("SELECT provider_folder_id FROM canonical_drive_folders WHERE provider='google_drive' AND entity_kind='client' AND entity_id=? AND logical_key LIKE ? AND removed_at IS NULL", context.client_id, `client_root:${year}:%`);
+    const mappedCandidates = clientCandidates.filter((candidate) => clientMappings.some((savedClient) => savedClient.provider_folder_id === candidate.id));
+    if (clientProjects?.count === 1 && mappedCandidates.length === 1) return { yearFolder, clientFolder: mappedCandidates[0], projectFolder: mappedCandidates[0], provenance: "reviewed_project_client_folder" };
     return null;
   }
 
@@ -235,10 +307,11 @@ export function createCommercialDriveService(db, options = {}) {
     }
     if (seenFiles.size) await db.run(`UPDATE canonical_documents SET removed_at=COALESCE(removed_at,?),updated_at=? WHERE provider='google_drive' AND provider_account_id=? AND project_id=? AND provider_file_id NOT IN (${[...seenFiles].map(() => "?").join(",")})`, timestamp, timestamp, accountId, projectId, ...seenFiles);
     else await db.run("UPDATE canonical_documents SET removed_at=COALESCE(removed_at,?),updated_at=? WHERE provider='google_drive' AND provider_account_id=? AND project_id=?", timestamp, timestamp, accountId, projectId);
+    if (seen.size) await db.run(`UPDATE canonical_drive_folders SET removed_at=COALESCE(removed_at,?),updated_at=? WHERE provider='google_drive' AND provider_account_id=? AND entity_kind='project' AND entity_id=? AND provider_folder_id NOT IN (${[...seen].map(() => "?").join(",")})`, timestamp, timestamp, accountId, projectId, ...seen);
     return { status: "synced", projectId, provenance: located.provenance, foldersVisited: seen.size, filesDiscovered };
   }
 
-  return { provisionEnquiry, discoverEnquiry, provisionProject, provisionEstimate, discoverProject, buildCanonicalClientFolderName, buildCanonicalEstimateFolderName };
+  return { provisionEnquiry, discoverEnquiry, discoverClient, provisionProject, provisionEstimate, discoverProject, buildCanonicalClientFolderName, buildCanonicalEstimateFolderName };
 }
 
 const clean = (value) => String(value || "").trim();

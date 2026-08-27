@@ -34,9 +34,9 @@ test("status rendering uses accessible text as well as colour", async () => {
 });
 
 test("chronology remains ordered and displays the current checkpoint", () => {
-  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 48 }, (_, index) => index + 1));
+  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 53 }, (_, index) => index + 1));
   assert.equal(ROADMAP_CHRONOLOGY.find((entry) => entry.title === "Checkpoint stabilization")?.checkpointSha, ROADMAP_CHECKPOINT_SHA);
-  assert.match(ROADMAP_CHRONOLOGY.at(-1)?.title ?? "", /Canonical Enquiry, Client and Project identity foundation/);
+  assert.match(ROADMAP_CHRONOLOGY.at(-1)?.title ?? "", /Gmail live-sync and omnichannel/);
   assert.equal(ROADMAP_CHECKPOINT_SHA, "ed6537b99f0930357e19ea1f505958e088385ce0");
 });
 
@@ -58,13 +58,22 @@ test("platform readiness matches the approved audit classification", () => {
   assert.match(DEVELOPMENT_ORDER[1], /Configurator development continues as a major parallel programme/);
 });
 
-test("CRM lifecycle and Add Client cleanup are recorded without changing Client UI", () => {
+test("CRM lifecycle foundation and deferred Add Client cleanup are recorded", () => {
   const lifecycle = all.find((item) => item.id === "crm-lifecycle");
   const cleanup = all.find((item) => item.id === "crm-add-client-cleanup");
-  assert.equal(lifecycle?.status, "not_started");
-  assert.match(lifecycle?.summary ?? "", /Contact\/Person.*Company.*Enquiry.*Opportunity.*Client\/Customer.*Estimate\/Quotation.*Order\/Sold Project/s);
+  assert.equal(lifecycle?.status, "in_progress");
+  assert.match(lifecycle?.summary ?? "", /Enquiry → Client → Project → Estimate → Order/);
+  assert.match(lifecycle?.summary ?? "", /EF-ENQ.*EF-CL.*immutable internal ID.*without public EF-PRJ/s);
+  assert.match((lifecycle?.notes||[]).join(" "),/Direct Web Enquiry intake.*public integration contract.*WordPress/s);
+  assert.match((lifecycle?.notes||[]).join(" "),/rate limiting.*bot.*replay.*untrusted-upload/s);
   assert.equal(cleanup?.status, "not_started");
   assert.match(cleanup?.deferredReason ?? "", /controls remain unchanged/);
+});
+
+test("communications roadmap keeps Email dedicated and scopes omnichannel business history",()=>{
+  const item=all.find(entry=>entry.id==="communications"),text=[item?.summary,...(item?.notes||[])].join(" "),children=(item?.children||[]).map(child=>child.title).join(" ");
+  assert.match(text,/Email remains a dedicated provider-mailbox workspace/);assert.match(text,/Pub\/Sub notifications are signals/);assert.match(text,/WhatsApp Business is the first planned/);assert.match(text,/assigned, handling and responding user attribution/);assert.match(text,/unified activity timeline/);
+  for(const channel of ["WhatsApp","Facebook","Instagram","TikTok","LinkedIn","SMS","Calls"])assert.match(children,new RegExp(channel));
 });
 
 test("roadmap is static and has no database or production Client mutation dependency", async () => {
@@ -79,7 +88,12 @@ test("roadmap is static and has no database or production Client mutation depend
 
 test("end-to-end quotation programme is linked without duplicate canonical systems", () => {
   const serialized = JSON.stringify(all);
-  for (const phrase of ["Alternative position customer offers", "Installation Materials Included", "Installation Included", "Enquiry → Qualified / Estimate → Quotation → Order", "Gmail/Google Workspace", "Microsoft 365/Outlook", "Google Drive API", "Contextual Next Action", "Automatic 3-day issued quotation Follow Up", "Customer Portal", "electronic acceptance", "Supplier Order Sent", "milestone", "canonical project/site pins"]) assert.match(serialized, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+  for (const phrase of ["Alternative position customer offers", "Installation Materials Included", "Installation Included", "Enquiry → Client → Project → Estimate → Order", "Gmail / Google Workspace", "Microsoft 365 / Outlook", "Google Drive API", "Contextual Next Action", "Automatic 3-day issued quotation Follow Up", "Customer Portal", "electronic acceptance", "Supplier Order Sent", "milestone", "canonical project/site pins"]) assert.match(serialized, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
   assert.equal(all.filter((item) => item.id === "workflow-orchestration").length, 1);
   assert.equal(all.filter((item) => item.id === "customer-portal").length, 1);
+  assert.match(serialized, /leadSource/);
+  assert.match(serialized, /never infer Project Name from Lead Source/i);
+  assert.match(serialized, /existing Estimates root/i);
+  assert.match(serialized, /Provider configuration is entered once through Administration → Integrations and persists securely/i);
+  assert.match(serialized, /infrastructure-managed master encryption/i);
 });

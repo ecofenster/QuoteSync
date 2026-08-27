@@ -1,3 +1,5 @@
+import { createGoogleWorkspaceService } from "../integrations/googleWorkspaceService.js";
+
 const managedProvider = "quotesuite_managed";
 
 function legacyEstimateScope({ clientId, projectId, estimateId }, alias = "e") {
@@ -22,11 +24,14 @@ function responseScope(input) {
   return { enquiryId: input.enquiryId };
 }
 
-export function createDocumentRecordsService(db) {
+export function createDocumentRecordsService(db, options = {}) {
   async function list(input = {}) {
     const canonicalScope = canonicalDocumentScope(input);
     const legacyScope = legacyEstimateScope(input);
-    const account = await db.get("SELECT account_id FROM integration_oauth_connections WHERE provider='google_workspace' AND status='connected'");
+    const account = await db.get("SELECT account_id,scopes_json,status FROM integration_oauth_connections WHERE provider='google_workspace' AND status='connected'"),workspace=options.workspace||createGoogleWorkspaceService(db,options.workspaceOptions||{}),workspaceStatus=await workspace.status().catch(()=>null);
+    let grantedScopes = []; try { grantedScopes = JSON.parse(account?.scopes_json || "[]"); } catch { grantedScopes = []; }
+    const driveWritable = account?.status === "connected" && grantedScopes.includes("https://www.googleapis.com/auth/drive") && workspaceStatus?.connected && workspaceStatus?.capabilities?.drive?.available;
+    const uploadStateFor=(row,providerAccountId)=>row.removed_at?"absent":row.provider!=="google_drive"?"read_only":!workspaceStatus||!workspaceStatus.connected?"disconnected":providerAccountId!==account?.account_id||!grantedScopes.includes("https://www.googleapis.com/auth/drive")||!workspaceStatus.capabilities?.drive?.available?"read_only":"writable";
     const supplierRows = legacyScope ? await db.all(`
       SELECT a.id,a.original_file_name,a.media_type,a.size_bytes,a.sha256,a.created_at,a.document_kind,
         r.id revision_id,r.revision_sequence,r.supplier_quotation_number,r.supplier_revision,
@@ -53,7 +58,7 @@ export function createDocumentRecordsService(db) {
       WHERE ${legacyScope.sql} AND e.deleted_at IS NULL AND c.deleted_at IS NULL
       ORDER BY d.created_at DESC`, legacyScope.value) : [];
     const legacyFolderRows = legacyScope ? await db.all(`
-      SELECT f.*,e.client_id,e.project_id,e.estimate_ref,COALESCE(p.name,c.project_name) project_name
+      SELECT f.*,'estimate' entity_kind,e.id entity_id,e.client_id,e.project_id,e.estimate_ref,COALESCE(p.name,c.project_name) project_name
       FROM drive_project_folders f JOIN estimates e ON e.id=f.estimate_id JOIN clients c ON c.id=e.client_id
       LEFT JOIN projects p ON p.id=e.project_id
       WHERE ${legacyScope.sql} AND e.deleted_at IS NULL AND c.deleted_at IS NULL
@@ -67,6 +72,8 @@ export function createDocumentRecordsService(db) {
       ORDER BY COALESCE(d.provider_modified_at,d.updated_at) DESC`, legacyScope.value) : [];
     const syncRows = legacyScope ? await db.all(`SELECT s.* FROM drive_document_sync_states s JOIN estimates e ON e.id=s.estimate_id JOIN clients c ON c.id=e.client_id WHERE ${legacyScope.sql} AND e.deleted_at IS NULL AND c.deleted_at IS NULL ORDER BY s.updated_at DESC`, legacyScope.value) : [];
     const canonicalRows = await db.all(`SELECT d.*,e.estimate_ref,p.name project_name FROM canonical_documents d LEFT JOIN estimates e ON e.id=d.estimate_id LEFT JOIN projects p ON p.id=d.project_id WHERE ${canonicalScope.sql} ORDER BY COALESCE(d.provider_modified_at,d.updated_at) DESC`, canonicalScope.value);
+    const scope = responseScope(input), scopeKind = Object.keys(scope)[0].replace(/Id$/, ""), scopeId = Object.values(scope)[0];
+    const canonicalSync = await db.get("SELECT * FROM canonical_document_sync_states WHERE scope_kind=? AND scope_id=? ORDER BY updated_at DESC LIMIT 1", scopeKind, scopeId);
     const canonicalFolderRows = input.enquiryId
       ? await db.all("SELECT f.*,NULL client_id,NULL project_id,NULL estimate_id,NULL estimate_ref,NULL project_name FROM canonical_drive_folders f WHERE f.entity_kind='enquiry' AND f.entity_id=? ORDER BY f.created_at", input.enquiryId)
       : input.estimateId
@@ -85,8 +92,8 @@ export function createDocumentRecordsService(db) {
     return {
       scope: responseScope(input),
       documents: [...supplierDocuments, ...quotationDocuments, ...discoveredDocuments, ...canonicalDocuments].sort((a, b) => String(b.modifiedAt).localeCompare(String(a.modifiedAt))),
-      folders: [...legacyFolderRows, ...canonicalFolderRows].map((row) => ({ id: row.id, provider: row.provider, providerAccountId: row.provider_account_id ?? account?.account_id ?? null, providerFolderId: row.provider_folder_id, parentLogicalKey: row.parent_logical_key, logicalKey: row.logical_key, name: row.name, clientId: row.client_id, projectId: row.project_id || null, estimateId: row.estimate_id || null, estimateRef: row.estimate_ref || "", projectName: row.project_name || row.estimate_ref || "", modifiedAt: row.updated_at, folderPath: row.folder_path || row.name, removedAt: row.removed_at || null })),
-      sync: { state: syncing ? "syncing" : failedSync ? "failed" : lastSuccessAt ? "synced" : "idle", strategy: syncRows[0]?.strategy || "full_enumeration", lastAttemptAt: syncRows[0]?.last_attempt_at || null, lastSuccessAt, error: failedSync?.error_message || null, cached: true },
+      folders: [...new Map([...legacyFolderRows, ...canonicalFolderRows].map((row) => [`${row.provider}:${row.provider_account_id || account?.account_id || ""}:${row.provider_folder_id}`, row])).values()].map((row) => { const providerAccountId = row.provider_account_id ?? account?.account_id ?? null,uploadState=uploadStateFor(row,providerAccountId); return { id: row.id, provider: row.provider, providerAccountId, providerFolderId: row.provider_folder_id, providerParentFolderId: row.provider_parent_folder_id || null, entityKind: row.entity_kind || "estimate", entityId: row.entity_id || row.estimate_id || null, parentLogicalKey: row.parent_logical_key, logicalKey: row.logical_key, name: row.name, clientId: row.client_id, projectId: row.project_id || null, estimateId: row.estimate_id || null, estimateRef: row.estimate_ref || "", projectName: row.project_name || row.estimate_ref || "", provenance: row.provenance || "legacy", modifiedAt: row.last_seen_at || row.updated_at, folderPath: row.folder_path || row.name, removedAt: row.removed_at || null, openUrl: row.provider === "google_drive" ? `https://drive.google.com/drive/folders/${encodeURIComponent(row.provider_folder_id)}` : null, capabilities:{ upload:uploadState==="writable"&&driveWritable,uploadState } }; }),
+      sync: { state: canonicalSync?.status || (syncing ? "syncing" : failedSync ? "failed" : lastSuccessAt ? "synced" : "idle"), strategy: canonicalSync?.strategy || syncRows[0]?.strategy || "full_enumeration", lastAttemptAt: canonicalSync?.last_attempt_at || syncRows[0]?.last_attempt_at || null, lastSuccessAt: canonicalSync?.last_success_at || lastSuccessAt, error: canonicalSync?.error_message || failedSync?.error_message || null, details: canonicalSync?.details_json ? JSON.parse(canonicalSync.details_json) : null, cached: true },
     };
   }
   return { list };

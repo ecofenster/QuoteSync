@@ -11,3 +11,15 @@
 ## Integration configuration persistence
 
 - Provider configuration is entered once through Administration → Integrations and persists securely. Runtime/server master encryption is infrastructure-managed and must not require normal users to manually reload environment variables or re-enter provider credentials after restart.
+
+## Provider-backed document uploads
+
+- Files uploads must target the currently selected, capability-gated provider folder through the provider-neutral backend boundary. The provider remains binary-content authority; QuoteSuite persists canonical metadata and relationships only after the provider confirms file identity, and must not silently overwrite existing evidence or create a successful document record for a failed upload.
+
+## Provider change notifications
+
+- External provider notifications are change signals, never canonical message or document data. QuoteSuite must reconcile through the provider cursor/delta boundary into the local canonical projection, deduplicate notifications and retain bounded reconciliation as a consistency safety net; webhook authentication material and OAuth tokens remain backend-only.
+
+## Application typography governance
+
+- Ordinary QuoteSuite application typography must use the canonical semantic `--qs-type-*` scale; feature-specific arbitrary font sizing is prohibited. User text-size preferences operate only through the canonical token presets. Specialist Configurator/drawing annotations and generated customer/print documents retain separately reviewed typography contracts and must not be migrated without explicit scope.

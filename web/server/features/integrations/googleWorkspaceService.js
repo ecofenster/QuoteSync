@@ -2,12 +2,14 @@ import { randomBytes } from "node:crypto";
 import { createIntegrationSecretVault } from "./integrationSecretVault.js";
 
 export const GOOGLE_WORKSPACE_PROVIDER = "google_workspace";
+export const GMAIL_MODIFY_SCOPE = "https://www.googleapis.com/auth/gmail.modify";
 export const GOOGLE_WORKSPACE_SCOPES = Object.freeze([
   "openid",
   "email",
   "profile",
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.compose",
+  GMAIL_MODIFY_SCOPE,
   "https://www.googleapis.com/auth/drive",
 ]);
 
@@ -17,6 +19,7 @@ const providerError = (message, status = 502, code = "google_workspace_error") =
 const GMAIL_REQUIRED_SCOPES = Object.freeze([
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.compose",
+  GMAIL_MODIFY_SCOPE,
 ]);
 const DRIVE_REQUIRED_SCOPES = Object.freeze(["https://www.googleapis.com/auth/drive"]);
 
@@ -68,7 +71,9 @@ export function createGoogleWorkspaceService(db, { fetchImpl = fetch, environmen
     const connectedScopes = parse(connected?.scopes_json, []);
     const encryptionAvailable = encryptionState === "available";
     const persistedConnected = connected?.status === "connected";
-    const reconnectRequired = connected?.status === "error" || (persistedConnected && (!connected.encrypted_access_token || !connected.encrypted_refresh_token));
+    const requiredConnectedScopes = [...GMAIL_REQUIRED_SCOPES, ...DRIVE_REQUIRED_SCOPES];
+    const missingRequiredScopes = requiredConnectedScopes.filter((scope) => !connectedScopes.includes(scope));
+    const reconnectRequired = connected?.status === "error" || (persistedConnected && (!connected.encrypted_access_token || !connected.encrypted_refresh_token || missingRequiredScopes.length > 0));
     const state = !configured
       ? "not_configured"
       : !encryptionAvailable
@@ -109,7 +114,7 @@ export function createGoogleWorkspaceService(db, { fetchImpl = fetch, environmen
       ordersRootFolderId: stored?.orders_root_folder_id ?? null,
       folderTemplate: parse(stored?.folder_template_json, {}),
       infrastructureMessage,
-      error: infrastructureMessage || (reconnectRequired ? "Google Workspace must be reconnected by an administrator." : null),
+      error: infrastructureMessage || (reconnectRequired ? "Reconnect Google Workspace to grant the required permissions. Existing configuration has been retained." : null),
     };
   }
 

@@ -75,6 +75,44 @@ const tableStatements = [
     created_at TEXT NOT NULL,
     FOREIGN KEY (communication_message_id) REFERENCES communication_messages(id) ON DELETE CASCADE
   )`,
+  `CREATE TABLE IF NOT EXISTS communication_provider_sync_states (
+    provider TEXT NOT NULL,
+    provider_account_id TEXT NOT NULL,
+    mailbox_view TEXT NOT NULL,
+    provider_cursor TEXT,
+    status TEXT NOT NULL CHECK(status IN ('idle','syncing','synced','failed')),
+    last_attempt_at TEXT,
+    last_success_at TEXT,
+    error_message TEXT,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(provider, provider_account_id, mailbox_view)
+  )`,
+  `CREATE TABLE IF NOT EXISTS communication_provider_watch_states (
+    provider TEXT NOT NULL,
+    provider_account_id TEXT NOT NULL,
+    mode TEXT NOT NULL CHECK(mode IN ('bounded_reconciliation','push')),
+    status TEXT NOT NULL CHECK(status IN ('unregistered','active','renewal_due','expired','failed','stopped')),
+    watch_history_id TEXT,
+    watch_registered_at TEXT,
+    watch_expiration_at TEXT,
+    last_reconciled_history_id TEXT,
+    last_notification_at TEXT,
+    last_reconciled_at TEXT,
+    projection_version INTEGER NOT NULL DEFAULT 0,
+    error_message TEXT,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(provider, provider_account_id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS communication_provider_notifications (
+    provider TEXT NOT NULL,
+    provider_account_id TEXT NOT NULL,
+    notification_id TEXT NOT NULL,
+    provider_cursor TEXT NOT NULL,
+    received_at TEXT NOT NULL,
+    processed_at TEXT,
+    outcome TEXT NOT NULL CHECK(outcome IN ('received','processed','duplicate','out_of_order','failed')),
+    PRIMARY KEY(provider, provider_account_id, notification_id)
+  )`,
   `CREATE TABLE IF NOT EXISTS customer_quotation_documents (
     id TEXT PRIMARY KEY,
     estimate_id TEXT NOT NULL,
@@ -212,6 +250,7 @@ const indexes = [
   "CREATE INDEX IF NOT EXISTS idx_issued_quotations_estimate ON issued_quotations(estimate_id, created_at DESC)",
   "CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_quotation_document_revision ON customer_quotation_documents(estimate_id, quotation_revision, projection_sha256)",
   "CREATE INDEX IF NOT EXISTS idx_communications_folder ON communication_messages(folder, updated_at DESC)",
+  "CREATE INDEX IF NOT EXISTS idx_communications_provider_thread ON communication_messages(provider, provider_thread_id, sent_at DESC)",
   "CREATE INDEX IF NOT EXISTS idx_drive_folders_estimate ON drive_project_folders(estimate_id, logical_key)",
   "CREATE INDEX IF NOT EXISTS idx_drive_discovered_documents_estimate ON drive_discovered_documents(estimate_id, provider_modified_at DESC)",
   "CREATE INDEX IF NOT EXISTS idx_drive_discovered_documents_folder ON drive_discovered_documents(provider, provider_account_id, provider_folder_id)",
@@ -294,6 +333,10 @@ export async function initializeWorkflowSchema(db) {
   await ensureColumn(db, "drive_discovered_documents", "client_id", "TEXT");
   await ensureColumn(db, "drive_discovered_documents", "project_id", "TEXT");
   await ensureColumn(db, "drive_discovered_documents", "order_id", "TEXT");
+  await ensureColumn(db, "communication_messages", "provider_state_json", "TEXT NOT NULL DEFAULT '{}'");
+  await ensureColumn(db, "communication_attachments", "content_id", "TEXT");
+  await ensureColumn(db, "communication_attachments", "is_inline", "INTEGER NOT NULL DEFAULT 0");
+  await ensureColumn(db, "communication_provider_watch_states", "watch_registered_at", "TEXT");
   await ensureColumn(db, "followups", "issued_quotation_id", "TEXT");
   await ensureColumn(db, "followups", "communication_message_id", "TEXT");
   await ensureColumn(db, "followups", "origin_event_id", "TEXT");

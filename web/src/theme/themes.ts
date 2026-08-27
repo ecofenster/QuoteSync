@@ -1,6 +1,7 @@
 import { apiFetch } from "../services/api/apiClient.ts";
 
 export const QUOTESYNC_THEME_STORAGE_KEY = "quotesync:selectedTheme";
+export const QUOTESYNC_TEXT_SIZE_STORAGE_KEY = "quotesync:textSize";
 export const QUOTESYNC_THEME_CONFIGURATION_KEY = "branding.themeConfiguration";
 const QUOTESYNC_THEME_CACHE_KEY = "quotesync:companyThemeCache";
 
@@ -25,6 +26,13 @@ export const QUOTESYNC_FONT_OPTIONS = [
 export type QuoteSyncThemeId = (typeof QUOTESYNC_THEMES)[number]["id"];
 export type ResolvedQuoteSyncThemeId = Exclude<QuoteSyncThemeId, "system">;
 export type QuoteSyncFontId = (typeof QUOTESYNC_FONT_OPTIONS)[number]["id"];
+export type QuoteSyncTextSize = "compact"|"standard"|"large"|"extra-large";
+export const QUOTESYNC_TEXT_SIZES:ReadonlyArray<{id:QuoteSyncTextSize;name:string;description:string}>=[
+  {id:"compact",name:"Compact",description:"More information with the canonical minimum readable scale."},
+  {id:"standard",name:"Standard",description:"Recommended QuoteSuite application size."},
+  {id:"large",name:"Large",description:"Larger controls and application text."},
+  {id:"extra-large",name:"Extra Large",description:"Maximum supported application text size."},
+];
 
 export type ThemePalette = {
   background: string;
@@ -278,6 +286,11 @@ export function readStoredQuoteSyncTheme(): QuoteSyncThemeId {
   return resolveThemePreference(readStoredThemePreference(), activeConfiguration.defaultMode);
 }
 
+export function normaliseQuoteSyncTextSize(value:unknown):QuoteSyncTextSize{return QUOTESYNC_TEXT_SIZES.some(option=>option.id===value)?value as QuoteSyncTextSize:"standard"}
+export function readStoredQuoteSyncTextSize():QuoteSyncTextSize{if(typeof window==="undefined")return "standard";try{return normaliseQuoteSyncTextSize(window.localStorage.getItem(QUOTESYNC_TEXT_SIZE_STORAGE_KEY))}catch{return "standard"}}
+export function applyQuoteSyncTextSize(value:QuoteSyncTextSize){if(typeof document==="undefined")return;const normalized=normaliseQuoteSyncTextSize(value);document.documentElement.dataset.qsTextSize=normalized;if(typeof window!=="undefined")window.dispatchEvent(new CustomEvent("quotesync-text-size-change",{detail:{textSize:normalized}}))}
+export function saveQuoteSyncTextSize(value:QuoteSyncTextSize){const normalized=normaliseQuoteSyncTextSize(value);if(typeof window!=="undefined")try{window.localStorage.setItem(QUOTESYNC_TEXT_SIZE_STORAGE_KEY,normalized)}catch{/* Device preference remains non-critical when storage is unavailable. */}applyQuoteSyncTextSize(normalized)}
+
 function resolveTheme(themeId: QuoteSyncThemeId): ResolvedQuoteSyncThemeId {
   if (themeId !== "system") return themeId;
   return typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
@@ -374,6 +387,7 @@ export function applyThemeConfiguration(configuration: QuoteSyncThemeConfigurati
   document.documentElement.dataset.qsCorners = activeConfiguration.appearance.corners;
   document.documentElement.dataset.qsElevation = activeConfiguration.appearance.elevation;
   document.documentElement.dataset.qsMotion = activeConfiguration.appearance.motion;
+  applyQuoteSyncTextSize(readStoredQuoteSyncTextSize());
   window.dispatchEvent(new CustomEvent("quotesync-theme-change", { detail: { requestedMode, resolved } }));
 }
 
@@ -474,6 +488,7 @@ export function initialiseQuoteSyncTheme() {
           const mode = resolveThemePreference(readStoredThemePreference(), activeConfiguration.defaultMode);
           applyThemeConfiguration(activeConfiguration, mode);
         }
+        if (event.key === QUOTESYNC_TEXT_SIZE_STORAGE_KEY) applyQuoteSyncTextSize(readStoredQuoteSyncTextSize());
       });
       storageListenerRegistered = true;
     }

@@ -16,16 +16,16 @@
 .supplier-quotes-grid > *,
 .supplier-upload-panel,
 .supplier-extraction-panel { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--qs-border-standard); border-radius: var(--radius-card); background: var(--qs-bg-card); }
-.supplier-quotes-workspace label { display: grid; gap: 4px; font-size: 12px; font-weight: 700; }
+.supplier-quotes-workspace label { display: grid; gap: 4px; font-size: var(--qs-type-meta); font-weight: 700; }
 .supplier-quotes-workspace input,
 .supplier-quotes-workspace select { min-height: 36px; padding: 7px; border: 1px solid var(--qs-border-standard); border-radius: var(--radius-control); background: var(--qs-bg-control); color: var(--qs-theme-text); }
 .supplier-quotes-workspace button { min-height: 34px; padding: 6px 10px; border: 1px solid var(--qs-border-standard); border-radius: var(--radius-button); background: var(--qs-bg-control); color: var(--qs-theme-text); cursor: pointer; }
 .supplier-quotes-workspace button:hover { background: var(--qs-bg-hover); }
 .supplier-quotes-workspace button:disabled { cursor: not-allowed; opacity: .55; }
-.supplier-quotes-workspace table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.supplier-quotes-workspace table { width: 100%; border-collapse: collapse; font-size: var(--qs-type-meta); }
 .supplier-quotes-workspace th,
 .supplier-quotes-workspace td { padding: 8px; border-bottom: 1px solid var(--qs-border-standard); text-align: left; }
-.supplier-upload-error { color: var(--qs-semantic-error); font-size: 12px; }
+.supplier-upload-error { color: var(--qs-semantic-error); font-size: var(--qs-type-meta); }
 .supplier-upload-status { padding: 10px; border-radius: var(--radius-control); background: var(--qs-bg-surface-elevated); }
 
 .supplier-import-lab-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; padding: 12px; border: 1px solid var(--qs-border-standard); border-radius: var(--radius-card); }
