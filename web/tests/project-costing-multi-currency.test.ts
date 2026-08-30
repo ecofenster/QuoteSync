@@ -47,6 +47,7 @@ test('EUR, GBP and PLN revisions retain independent FX provenance and aggregate 
     const supplier = createSupplierQuotesService(db, { attachmentRoot: root, extractDocument: async (_filename, metadata) => ({ textAvailable: true, warnings: [], documentId: metadata.id }), parseFields: (document: any, { currency }: any) => ({ rows: [extractedRow(document.documentId, currency)], warnings: [] }), parseSummary: (document: any) => ({ summary: { productSubtotal: documents[document.documentId].total, additionalItemsSubtotal: null, deliveryTotal: null, vatTotal: null, finalSupplierTotal: documents[document.documentId].total }, additionalItems: [], warnings: [] }) });
     const selected: Array<{ quoteId: string; revisionId: string; attachmentId: string }> = [];
     for (const [id, data] of Object.entries(documents)) {
+      await calculator.saveSupplierCommercialDefault({ supplierCode: id.toUpperCase(), supplierName: `${id.toUpperCase()} Supplier`, policy: { pricingMethod: 'factory_price', pricingBasis: 'factory_price', paidInQuotedCurrency: true, settlementCurrency: data.currency }, pricingDisplayPolicy: {} });
       const quote = await supplier.createQuote('estimate', { supplierCode: id.toUpperCase(), supplierName: `${id.toUpperCase()} Supplier` });
       const revision = await supplier.createRevision('estimate', quote.id, { supplierQuotationNumber: `Q-${id}`, supplierRevision: '1', currency: data.currency });
       await supplier.insertAttachments('estimate', quote.id, revision.id, [{ id, role: 'original_quote', documentKind: 'complete_quotation', originalFileName: `${id}.pdf`, mediaType: 'application/pdf', sizeBytes: 1, sha256: id.padEnd(64, id[0]), storageKey: id, parserEligible: true, createdAt: new Date().toISOString() }]);
@@ -82,6 +83,7 @@ test('unpriced schedule converts only its total and explicit refresh preserves p
   const { root, db, provider } = await setup();
   try {
     const calculator = createProjectCalculatorLabService(db, { exchangeRateProvider: provider });
+    await calculator.saveSupplierCommercialDefault({ supplierCode: 'SCHED', supplierName: 'Schedule Supplier', policy: { pricingMethod: 'factory_price', pricingBasis: 'factory_price', paidInQuotedCurrency: true, settlementCurrency: 'EUR' }, pricingDisplayPolicy: {} });
     const scenario = await calculator.createScenario({ estimateId: 'estimate', origin: 'manual', name: 'Unpriced schedule', currency: 'GBP', packageCode: 'supply_only' });
     const supplier = createSupplierQuotesService(db, { attachmentRoot: root, extractDocument: async () => ({ textAvailable: true, warnings: [], documentId: 'unpriced' }), parseFields: (_document: any, { currency }: any) => ({ rows: [extractedRow('unpriced', currency)], warnings: [] }), parseSummary: () => ({ summary: { productSubtotal: null, additionalItemsSubtotal: null, deliveryTotal: null, vatTotal: null, finalSupplierTotal: '20000' }, additionalItems: [], warnings: [] }) });
     const quote = await supplier.createQuote('estimate', { supplierCode: 'SCHED', supplierName: 'Schedule Supplier' });

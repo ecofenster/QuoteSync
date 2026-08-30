@@ -68,6 +68,9 @@ export type SupplierQuoteRevision = Readonly<{
   finalSupplierTotal: Money | null;
   comparisonTotals?: ReadonlyArray<{ classification: "alternative_supplier_subtotal" | "alternative_final_total" | "package_option"; label: string; amount: string; currency: CurrencyCode; includedInSupplierTotal: boolean; selected?: boolean }>;
   lifecycleStatus: SupplierQuoteRevisionLifecycleStatus;
+  confirmationStatus?: "uploaded" | "extracting" | "extracted" | "review_required" | "ready_to_confirm" | "confirming" | "confirmed" | "partial_recovery_required" | "failed_recoverable" | null;
+  confirmationOperationId?: string | null;
+  confirmationUpdatedAt?: ISODateTime | null;
   isLatest: boolean;
   createdAt: ISODateTime;
   supersededAt: ISODateTime | null;

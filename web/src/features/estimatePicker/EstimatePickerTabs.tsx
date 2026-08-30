@@ -11,6 +11,7 @@ import { ControlToolbar, ControlToolbarGroup } from "../../components/ControlToo
 import { loadSettings } from "../../system/settings";
 import { CURRENT_APP_USER } from "../../system/currentUser";
 import { getPreference, setPreference } from "../../utils/userPreferences";
+import { apiFetch as apiFetchJson } from "../../services/api/apiClient";
 import { createDefaultTimeline } from "../../system/orderTimeline";
 import type { Client, ClientId, EstimateId, EstimateOutcome, EstimatePickerTab } from "../../models/types";
 import { estimateTotals, estimateCostTotal } from '../../domain/estimates/estimateCalculations';
@@ -498,19 +499,6 @@ export default function EstimatePickerTabs(props: Props) {
 
   if (!pickerClient) return null;
   const activePickerClient = pickerClient;
-
-  async function apiFetchJson(path: string, options?: RequestInit) {
-    const res = await fetch(`http://localhost:3001${path}`, options);
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      throw new Error(body || `API request failed: ${res.status}`);
-    }
-    const contentType = res.headers.get("content-type") || "";
-    if (contentType.includes("application/json")) {
-      return res.json();
-    }
-    return null;
-  }
 
   function formatMeasure(n: number) {
     return Number.isFinite(n) ? n.toFixed(2) : "0.00";

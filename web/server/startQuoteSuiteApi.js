@@ -22,11 +22,16 @@ import { createQuotationWorkflowRouter } from './routes/quotationWorkflow.js';
 import { fetchCentralExchangeRate } from './features/projectCalculatorLab/exchangeRateProvider.js';
 import { dbPromise } from './db.js';
 import { startApiServer } from './apiServerStartup.js';
+import { createRuntimeHealthHandler } from './features/runtimeHealth/runtimeHealth.js';
 
 const app = express();
 
 app.use(cors());
 app.use(express.json({ limit: '25mb' }));
+
+// Registered before business routes so a running API can still report a failed
+// database dependency without attempting to read or mutate business records.
+app.get('/api/health', createRuntimeHealthHandler({ dbPromise }));
 
 app.use('/api/clients', clientsRoute);
 app.use('/api/estimates', estimatesRoute);

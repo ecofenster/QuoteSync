@@ -36,6 +36,7 @@ import InstallationMaterialsAssumptions from "./InstallationMaterialsAssumptions
 import ConfigureInstallation from "./ConfigureInstallation";
 import { useEstimateCommercialActions } from "../estimateCommercial/EstimateCommercialActionsContext";
 import { resolveManufacturerVisualAssetUrl } from "../manufacturerVisuals/manufacturerVisualAssetUrl";
+import { manufacturerVisualOrientation, manufacturerVisualOrientationLabel } from "../manufacturerVisuals/manufacturerVisualRole";
 import { useCustomerViewPolicy } from "../estimateCommercial/customerViewPolicy";
 import {
   deriveProjectCostingCommercialResult,
@@ -123,6 +124,63 @@ function positionThermal(row: CalculatorProductRow) {
   };
 }
 
+const sourceRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+const sourceText = (value: unknown) =>
+  typeof value === "string" && value.trim() ? value.trim() : null;
+const canonicalText = (canonical: Record<string, unknown>, key: string) =>
+  sourceText(sourceRecord(canonical[key]).value);
+
+function ManufacturerPositionSourceDetail({ row, evidence, onClose }: { row: CalculatorProductRow; evidence: Record<string, unknown>; onClose: () => void }) {
+  const sourceSpecification = sourceRecord(evidence.sourceSpecification);
+  const internalSpecification = sourceRecord(evidence.internalSpecification);
+  const internalGroups = Array.isArray(internalSpecification.groups) ? internalSpecification.groups.map(sourceRecord) : [];
+  const canonical = sourceRecord(evidence.canonicalSpecification ?? sourceSpecification.canonical);
+  const sashes = Array.isArray(canonical.sashes) ? canonical.sashes.map(sourceRecord) : [];
+  const accessories = Array.isArray(canonical.accessories) ? canonical.accessories.map(sourceRecord) : [];
+  const messages = Array.isArray(canonical.messages) ? canonical.messages.map(sourceRecord) : [];
+  const sections = Array.isArray(sourceSpecification.sections) ? sourceSpecification.sections.map(sourceRecord) : [];
+  const internal = canonicalText(canonical, "internalFinish");
+  const externalEvidence = sourceRecord(canonical.externalFinish);
+  const external = [sourceText(externalEvidence.value), sourceText(externalEvidence.manufacturerCode)].filter(Boolean).join(" · ") || null;
+  const frame = canonicalText(canonical, "frameProfile");
+  const glazing = canonicalText(canonical, "glazing") ?? sourceText(evidence.glassSpecification);
+  const weight = canonicalText(canonical, "weightKg") ?? sourceText(evidence.weightKg);
+  const perimeter = canonicalText(canonical, "perimeterMetres");
+  const canonicalRows = [
+    ["Product / system", sourceText(evidence.productSystem) ?? sourceText(evidence.product) ?? row.productClass],
+    ["Dimensions", `${row.widthMm} × ${row.heightMm} mm · Qty ${row.quantity}`],
+    ["Opening / configuration", sourceText(evidence.configurationDescription)],
+    ["Internal finish", internal],
+    ["External finish", external],
+    ["Frame / profile", frame],
+    ["Glazing", glazing],
+    ["Hardware / fittings", sourceText(evidence.fittingsSpecification)],
+    ["Thermal", [sourceText(evidence.manufacturerQuotedUg) ? `Ug ${sourceText(evidence.manufacturerQuotedUg)}` : null, sourceText(evidence.manufacturerQuotedUw) ? `Uw ${sourceText(evidence.manufacturerQuotedUw)}` : null].filter(Boolean).join(" · ") || null],
+    ["Weight / perimeter", [weight ? `${weight} kg` : null, perimeter ? `${perimeter} m` : null].filter(Boolean).join(" · ") || null],
+  ].filter((item): item is [string, string] => Boolean(item[1]));
+  const titleId = `manufacturer-specification-${row.id}`;
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+  return createPortal(<div className="ui-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className="ui-modal costing-sheet__source-detail costing-sheet__specification-modal" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+      <header><div><h3 id={titleId}>{row.displayReference} specification</h3><small>Internal product and manufacturer evidence</small></div><button type="button" className="ui-button" onClick={onClose} aria-label={`Close specification for ${row.displayReference}`}>Close</button></header>
+      <div className="costing-sheet__source-detail-body">
+        {internalGroups.length ? <div className="costing-sheet__internal-specification">{internalGroups.map((group, groupIndex) => { const items = Array.isArray(group.items) ? group.items.map(sourceRecord) : []; return items.length ? <section key={sourceText(group.id) ?? groupIndex}><strong>{sourceText(group.label) ?? "Technical evidence"}</strong><dl>{items.map((item, itemIndex) => <React.Fragment key={`${sourceText(item.label) ?? "field"}-${itemIndex}`}><dt>{sourceText(item.label) ?? "Detail"}</dt><dd>{sourceText(item.value) ?? "—"}</dd></React.Fragment>)}</dl></section> : null })}</div> : <dl>{canonicalRows.map(([label, value]) => <React.Fragment key={label}><dt>{label}</dt><dd>{value}</dd></React.Fragment>)}</dl>}
+        {!internalGroups.length && sashes.length ? <section><strong>Manufacturer sash / opening evidence</strong><ul>{sashes.map((sash, index) => <li key={sourceText(sash.sourceElementReference) ?? index}><b>{sourceText(sash.sourceElementReference) ?? `Sash ${index + 1}`}</b>: {[sourceText(sash.fitting), sourceText(sash.profile), sourceText(sash.hardware), sourceText(sash.security), sourceText(sash.closing), sourceText(sash.locking)].filter(Boolean).join(" · ")}</li>)}</ul></section> : null}
+        {!internalGroups.length && accessories.length ? <section><strong>Accessories</strong><ul>{accessories.map((item, index) => <li key={sourceText(item.sourceFieldId) ?? index}>{sourceText(item.description)}{sourceText(item.quantity) ? ` · Qty ${sourceText(item.quantity)}` : ""}</li>)}</ul></section> : null}
+        {!internalGroups.length && messages.length ? <section><strong>Manufacturer messages / warnings</strong><ul>{messages.map((item, index) => <li key={sourceText(item.sourceFieldId) ?? index}>{sourceText(item.label) && sourceText(item.label) !== "Message" ? <b>{sourceText(item.label)}: </b> : null}{sourceText(item.value)}</li>)}</ul></section> : null}
+        {sections.length ? <details className="costing-sheet__manufacturer-specification"><summary>Complete manufacturer specification</summary>{sections.map((section, index) => { const fields = Array.isArray(section.fields) ? section.fields.map(sourceRecord) : []; return fields.length ? <section key={sourceText(section.name) ?? index}><strong>{sourceText(section.name) ?? "Manufacturer details"}</strong><dl>{fields.map((field, fieldIndex) => <React.Fragment key={sourceText(field.id) ?? fieldIndex}><dt>{sourceText(field.label) ?? "Detail"}</dt><dd>{sourceText(field.rawValue) ?? "—"}</dd></React.Fragment>)}</dl></section> : null })}</details> : null}
+      </div>
+    </section>
+  </div>, document.body);
+}
+
 function Icon({ kind }: { kind: SectionKey }) {
   const glyph = {
     products: "▦",
@@ -192,6 +250,7 @@ function ProductRow({
   commercialView: "internal" | "customer";
   showThermal: boolean;
 }) {
+  const [specificationOpen, setSpecificationOpen] = useState(false);
   const customerPolicy=useCustomerViewPolicy();
   const commercialActions=useEstimateCommercialActions();
   const positionAction = (action: "up" | "down" | "duplicate" | "alternative" | "delete") => row.estimatePositionId && commercialActions?.positionAction?.(row.estimatePositionId,action);
@@ -230,12 +289,14 @@ function ProductRow({
       visual.status === "available" && typeof visual.url === "string"
         ? resolveManufacturerVisualAssetUrl(visual.url)
         : null,
+    visualOrientation = manufacturerVisualOrientation(visual, evidence.configurationDescription),
     thermal = positionThermal(row);
   if (commercialView === "customer") {
     const room = typeof evidence.roomLocation === "string" && evidence.roomLocation.trim() ? evidence.roomLocation : "—";
     return <tr className={!included ? "is-excluded" : "is-inherited"}><td><strong>{row.displayReference}</strong><small>{supplierNameForProduct(row)}</small></td>{customerPolicy.room?<td>{room}</td>:null}<td className="costing-sheet__product-image"><div className="costing-sheet__product-preview">{imageUrl ? <button type="button" onClick={() => row.estimatePositionId && configured && customerPolicy.quickConfigurator ? commercialActions?.configurePosition?.(row.estimatePositionId) : window.open(imageUrl, "_blank", "noopener,noreferrer")} aria-label={`Open manufacturer preview for ${row.displayReference}`}><img src={imageUrl} alt={`Manufacturer preview for ${row.displayReference}`} /></button> : <span aria-label="Preview unavailable">▧</span>}<span>{typeof evidence.product === "string" ? evidence.product : row.productClass}</span></div></td>{customerPolicy.dimensions?<><td className="is-dimension">{row.widthMm}</td><td className="is-dimension">{row.heightMm}</td></>:null}<td>{row.quantity}</td>{customerPolicy.itemPrice?<td>{!included ? "Excluded" : money(pricing?.unitSellingPrice)}</td>:null}{customerPolicy.quantityPrice?<td>{!included ? "Excluded" : money(pricing?.totalSellingPrice)}</td>:null}<td>{customerPolicy.alternative?<label className="costing-sheet__alternative-control"><span>Alternative</span><Toggle ariaLabel={`${row.displayReference} alternative`} value={alternative} onChange={() => positionAction("alternative")} /></label>:null}{row.estimatePositionId ? <span className="costing-sheet__position-actions">{customerPolicy.reorder?<><button className="ui-button" onClick={() => positionAction("up")} aria-label={`Move ${row.displayReference} up`} title="Move Up">↑</button><button className="ui-button" onClick={() => positionAction("down")} aria-label={`Move ${row.displayReference} down`} title="Move Down">↓</button></>:null}{customerPolicy.duplicate?<button className="ui-button" onClick={() => positionAction("duplicate")} aria-label={`Duplicate ${row.displayReference}`} title="Duplicate Position">⧉</button>:null}<button className="ui-button" onClick={() => positionAction("delete")} aria-label={`Delete ${row.displayReference}`} title="Delete Position">×</button></span> : null}</td></tr>;
   }
   return (
+    <>
     <tr
       className={
         !included
@@ -258,20 +319,7 @@ function ProductRow({
           ) : (
             <span aria-label="Preview unavailable">▧</span>
           )}
-          <details>
-            <summary>Source detail</summary>
-            <small>
-              {typeof evidence.product === "string"
-                ? evidence.product
-                : row.productClass}
-            </small>
-            {typeof evidence.manufacturerQuotedUg === "string" ? (
-              <small>Quoted Ug {evidence.manufacturerQuotedUg}</small>
-            ) : null}
-            {typeof evidence.manufacturerQuotedUw === "string" ? (
-              <small>Quoted Uw {evidence.manufacturerQuotedUw}</small>
-            ) : null}
-          </details>
+          {imageUrl ? <small>{manufacturerVisualOrientationLabel(visualOrientation)}</small> : null}
         </div>
       </td>
       {showThermal ? <><td className="costing-sheet__thermal-value">{thermal.ug ?? "—"}</td><td className="costing-sheet__thermal-value">{thermal.uw ?? "—"}</td></> : null}
@@ -345,6 +393,7 @@ function ProductRow({
       </td>
       <td>{!included ? "Excluded" : money(pricing?.unitSellingPrice)}</td>
       <td>{!included ? "Excluded" : money(pricing?.totalSellingPrice)}</td>
+      <td className="costing-sheet__specification-action"><button type="button" className="ui-button" onClick={() => setSpecificationOpen(true)} aria-label={`Open specification for ${row.displayReference}`}>Specification</button></td>
       <td>
         {row.estimatePositionId && configured ? (
           <button
@@ -357,6 +406,8 @@ function ProductRow({
         {row.estimatePositionId ? <span className="costing-sheet__position-actions"><button className="ui-button" onClick={() => positionAction("up")} aria-label={`Move ${row.displayReference} up`} title="Move Up">↑</button><button className="ui-button" onClick={() => positionAction("down")} aria-label={`Move ${row.displayReference} down`} title="Move Down">↓</button><button className="ui-button" onClick={() => positionAction("duplicate")} aria-label={`Duplicate ${row.displayReference}`} title="Duplicate Position">⧉</button><button className="ui-button" onClick={() => positionAction("delete")} aria-label={`Delete ${row.displayReference}`} title="Delete Position">×</button></span> : null}
       </td>
     </tr>
+    {specificationOpen ? <ManufacturerPositionSourceDetail row={row} evidence={evidence} onClose={() => setSpecificationOpen(false)} /> : null}
+    </>
   );
 }
 function Section({
@@ -1095,6 +1146,7 @@ export default function ScenarioCostingWorksheet({
                       <col className="costing-sheet__col-commercial" />
                       <col className="costing-sheet__col-commercial" />
                       <col className="costing-sheet__col-commercial" />
+                      <col className="costing-sheet__col-specification" />
                       <col className="costing-sheet__col-actions" />
                     </colgroup> : null}
                     <thead>
@@ -1108,6 +1160,7 @@ export default function ScenarioCostingWorksheet({
                         <th>GBP cost</th>
                         <th>Sale unit</th>
                         <th>Sale total</th>
+                        <th>Specification</th>
                         <th>Action</th>
                       </tr>}
                     </thead>

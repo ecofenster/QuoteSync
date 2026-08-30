@@ -243,6 +243,8 @@ export type Position = {
   origin?: "b92_configured" | "supplier_imported" | "manual";
   sourceSequence?: number;
   classification?: "standard" | "alternative" | "excluded";
+  alternativeToPositionId?: PositionId | null;
+  /** Legacy/display reference retained for historical imports. */
   alternativeTo?: string | null;
   supplier?: { code?: string | null; name?: string | null } | null;
   product?: string | null;

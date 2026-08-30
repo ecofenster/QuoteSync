@@ -60,3 +60,4 @@ web/.env*
 # Disposable in-repository browser acceptance profiles (prefer OS temp storage).
 .tmp-edge-acceptance/
 .tmp-chrome-acceptance*/
+test-output/

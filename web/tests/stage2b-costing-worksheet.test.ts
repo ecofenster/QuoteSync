@@ -26,6 +26,30 @@ test('worksheet sections preserve evidence, use icons and hide unused categories
   assert.doesNotMatch(source,/sourceId|sourceRowId|raw JSON|JSON\.stringify/);
 });
 
+test('Products / Supply keeps previews clean and opens rich evidence from the Specification column', async () => {
+  const [source,css]=await Promise.all([readFile('src/features/projectCalculatorLab/ScenarioCostingWorksheet.tsx','utf8'),readFile('src/features/projectCalculatorLab/projectCalculatorLab.css','utf8')]);
+  const previewCells=[...source.matchAll(/<td className="costing-sheet__product-image">([\s\S]*?)<\/td>/g)];
+  const internalPreview=previewCells.at(-1)?.[1]??'';
+  assert.match(internalPreview,/Manufacturer preview/);
+  assert.match(internalPreview,/manufacturerVisualOrientationLabel/);
+  assert.doesNotMatch(internalPreview,/details|summary|ManufacturerPositionSourceDetail|Internal specification|technical fields|manufacturerQuotedUg|manufacturerQuotedUw/);
+  assert.match(source,/<th>Preview \/ Product Image<\/th>[\s\S]*?<th>Ug<\/th>[\s\S]*?<th>Uw<\/th>[\s\S]*?<th>Specification<\/th>[\s\S]*?<th>Action<\/th>/);
+  assert.match(source,/aria-label=\{`Open specification for \$\{row\.displayReference\}`\}>Specification<\/button>/);
+  assert.match(source,/role="dialog" aria-modal="true"/);
+  assert.match(source,/Internal product and manufacturer evidence/);
+  for(const label of ['Product / system','Opening / configuration','Internal finish','External finish','Frame / profile','Glazing','Hardware / fittings','Thermal','Weight / perimeter','Accessories','Manufacturer messages / warnings','Complete manufacturer specification'])assert.match(source,new RegExp(label.replace('/','\\/')));
+  assert.match(source,/sourceSpecification/);
+  assert.match(source,/canonicalSpecification/);
+  assert.match(source,/internalSpecification/);
+  assert.match(source,/internalGroups/);
+  assert.doesNotMatch(source,/technical fields/);
+  assert.doesNotMatch(source,/EKO|Zyle|Gutmann|Internorm/i);
+  assert.doesNotMatch(source,/customerSafeSpecification\.map/);
+  assert.match(css,/\.costing-sheet__specification-modal/);
+  assert.match(css,/@media \(max-width: 620px\)[\s\S]*\.costing-sheet__specification-modal/);
+  assert.match(css,/var\(--qs-(?:bg|theme|border)-/);
+});
+
 test('commercial summary reconciles category totals and saved rate evidence', async () => {
   const source=await readFile('src/features/projectCalculatorLab/ScenarioCostingWorksheet.tsx','utf8');
   const commercial=await readFile('src/features/projectCalculatorLab/domain/projectCostingCommercialResult.ts','utf8');

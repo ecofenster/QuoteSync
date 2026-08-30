@@ -23,3 +23,15 @@
 ## Application typography governance
 
 - Ordinary QuoteSuite application typography must use the canonical semantic `--qs-type-*` scale; feature-specific arbitrary font sizing is prohibited. User text-size preferences operate only through the canonical token presets. Specialist Configurator/drawing annotations and generated customer/print documents retain separately reviewed typography contracts and must not be migrated without explicit scope.
+
+## Manufacturer quotation ingestion reliability
+
+- Manufacturer quotation ingestion is a critical QuoteSuite workflow. It must remain source-preserving, provenance-preserving, idempotent, transactionally safe, quantitatively reconciled, diagnostically explicit and recoverable.
+- QuoteSuite must never report a manufacturer quotation import as successful or completed unless the expected canonical supplier positions, Products / Supply rows and Project Costing product projection have been verified from persisted state. Silent failure, false success, fabricated evidence and unrecoverable partial imports are prohibited.
+- Recovery follows one bounded ladder: native DOCX/PDF structural extraction; deterministic geometry/layout reconstruction; bounded supplier/layout interpretation; visual/page-region evidence extraction; bounded OCR only for genuinely raster or missing evidence; then explicit reviewed unresolved evidence. Missing evidence remains missing or review-required, and one unresolved position must not silently discard unrelated valid positions.
+- Structured manufacturer specifications and distinct manufacturer visual views are source evidence. Preserve their exact wording, roles and source regions with provenance even when no canonical or customer-safe projection exists; normalization must never replace the original evidence.
+
+## Development API runtime verification
+
+- Any task that changes server-side/API code and performs live acceptance or mutation must verify the identity or required capability of the active listening API process first. Source files on disk do not prove which source the running process loaded. Advance the shared runtime contract when compatibility changes; for bounded changes within one contract, verify the changed endpoint capability directly.
+- Both supported development starts run `server/index.js`: from `web\server`, use `node index.js`; from `web`, use `npm run api`. The invalid form is `node index.js` from `web`, where no root `index.js` exists.

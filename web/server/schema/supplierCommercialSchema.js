@@ -238,11 +238,60 @@ const tables = [
     error_code TEXT,
     error_message TEXT,
     raw_result_attachment_id TEXT,
+    operation_id TEXT,
+    confirmation_status TEXT,
+    diagnostics_json TEXT NOT NULL DEFAULT '{}',
+    expected_counts_json TEXT NOT NULL DEFAULT '{}',
+    pre_state_json TEXT NOT NULL DEFAULT '{}',
+    post_state_json TEXT NOT NULL DEFAULT '{}',
+    recovery_reason TEXT,
+    currency_decision_json TEXT NOT NULL DEFAULT '{}',
     UNIQUE (id, estimate_id),
     CHECK ((status IN ('completed','completed_with_warnings','failed','cancelled') AND completed_at IS NOT NULL) OR (status IN ('queued','running') AND completed_at IS NULL)),
     CHECK (status <> 'failed' OR error_code IS NOT NULL OR error_message IS NOT NULL),
     FOREIGN KEY (revision_id, estimate_id) REFERENCES supplier_quote_revisions(id, estimate_id) ON DELETE CASCADE,
     FOREIGN KEY (raw_result_attachment_id, estimate_id) REFERENCES supplier_quote_attachments(id, estimate_id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS supplier_quote_import_operations (
+    id TEXT PRIMARY KEY,
+    operation_key TEXT NOT NULL UNIQUE,
+    estimate_id TEXT NOT NULL,
+    supplier_quote_id TEXT NOT NULL,
+    revision_id TEXT NOT NULL,
+    scenario_id TEXT NOT NULL,
+    current_run_id TEXT,
+    status TEXT NOT NULL CHECK (status IN ('uploaded','extracting','extracted','review_required','ready_to_confirm','confirming','confirmed','partial_recovery_required','failed_recoverable')),
+    source_identity_json TEXT NOT NULL,
+    selection_identity_json TEXT NOT NULL,
+    pre_state_json TEXT NOT NULL DEFAULT '{}',
+    intended_counts_json TEXT NOT NULL DEFAULT '{}',
+    post_state_json TEXT NOT NULL DEFAULT '{}',
+    diagnostics_json TEXT NOT NULL DEFAULT '{}',
+    recovery_reason TEXT,
+    currency_decision_json TEXT NOT NULL DEFAULT '{}',
+    last_error_code TEXT,
+    last_error_message TEXT,
+    result_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    confirmed_at TEXT,
+    FOREIGN KEY (supplier_quote_id, estimate_id) REFERENCES supplier_quotes(id, estimate_id) ON DELETE CASCADE,
+    FOREIGN KEY (revision_id, estimate_id) REFERENCES supplier_quote_revisions(id, estimate_id) ON DELETE CASCADE,
+    FOREIGN KEY (scenario_id) REFERENCES project_calculator_lab_scenarios(id) ON DELETE CASCADE
+  )`,
+  `CREATE TABLE IF NOT EXISTS supplier_quote_import_position_evidence (
+    operation_id TEXT NOT NULL,
+    attachment_id TEXT NOT NULL,
+    row_key TEXT NOT NULL,
+    ordinal INTEGER NOT NULL,
+    readiness_status TEXT NOT NULL CHECK (readiness_status IN ('canonical_ready','review_required','excluded')),
+    source_snapshot_json TEXT NOT NULL,
+    provenance_json TEXT NOT NULL,
+    review_reasons_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (operation_id, row_key),
+    FOREIGN KEY (operation_id) REFERENCES supplier_quote_import_operations(id) ON DELETE CASCADE,
+    FOREIGN KEY (attachment_id) REFERENCES supplier_quote_attachments(id)
   )`,
   `CREATE TABLE IF NOT EXISTS supplier_quote_import_run_attachments (
     import_run_id TEXT NOT NULL,
@@ -562,6 +611,7 @@ const tables = [
     classification TEXT NOT NULL DEFAULT 'standard',
     included_in_current_estimate INTEGER NOT NULL DEFAULT 1,
     alternative_to_reference TEXT,
+    alternative_to_estimate_position_id TEXT,
     markup_override_percent TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -811,6 +861,9 @@ const indexes = [
   'CREATE INDEX IF NOT EXISTS idx_supplier_revisions_lifecycle ON supplier_quote_revisions(estimate_id, lifecycle_status)',
   'CREATE INDEX IF NOT EXISTS idx_supplier_attachments_revision ON supplier_quote_attachments(estimate_id, revision_id)',
   'CREATE INDEX IF NOT EXISTS idx_supplier_import_runs_revision ON supplier_quote_import_runs(estimate_id, revision_id, started_at)',
+  'CREATE INDEX IF NOT EXISTS idx_supplier_import_runs_operation ON supplier_quote_import_runs(operation_id, started_at)',
+  'CREATE INDEX IF NOT EXISTS idx_supplier_import_operations_revision ON supplier_quote_import_operations(estimate_id, revision_id, updated_at)',
+  'CREATE INDEX IF NOT EXISTS idx_supplier_import_evidence_operation ON supplier_quote_import_position_evidence(operation_id, readiness_status)',
   'CREATE INDEX IF NOT EXISTS idx_supplier_positions_revision ON supplier_quote_positions(estimate_id, revision_id)',
   'CREATE INDEX IF NOT EXISTS idx_supplier_extras_revision ON supplier_quote_extras(estimate_id, revision_id)',
   'CREATE INDEX IF NOT EXISTS idx_supplier_proposals_position ON supplier_position_match_proposals(estimate_id, supplier_position_id, rank)',
@@ -899,6 +952,8 @@ export async function initializeSupplierCommercialSchema(db) {
   if(!supplierQuoteAttachmentColumns.some(column=>column.name==='document_kind'))await db.exec("ALTER TABLE supplier_quote_attachments ADD COLUMN document_kind TEXT NOT NULL DEFAULT 'complete_quotation'");
   if(!supplierQuoteAttachmentColumns.some(column=>column.name==='uploaded_by'))await db.exec("ALTER TABLE supplier_quote_attachments ADD COLUMN uploaded_by TEXT NOT NULL DEFAULT 'local-admin'");
   if(!supplierQuoteAttachmentColumns.some(column=>column.name==='upload_order'))await db.exec('ALTER TABLE supplier_quote_attachments ADD COLUMN upload_order INTEGER NOT NULL DEFAULT 0');
+  const supplierImportRunColumns=await db.all('PRAGMA table_info(supplier_quote_import_runs)');
+  for(const [column,definition] of [['operation_id','TEXT'],['confirmation_status','TEXT'],['diagnostics_json',"TEXT NOT NULL DEFAULT '{}'"],['expected_counts_json',"TEXT NOT NULL DEFAULT '{}'"],['pre_state_json',"TEXT NOT NULL DEFAULT '{}'"],['post_state_json',"TEXT NOT NULL DEFAULT '{}'"],['recovery_reason','TEXT'],['currency_decision_json',"TEXT NOT NULL DEFAULT '{}'"]])if(!supplierImportRunColumns.some(item=>item.name===column))await db.exec(`ALTER TABLE supplier_quote_import_runs ADD COLUMN ${column} ${definition}`);
   const calculatorQuoteRevisionColumns=await db.all('PRAGMA table_info(project_calculator_supplier_quote_revisions)');
   if(!calculatorQuoteRevisionColumns.some(column=>column.name==='fx_snapshot_id'))await db.exec('ALTER TABLE project_calculator_supplier_quote_revisions ADD COLUMN fx_snapshot_id TEXT');
   if(!calculatorQuoteRevisionColumns.some(column=>column.name==='commercial_policy_json'))await db.exec('ALTER TABLE project_calculator_supplier_quote_revisions ADD COLUMN commercial_policy_json TEXT');
@@ -906,8 +961,10 @@ export async function initializeSupplierCommercialSchema(db) {
   if(!estimateProductFxColumns.some(column=>column.name==='fx_snapshot_id'))await db.exec('ALTER TABLE project_calculator_estimate_product_rows ADD COLUMN fx_snapshot_id TEXT');
   if(!estimateProductFxColumns.some(column=>column.name==='purchase_amount_gbp'))await db.exec('ALTER TABLE project_calculator_estimate_product_rows ADD COLUMN purchase_amount_gbp TEXT');
   if(!estimateProductFxColumns.some(column=>column.name==='selling_amount_gbp'))await db.exec('ALTER TABLE project_calculator_estimate_product_rows ADD COLUMN selling_amount_gbp TEXT');
-  for(const [column,definition] of [['classification',"TEXT NOT NULL DEFAULT 'standard'"],['included_in_current_estimate','INTEGER NOT NULL DEFAULT 1'],['alternative_to_reference','TEXT']])if(!estimateProductFxColumns.some(item=>item.name===column))await db.exec(`ALTER TABLE project_calculator_estimate_product_rows ADD COLUMN ${column} ${definition}`);
+  for(const [column,definition] of [['classification',"TEXT NOT NULL DEFAULT 'standard'"],['included_in_current_estimate','INTEGER NOT NULL DEFAULT 1'],['alternative_to_reference','TEXT'],['alternative_to_estimate_position_id','TEXT']])if(!estimateProductFxColumns.some(item=>item.name===column))await db.exec(`ALTER TABLE project_calculator_estimate_product_rows ADD COLUMN ${column} ${definition}`);
   if(!estimateProductFxColumns.some(item=>item.name==='estimate_position_id'))await db.exec('ALTER TABLE project_calculator_estimate_product_rows ADD COLUMN estimate_position_id TEXT');
+  const estimatePositionProjectionColumns=await db.all('PRAGMA table_info(project_calculator_estimate_position_rows)');
+  if(!estimatePositionProjectionColumns.some(item=>item.name==='alternative_to_estimate_position_id'))await db.exec('ALTER TABLE project_calculator_estimate_position_rows ADD COLUMN alternative_to_estimate_position_id TEXT');
   const estimateCostFxColumns=await db.all('PRAGMA table_info(project_calculator_estimate_supplier_costs)');
   if(!estimateCostFxColumns.some(column=>column.name==='fx_snapshot_id'))await db.exec('ALTER TABLE project_calculator_estimate_supplier_costs ADD COLUMN fx_snapshot_id TEXT');
   if(!estimateCostFxColumns.some(column=>column.name==='purchase_amount_gbp'))await db.exec('ALTER TABLE project_calculator_estimate_supplier_costs ADD COLUMN purchase_amount_gbp TEXT');
@@ -954,7 +1011,7 @@ export const supplierCommercialTableNames = Object.freeze([
   'supplier_import_lab_extracted_documents', 'supplier_import_lab_extracted_rows',
   'supplier_import_lab_commercial_summaries', 'supplier_import_lab_additional_cost_items',
   'supplier_quotes', 'supplier_quote_revisions', 'supplier_quote_attachments',
-  'supplier_quote_import_runs', 'supplier_quote_import_run_attachments',
+  'supplier_quote_import_runs', 'supplier_quote_import_run_attachments', 'supplier_quote_import_operations', 'supplier_quote_import_position_evidence',
   'supplier_quote_positions', 'supplier_specification_items', 'supplier_quote_extras',
   'supplier_position_match_proposals', 'supplier_quote_review_decisions',
   'supplier_position_applications', 'project_calculators', 'project_cost_items',

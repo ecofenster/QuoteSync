@@ -7,6 +7,8 @@ import { resolveVatTreatment } from "../projectCalculatorLab/domain/vatTreatment
 import { CUSTOMER_QUOTATION_POLICY } from "./quotationPolicy";
 import { DEFAULT_CUSTOMER_QUOTATION_DISPLAY_OPTIONS, type CustomerQuotationDisplayOptions, type CustomerQuotationPositionThermal } from "./customerQuotationDisplay";
 import { ECOFENSTER_DEVELOPMENT_DOCUMENT_BRAND, type CustomerDocumentBrand } from "./documentBrand";
+import { manufacturerVisualOrientation } from "../manufacturerVisuals/manufacturerVisualRole";
+import { projectCustomerSafeManufacturerSpecification, type CustomerSafeSpecificationItem } from "./customerSafeManufacturerSpecification";
 
 export type CustomerQuotationDrawing =
   | { source: "configurator"; available: true; insideAvailable: boolean; outsideAvailable: boolean }
@@ -26,7 +28,7 @@ export type CustomerQuotationPosition = {
   description: string;
   productSystem: string;
   configurationDescription: string;
-  specification: Array<{ label: string; value: string }>;
+  specification: CustomerSafeSpecificationItem[];
   drawing: CustomerQuotationDrawing;
   unitSellingPriceGbp: string | null;
   totalSellingPriceGbp: string | null;
@@ -73,45 +75,12 @@ export type CustomerQuotationProjection = {
 export type CustomerQuotationDocumentModel = CustomerQuotationProjection;
 
 const nonZero = (value: string | null | undefined) => Math.abs(Number(value ?? 0)) >= 0.005;
-const safeSpecificationLabels = new Set(["product", "system", "alu cladded", "timber", "surface finishing", "glass unit", "fittings", "trickle ventilator", "drip rail", "sash sealing", "glass sealing", "routing", "opening", "threshold", "locking", "weight"]);
 const record = (value: unknown): Record<string, unknown> => value && typeof value === "object" ? value as Record<string, unknown> : {};
 const textValue = (value: unknown) => typeof value === "string" ? value.trim() : "";
-const specificationOrder = ["alu cladded", "external finish", "timber", "material", "surface finishing", "glass unit", "fittings", "trickle ventilator", "drip rail", "sash sealing", "glass sealing", "routing", "opening", "threshold", "locking", "weight"];
-const normalizedSpecificationValue = (value: string) => value.trim().toLocaleLowerCase("en-GB").replace(/[\s\u00a0]+/g, " ").replace(/\s*([/+&-])\s*/g, "$1").replace(/[.:;,]+$/g, "");
 
 function manufacturerEvidenceFor(row: { sourceSnapshot: Record<string, unknown> | null }) {
   const snapshot = record(row.sourceSnapshot);
   return record(snapshot.manufacturerEvidence);
-}
-
-function glassSealingFromSourceTrace(snapshot: Record<string, unknown>) {
-  const lines = (Array.isArray(snapshot.sourceTrace) ? snapshot.sourceTrace : []).map((value) => textValue(record(value).extractedText)).filter(Boolean);
-  const headingIndex = lines.findIndex((line) => /^\s*(?:\d+\.\s*)?glass sealing\s*:?\s*$/i.test(line));
-  if (headingIndex < 0) return "";
-  const values: string[] = [];
-  for (const line of lines.slice(headingIndex + 1)) {
-    if (/^\s*\d+\.\s*/.test(line)) break;
-    const match = line.match(/^\s*(internally|externally)\s*:\s*(.+?)\s*,?\s*$/i);
-    if (match) values.push(`${match[1][0].toUpperCase()}${match[1].slice(1).toLowerCase()}: ${match[2]}`);
-  }
-  return values.join("\n");
-}
-
-function customerSafeSpecification(evidence: Record<string, unknown>, snapshot: Record<string, unknown>, productSystem: string) {
-  const items = (Array.isArray(evidence.customerSafeSpecification) ? evidence.customerSafeSpecification : []).flatMap((value) => {
-    const item = record(value); const label = textValue(item.label); const content = textValue(item.value);
-    return label && content && safeSpecificationLabels.has(label.toLowerCase()) ? [{ label, value: content }] : [];
-  });
-  const glassSealing = glassSealingFromSourceTrace(snapshot);
-  if (glassSealing && !items.some((item) => item.label.toLowerCase() === "glass sealing")) items.push({ label: "Glass sealing", value: glassSealing });
-  return items
-    .filter((item) => !/^(?:ug|uw|u-value)$/i.test(item.label.trim()))
-    .filter((item) => item.label.toLowerCase() !== "product" || normalizedSpecificationValue(item.value) !== normalizedSpecificationValue(productSystem))
-    .sort((left, right) => {
-      const leftIndex = specificationOrder.indexOf(left.label.toLowerCase());
-      const rightIndex = specificationOrder.indexOf(right.label.toLowerCase());
-      return (leftIndex < 0 ? Number.MAX_SAFE_INTEGER : leftIndex) - (rightIndex < 0 ? Number.MAX_SAFE_INTEGER : rightIndex);
-    });
 }
 
 function drawingForPosition(estimatePosition: Position | null, evidence: Record<string, unknown>): CustomerQuotationDrawing {
@@ -121,8 +90,7 @@ function drawingForPosition(estimatePosition: Position | null, evidence: Record<
     if (inside.available || outside.available) return { source: "configurator", available: true, insideAvailable: inside.available, outsideAvailable: outside.available };
   }
   const visual = record(evidence.sourceVisual); const imageUrl = textValue(visual.url);
-  const orientationText = `${textValue(evidence.configurationDescription)} ${textValue(visual.orientation)}`;
-  const orientation = /view from inside|\binside\b/i.test(orientationText) ? "inside" : /view from outside|\boutside\b/i.test(orientationText) ? "outside" : "unknown";
+  const orientation = manufacturerVisualOrientation(visual, evidence.configurationDescription);
   if (visual.status === "available" && imageUrl) return { source: "manufacturer", available: true, imageUrl, mediaType: textValue(visual.mediaType) || null, orientation };
   return { source: "unavailable", available: false, reason: textValue(visual.reason) || "No trusted drawing is available for this position." };
 }
@@ -165,10 +133,12 @@ export function buildCustomerQuotationProjection(input: {
     const configured = estimatePosition ? getConfiguredPositionContract(estimatePosition) : null;
     const manufacturerUg = textValue(evidence.manufacturerQuotedUg);
     const manufacturerUw = textValue(evidence.manufacturerQuotedUw);
-    const productSystem = textValue(evidence.productSystem) || textValue(evidence.product) || configured?.product.productFamily || row.productClass;
+    const customerSpecification = projectCustomerSafeManufacturerSpecification(evidence, configured?.product.productFamily || row.productClass, snapshot);
+    const productSystem = customerSpecification.productSystem;
     const drawing = drawingForPosition(estimatePosition, evidence);
-    const alternativeTarget = classification === "alternative" && row.alternativeTo
-      ? input.scenario.products.find((candidate) => candidate.id === row.alternativeTo || candidate.displayReference === row.alternativeTo || candidate.estimatePositionId === row.alternativeTo) ?? null
+    const alternativeTargetKey = row.alternativeToPositionId ?? estimatePosition?.alternativeToPositionId ?? row.alternativeTo;
+    const alternativeTarget = classification === "alternative" && alternativeTargetKey
+      ? input.scenario.products.find((candidate) => candidate.id === alternativeTargetKey || candidate.displayReference === alternativeTargetKey || candidate.estimatePositionId === alternativeTargetKey) ?? null
       : null;
     return {
       sequence: index + 1,
@@ -184,8 +154,8 @@ export function buildCustomerQuotationProjection(input: {
         ? customerProductDescription({ ...row, sourceSnapshot: { ...row.sourceSnapshot, configuredContract: estimatePosition.configuredContract } })
         : customerProductDescription(row),
       productSystem,
-      configurationDescription: textValue(evidence.configurationDescription),
-      specification: customerSafeSpecification(evidence, snapshot, productSystem),
+      configurationDescription: customerSpecification.configurationDescription,
+      specification: customerSpecification.items,
       drawing,
       unitSellingPriceGbp: unitSellingPrice,
       totalSellingPriceGbp: totalSellingPrice,
@@ -195,7 +165,7 @@ export function buildCustomerQuotationProjection(input: {
       sectionDetailIds: [],
       classification,
       includedInQuotationTotal: classification === "included",
-      alternativeToPositionId: classification === "alternative" ? alternativeTarget?.estimatePositionId ?? alternativeTarget?.id ?? null : null,
+      alternativeToPositionId: classification === "alternative" ? alternativeTarget?.estimatePositionId ?? alternativeTarget?.id ?? row.alternativeToPositionId ?? estimatePosition?.alternativeToPositionId ?? null : null,
       alternativeToReference: classification === "alternative" ? alternativeTarget?.displayReference ?? row.alternativeTo ?? null : null,
     };
   });

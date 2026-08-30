@@ -3,14 +3,21 @@ import path from 'node:path';
 import { extractSupplierDocument, EXTRACTOR_VERSION } from '../supplierImportLab/documentExtraction.js';
 import { parseCommercialFields, FIELD_PARSER_VERSION } from '../supplierImportLab/commercialFieldParser.js';
 import { parseCommercialSummary, SUMMARY_PARSER_VERSION } from '../supplierImportLab/commercialSummaryParser.js';
-import { resolveAttachmentRoot, resolveManagedPath } from './managedAttachmentStorage.js';
+import { readFileIntegrity, resolveAttachmentRoot, resolveManagedPath } from './managedAttachmentStorage.js';
 import { linkSupplierPositionToEstimate, syncEstimatePositionProjections } from '../estimatePositions/canonicalEstimatePositions.js';
 import { createDriveIntegrationService } from '../documents/driveIntegrationService.js';
+import { createSupplierImportDiagnostics } from '../supplierImportLab/supplierImportDiagnostics.js';
+import { createSupplierImportOperationIdentity, evaluateSupplierImportCompletion, readSupplierImportState, reconcileStaleSupplierImportRuns } from './supplierImportReliability.js';
+import { derivePdfPositionPreviews, PDF_POSITION_PREVIEW_VERSION } from '../supplierImportLab/pdfPositionPreviews.js';
+import { PDFJS_RUNTIME_VERSION } from '../supplierImportLab/pdfJsRuntime.js';
+import { EKO_INSIDE_DRAWING_PANEL_GEOMETRY_VERSION } from '../supplierImportLab/ekoOknaDrawingPanelGeometry.js';
+import { resolveCanonicalSupplier } from './supplierIdentity.js';
+import { assertExtractedCommercialEvidence, buildCommercialFingerprint, createManufacturerEvidenceRefreshIdentity, enrichManufacturerSourceSnapshot, MANUFACTURER_EVIDENCE_REFRESH_VERSION, summarizeManufacturerEvidence } from './manufacturerEvidenceRefresh.js';
 
 function nowIso() { return new Date().toISOString(); }
 function mapQuote(row) { return { id: row.id, estimateId: row.estimate_id, supplierCode: row.supplier_code, supplierName: row.supplier_name, createdAt: row.created_at, updatedAt: row.updated_at, archivedAt: row.archived_at }; }
 function money(amount, currency) { return amount == null ? null : { amount: String(amount), currency }; }
-function mapRevision(row) { return { id: row.id, supplierQuoteId: row.supplier_quote_id, estimateId: row.estimate_id, revisionSequence: row.revision_sequence, supplierQuotationNumber: row.supplier_quotation_number, supplierRevision: row.supplier_revision, fullQuotationReference: row.full_quotation_reference, quotationDate: row.quotation_date, customerReference: row.customer_reference, currency: row.currency, vatStatus: row.vat_status, productSubtotal: money(row.product_subtotal_amount, row.currency), extrasTotal: money(row.extras_total_amount, row.currency), deliveryTotal: money(row.delivery_total_amount, row.currency), vatTotal: money(row.vat_total_amount, row.currency), finalSupplierTotal: money(row.final_supplier_total_amount, row.currency), comparisonTotals:JSON.parse(row.comparison_totals_json||'[]'), lifecycleStatus: row.lifecycle_status, isLatest: !row.superseded_by_revision_id && row.lifecycle_status !== 'archived', createdAt: row.created_at, supersededAt: row.superseded_at, supersededByRevisionId: row.superseded_by_revision_id }; }
+function mapRevision(row) { return { id: row.id, supplierQuoteId: row.supplier_quote_id, estimateId: row.estimate_id, revisionSequence: row.revision_sequence, supplierQuotationNumber: row.supplier_quotation_number, supplierRevision: row.supplier_revision, fullQuotationReference: row.full_quotation_reference, quotationDate: row.quotation_date, customerReference: row.customer_reference, currency: row.currency, vatStatus: row.vat_status, productSubtotal: money(row.product_subtotal_amount, row.currency), extrasTotal: money(row.extras_total_amount, row.currency), deliveryTotal: money(row.delivery_total_amount, row.currency), vatTotal: money(row.vat_total_amount, row.currency), finalSupplierTotal: money(row.final_supplier_total_amount, row.currency), comparisonTotals:JSON.parse(row.comparison_totals_json||'[]'), lifecycleStatus: row.lifecycle_status, confirmationStatus: row.confirmation_status || null, confirmationOperationId: row.confirmation_operation_id || null, confirmationUpdatedAt: row.confirmation_updated_at || null, isLatest: !row.superseded_by_revision_id && row.lifecycle_status !== 'archived', createdAt: row.created_at, supersededAt: row.superseded_at, supersededByRevisionId: row.superseded_by_revision_id }; }
 function mapAttachment(row) { return { id: row.id, estimateId: row.estimate_id, revisionId: row.revision_id, role: row.role, documentKind: row.document_kind || 'complete_quotation', originalFileName: row.original_file_name, mediaType: row.media_type, sizeBytes: row.size_bytes, sha256: row.sha256, parserEligible: Boolean(row.parser_eligible), uploadedBy: row.uploaded_by || 'local-admin', uploadOrder: Number(row.upload_order || 0), createdAt: row.created_at, derivedFromAttachmentId: row.derived_from_attachment_id, artifactType: row.artifact_type, extractorVersion: row.extractor_version }; }
 
 const stableRevisionEvidenceId = (kind, revisionId, key) => `${kind}-${createHash('sha256').update(`${revisionId}:${key}`).digest('hex')}`;
@@ -23,12 +30,62 @@ const unsignedDecimal = /^\d+(?:\.\d+)?$/;
 const signedDecimal = /^-?\d+(?:\.\d+)?$/;
 const complementaryDocumentKinds = new Set(['window_schedule','quotation_letter','installation_pricing']);
 function geometry(widthMm, heightMm, quantity) { const area = BigInt(widthMm) * BigInt(heightMm) * BigInt(quantity); const perimeter = 2n * BigInt(widthMm + heightMm) * BigInt(quantity) * 1000n; const decimal = (value) => { const raw = value.toString().padStart(7, '0'); return `${raw.slice(0, -6)}.${raw.slice(-6)}`.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1'); }; return { area: decimal(area), perimeter: decimal(perimeter) }; }
+const isCanonicalPositionRow = (row, currency = row.currency) => Boolean(normalizeReference(row.displayReference) && Number.isInteger(row.quantity) && row.quantity > 0 && Number.isInteger(row.widthMm) && row.widthMm > 0 && Number.isInteger(row.heightMm) && row.heightMm > 0 && row.currency === currency && (row.unitPrice == null || unsignedDecimal.test(String(row.unitPrice))) && (row.totalPrice == null || unsignedDecimal.test(String(row.totalPrice))));
 
-export function createSupplierQuotesService(db, { attachmentRoot = resolveAttachmentRoot(), extractDocument = extractSupplierDocument, parseFields = parseCommercialFields, parseSummary = parseCommercialSummary } = {}) {
+export function createSupplierQuotesService(db, { attachmentRoot = resolveAttachmentRoot(), extractDocument = extractSupplierDocument, parseFields = parseCommercialFields, parseSummary = parseCommercialSummary, derivePreviews = derivePdfPositionPreviews, failureInjector = async () => {}, evidenceRefreshFailureInjector = async () => {}, fileSupplierAttachments = true } = {}) {
+  async function recordRecoverableImportFailure(context, error) {
+    if (!context) return;
+    const completedAt = nowIso();
+    const code = error?.code || 'document_extraction_failed';
+    const status = code === 'supplier_confirmation_postcondition_failed' ? 'partial_recovery_required' : 'failed_recoverable';
+    const diagnostics = { ...(error?.diagnostics || {}), ...(error?.postState ? { attemptedPostState: error.postState } : {}) };
+    const postState = await readSupplierImportState(db, { scenarioId: context.scenarioId, revisionId: context.revision.id });
+    try {
+      await db.exec('BEGIN IMMEDIATE');
+      await db.run(`INSERT INTO supplier_quote_import_operations(id,operation_key,estimate_id,supplier_quote_id,revision_id,scenario_id,current_run_id,status,source_identity_json,selection_identity_json,pre_state_json,intended_counts_json,post_state_json,diagnostics_json,recovery_reason,currency_decision_json,last_error_code,last_error_message,result_json,created_at,updated_at,confirmed_at)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?,?,NULL)
+        ON CONFLICT(id) DO UPDATE SET current_run_id=excluded.current_run_id,status=CASE WHEN supplier_quote_import_operations.status='confirmed' THEN supplier_quote_import_operations.status ELSE excluded.status END,pre_state_json=excluded.pre_state_json,intended_counts_json=excluded.intended_counts_json,post_state_json=excluded.post_state_json,diagnostics_json=excluded.diagnostics_json,recovery_reason=excluded.recovery_reason,currency_decision_json=excluded.currency_decision_json,last_error_code=excluded.last_error_code,last_error_message=excluded.last_error_message,updated_at=excluded.updated_at`, context.identity.operationId, context.identity.operationKey, context.quote.estimate_id, context.quote.id, context.revision.id, context.scenarioId, context.runId, status, JSON.stringify(context.identity.sourceIdentity), JSON.stringify(context.identity.selectionIdentity), JSON.stringify(context.preState), JSON.stringify(context.intendedCounts), JSON.stringify(postState), JSON.stringify(diagnostics), error?.recoveryReason || code, JSON.stringify(context.currencyDecision), code, error?.message || 'Supplier import failed.', '{}', context.startedAt, completedAt);
+      await db.run(`INSERT OR IGNORE INTO supplier_quote_import_runs(id,estimate_id,revision_id,extractor_name,extractor_version,adapter_code,adapter_version,recognition_version,started_at,completed_at,status,warnings_json,error_code,error_message,operation_id,confirmation_status,diagnostics_json,expected_counts_json,pre_state_json,post_state_json,recovery_reason,currency_decision_json)
+        VALUES(?,?,?,?,?,?,?,?,?,?,'failed','[]',?,?,?,?,?,?,?,?,?,?)`, context.runId, context.quote.estimate_id, context.revision.id, 'quotesync-commercial-extractor', EXTRACTOR_VERSION, 'supplier-neutral', FIELD_PARSER_VERSION, SUMMARY_PARSER_VERSION, context.startedAt, completedAt, code, error?.message || 'Supplier import failed.', context.identity.operationId, status, JSON.stringify(diagnostics), JSON.stringify(context.intendedCounts), JSON.stringify(context.preState), JSON.stringify(postState), error?.recoveryReason || code, JSON.stringify(context.currencyDecision));
+      for (const [ordinal, attachment] of context.attachments.entries()) await db.run('INSERT OR IGNORE INTO supplier_quote_import_run_attachments(import_run_id,attachment_id,ordinal,role) VALUES(?,?,?,?)', context.runId, attachment.id, ordinal, attachment.role);
+      await db.exec('COMMIT');
+    } catch {
+      try { await db.exec('ROLLBACK'); } catch {}
+    }
+  }
   async function estimateExists(estimateId) { return Boolean(await db.get('SELECT id FROM estimates WHERE id=? AND deleted_at IS NULL', estimateId)); }
   async function quoteRow(estimateId, quoteId) { return db.get('SELECT * FROM supplier_quotes WHERE id=? AND estimate_id=?', quoteId, estimateId); }
   async function revisionRow(estimateId, quoteId, revisionId) { return db.get('SELECT r.* FROM supplier_quote_revisions r WHERE r.id=? AND r.supplier_quote_id=? AND r.estimate_id=?', revisionId, quoteId, estimateId); }
   async function attachmentRow(estimateId, quoteId, revisionId, attachmentId) { return db.get(`SELECT a.* FROM supplier_quote_attachments a JOIN supplier_quote_revisions r ON r.id=a.revision_id AND r.estimate_id=a.estimate_id WHERE a.id=? AND a.revision_id=? AND a.estimate_id=? AND r.supplier_quote_id=?`, attachmentId, revisionId, estimateId, quoteId); }
+  async function readManufacturerEvidenceRefreshState(estimateId, quoteId, revisionId, attachmentId) {
+    const [estimate, quote, revision, attachment] = await Promise.all([
+      db.get('SELECT id,estimate_ref,positions_json FROM estimates WHERE id=? AND deleted_at IS NULL', estimateId),
+      quoteRow(estimateId, quoteId),
+      revisionRow(estimateId, quoteId, revisionId),
+      attachmentRow(estimateId, quoteId, revisionId, attachmentId),
+    ]);
+    if (!estimate || !quote || !revision || !attachment) return null;
+    const links = await db.all('SELECT * FROM project_calculator_supplier_quote_revisions WHERE revision_id=? ORDER BY linked_at,rowid', revisionId);
+    if (links.length !== 1) throw Object.assign(new Error('Evidence refresh requires exactly one confirmed revision/scenario relationship.'), { code: 'evidence_refresh_relationship_mismatch', count: links.length });
+    const link = links[0];
+    const [positions, costingRows, operations, runs, fxSnapshots] = await Promise.all([
+      db.all('SELECT * FROM supplier_quote_positions WHERE estimate_id=? AND revision_id=? ORDER BY source_sequence,rowid', estimateId, revisionId),
+      db.all('SELECT * FROM project_calculator_estimate_product_rows WHERE scenario_id=? AND source_revision_id=? ORDER BY display_reference,rowid', link.scenario_id, revisionId),
+      db.all("SELECT id,operation_key,status,confirmed_at FROM supplier_quote_import_operations WHERE revision_id=? AND status='confirmed' ORDER BY created_at,id", revisionId),
+      db.all("SELECT id,operation_id,status,confirmation_status,extractor_version,completed_at FROM supplier_quote_import_runs WHERE revision_id=? AND status='completed' AND confirmation_status='confirmed' ORDER BY started_at,id", revisionId),
+      db.all('SELECT * FROM project_calculator_supplier_fx_snapshots WHERE scenario_id=? AND supplier_quote_revision_id=? ORDER BY created_at,id', link.scenario_id, revisionId),
+    ]);
+    let estimatePositions;
+    try { estimatePositions = JSON.parse(estimate.positions_json || '[]'); } catch { estimatePositions = []; }
+    const canonicalPositions = (Array.isArray(estimatePositions) ? estimatePositions : []).filter((position) => position?.sourceProvenance?.sourceRevisionId === revisionId);
+    const commercial = buildCommercialFingerprint({ estimateId, quoteId, revision, attachment, link, fxSnapshots, positions, costingRows, canonicalPositions, operations, runs });
+    const snapshots = costingRows.map((row) => {
+      let snapshot;
+      try { snapshot = JSON.parse(row.source_snapshot_json || '{}'); } catch { snapshot = {}; }
+      return { row, snapshot, evidence: summarizeManufacturerEvidence(snapshot) };
+    });
+    return { estimate, quote, revision, attachment, link, positions, costingRows, canonicalPositions, operations, runs, fxSnapshots, commercial, snapshots };
+  }
   async function createQuote(estimateId, input) {
     if (!(await estimateExists(estimateId))) return null;
     const supplierCode = String(input.supplierCode || '').trim().toUpperCase(); const supplierName = String(input.supplierName || '').trim();
@@ -57,8 +114,16 @@ export function createSupplierQuotesService(db, { attachmentRoot = resolveAttach
       await db.exec('COMMIT'); return { ...revision, productSubtotal: null, extrasTotal: null, deliveryTotal: null, vatTotal: null, finalSupplierTotal: null };
     } catch (error) { try { await db.exec('ROLLBACK'); } catch {} throw error; }
   }
-  async function listRevisions(estimateId, quoteId) { if (!(await quoteRow(estimateId, quoteId))) return null; return (await db.all('SELECT * FROM supplier_quote_revisions WHERE estimate_id=? AND supplier_quote_id=? ORDER BY revision_sequence DESC', estimateId, quoteId)).map(mapRevision); }
-  async function getRevision(estimateId, quoteId, revisionId) { const row = await revisionRow(estimateId, quoteId, revisionId); return row ? mapRevision(row) : null; }
+  async function listRevisions(estimateId, quoteId) { if (!(await quoteRow(estimateId, quoteId))) return null; return (await db.all(`SELECT revision.*,
+    (SELECT operation.status FROM supplier_quote_import_operations operation WHERE operation.revision_id=revision.id ORDER BY operation.updated_at DESC,operation.created_at DESC LIMIT 1) confirmation_status,
+    (SELECT operation.id FROM supplier_quote_import_operations operation WHERE operation.revision_id=revision.id ORDER BY operation.updated_at DESC,operation.created_at DESC LIMIT 1) confirmation_operation_id,
+    (SELECT operation.updated_at FROM supplier_quote_import_operations operation WHERE operation.revision_id=revision.id ORDER BY operation.updated_at DESC,operation.created_at DESC LIMIT 1) confirmation_updated_at
+    FROM supplier_quote_revisions revision WHERE revision.estimate_id=? AND revision.supplier_quote_id=? ORDER BY revision.revision_sequence DESC`, estimateId, quoteId)).map(mapRevision); }
+  async function getRevision(estimateId, quoteId, revisionId) { const row = await db.get(`SELECT revision.*,
+    (SELECT operation.status FROM supplier_quote_import_operations operation WHERE operation.revision_id=revision.id ORDER BY operation.updated_at DESC,operation.created_at DESC LIMIT 1) confirmation_status,
+    (SELECT operation.id FROM supplier_quote_import_operations operation WHERE operation.revision_id=revision.id ORDER BY operation.updated_at DESC,operation.created_at DESC LIMIT 1) confirmation_operation_id,
+    (SELECT operation.updated_at FROM supplier_quote_import_operations operation WHERE operation.revision_id=revision.id ORDER BY operation.updated_at DESC,operation.created_at DESC LIMIT 1) confirmation_updated_at
+    FROM supplier_quote_revisions revision WHERE revision.id=? AND revision.supplier_quote_id=? AND revision.estimate_id=?`, revisionId, quoteId, estimateId); return row ? mapRevision(row) : null; }
   async function listAttachments(estimateId, quoteId, revisionId) { if (!(await revisionRow(estimateId, quoteId, revisionId))) return null; return (await db.all('SELECT * FROM supplier_quote_attachments WHERE estimate_id=? AND revision_id=? ORDER BY upload_order,created_at,rowid', estimateId, revisionId)).map(mapAttachment); }
   async function getAttachment(estimateId, quoteId, revisionId, attachmentId) { const row = await attachmentRow(estimateId, quoteId, revisionId, attachmentId); return row ? { metadata: mapAttachment(row), storageKey: row.storage_key } : null; }
   async function insertAttachments(estimateId, quoteId, revisionId, attachments) {
@@ -83,6 +148,7 @@ export function createSupplierQuotesService(db, { attachmentRoot = resolveAttach
     try { for (const group of groups.values()) { const id = randomUUID(); await db.run(`INSERT INTO supplier_quote_import_runs(id,estimate_id,revision_id,extractor_name,extractor_version,adapter_code,adapter_version,recognition_version,started_at,status,warnings_json) VALUES(?,?,?,?,?,?,?,?,?,'queued','[]')`, id, estimateId, group.revisionId, 'quotesync-commercial-extractor', 'stage-1e', 'supplier-neutral', 'stage-1e', 'not-applicable', now); for (const [ordinal, attachment] of group.attachments.entries()) await db.run('INSERT INTO supplier_quote_import_run_attachments(import_run_id,attachment_id,ordinal,role) VALUES(?,?,?,?)', id, attachment.id, ordinal, attachment.role); created.push({ id, revisionId: group.revisionId, attachmentIds: group.attachments.map(item => item.id), status: 'queued' }); } await db.exec('COMMIT'); return created; } catch (error) { await db.exec('ROLLBACK'); throw error; }
   }
   async function prepareImportReview(estimateId, documents) {
+    await reconcileStaleSupplierImportRuns(db);
     if (!(await estimateExists(estimateId))) return null;
     if (!Array.isArray(documents) || !documents.length) throw Object.assign(new Error('Select at least one supplier document.'), { code: 'no_attachments_selected' });
     const suppliers = (await db.all('SELECT supplier_code,supplier_name,policy_json,updated_at FROM supplier_commercial_defaults WHERE active<>0 ORDER BY supplier_name')).map(row => ({ supplierCode: row.supplier_code, supplierName: row.supplier_name, pricingMethod: JSON.parse(row.policy_json || '{}').pricingMethod || JSON.parse(row.policy_json || '{}').pricingBasis || 'factory_price', policyUpdatedAt: row.updated_at }));
@@ -92,13 +158,22 @@ export function createSupplierQuotesService(db, { attachmentRoot = resolveAttach
       const attachment = await attachmentRow(estimateId, quoteId, revisionId, attachmentId); const revision = attachment && await revisionRow(estimateId, quoteId, revisionId); const quote = attachment && await quoteRow(estimateId, quoteId);
       if (!attachment || !revision || !quote || attachment.role === 'derived_artifact' || !attachment.parser_eligible) throw Object.assign(new Error('A selected supplier document is unavailable or not eligible for extraction.'), { code: 'attachment_not_eligible' });
       const extracted = await extractDocument(resolveManagedPath(attachment.storage_key, attachmentRoot), { id: attachment.id, sessionId: estimateId, mediaType: attachment.media_type }, { visualRoot: path.join(attachmentRoot, 'manufacturer-position-visuals') });
+      await failureInjector('extraction', { estimateId, quoteId, revisionId, attachmentId: attachment.id });
       if (!extracted.textAvailable) throw Object.assign(new Error('OCR required — unsupported for this document.'), { code: 'ocr_required' });
       const fields = parseFields(extracted, { currency: revision.currency });
-      reviewedDocuments.push({ quoteId, revisionId, attachmentId, quote, revision, fields, rows: fields.rows.map(row => ({ rowKey: `${attachment.id}:${row.ordinal}`, include: true, manufacturerItemNumber: row.manufacturerEvidence?.manufacturerItemNumber ?? null, customerReference: row.manufacturerEvidence?.customerReference ?? row.displayReference ?? null, roomLocation: row.manufacturerEvidence?.roomLocation ?? null, product: row.manufacturerEvidence?.product ?? null, productSystem: row.manufacturerEvidence?.productSystem ?? null, configurationDescription: row.manufacturerEvidence?.configurationDescription ?? null, widthMm: row.widthMm ?? null, heightMm: row.heightMm ?? null, areaSquareMetres: row.manufacturerEvidence?.areaSquareMetres ?? null, quantity: row.quantity ?? null, currency: row.currency ?? null, unitPrice: row.unitPrice ?? null, totalPrice: row.totalPrice ?? null, manufacturerQuotedUg: row.manufacturerEvidence?.manufacturerQuotedUg ?? null, manufacturerQuotedUw: row.manufacturerEvidence?.manufacturerQuotedUw ?? null, sourceVisual: row.manufacturerEvidence?.sourceVisual ?? { status: 'unavailable', reason: 'No mapped manufacturer visual.' }, warnings: row.warnings ?? [] })) });
+      const previewResult = await derivePreviews({ filename: resolveManagedPath(attachment.storage_key, attachmentRoot), attachment, document: extracted, rows: fields.rows, visualRoot: path.join(attachmentRoot, 'manufacturer-position-visuals') });
+      extracted.warnings.push(...previewResult.warnings);
+      const validRows=fields.rows.filter((row) => isCanonicalPositionRow(row));
+      const diagnostics=createSupplierImportDiagnostics({confirmationAttempted:false,textAvailable:extracted.textAvailable,rawBlocks:extracted.pages?.reduce((sum,page)=>sum+(page.blocks?.length||0),0),sourcePositions:fields.rows.length,candidatePositionBlocks:fields.rows.length,parsedPositions:fields.rows.length,validCanonicalPositions:validRows.length,visualEvidence:fields.rows.filter(row=>row.manufacturerEvidence?.sourceVisual?.status==='available'||row.manufacturerEvidence?.sourceVisual?.originalAsset).length,ambiguousVisualEvidence:fields.rows.filter(row=>row.manufacturerEvidence?.sourceVisual?.mappingReviewStatus==='needs_review').length});
+      reviewedDocuments.push({ quoteId, revisionId, attachmentId, quote, revision, fields, diagnostics, rows: fields.rows.map(row => { const canonicalEligible=isCanonicalPositionRow(row);return { rowKey: `${attachment.id}:${row.ordinal}`, include: canonicalEligible, manufacturerItemNumber: row.manufacturerEvidence?.manufacturerItemNumber ?? null, customerReference: row.manufacturerEvidence?.customerReference ?? row.displayReference ?? null, roomLocation: row.manufacturerEvidence?.roomLocation ?? null, product: row.manufacturerEvidence?.product ?? null, productSystem: row.manufacturerEvidence?.productSystem ?? null, configurationDescription: row.manufacturerEvidence?.configurationDescription ?? null, widthMm: row.widthMm ?? null, heightMm: row.heightMm ?? null, areaSquareMetres: row.manufacturerEvidence?.areaSquareMetres ?? null, weightKg: row.manufacturerEvidence?.weightKg ?? null, glassSpecification: row.manufacturerEvidence?.glassSpecification ?? null, fittingsSpecification: row.manufacturerEvidence?.fittingsSpecification ?? null, quantity: row.quantity ?? null, currency: row.currency ?? null, unitPrice: row.unitPrice ?? null, totalPrice: row.totalPrice ?? null, manufacturerQuotedUg: row.manufacturerEvidence?.manufacturerQuotedUg ?? null, manufacturerQuotedUw: row.manufacturerEvidence?.manufacturerQuotedUw ?? null, sourceSpecification: row.manufacturerEvidence?.sourceSpecification ?? null, canonicalSpecification: row.manufacturerEvidence?.canonicalSpecification ?? null, sourceVisuals: row.manufacturerEvidence?.sourceVisuals ?? [], sourceVisual: row.manufacturerEvidence?.sourceVisual ?? { status: 'unavailable', reason: 'No mapped manufacturer visual.' }, warnings: [...(row.warnings ?? []),...(canonicalEligible?[]:['Reference, positive quantity, dimensions, currency and prices are required before this position can enter Products / Supply.'])] }; }) });
     }
     const first = reviewedDocuments[0], detectedReference = first.fields.quotation?.supplierQuotationNumber ?? first.revision.supplier_quotation_number, detectedRevision = first.fields.quotation?.supplierRevision ?? first.revision.supplier_revision;
-    const normalizedName = normalizeReference(first.quote.supplier_name); const candidates = suppliers.filter(item => normalizeReference(item.supplierName) === normalizedName || normalizeReference(item.supplierName).includes(normalizedName) || normalizedName.includes(normalizeReference(item.supplierName))); const suggestedSupplierCode = candidates.length === 1 ? candidates[0].supplierCode : suppliers.some(item => item.supplierCode === first.quote.supplier_code) ? first.quote.supplier_code : null;
-    return { estimateId, documents: reviewedDocuments.map(({ fields: _fields, quote: _quote, revision: _revision, ...item }) => item), metadata: { supplierName: first.quote.supplier_name, supplierCode: suggestedSupplierCode, quotationNumber: detectedReference, revision: detectedRevision, currency: first.revision.currency }, canonicalSuppliers: suppliers, positionCount: reviewedDocuments.reduce((sum, item) => sum + item.rows.length, 0) };
+    const positionCurrencies = new Set(reviewedDocuments.flatMap((item) => item.fields.rows.map((row) => row.currency)).filter((currency) => /^[A-Z]{3}$/.test(String(currency || ''))));
+    const detectedCurrency = positionCurrencies.size === 1 ? [...positionCurrencies][0] : first.revision.currency;
+    const recognizedSupplierName = first.fields.supplier ?? first.quote.supplier_name;
+    const resolution = resolveCanonicalSupplier({ recognizedSupplierName, storedSupplierCode: first.quote.supplier_code, storedSupplierName: first.quote.supplier_name, configuredSuppliers: suppliers });
+    for (const item of reviewedDocuments) item.diagnostics = createSupplierImportDiagnostics({ ...item.diagnostics.counts, confirmationAttempted: false, canonicalSupplierStatus: resolution.status });
+    return { estimateId, documents: reviewedDocuments.map(({ fields: _fields, quote: _quote, revision: _revision, ...item }) => item), metadata: { recognizedSupplierName, storedSupplierName: first.quote.supplier_name, supplierResolutionStatus: resolution.status, supplierResolutionMethod: resolution.method, supplierName: resolution.supplier?.supplierName ?? recognizedSupplierName, supplierCode: resolution.supplier?.supplierCode ?? null, quotationNumber: detectedReference, revision: detectedRevision, currency: detectedCurrency }, canonicalSuppliers: suppliers, positionCount: reviewedDocuments.reduce((sum, item) => sum + item.rows.length, 0) };
   }
   async function regenerateManufacturerVisuals(estimateId, quoteId, revisionId, attachmentId) {
     const attachment = await attachmentRow(estimateId, quoteId, revisionId, attachmentId);
@@ -107,6 +182,8 @@ export function createSupplierQuotesService(db, { attachmentRoot = resolveAttach
     const extracted = await extractDocument(resolveManagedPath(attachment.storage_key, attachmentRoot), { id: attachment.id, sessionId: estimateId, mediaType: attachment.media_type }, { visualRoot: path.join(attachmentRoot, 'manufacturer-position-visuals') });
     if (!extracted.textAvailable) throw Object.assign(new Error('OCR required — unsupported for this document.'), { code: 'ocr_required' });
     const fields = parseFields(extracted, { currency: revision.currency });
+    const previewResult = await derivePreviews({ filename: resolveManagedPath(attachment.storage_key, attachmentRoot), attachment, document: extracted, rows: fields.rows, visualRoot: path.join(attachmentRoot, 'manufacturer-position-visuals') });
+    extracted.warnings.push(...previewResult.warnings);
     const positions = await db.all('SELECT id,display_reference FROM supplier_quote_positions WHERE estimate_id=? AND revision_id=? ORDER BY source_sequence,rowid', estimateId, revisionId);
     const positionsByReference = new Map();
     for (const position of positions) { const key = normalizeReference(position.display_reference); positionsByReference.set(key, [...(positionsByReference.get(key) || []), position]); }
@@ -134,28 +211,177 @@ export function createSupplierQuotesService(db, { attachmentRoot = resolveAttach
     } catch (error) { await db.exec('ROLLBACK'); throw error; }
     return { estimateId, quoteId, revisionId, attachmentId, positionCount: fields.rows.length, availablePreviews: fields.rows.filter(row => row.manufacturerEvidence?.sourceVisual?.status === 'available').length, retainedSources: extracted.manufacturerVisualCandidates.filter(item => item.originalAsset).length, updatedCostingRows, warnings: extracted.warnings };
   }
+  async function inspectManufacturerEvidenceRefresh(estimateId, quoteId, revisionId, attachmentId) {
+    const state = await readManufacturerEvidenceRefreshState(estimateId, quoteId, revisionId, attachmentId);
+    if (!state) return null;
+    const integrity = await readFileIntegrity(resolveManagedPath(state.attachment.storage_key, attachmentRoot));
+    return {
+      estimateId,
+      estimateReference: state.estimate.estimate_ref,
+      quoteId,
+      revisionId,
+      attachmentId,
+      scenarioId: state.link.scenario_id,
+      quotationNumber: state.revision.supplier_quotation_number,
+      supplier: { code: state.quote.supplier_code, name: state.quote.supplier_name },
+      currency: { revision: state.revision.currency, link: state.link.currency, positions: [...new Set(state.positions.map((row) => row.currency))], costing: [...new Set(state.costingRows.map((row) => row.currency))] },
+      source: { storedSha256: state.attachment.sha256, actualSha256: integrity.sha256, storedSizeBytes: Number(state.attachment.size_bytes), actualSizeBytes: integrity.sizeBytes, unchanged: state.attachment.sha256 === integrity.sha256 && Number(state.attachment.size_bytes) === integrity.sizeBytes },
+      counts: { confirmedOperations: state.operations.length, completedRuns: state.runs.length, supplierPositions: state.positions.length, productsSupply: state.canonicalPositions.length, projectCostingProducts: state.costingRows.length },
+      commercialFingerprintHash: state.commercial.hash,
+      commercialFingerprints: state.commercial.fingerprint.rows,
+      commercialContext: { revision: state.commercial.fingerprint.revision, revisionScenarioLink: state.commercial.fingerprint.revisionScenarioLink, fxSnapshots: state.commercial.fingerprint.fxSnapshots },
+      evidence: state.snapshots.map(({ row, evidence }) => ({ reference: row.display_reference, projectCostingIdentity: row.id, ...evidence })),
+    };
+  }
+  async function inspectManufacturerEvidenceRefreshRuntime(estimateId, quoteId, revisionId, attachmentId) {
+    const state = await readManufacturerEvidenceRefreshState(estimateId, quoteId, revisionId, attachmentId);
+    if (!state || state.attachment.role === 'derived_artifact' || !state.attachment.parser_eligible) return null;
+    const sourcePath = resolveManagedPath(state.attachment.storage_key, attachmentRoot);
+    const integrity = await readFileIntegrity(sourcePath);
+    if (integrity.sha256 !== state.attachment.sha256 || integrity.sizeBytes !== Number(state.attachment.size_bytes)) throw Object.assign(new Error('Immutable manufacturer source identity differs from persisted attachment evidence.'), { code: 'evidence_refresh_source_mismatch' });
+    const extracted = await extractDocument(sourcePath, { id: state.attachment.id, sessionId: estimateId, mediaType: state.attachment.media_type }, { visualRoot: path.join(attachmentRoot, 'manufacturer-position-visuals') });
+    if (!extracted.textAvailable) throw Object.assign(new Error('OCR required — unsupported for this document.'), { code: 'ocr_required' });
+    const fields = parseFields(extracted, { currency: state.revision.currency });
+    assertExtractedCommercialEvidence(fields.rows, state.commercial.fingerprint.rows);
+    const previewResult = await derivePreviews({ filename: sourcePath, attachment: state.attachment, document: extracted, rows: fields.rows, visualRoot: path.join(attachmentRoot, 'manufacturer-position-visuals') });
+    const sourceSpecificationVersions = [...new Set(fields.rows.map((row) => row.manufacturerEvidence?.sourceSpecification?.version).filter(Boolean))];
+    const internalSpecificationVersions = [...new Set(fields.rows.map((row) => row.manufacturerEvidence?.internalSpecification?.version).filter(Boolean))];
+    const visualMappingMethods = [...new Set(fields.rows.flatMap((row) => row.manufacturerEvidence?.sourceVisuals || []).map((visual) => visual.mappingMethod).filter(Boolean))].sort();
+    const identity = createManufacturerEvidenceRefreshIdentity({ estimateId, quoteId, revisionId, attachmentId, sourceSha256: integrity.sha256, sourceSpecificationVersion: sourceSpecificationVersions[0], internalSpecificationVersion: internalSpecificationVersions[0], visualMappingMethods, renderVersion: PDF_POSITION_PREVIEW_VERSION });
+    const positions = fields.rows.map((row) => {
+      const visuals = row.manufacturerEvidence?.sourceVisuals || [];
+      const inside = visuals.find((visual) => visual.role === 'inside');
+      return {
+        reference: row.displayReference,
+        primaryRole: row.manufacturerEvidence?.sourceVisual?.role ?? null,
+        roles: visuals.map((visual) => visual.role),
+        availableRoles: visuals.filter((visual) => visual.status === 'available').map((visual) => visual.role),
+        reviewStates: visuals.map((visual) => visual.mappingReviewStatus),
+        mappingMethods: [...new Set(visuals.map((visual) => visual.mappingMethod).filter(Boolean))],
+        renderVersions: [...new Set(visuals.map((visual) => visual.renderedDerivative?.renderVersion).filter(Boolean))],
+        inside: inside ? { sourcePage: inside.sourcePage, boundingRegion: inside.boundingRegion, mappingMethod: inside.mappingMethod, mappingReviewStatus: inside.mappingReviewStatus, renderVersion: inside.renderedDerivative?.renderVersion, url: inside.renderedDerivative?.url, geometryEvidence: inside.geometryEvidence } : null,
+      };
+    });
+    return {
+      readOnly: true,
+      source: { sha256: integrity.sha256, sizeBytes: integrity.sizeBytes },
+      commercialFingerprintHash: state.commercial.hash,
+      runtime: { pdfRuntime: PDFJS_RUNTIME_VERSION, renderVersion: PDF_POSITION_PREVIEW_VERSION, drawingClassifier: EKO_INSIDE_DRAWING_PANEL_GEOMETRY_VERSION, completeInsideDrawingPanelGeometry: EKO_INSIDE_DRAWING_PANEL_GEOMETRY_VERSION, sourceSpecificationVersion: sourceSpecificationVersions[0] ?? null, internalSpecificationVersion: internalSpecificationVersions[0] ?? null, visualRoleMapping: { inside: 'inside', outside: 'outside', unknown: 'unknown' } },
+      expectedRefreshIdentity: identity,
+      counts: { positions: positions.length, automaticInsideRegions: positions.filter((position) => position.inside?.mappingReviewStatus === 'mapped_automatic').length, insideRoles: positions.filter((position) => position.availableRoles.includes('inside')).length, outsideRoles: positions.filter((position) => position.availableRoles.includes('outside')).length, combinedSourceRoles: positions.filter((position) => position.availableRoles.includes('combined_source')).length, availableVisuals: positions.reduce((count, position) => count + position.availableRoles.length, 0), reviewRequiredPositions: positions.filter((position) => position.reviewStates.includes('review_required')).length },
+      previewResult,
+      warnings: [...extracted.warnings, ...previewResult.warnings],
+      positions,
+    };
+  }
+  async function refreshManufacturerEvidence(estimateId, quoteId, revisionId, attachmentId, guard = {}) {
+    const initial = await readManufacturerEvidenceRefreshState(estimateId, quoteId, revisionId, attachmentId);
+    if (!initial || initial.attachment.role === 'derived_artifact' || !initial.attachment.parser_eligible) return null;
+    const expectedCount = Number(guard.expectedPositionCount ?? initial.positions.length);
+    const expectedOperationCount = Number(guard.expectedOperationCount ?? initial.operations.length);
+    const expectedRunCount = Number(guard.expectedRunCount ?? initial.runs.length);
+    const assertState = (state, stage) => {
+      const counts = { supplierPositions: state.positions.length, productsSupply: state.canonicalPositions.length, projectCostingProducts: state.costingRows.length, confirmedOperations: state.operations.length, completedRuns: state.runs.length };
+      if (expectedCount <= 0 || counts.supplierPositions !== expectedCount || counts.productsSupply !== expectedCount || counts.projectCostingProducts !== expectedCount || counts.confirmedOperations !== expectedOperationCount || counts.completedRuns !== expectedRunCount) throw Object.assign(new Error(`Evidence refresh ${stage} state does not match the confirmed commercial baseline.`), { code: 'evidence_refresh_baseline_mismatch', stage, counts, expected: { positionCount: expectedCount, operationCount: expectedOperationCount, runCount: expectedRunCount } });
+      const unique = (values) => new Set(values).size === values.length;
+      if (!unique(state.positions.map((row) => row.id)) || !unique(state.positions.map((row) => normalizeReference(row.display_reference))) || !unique(state.costingRows.map((row) => row.id)) || !unique(state.costingRows.map((row) => row.source_position_id)) || !unique(state.costingRows.map((row) => row.estimate_position_id)) || !unique(state.canonicalPositions.map((row) => row.id))) throw Object.assign(new Error(`Evidence refresh ${stage} state contains duplicate commercial identities.`), { code: 'evidence_refresh_duplicate_identity', stage });
+      if (state.positions.some((position) => !state.costingRows.some((row) => row.source_position_id === position.id)) || state.costingRows.some((row) => row.source_attachment_id !== attachmentId || row.source_revision_id !== revisionId)) throw Object.assign(new Error(`Evidence refresh ${stage} source relationships are incomplete.`), { code: 'evidence_refresh_relationship_mismatch', stage });
+      if (guard.expectedCommercialFingerprintHash && state.commercial.hash !== guard.expectedCommercialFingerprintHash) throw Object.assign(new Error(`Evidence refresh ${stage} commercial fingerprint differs from the approved baseline.`), { code: 'evidence_refresh_fingerprint_mismatch', stage, expected: guard.expectedCommercialFingerprintHash, actual: state.commercial.hash });
+      if (guard.expectedCurrency && (state.revision.currency !== guard.expectedCurrency || state.link.currency !== guard.expectedCurrency || state.costingRows.some((row) => row.currency !== guard.expectedCurrency) || state.positions.some((row) => row.currency !== guard.expectedCurrency))) throw Object.assign(new Error(`Evidence refresh ${stage} currency differs from the approved baseline.`), { code: 'evidence_refresh_currency_mismatch', stage });
+      return counts;
+    };
+    const preCounts = assertState(initial, 'pre-extraction');
+    const sourcePath = resolveManagedPath(initial.attachment.storage_key, attachmentRoot);
+    const integrity = await readFileIntegrity(sourcePath);
+    if (integrity.sha256 !== initial.attachment.sha256 || integrity.sizeBytes !== Number(initial.attachment.size_bytes) || (guard.expectedSourceSha256 && integrity.sha256 !== guard.expectedSourceSha256)) throw Object.assign(new Error('Immutable manufacturer source identity differs from the approved evidence-refresh source.'), { code: 'evidence_refresh_source_mismatch', storedSha256: initial.attachment.sha256, actualSha256: integrity.sha256, expectedSha256: guard.expectedSourceSha256 ?? null });
+    const extracted = await extractDocument(sourcePath, { id: initial.attachment.id, sessionId: estimateId, mediaType: initial.attachment.media_type }, { visualRoot: path.join(attachmentRoot, 'manufacturer-position-visuals') });
+    if (!extracted.textAvailable) throw Object.assign(new Error('OCR required — unsupported for this document.'), { code: 'ocr_required' });
+    const fields = parseFields(extracted, { currency: initial.revision.currency });
+    const matches = assertExtractedCommercialEvidence(fields.rows, initial.commercial.fingerprint.rows);
+    const sourceSpecificationVersions = new Set(fields.rows.map((row) => row.manufacturerEvidence?.sourceSpecification?.version).filter(Boolean));
+    if (sourceSpecificationVersions.size !== 1) throw Object.assign(new Error('Evidence refresh requires one complete structured source-specification version across all confirmed positions.'), { code: 'evidence_refresh_specification_incomplete', versions: [...sourceSpecificationVersions] });
+    const sourceSpecificationVersion = [...sourceSpecificationVersions][0];
+    const internalSpecificationVersions = new Set(fields.rows.map((row) => row.manufacturerEvidence?.internalSpecification?.version).filter(Boolean));
+    if (internalSpecificationVersions.size !== 1) throw Object.assign(new Error('Evidence refresh requires one complete internal manufacturer-specification version across all confirmed positions.'), { code: 'evidence_refresh_internal_specification_incomplete', versions: [...internalSpecificationVersions] });
+    const internalSpecificationVersion = [...internalSpecificationVersions][0];
+    const visualMappingMethods = [...new Set(fields.rows.flatMap((row) => row.manufacturerEvidence?.sourceVisuals || []).map((visual) => visual.mappingMethod).filter(Boolean))].sort();
+    const identity = createManufacturerEvidenceRefreshIdentity({ estimateId, quoteId, revisionId, attachmentId, sourceSha256: integrity.sha256, sourceSpecificationVersion, internalSpecificationVersion, visualMappingMethods, renderVersion: PDF_POSITION_PREVIEW_VERSION });
+    const evidenceIsCurrent = (evidence) => evidence.refreshIdentity === identity.id
+      && evidence.sourceSpecificationVersion === sourceSpecificationVersion
+      && evidence.internalSpecificationVersion === internalSpecificationVersion
+      && evidence.primaryVisualRole === 'inside'
+      && ['inside', 'outside', 'combined_source'].every((role) => evidence.availableVisualRoles.includes(role))
+      && visualMappingMethods.every((method) => evidence.visualMappingMethods.includes(method))
+      && evidence.visualRenderVersions.length === 1
+      && evidence.visualRenderVersions[0] === PDF_POSITION_PREVIEW_VERSION;
+    const alreadyCurrent = initial.snapshots.length === expectedCount && initial.snapshots.every(({ evidence }) => evidenceIsCurrent(evidence));
+    if (alreadyCurrent) return { estimateId, quoteId, revisionId, attachmentId, scenarioId: initial.link.scenario_id, refreshIdentity: identity.id, refreshVersion: MANUFACTURER_EVIDENCE_REFRESH_VERSION, status: 'already_current', idempotent: true, sourceSha256: integrity.sha256, commercialFingerprintHash: initial.commercial.hash, preCounts, postCounts: preCounts, updatedPositions: 0, evidence: initial.snapshots.map(({ row, evidence }) => ({ reference: row.display_reference, ...evidence })), warnings: extracted.warnings };
+    const previewResult = await derivePreviews({ filename: sourcePath, attachment: initial.attachment, document: extracted, rows: fields.rows, visualRoot: path.join(attachmentRoot, 'manufacturer-position-visuals') });
+    extracted.warnings.push(...previewResult.warnings);
+    const invalidEvidence = fields.rows.filter((row) => row.manufacturerEvidence?.sourceSpecification?.version !== sourceSpecificationVersion || row.manufacturerEvidence?.sourceSpecification?.sourceAttachmentHash !== integrity.sha256 || row.manufacturerEvidence?.internalSpecification?.version !== internalSpecificationVersion || row.manufacturerEvidence?.sourceVisual?.role !== 'inside' || !['inside', 'outside', 'combined_source'].every((role) => row.manufacturerEvidence?.sourceVisuals?.some((visual) => visual.role === role && visual.status === 'available' && visual.originalAsset?.sha256 === integrity.sha256 && visual.mappingMethod && visual.renderedDerivative?.renderVersion === PDF_POSITION_PREVIEW_VERSION)));
+    if (invalidEvidence.length) throw Object.assign(new Error('Structured manufacturer evidence or visual-role derivation is incomplete; no evidence was refreshed.'), { code: 'evidence_refresh_evidence_incomplete', positions: invalidEvidence.map((row) => row.displayReference) });
+    await evidenceRefreshFailureInjector('before_transaction', { identity, matches });
+    const refreshedAt = nowIso();
+    const refreshRecord = { id: identity.id, version: MANUFACTURER_EVIDENCE_REFRESH_VERSION, sourceSha256: integrity.sha256, sourceSpecificationVersion, internalSpecificationVersion, visualMappingMethods, renderVersion: PDF_POSITION_PREVIEW_VERSION, refreshedAt };
+    let postState;
+    await db.exec('BEGIN IMMEDIATE');
+    try {
+      const locked = await readManufacturerEvidenceRefreshState(estimateId, quoteId, revisionId, attachmentId);
+      assertState(locked, 'transaction-start');
+      if (locked.commercial.hash !== initial.commercial.hash) throw Object.assign(new Error('Commercial state changed while manufacturer evidence was being prepared.'), { code: 'evidence_refresh_fingerprint_mismatch', stage: 'transaction-start', expected: initial.commercial.hash, actual: locked.commercial.hash });
+      const lockedSnapshotsBySource = new Map(locked.snapshots.map((item) => [item.row.source_position_id, item]));
+      for (const [index, match] of matches.entries()) {
+        const current = lockedSnapshotsBySource.get(match.expected.supplierPositionIdentity);
+        if (!current) throw Object.assign(new Error(`Confirmed position ${match.expected.customerManufacturerReference} has no unique evidence projection.`), { code: 'evidence_refresh_relationship_mismatch', position: match.expected.customerManufacturerReference });
+        const nextSnapshot = enrichManufacturerSourceSnapshot(current.snapshot, match.row, refreshRecord);
+        const result = await db.run('UPDATE project_calculator_estimate_product_rows SET source_snapshot_json=? WHERE id=? AND source_position_id=? AND source_revision_id=? AND source_attachment_id=?', JSON.stringify(nextSnapshot), current.row.id, match.expected.supplierPositionIdentity, revisionId, attachmentId);
+        if (result.changes !== 1) throw Object.assign(new Error(`Evidence update for position ${match.expected.customerManufacturerReference} did not target exactly one canonical row.`), { code: 'evidence_refresh_update_mismatch', position: match.expected.customerManufacturerReference });
+        await evidenceRefreshFailureInjector('after_position_update', { index, reference: match.expected.customerManufacturerReference, identity });
+      }
+      await evidenceRefreshFailureInjector('before_postcondition', { identity });
+      postState = await readManufacturerEvidenceRefreshState(estimateId, quoteId, revisionId, attachmentId);
+      const postCounts = assertState(postState, 'postcondition');
+      if (postState.commercial.hash !== initial.commercial.hash) throw Object.assign(new Error('Evidence refresh changed protected commercial state.'), { code: 'evidence_refresh_commercial_mutation', expected: initial.commercial.hash, actual: postState.commercial.hash });
+      const incomplete = postState.snapshots.filter(({ evidence }) => !evidenceIsCurrent(evidence));
+      if (incomplete.length) throw Object.assign(new Error('Evidence refresh postcondition failed; all position updates were rolled back.'), { code: 'evidence_refresh_postcondition_failed', positions: incomplete.map(({ row }) => row.display_reference) });
+      await db.exec('COMMIT');
+      return { estimateId, quoteId, revisionId, attachmentId, scenarioId: initial.link.scenario_id, refreshIdentity: identity.id, refreshVersion: MANUFACTURER_EVIDENCE_REFRESH_VERSION, status: 'refreshed', idempotent: false, sourceSha256: integrity.sha256, commercialFingerprintHash: initial.commercial.hash, preCounts, postCounts, updatedPositions: expectedCount, evidence: postState.snapshots.map(({ row, evidence }) => ({ reference: row.display_reference, ...evidence })), previewResult, warnings: extracted.warnings };
+    } catch (error) { await db.exec('ROLLBACK'); throw error; }
+  }
   async function extractAndLoadSupplierCosts(estimateId, scenarioId, documents, confirmation = {}) {
+    await reconcileStaleSupplierImportRuns(db);
     if (!(await estimateExists(estimateId))) return null;
     const scenario = await db.get('SELECT * FROM project_calculator_lab_scenarios WHERE id=? AND estimate_id=?', scenarioId, estimateId);
     if (!scenario) throw Object.assign(new Error('Project Costing record not found for this estimate.'), { code: 'scenario_not_found' });
     if (!Array.isArray(documents) || !documents.length) throw Object.assign(new Error('Select at least one supplier document.'), { code: 'no_attachments_selected' });
     if (Array.isArray(confirmation.selectedRowKeys) && !confirmation.selectedRowKeys.length) throw Object.assign(new Error('Select at least one extracted position.'), { code: 'no_positions_selected' });
+    const configuredSuppliers = (await db.all('SELECT supplier_code,supplier_name,policy_json,updated_at FROM supplier_commercial_defaults WHERE active<>0 ORDER BY supplier_name')).map((row) => ({ supplierCode: row.supplier_code, supplierName: row.supplier_name, pricingMethod: JSON.parse(row.policy_json || '{}').pricingMethod || JSON.parse(row.policy_json || '{}').pricingBasis || 'factory_price', policyUpdatedAt: row.updated_at }));
+    const requestedCanonical = confirmation.supplierCode ? configuredSuppliers.find((item) => item.supplierCode === String(confirmation.supplierCode).trim().toUpperCase()) : null;
+    if (confirmation.supplierCode && !requestedCanonical) throw Object.assign(new Error('Choose an active configured canonical supplier.'), { code: 'supplier_not_configured' });
     const selectedDocuments = [];
     for (const item of documents) {
       const quoteId = String(item.quoteId || ''); const revisionId = String(item.revisionId || '');
       const attachment = await attachmentRow(estimateId, quoteId, revisionId, String(item.attachmentId || ''));
       const revision = attachment && await revisionRow(estimateId, quoteId, revisionId); const quote = attachment && await quoteRow(estimateId, quoteId);
       if (!attachment || !revision || !quote || attachment.role === 'derived_artifact' || !attachment.parser_eligible) throw Object.assign(new Error('A selected supplier document is unavailable or not eligible for extraction.'), { code: 'attachment_not_eligible' });
-      if (confirmation.supplierCode) { const canonical = await db.get('SELECT supplier_code,supplier_name FROM supplier_commercial_defaults WHERE supplier_code=? AND active<>0', String(confirmation.supplierCode).toUpperCase()); if (!canonical) throw Object.assign(new Error('Choose an active configured canonical supplier.'), { code: 'supplier_not_configured' }); quote.supplier_code = canonical.supplier_code; quote.supplier_name = canonical.supplier_name; await db.run('UPDATE supplier_quotes SET supplier_code=?,supplier_name=?,updated_at=? WHERE id=? AND estimate_id=?', canonical.supplier_code, canonical.supplier_name, nowIso(), quote.id, estimateId); }
-      if (confirmation.metadata) { const metadata = confirmation.metadata; revision.supplier_quotation_number = String(metadata.quotationNumber || revision.supplier_quotation_number || '').trim(); revision.supplier_revision = String(metadata.revision || '').trim() || null; revision.full_quotation_reference = [revision.supplier_quotation_number, revision.supplier_revision].filter(Boolean).join('-') || revision.full_quotation_reference; revision.currency = String(metadata.currency || revision.currency).trim().toUpperCase(); await db.run('UPDATE supplier_quote_revisions SET supplier_quotation_number=?,supplier_revision=?,full_quotation_reference=?,currency=? WHERE id=? AND estimate_id=?', revision.supplier_quotation_number, revision.supplier_revision, revision.full_quotation_reference, revision.currency, revision.id, estimateId); const identity=quotationRevisionKey(revision.supplier_quotation_number,revision.supplier_revision); if(identity) await db.run(`UPDATE supplier_quote_revisions SET lifecycle_status=CASE WHEN EXISTS(SELECT 1 FROM supplier_quote_import_runs run WHERE run.revision_id=supplier_quote_revisions.id AND run.status IN ('completed','completed_with_warnings')) THEN 'parsed' ELSE 'uploaded' END,superseded_at=NULL,superseded_by_revision_id=NULL WHERE supplier_quote_id=? AND estimate_id=? AND UPPER(TRIM(supplier_quotation_number))=? AND UPPER(TRIM(COALESCE(supplier_revision,'')))=? AND lifecycle_status='superseded'`,quoteId,estimateId,normalizeReference(revision.supplier_quotation_number),normalizeReference(revision.supplier_revision)); }
+      const storedRevisionCurrency = revision.currency;
+      if (confirmation.metadata) { const metadata = confirmation.metadata; revision.supplier_quotation_number = String(metadata.quotationNumber || revision.supplier_quotation_number || '').trim(); revision.supplier_revision = String(metadata.revision || '').trim() || null; revision.full_quotation_reference = [revision.supplier_quotation_number, revision.supplier_revision].filter(Boolean).join('-') || revision.full_quotation_reference; revision.currency = String(metadata.currency || revision.currency).trim().toUpperCase(); }
       const extracted = await extractDocument(resolveManagedPath(attachment.storage_key, attachmentRoot), { id: attachment.id, sessionId: estimateId, mediaType: attachment.media_type }, { visualRoot: path.join(attachmentRoot, 'manufacturer-position-visuals') });
+      await failureInjector('extraction', { estimateId, quoteId, revisionId, attachmentId: attachment.id });
       if (!extracted.textAvailable) throw Object.assign(new Error('OCR required — unsupported for this document.'), { code: 'ocr_required' });
       const fields = parseFields(extracted, { currency: revision.currency });
+      const previewResult = await derivePreviews({ filename: resolveManagedPath(attachment.storage_key, attachmentRoot), attachment, document: extracted, rows: fields.rows, visualRoot: path.join(attachmentRoot, 'manufacturer-position-visuals') });
+      extracted.warnings.push(...previewResult.warnings);
+      const resolution = requestedCanonical ? { status: 'resolved', supplier: requestedCanonical, method: 'reviewed_supplier_selection' } : resolveCanonicalSupplier({ recognizedSupplierName: fields.supplier, storedSupplierCode: quote.supplier_code, storedSupplierName: quote.supplier_name, configuredSuppliers });
+      if (!resolution.supplier) throw Object.assign(new Error(`Canonical supplier required. Source supplier recognised: ${fields.supplier || quote.supplier_name || 'unknown'}. Configure or select one active canonical supplier before confirmation.`), { code: 'canonical_supplier_required', supplierResolutionStatus: resolution.status });
+      quote.supplier_code = resolution.supplier.supplierCode; quote.supplier_name = resolution.supplier.supplierName;
+      const extractedPositionCount=fields.rows.length;
+      const allRows=fields.rows.map((row)=>structuredClone(row));
       if (Array.isArray(confirmation.selectedRowKeys)) fields.rows = fields.rows.filter(row => confirmation.selectedRowKeys.includes(`${attachment.id}:${row.ordinal}`));
       if (Array.isArray(confirmation.selectedRowKeys)) for (const row of fields.rows) { const visual=row.manufacturerEvidence?.sourceVisual; if (visual?.status==='available') { visual.customerReviewStatus='approved'; visual.reviewedAt=nowIso(); if(row.originalExtractedSnapshot?.manufacturerEvidence?.sourceVisual){row.originalExtractedSnapshot.manufacturerEvidence.sourceVisual.customerReviewStatus='approved';row.originalExtractedSnapshot.manufacturerEvidence.sourceVisual.reviewedAt=visual.reviewedAt;} } }
       const summaryResult = parseSummary(extracted, { currency: revision.currency, positionRows: fields.rows });
       const effectiveDocumentKind = complementaryDocumentKinds.has(fields.documentType) ? fields.documentType : attachment.document_kind;
-      selectedDocuments.push({ quoteId, revisionId, quote, revision, attachment: { ...attachment, document_kind: effectiveDocumentKind }, extracted, fields, summaryResult, effectiveDocumentKind });
+      selectedDocuments.push({ quoteId, revisionId, quote, revision, storedRevisionCurrency, attachment: { ...attachment, document_kind: effectiveDocumentKind }, extracted, fields, allRows, summaryResult, effectiveDocumentKind, extractedPositionCount });
     }
     const groups = new Map();
     for (const selected of selectedDocuments) {
@@ -172,10 +398,29 @@ export function createSupplierQuotesService(db, { attachmentRoot = resolveAttach
     for (const { quote, revision, selected, isComplementaryPackage } of groups.values()) {
       const documentPriority = (kind) => kind === 'window_schedule' ? 0 : kind === 'quotation_letter' ? 1 : kind === 'installation_pricing' ? 2 : 3;
       selected.sort((left,right)=>documentPriority(left.effectiveDocumentKind)-documentPriority(right.effectiveDocumentKind)||Number(left.attachment.upload_order||0)-Number(right.attachment.upload_order||0)||String(left.attachment.created_at).localeCompare(String(right.attachment.created_at)));
+      const selectedPositionRows = selected.flatMap((item) => item.fields.rows);
+      const selectedPositionCurrencies = new Set(selectedPositionRows.map((row) => row.currency).filter((currency) => /^[A-Z]{3}$/.test(String(currency || ''))));
+      if (selectedPositionCurrencies.size > 1) throw Object.assign(new Error('Selected positions use more than one currency. Review the source currency before confirmation.'), { code: 'confirmation_currency_review_required' });
+      const sourcePositionCurrency = selectedPositionCurrencies.size === 1 ? [...selectedPositionCurrencies][0] : null;
+      if (sourcePositionCurrency && revision.currency !== sourcePositionCurrency) {
+        if (confirmation.metadata) throw Object.assign(new Error(`Selected positions are quoted in ${sourcePositionCurrency}. Set the confirmation currency to ${sourcePositionCurrency} before loading.`), { code: 'confirmation_currency_mismatch' });
+        revision.currency = sourcePositionCurrency;
+      }
+      await failureInjector('currency_validation', { estimateId, revisionId: revision.id, sourceCurrency: sourcePositionCurrency, reviewedCurrency: revision.currency });
       const attachments = selected.map((item) => item.attachment);
+      const identity=createSupplierImportOperationIdentity({quote,revision,scenarioId,attachments,selectedRowKeys:confirmation.selectedRowKeys||selected.flatMap(item=>item.fields.rows.map(row=>`${item.attachment.id}:${row.ordinal}`)),reviewedRows:selectedPositionRows,reviewedCurrency:revision.currency});
+      const existingOperation=await db.get('SELECT * FROM supplier_quote_import_operations WHERE operation_key=?',identity.operationKey);
+      if(existingOperation?.status==='confirmed'){
+        const saved=JSON.parse(existingOperation.result_json||'{}');
+        results.push(...(saved.documents||[]).map(document=>({...document,loadedProducts:0,loadedCosts:0,duplicateProducts:document.extractedProducts||0,duplicateCosts:document.extractedCosts||0,idempotentReplay:true,operationId:identity.operationId,operationStatus:'confirmed'})));
+        continue;
+      }
       const runId = randomUUID(); const startedAt = nowIso();
-      await db.run(`INSERT INTO supplier_quote_import_runs(id,estimate_id,revision_id,extractor_name,extractor_version,adapter_code,adapter_version,recognition_version,started_at,status,warnings_json) VALUES(?,?,?,?,?,?,?,?,?,'running','[]')`, runId, estimateId, revision.id, 'quotesync-commercial-extractor', EXTRACTOR_VERSION, 'supplier-neutral', FIELD_PARSER_VERSION, 'not-applicable', startedAt);
-      for (const [ordinal, attachment] of attachments.entries()) await db.run('INSERT INTO supplier_quote_import_run_attachments(import_run_id,attachment_id,ordinal,role) VALUES(?,?,?,?)', runId, attachment.id, ordinal, attachment.role);
+      const preState=await readSupplierImportState(db,{scenarioId,revisionId:revision.id});
+      const selectedCanonicalRows=selectedPositionRows.filter(row=>isCanonicalPositionRow(row,revision.currency));
+      const intendedCounts={parsedPositions:selected.reduce((sum,item)=>sum+item.extractedPositionCount,0),selectedPositions:selectedPositionRows.length,validCanonicalPositions:selectedCanonicalRows.length,reviewRequiredPositions:selected.reduce((sum,item)=>sum+item.allRows.filter(row=>!isCanonicalPositionRow(row,revision.currency)).length,0),supplierExtras:preState.supplierExtras,projectCostingSupplierCosts:preState.projectCostingSupplierCosts};
+      const currencyDecision={storedCurrency:selected[0]?.storedRevisionCurrency||null,sourceCurrency:sourcePositionCurrency,reviewedCurrency:revision.currency,decision:selected[0]?.storedRevisionCurrency!==revision.currency?'reviewed_source_currency_correction':'source_currency_confirmed',sourceAmountsRewritten:false};
+      const operationContext={identity,quote,revision,scenarioId,attachments,runId,startedAt,preState,intendedCounts,currencyDecision};
       try {
         const products = new Map(); const costs = new Map(); const summaries = []; const warnings = []; const parsedDocuments = []; let invalidProducts = 0; let invalidCosts = 0;
         for (const { attachment, extracted, fields, summaryResult, effectiveDocumentKind } of selected) {
@@ -188,7 +433,7 @@ export function createSupplierQuotesService(db, { attachmentRoot = resolveAttach
         for (const { attachment, fields, summaryResult } of parsedDocuments) {
           const occurrences = new Map();
           for (const row of fields.rows) {
-            const valid = normalizeReference(row.displayReference) && Number.isInteger(row.quantity) && row.quantity > 0 && Number.isInteger(row.widthMm) && row.widthMm > 0 && Number.isInteger(row.heightMm) && row.heightMm > 0 && row.currency === effectiveCurrency && (row.unitPrice == null || unsignedDecimal.test(String(row.unitPrice))) && (row.totalPrice == null || unsignedDecimal.test(String(row.totalPrice)));
+            const valid = isCanonicalPositionRow(row, effectiveCurrency);
             if (!valid) { invalidProducts += 1; continue; }
             const identity = [normalizeReference(row.displayReference), row.widthMm, row.heightMm, row.quantity].join('|'); const occurrence = occurrences.get(identity) || 0; occurrences.set(identity, occurrence + 1); const key = `${attachment.id}|${identity}|${occurrence}`; const sourceDocument = { attachmentId: attachment.id, fileName: attachment.original_file_name, documentKind: attachment.document_kind };
             const existing = products.get(key); if (!existing || (existing.row.totalPrice == null && row.totalPrice != null)) products.set(key, { row, key, attachment, sourceDocuments: [...(existing?.sourceDocuments || []), sourceDocument] }); else existing.sourceDocuments.push(sourceDocument);
@@ -205,6 +450,24 @@ export function createSupplierQuotesService(db, { attachmentRoot = resolveAttach
         const completedAt = nowIso(); let loadedProducts = 0; let loadedCosts = 0;
         await db.exec('BEGIN IMMEDIATE');
         try {
+          await db.run(`INSERT INTO supplier_quote_import_operations(id,operation_key,estimate_id,supplier_quote_id,revision_id,scenario_id,current_run_id,status,source_identity_json,selection_identity_json,pre_state_json,intended_counts_json,post_state_json,diagnostics_json,recovery_reason,currency_decision_json,last_error_code,last_error_message,result_json,created_at,updated_at,confirmed_at)
+            VALUES(?,?,?,?,?,?,?,'confirming',?,?,?,?,?,'{}',NULL,?,NULL,NULL,'{}',?,?,NULL)
+            ON CONFLICT(id) DO UPDATE SET current_run_id=excluded.current_run_id,status='confirming',pre_state_json=excluded.pre_state_json,intended_counts_json=excluded.intended_counts_json,currency_decision_json=excluded.currency_decision_json,last_error_code=NULL,last_error_message=NULL,updated_at=excluded.updated_at`, identity.operationId, identity.operationKey, estimateId, quote.id, revision.id, scenarioId, runId, JSON.stringify(identity.sourceIdentity), JSON.stringify(identity.selectionIdentity), JSON.stringify(preState), JSON.stringify(intendedCounts), '{}', JSON.stringify(currencyDecision), startedAt, startedAt);
+          await db.run(`INSERT INTO supplier_quote_import_runs(id,estimate_id,revision_id,extractor_name,extractor_version,adapter_code,adapter_version,recognition_version,started_at,status,warnings_json,operation_id,confirmation_status,expected_counts_json,pre_state_json,currency_decision_json)
+            VALUES(?,?,?,?,?,?,?,?,?,'running','[]',?,'confirming',?,?,?)`, runId, estimateId, revision.id, 'quotesync-commercial-extractor', EXTRACTOR_VERSION, 'supplier-neutral', FIELD_PARSER_VERSION, SUMMARY_PARSER_VERSION, startedAt, identity.operationId, JSON.stringify(intendedCounts), JSON.stringify(preState), JSON.stringify(currencyDecision));
+          for (const [ordinal, attachment] of attachments.entries()) await db.run('INSERT INTO supplier_quote_import_run_attachments(import_run_id,attachment_id,ordinal,role) VALUES(?,?,?,?)', runId, attachment.id, ordinal, attachment.role);
+          for (const item of selected) for (const row of item.allRows) {
+            const canonicalReady = isCanonicalPositionRow(row, effectiveCurrency);
+            const readinessStatus = row.classification === 'excluded' ? 'excluded' : canonicalReady ? 'canonical_ready' : 'review_required';
+            const sourceSnapshot = row.originalExtractedSnapshot || row;
+            const provenance = { attachmentId: item.attachment.id, sha256: item.attachment.sha256, sourcePages: row.sourcePages || [], sourceTrace: row.sourceTrace || [], manufacturerEvidence: row.manufacturerEvidence || null, evidenceClass: row.evidenceClass ?? row.provenanceClass ?? null };
+            const reviewReasons = [...(row.warnings || [])];
+            if (!canonicalReady && !reviewReasons.length) reviewReasons.push('Canonical position fields are incomplete or conflict with the reviewed currency.');
+            await db.run(`INSERT INTO supplier_quote_import_position_evidence(operation_id,attachment_id,row_key,ordinal,readiness_status,source_snapshot_json,provenance_json,review_reasons_json,created_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(operation_id,row_key) DO UPDATE SET readiness_status=excluded.readiness_status,source_snapshot_json=excluded.source_snapshot_json,provenance_json=excluded.provenance_json,review_reasons_json=excluded.review_reasons_json`, identity.operationId, item.attachment.id, `${item.attachment.id}:${row.ordinal}`, Number(row.ordinal || 0), readinessStatus, JSON.stringify(sourceSnapshot), JSON.stringify(provenance), JSON.stringify(reviewReasons), startedAt);
+          }
+          await db.run('UPDATE supplier_quotes SET supplier_code=?,supplier_name=?,updated_at=? WHERE id=? AND estimate_id=?', quote.supplier_code, quote.supplier_name, completedAt, quote.id, estimateId);
+          await db.run('UPDATE supplier_quote_revisions SET supplier_quotation_number=?,supplier_revision=?,full_quotation_reference=?,currency=? WHERE id=? AND estimate_id=?', revision.supplier_quotation_number, revision.supplier_revision, revision.full_quotation_reference, revision.currency, revision.id, estimateId);
+          const revisionIdentity=quotationRevisionKey(revision.supplier_quotation_number,revision.supplier_revision); if(revisionIdentity) await db.run(`UPDATE supplier_quote_revisions SET lifecycle_status=CASE WHEN EXISTS(SELECT 1 FROM supplier_quote_import_runs run WHERE run.revision_id=supplier_quote_revisions.id AND run.status IN ('completed','completed_with_warnings')) THEN 'parsed' ELSE 'uploaded' END,superseded_at=NULL,superseded_by_revision_id=NULL WHERE supplier_quote_id=? AND estimate_id=? AND UPPER(TRIM(supplier_quotation_number))=? AND UPPER(TRIM(COALESCE(supplier_revision,'')))=? AND lifecycle_status='superseded'`,quote.id,estimateId,normalizeReference(revision.supplier_quotation_number),normalizeReference(revision.supplier_revision));
           for (const item of selected) {
             const role = item.effectiveDocumentKind === 'window_schedule' ? 'original_quote' : complementaryDocumentKinds.has(item.effectiveDocumentKind) ? 'supporting_document' : item.attachment.role;
             await db.run('UPDATE supplier_quote_attachments SET document_kind=?,role=? WHERE id=? AND estimate_id=?', item.effectiveDocumentKind, role, item.attachment.id, estimateId);
@@ -219,14 +482,19 @@ export function createSupplierQuotesService(db, { attachmentRoot = resolveAttach
           for (const [sourceSequence,{ row, key, attachment, sourceDocuments }] of [...products.values()].entries()) {
             const sourceId = stableRevisionEvidenceId('supplier-position', revision.id, key);
             const snapshot = { ...row.originalExtractedSnapshot, supplierName: quote.supplier_name, supplierQuoteId: quote.id, supplierQuotationNumber: revision.supplier_quotation_number, supplierRevisionId: revision.id, supplierRevision: revision.supplier_revision, attachmentId: attachment.id, attachmentFileName: attachment.original_file_name, documentKind: attachment.document_kind, sourceDocuments, extractionRunId: runId, currency: effectiveCurrency, originalSupplierAmount: row.totalPrice, reference: row.displayReference, category: 'product', sourceTrace: row.sourceTrace, warnings: row.warnings };
-            await db.run(`INSERT INTO supplier_quote_positions(id,estimate_id,revision_id,source_sequence,classification,included_in_supplier_total,alternative_to_reference,classification_evidence,display_reference,supplier_reference_tokens_json,quantity,width_mm,height_mm,unit_purchase_price_amount,total_purchase_price_amount,currency,source_pages_json,trace_json,review_status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`, sourceId, estimateId, revision.id, sourceSequence, row.classification||'standard', row.includedInSupplierTotal===false?0:1, row.alternativeTo||null, row.classificationEvidence||null, row.displayReference, JSON.stringify(row.supplierReferenceTokens), row.quantity, row.widthMm, row.heightMm, row.unitPrice, row.totalPrice, row.currency, JSON.stringify(row.sourcePages), JSON.stringify(row.sourceTrace), row.status === 'needs_review' ? 'needs_review' : 'unreviewed', completedAt, completedAt);
-            const identity=[attachment.id,normalizeReference(row.displayReference),row.widthMm,row.heightMm,row.quantity].join('|');let existingCostingRow=existingProductQueues.get(identity)?.shift();
+            const manufacturer=row.manufacturerEvidence||{};const specificationItems=[...(manufacturer.customerSafeSpecification||[]),...([['product',manufacturer.product],['system',manufacturer.productSystem],['glass',manufacturer.glassSpecification],['fittings',manufacturer.fittingsSpecification],['Ug',manufacturer.manufacturerQuotedUg],['Uw',manufacturer.manufacturerQuotedUw]].filter(([,value])=>value!=null).map(([label,value])=>({label,value})))];const specificationText=[...new Map(specificationItems.map(item=>[`${item.label}:${item.value}`,item])).values()].map(item=>`${item.label}: ${item.value}`).join('\n');
+            await db.run(`INSERT INTO supplier_quote_positions(id,estimate_id,revision_id,source_sequence,classification,included_in_supplier_total,alternative_to_reference,classification_evidence,display_reference,supplier_reference_tokens_json,quantity,product,product_system,original_specification_text,width_mm,height_mm,supplier_area_square_metres,unit_purchase_price_amount,total_purchase_price_amount,currency,source_pages_json,trace_json,review_status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET source_sequence=excluded.source_sequence,classification=CASE WHEN supplier_quote_positions.review_status='reviewed' THEN supplier_quote_positions.classification ELSE excluded.classification END,included_in_supplier_total=CASE WHEN supplier_quote_positions.review_status='reviewed' THEN supplier_quote_positions.included_in_supplier_total ELSE excluded.included_in_supplier_total END,alternative_to_reference=CASE WHEN supplier_quote_positions.review_status='reviewed' THEN supplier_quote_positions.alternative_to_reference ELSE excluded.alternative_to_reference END,classification_evidence=excluded.classification_evidence,display_reference=excluded.display_reference,supplier_reference_tokens_json=excluded.supplier_reference_tokens_json,quantity=excluded.quantity,product=excluded.product,product_system=excluded.product_system,original_specification_text=excluded.original_specification_text,width_mm=excluded.width_mm,height_mm=excluded.height_mm,supplier_area_square_metres=excluded.supplier_area_square_metres,unit_purchase_price_amount=excluded.unit_purchase_price_amount,total_purchase_price_amount=excluded.total_purchase_price_amount,currency=excluded.currency,source_pages_json=excluded.source_pages_json,trace_json=excluded.trace_json,updated_at=excluded.updated_at`, sourceId, estimateId, revision.id, sourceSequence, row.classification||'standard', row.includedInSupplierTotal===false?0:1, row.alternativeTo||null, row.classificationEvidence||null, row.displayReference, JSON.stringify(row.supplierReferenceTokens), row.quantity, manufacturer.product??row.product??null, manufacturer.productSystem??row.productSystem??null, specificationText, row.widthMm, row.heightMm, manufacturer.areaSquareMetres??null, row.unitPrice, row.totalPrice, row.currency, JSON.stringify(row.sourcePages), JSON.stringify(row.sourceTrace), row.status === 'needs_review' ? 'needs_review' : 'unreviewed', completedAt, completedAt);
+            const identity=[attachment.id,normalizeReference(row.displayReference),row.widthMm,row.heightMm,row.quantity].join('|');let existingCostingRow=existingProductQueues.get(identity)?.shift();const productClass=manufacturer.productSystem??manufacturer.product??row.productSystem??row.product??'Needs review';
             const canonical=await linkSupplierPositionToEstimate(db,{estimateId,sourcePositionId:sourceId,sourceRevisionId:revision.id,sourceSequence,displayReference:row.displayReference,quantity:row.quantity,widthMm:row.widthMm,heightMm:row.heightMm,classification:row.classification||'standard',alternativeTo:row.alternativeTo||null,supplierName:quote.supplier_name,supplierCode:quote.supplier_code,product:row.product??null,productSystem:row.productSystem??null,preferredEstimatePositionId:existingCostingRow?.estimate_position_id??null,replacesSourcePositionId:existingCostingRow?.source_position_id??null});
+            snapshot.canonicalPosition={id:canonical.position.id,alternativeToPositionId:canonical.position.alternativeToPositionId??null};
             const dimensions = geometry(row.widthMm, row.heightMm, row.quantity);
-            if(existingCostingRow){const reviewed=existingCostingRow.source_review_status==='reviewed';await db.run('UPDATE project_calculator_estimate_product_rows SET estimate_position_id=?,source_position_id=?,source_attachment_id=?,source_revision_id=?,source_snapshot_json=?,display_reference=?,quantity=?,width_mm=?,height_mm=?,total_price_amount=?,currency=?,area_square_metres=?,frame_perimeter_metres=?,classification=?,included_in_current_estimate=?,alternative_to_reference=?,updated_at=? WHERE id=?',canonical.position.id,sourceId,attachment.id,revision.id,JSON.stringify(snapshot),row.displayReference,row.quantity,row.widthMm,row.heightMm,row.totalPrice,row.currency,dimensions.area,dimensions.perimeter,reviewed?existingCostingRow.classification:row.classification||'standard',reviewed?existingCostingRow.included_in_current_estimate:row.includedInSupplierTotal===false?0:1,reviewed?existingCostingRow.alternative_to_reference:row.alternativeTo||null,completedAt,existingCostingRow.id);continue;}
-            const inserted = await db.run(`INSERT INTO project_calculator_estimate_product_rows(id,scenario_id,estimate_position_id,source_position_id,source_attachment_id,source_revision_id,source_snapshot_json,display_reference,product_class,quantity,width_mm,height_mm,total_price_amount,currency,area_square_metres,frame_perimeter_metres,classification,included_in_current_estimate,alternative_to_reference,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(scenario_id,source_position_id) DO NOTHING`, randomUUID(), scenarioId, canonical.position.id, sourceId, attachment.id, revision.id, JSON.stringify(snapshot), row.displayReference, 'Needs review', row.quantity, row.widthMm, row.heightMm, row.totalPrice, row.currency, dimensions.area, dimensions.perimeter,row.classification||'standard',row.includedInSupplierTotal===false?0:1,row.alternativeTo||null,completedAt, completedAt);
+            if(existingCostingRow){const reviewed=existingCostingRow.source_review_status==='reviewed';await db.run('UPDATE project_calculator_estimate_product_rows SET estimate_position_id=?,source_position_id=?,source_attachment_id=?,source_revision_id=?,source_snapshot_json=?,display_reference=?,product_class=?,quantity=?,width_mm=?,height_mm=?,total_price_amount=?,currency=?,area_square_metres=?,frame_perimeter_metres=?,classification=?,included_in_current_estimate=?,alternative_to_reference=?,alternative_to_estimate_position_id=?,updated_at=? WHERE id=?',canonical.position.id,sourceId,attachment.id,revision.id,JSON.stringify(snapshot),row.displayReference,productClass,row.quantity,row.widthMm,row.heightMm,row.totalPrice,row.currency,dimensions.area,dimensions.perimeter,reviewed?existingCostingRow.classification:row.classification||'standard',reviewed?existingCostingRow.included_in_current_estimate:row.includedInSupplierTotal===false?0:1,reviewed?existingCostingRow.alternative_to_reference:row.alternativeTo||null,reviewed?existingCostingRow.alternative_to_estimate_position_id:canonical.position.alternativeToPositionId??null,completedAt,existingCostingRow.id);continue;}
+            const inserted = await db.run(`INSERT INTO project_calculator_estimate_product_rows(id,scenario_id,estimate_position_id,source_position_id,source_attachment_id,source_revision_id,source_snapshot_json,display_reference,product_class,quantity,width_mm,height_mm,total_price_amount,currency,area_square_metres,frame_perimeter_metres,classification,included_in_current_estimate,alternative_to_reference,alternative_to_estimate_position_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(scenario_id,source_position_id) DO NOTHING`, randomUUID(), scenarioId, canonical.position.id, sourceId, attachment.id, revision.id, JSON.stringify(snapshot), row.displayReference, productClass, row.quantity, row.widthMm, row.heightMm, row.totalPrice, row.currency, dimensions.area, dimensions.perimeter,row.classification||'standard',row.includedInSupplierTotal===false?0:1,row.alternativeTo||null,canonical.position.alternativeToPositionId??null,completedAt, completedAt);
             loadedProducts += inserted.changes;
           }
+          await failureInjector('supplier_position_persistence', operationContext);
+          await failureInjector('products_projection', operationContext);
+          await failureInjector('project_costing_projection', operationContext);
           let removedCompatibilityProducts=0;for(const queue of existingProductQueues.values())for(const obsolete of queue)removedCompatibilityProducts+=(await db.run('DELETE FROM project_calculator_estimate_product_rows WHERE id=? AND scenario_id=?',obsolete.id,scenarioId)).changes;if(removedCompatibilityProducts)warnings.push(`${removedCompatibilityProducts} legacy duplicate product row${removedCompatibilityProducts===1?' was':'s were'} reconciled to canonical supplier evidence.`);
           for (const { cost, key, attachment, sourceDocuments } of costs.values()) {
             const sourceId = stableRevisionEvidenceId('supplier-extra', revision.id, key);
@@ -238,26 +506,53 @@ export function createSupplierQuotesService(db, { attachmentRoot = resolveAttach
           await db.run(`UPDATE supplier_quote_revisions SET currency=?,product_subtotal_amount=COALESCE(?,product_subtotal_amount),extras_total_amount=COALESCE(?,extras_total_amount),delivery_total_amount=COALESCE(?,delivery_total_amount),vat_total_amount=COALESCE(?,vat_total_amount),final_supplier_total_amount=COALESCE(?,final_supplier_total_amount),comparison_totals_json=?,lifecycle_status=CASE WHEN lifecycle_status='superseded' THEN 'superseded' ELSE 'parsed' END WHERE id=? AND estimate_id=?`, effectiveCurrency, summary.productSubtotal, summary.additionalItemsSubtotal, summary.deliveryTotal, summary.vatTotal, summary.finalSupplierTotal,JSON.stringify(summary.comparisonTotals||[]), revision.id, estimateId);
           const supplierDefault=await db.get('SELECT policy_json FROM supplier_commercial_defaults WHERE supplier_code=?',quote.supplier_code);const evidencePackages=(summary.comparisonTotals||[]).filter(item=>item.classification==='package_option').map((item,index)=>({id:`evidence-${index}`,label:item.label,description:item.label,enabled:true,isBase:index===0,packageType:index===0?'supply_only':'service',upliftCategory:index===0?null:'installation',amount:item.amount,displayOrder:index,selected:item.selected}));const documentPackageId=evidencePackages.find(item=>item.selected)?.id??null,defaults=supplierDefault?JSON.parse(supplierDefault.policy_json):{};const commercialPolicy={...defaults,quotedCurrency:effectiveCurrency,quotedAmount:summary.finalSupplierTotal,paidInQuotedCurrency:supplierDefault?defaults.paidInQuotedCurrency!==false:true,settlementCurrency:supplierDefault&&defaults.paidInQuotedCurrency===false?defaults.settlementCurrency||effectiveCurrency:effectiveCurrency,pricingBasis:supplierDefault?defaults.pricingBasis||'factory_price':'factory_price',pricingMethod:supplierDefault?defaults.pricingMethod||defaults.pricingBasis||'factory_price':'factory_price',pricingPolicyVersion:supplierDefault?defaults.pricingPolicyVersion??2:2,packages:evidencePackages.length?evidencePackages:(supplierDefault?defaults.packages||[]:[]),packagePricingAvailable:evidencePackages.length>0||Boolean(supplierDefault&&defaults.packagePricingAvailable),supplierDocumentPackageId:documentPackageId,selectedPackageId:documentPackageId??evidencePackages.find(item=>item.isBase)?.id??null};
           await db.run(`INSERT INTO project_calculator_supplier_quote_revisions(scenario_id,supplier_quote_id,revision_id,import_run_id,commercial_policy_json,currency,linked_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(scenario_id,revision_id) DO UPDATE SET import_run_id=excluded.import_run_id,currency=excluded.currency,linked_at=excluded.linked_at,commercial_policy_json=COALESCE(project_calculator_supplier_quote_revisions.commercial_policy_json,excluded.commercial_policy_json)`, scenarioId, quote.id, revision.id, runId,JSON.stringify(commercialPolicy), effectiveCurrency, completedAt);
-          await db.run(`UPDATE supplier_quote_import_runs SET status=?,completed_at=?,warnings_json=? WHERE id=?`, warnings.length ? 'completed_with_warnings' : 'completed', completedAt, JSON.stringify(warnings), runId);
           await db.run("UPDATE project_calculator_lab_scenarios SET origin=CASE WHEN origin IN ('manual','estimate') THEN 'mixed' ELSE origin END,updated_at=? WHERE id=?",completedAt,scenarioId);
           await syncEstimatePositionProjections(db,scenarioId);
+          const expectedSourceIds=[...products.values()].map(({key})=>stableRevisionEvidenceId('supplier-position',revision.id,key));
+          const placeholders=expectedSourceIds.map(()=>'?').join(',');
+          const scopedCount=async(sql,...prefixParameters)=>expectedSourceIds.length?Number((await db.get(sql,...prefixParameters,...expectedSourceIds))?.count||0):0;
+          const persistedPositions=await scopedCount(`SELECT COUNT(*) count FROM supplier_quote_positions WHERE id IN (${placeholders})`);
+          const productsSupplyRows=await scopedCount(`SELECT COUNT(*) count FROM project_calculator_estimate_product_rows WHERE scenario_id=? AND source_position_id IN (${placeholders})`,scenarioId);
+          const projectCostingRows=await scopedCount(`SELECT COUNT(*) count FROM project_calculator_estimate_product_rows WHERE scenario_id=? AND estimate_position_id IS NOT NULL AND source_position_id IN (${placeholders})`,scenarioId);
+          const diagnostics=createSupplierImportDiagnostics({textAvailable:true,rawBlocks:selected.reduce((sum,item)=>sum+(item.extracted.pages?.reduce((pageSum,page)=>pageSum+(page.blocks?.length||0),0)||0),0),sourcePositions:intendedCounts.parsedPositions,candidatePositionBlocks:intendedCounts.selectedPositions,parsedPositions:intendedCounts.parsedPositions,selectedPositions:intendedCounts.selectedPositions,validCanonicalPositions:products.size,reviewRequiredPositions:intendedCounts.reviewRequiredPositions,persistedPositions,productsSupplyRows,projectCostingRows,includedRows:[...products.values()].filter(item=>item.row.includedInSupplierTotal!==false&&item.row.classification!=='alternative'&&item.row.classification!=='excluded').length,alternativeRows:[...products.values()].filter(item=>item.row.classification==='alternative').length,excludedRows:[...products.values()].filter(item=>item.row.classification==='excluded').length,visualEvidence:[...products.values()].filter(item=>item.row.manufacturerEvidence?.sourceVisual?.status==='available'||item.row.manufacturerEvidence?.sourceVisual?.originalAsset).length,ambiguousVisualEvidence:[...products.values()].filter(item=>item.row.manufacturerEvidence?.sourceVisual?.mappingReviewStatus==='needs_review').length});
+          const postState=await readSupplierImportState(db,{scenarioId,revisionId:revision.id});
+          postState.operationCounts={persistedPositions,productsSupplyRows,projectCostingRows};
+          postState.sourceAttachments=attachments.map(({id,sha256,original_file_name})=>({id,sha256,fileName:original_file_name}));
+          postState.currency=effectiveCurrency;
+          await failureInjector('postcondition_validation',{...operationContext,diagnostics,postState});
+          const completion=evaluateSupplierImportCompletion(diagnostics.counts);
+          if(completion.status==='partial_recovery_required'){
+            const postconditionError=Object.assign(new Error(`${intendedCounts.selectedPositions} positions selected — confirmation incomplete. ${completion.failures.join(' ')} Original quotation retained.`),{code:'supplier_confirmation_postcondition_failed',diagnostics,postState,recoveryReason:'persisted_quantitative_postcondition_failed'});
+            throw postconditionError;
+          }
+          const runStatus=completion.confirmed?'completed':'failed';
+          const runErrorCode=completion.confirmed?null:'confirmation_review_required';
+          const runErrorMessage=completion.confirmed?null:completion.failures.join(' ');
+          const documentResult={runId,attachmentIds:attachments.map(({id})=>id),quoteId:quote.id,revisionId:revision.id,status:completion.status,operationId:identity.operationId,operationStatus:completion.status,extractedProducts:products.size,extractedCosts:costs.size,loadedProducts,loadedCosts,duplicateProducts:products.size-loadedProducts,duplicateCosts:costs.size-loadedCosts,invalidProducts,invalidCosts,summaryUpdated:Object.values(summary).some((value)=>value!=null),diagnostics,warnings,idempotentReplay:false};
+          const resultPayload={scenarioId,operationId:identity.operationId,operationStatus:completion.status,documents:[documentResult]};
+          await db.run(`UPDATE supplier_quote_import_runs SET status=?,confirmation_status=?,completed_at=?,warnings_json=?,error_code=?,error_message=?,diagnostics_json=?,post_state_json=?,recovery_reason=? WHERE id=?`,runStatus,completion.status,completedAt,JSON.stringify(warnings),runErrorCode,runErrorMessage,JSON.stringify(diagnostics),JSON.stringify(postState),completion.confirmed?null:'unresolved_position_evidence',runId);
+          await db.run(`UPDATE supplier_quote_import_operations SET status=?,post_state_json=?,diagnostics_json=?,recovery_reason=?,last_error_code=?,last_error_message=?,result_json=?,updated_at=?,confirmed_at=? WHERE id=?`,completion.status,JSON.stringify(postState),JSON.stringify(diagnostics),completion.confirmed?null:'unresolved_position_evidence',runErrorCode,runErrorMessage,JSON.stringify(resultPayload),completedAt,completion.confirmed?completedAt:null,identity.operationId);
+          await failureInjector('diagnostics_persistence',{...operationContext,diagnostics,postState});
+          await failureInjector('transaction_commit',{...operationContext,diagnostics,postState});
           await db.exec('COMMIT');
+          results.push(documentResult);
         } catch (error) { await db.exec('ROLLBACK'); throw error; }
-        try { const drive=createDriveIntegrationService(db,{attachmentRoot});for(const attachment of attachments)await drive.fileSupplierAttachment({estimateId,quoteId:quote.id,revisionId:revision.id,attachmentId:attachment.id,supplierName:quote.supplier_name}); }
-        catch (driveError) { warnings.push(`Google Drive filing pending: ${driveError instanceof Error ? driveError.message : 'provider unavailable'}`); }
-        results.push({ runId, attachmentIds: attachments.map(({ id }) => id), quoteId: quote.id, revisionId: revision.id, status: warnings.length ? 'completed_with_warnings' : 'completed', extractedProducts: products.size, extractedCosts: costs.size, loadedProducts, loadedCosts, duplicateProducts: products.size - loadedProducts, duplicateCosts: costs.size - loadedCosts, invalidProducts, invalidCosts, summaryUpdated: Object.values(summary).some((value) => value != null), warnings });
+        if (fileSupplierAttachments) {
+          try { const drive=createDriveIntegrationService(db,{attachmentRoot});for(const attachment of attachments)await drive.fileSupplierAttachment({estimateId,quoteId:quote.id,revisionId:revision.id,attachmentId:attachment.id,supplierName:quote.supplier_name}); }
+          catch (driveError) { warnings.push(`Google Drive filing pending: ${driveError instanceof Error ? driveError.message : 'provider unavailable'}`); }
+        } else warnings.push('Google Drive filing deliberately deferred; canonical commercial confirmation is unaffected.');
       } catch (error) {
-        const code = error?.code || 'document_extraction_failed'; const completedAt = nowIso();
-        await db.run(`UPDATE supplier_quote_import_runs SET status='failed',completed_at=?,error_code=?,error_message=? WHERE id=?`, completedAt, code, error.message, runId);
+        await recordRecoverableImportFailure(operationContext,error);
         throw error;
       }
     }
-    return { scenarioId, documents: results };
+    const operationStatus=results.some(item=>item.operationStatus==='partial_recovery_required')?'partial_recovery_required':results.some(item=>item.operationStatus==='review_required')?'review_required':'confirmed';
+    return { scenarioId, operationStatus, documents: results };
   }
   async function attachmentIsInUse(estimateId, attachmentId) {
     const row = await db.get(`SELECT 1 AS used FROM supplier_quote_attachments a WHERE a.id=? AND a.estimate_id=? AND (EXISTS(SELECT 1 FROM supplier_quote_import_run_attachments j WHERE j.attachment_id=a.id) OR EXISTS(SELECT 1 FROM supplier_quote_attachments d WHERE d.derived_from_attachment_id=a.id) OR EXISTS(SELECT 1 FROM supplier_quote_import_runs r WHERE r.raw_result_attachment_id=a.id) OR EXISTS(SELECT 1 FROM supplier_quote_positions p WHERE p.supplier_drawing_attachment_id=a.id)) LIMIT 1`, attachmentId, estimateId);
     return Boolean(row);
   }
   async function deleteAttachmentMetadata(estimateId, quoteId, revisionId, attachmentId) { const row = await attachmentRow(estimateId, quoteId, revisionId, attachmentId); if (!row) return null; if (await attachmentIsInUse(estimateId, attachmentId)) throw Object.assign(new Error('Attachment is referenced by supplier evidence.'), { code: 'attachment_in_use' }); const result = await db.run('DELETE FROM supplier_quote_attachments WHERE id=? AND estimate_id=? AND revision_id=?', attachmentId, estimateId, revisionId); return result.changes ? { storageKey: row.storage_key } : null; }
-  return { estimateExists, createQuote, listQuotes, getQuote, createRevision, listRevisions, getRevision, listAttachments, getAttachment, insertAttachments, createImportRuns, prepareImportReview, regenerateManufacturerVisuals, extractAndLoadSupplierCosts, deleteAttachmentMetadata };
+  return { estimateExists, createQuote, listQuotes, getQuote, createRevision, listRevisions, getRevision, listAttachments, getAttachment, insertAttachments, createImportRuns, prepareImportReview, regenerateManufacturerVisuals, inspectManufacturerEvidenceRefresh, inspectManufacturerEvidenceRefreshRuntime, refreshManufacturerEvidence, extractAndLoadSupplierCosts, deleteAttachmentMetadata };
 }

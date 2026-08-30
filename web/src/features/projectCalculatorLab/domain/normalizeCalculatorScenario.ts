@@ -6,7 +6,13 @@ function normalizeProductVisual<T extends CalculatorScenario["products"][number]
   const evidence = snapshot?.manufacturerEvidence as Record<string, unknown> | undefined;
   const visual = evidence?.sourceVisual as Record<string, unknown> | undefined;
   if (!visual || typeof visual.url !== "string") return product;
-  return { ...product, sourceSnapshot: { ...snapshot, manufacturerEvidence: { ...evidence, sourceVisual: { ...visual, url: resolveManufacturerVisualAssetUrl(visual.url) } } } } as T;
+  const sourceVisuals = Array.isArray(evidence?.sourceVisuals)
+    ? evidence.sourceVisuals.map((item) => {
+        const candidate = item as Record<string, unknown>;
+        return typeof candidate.url === "string" ? { ...candidate, url: resolveManufacturerVisualAssetUrl(candidate.url) } : candidate;
+      })
+    : undefined;
+  return { ...product, sourceSnapshot: { ...snapshot, manufacturerEvidence: { ...evidence, ...(sourceVisuals ? { sourceVisuals } : {}), sourceVisual: { ...visual, url: resolveManufacturerVisualAssetUrl(visual.url) } } } } as T;
 }
 
 export function normalizeCalculatorScenario(value: CalculatorScenario): CalculatorScenario {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Client, ClientId } from "../../models/types";
 import { buildNextFollowUpRecommendation, createNextFollowUpForCompleted } from "../../services/followups/followupService";
+import { apiFetch } from "../../services/api/apiClient";
 import "./FollowUpsFeature.css";
 
 type FollowUp = {
@@ -60,25 +61,6 @@ type NoteEntry = {
   createdAt: string;
   updatedAt: string | null;
 };
-
-const API_BASE_URL = "http://localhost:3001";
-
-function apiUrl(path: string) {
-  return `${API_BASE_URL}${path}`;
-}
-
-async function apiFetch(path: string, options?: RequestInit) {
-  const res = await fetch(apiUrl(path), options);
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(body || `API request failed: ${res.status}`);
-  }
-  const contentType = res.headers.get("content-type") || "";
-  if (contentType.includes("application/json")) {
-    return res.json();
-  }
-  return null;
-}
 
 function uid() {
   return Math.random().toString(16).slice(2) + Date.now().toString(16);

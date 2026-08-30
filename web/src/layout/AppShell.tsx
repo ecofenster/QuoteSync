@@ -2,6 +2,8 @@ import React from "react";
 import QuoteSyncLogo from "../components/QuoteSyncLogo";
 import ThemeSelector from "../components/ThemeSelector";
 import TextSizeSelector from "../components/TextSizeSelector";
+import { RuntimeHealthProvider } from "../features/runtimeHealth/RuntimeHealthContext";
+import { RuntimeHealthBadge, RuntimeHealthNotice } from "../features/runtimeHealth/RuntimeHealthStatus";
 import { appShellMenuItems } from "./appShellNav";
 import "./AppShell.css";
 
@@ -12,7 +14,7 @@ type Props = {
   activeNavKey?: string;
 };
 
-export default function AppShell(props: Props) {
+function AppShellFrame(props: Props) {
   const { title = "QuoteSuite", children, onMenuClick, activeNavKey = "" } = props;
 
   return (
@@ -68,13 +70,23 @@ export default function AppShell(props: Props) {
               })}
             </nav>
 
+            <RuntimeHealthBadge />
             <ThemeSelector className="app-shell__theme-selector" />
             <TextSizeSelector />
           </div>
         </div>
+        <RuntimeHealthNotice />
       </header>
 
       <main className="app-shell__main">{children}</main>
     </div>
+  );
+}
+
+export default function AppShell(props: Props) {
+  return (
+    <RuntimeHealthProvider>
+      <AppShellFrame {...props} />
+    </RuntimeHealthProvider>
   );
 }

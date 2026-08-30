@@ -6,6 +6,8 @@ import { deriveProjectCostingCommercialResult } from "../src/features/projectCal
 import { DEFAULT_CUSTOMER_QUOTATION_DISPLAY_OPTIONS, resolveCustomerQuotationTechnicalLayout } from "../src/features/customerQuotation/customerQuotationDisplay";
 import { isWideQuotationPosition, paginateCustomerQuotationPositions } from "../src/features/customerQuotation/customerQuotationPagination";
 import { resolveManufacturerVisualAssetUrl } from "../src/features/manufacturerVisuals/manufacturerVisualAssetUrl";
+import { manufacturerVisualOrientation, manufacturerVisualOrientationLabel } from "../src/features/manufacturerVisuals/manufacturerVisualRole";
+import { CUSTOMER_SAFE_MANUFACTURER_SPECIFICATION_POLICY, projectCustomerSafeManufacturerSpecification } from "../src/features/customerQuotation/customerSafeManufacturerSpecification";
 
 const configuredContract = { schemaVersion: 1, source: "b92_configurator", product: { systemCode: "B92" } };
 const estimate = { id: "estimate-1", estimateRef: "EF-EST-MVP-001", projectAddress: "1 Test Street", positions: [
@@ -21,7 +23,7 @@ function scenario(fixed = true) {
     products: [
       { id: "row-1", scenarioId: "scenario-1", estimatePositionId: "position-1", sourceRowId: "supplier-secret-1", sourceSnapshot: { configuredContract, supplierPrice: "1234.56", manufacturerEvidence: { manufacturerItemNumber: null, customerReference: "W01", product: "92 Europa window", productSystem: null, configurationDescription: "View from inside Left opening", manufacturerQuotedUg: "0.51", manufacturerQuotedUw: "0.79", customerSafeSpecification: [{ ordinal: 2, label: "Glass unit", value: "Triple glazing (Ug=0.51 W/m²K)" }], sourceVisual: { status: "unavailable", reason: "No mapped image" } } }, evidenceOrigin: "supplier_import", displayReference: "W01", productClass: "Window", quantity: 2, widthMm: 1200, heightMm: 1400, installationOpeningCount: null, unitSupplyCost: "617.28", totalPrice: "1234.56", currency: "EUR", areaSquareMetres: "3.36", framePerimeterMetres: "10.4", originalAmount: "1234.56", originalCurrency: "EUR", fxSnapshot: { supplierCurrency: "EUR", supplierToGbpSellingRate: "0.81" }, gbpAmount: "980.00", commercialGbpAmount: "1000.00", markupPercent: "20", markupValue: "200.00", markedUpAmount: "1200.00", markupOverridePercent: null, includedInCurrentEstimate: true, classification: "standard" },
       { id: "row-2", scenarioId: "scenario-1", estimatePositionId: null, sourceRowId: "supplier-secret-2", sourceSnapshot: {}, evidenceOrigin: "supplier_import", displayReference: "D01", productClass: "Single door", quantity: 1, widthMm: 1000, heightMm: 2100, installationOpeningCount: null, unitSupplyCost: "650", totalPrice: "650", currency: "EUR", areaSquareMetres: "2.1", framePerimeterMetres: "6.2", originalAmount: "650", originalCurrency: "EUR", fxSnapshot: null, gbpAmount: "490", commercialGbpAmount: "500.00", markupPercent: "20", markupValue: "100", markedUpAmount: "600.00", markupOverridePercent: null, includedInCurrentEstimate: true, classification: "standard" },
-      { id: "row-alt", scenarioId: "scenario-1", estimatePositionId: null, sourceRowId: "supplier-secret-alt", sourceSnapshot: {}, evidenceOrigin: "supplier_import", displayReference: "W01-ALT", productClass: "Window", quantity: 1, widthMm: 1200, heightMm: 1400, installationOpeningCount: null, unitSupplyCost: "700", totalPrice: "700", currency: "EUR", areaSquareMetres: "1.68", framePerimeterMetres: "5.2", originalAmount: "700", originalCurrency: "EUR", fxSnapshot: null, gbpAmount: "550", commercialGbpAmount: "560", markupPercent: "20", markupValue: "0", markedUpAmount: "0", markupOverridePercent: null, includedInCurrentEstimate: false, classification: "alternative", alternativeTo: "W01" },
+      { id: "row-alt", scenarioId: "scenario-1", estimatePositionId: null, sourceRowId: "supplier-secret-alt", sourceSnapshot: {}, evidenceOrigin: "supplier_import", displayReference: "W01-ALT", productClass: "Window", quantity: 1, widthMm: 1200, heightMm: 1400, installationOpeningCount: null, unitSupplyCost: "700", totalPrice: "700", currency: "EUR", areaSquareMetres: "1.68", framePerimeterMetres: "5.2", originalAmount: "700", originalCurrency: "EUR", fxSnapshot: null, gbpAmount: "550", commercialGbpAmount: "560", markupPercent: "20", markupValue: "0", markedUpAmount: "0", markupOverridePercent: null, includedInCurrentEstimate: false, classification: "alternative", alternativeTo: "legacy-reference", alternativeToPositionId: "position-1" },
     ],
     supplierCosts: [
       { id: "extra-1", scenarioId: "scenario-1", sourceAdditionalCostId: "evidence-extra", sourceSnapshot: {}, evidenceOrigin: "supplier_import", costKind: "supplier", category: "accessory", label: "Customer-facing cills", amount: "130", currency: "EUR", originalAmount: "130", originalCurrency: "EUR", fxSnapshot: null, gbpAmount: "98", commercialGbpAmount: "100.00", markupPercent: "25", markupValue: "25", markedUpAmount: "125.00", includedInCurrentEstimate: true },
@@ -145,7 +147,7 @@ test("imported evidence is customer-safe while native drawing remains unavailabl
   assert.equal(configured?.drawing.source, "unavailable");
   assert.equal(configured?.thermal?.ug, "0.51");
   assert.equal(configured?.thermal?.manufacturerQuotedUw, "0.79");
-  assert.equal(configured?.specification[0]?.label, "Glass unit");
+  assert.equal(configured?.specification[0]?.label, "Glazing");
   const imported = quote.positions.find((row) => row.reference === "D01");
   assert.equal(imported?.hasConfiguredDrawing, false);
   assert.equal(imported?.description, "Single door");
@@ -171,15 +173,101 @@ test("customer-safe specification suppresses duplicate product, retains distinct
   ];
   let position = buildCustomerQuotationProjection({ scenario: input, client, estimate }).positions[0];
   assert.equal(position.specification.some((item) => item.label.toLowerCase() === "product"), false);
-  assert.deepEqual(position.specification.find((item) => item.label === "Glass sealing"), { label: "Glass sealing", value: "Internally: Glazing gasket Black\nExternally: Glazing gasket Black" });
+  assert.deepEqual(position.specification.find((item) => item.label === "Glass sealing"), { concept: "sealing", category: "finishes", label: "Glass sealing", value: "Internally: Glazing gasket Black\nExternally: Glazing gasket Black" });
   assert.equal(position.specification.some((item) => /^(?:ug|uw|u-value)$/i.test(item.label)), false);
   assert.equal(position.configurationDescription, "View from inside Left opening");
 
   row.sourceSnapshot.manufacturerEvidence.productSystem = "Europa 92 Alu";
   row.sourceSnapshot.sourceTrace = [];
   position = buildCustomerQuotationProjection({ scenario: input, client, estimate }).positions[0];
-  assert.deepEqual(position.specification.find((item) => item.label === "Product"), { label: "Product", value: "Eco Therm+" });
+  assert.deepEqual(position.specification.find((item) => item.label === "Product"), { concept: "product", category: "frame", label: "Product", value: "Eco Therm+" });
   assert.equal(position.specification.some((item) => item.label === "Glass sealing"), false);
+});
+
+const ekoCanonicalEvidence = (overrides: Record<string, unknown> = {}) => ({
+  product: "Window",
+  productSystem: "Aluplast Nord-Line",
+  configurationDescription: "1.01: Side Hung - Turn; 2.01: Fix in frame; 3.01: Side Hung - Turn",
+  glassSpecification: "4th/14Ar/4/14Ar/4th [Ug=0.6] Rw=32dB (40mm)",
+  manufacturerQuotedUg: "0.6",
+  manufacturerQuotedUw: "1.0",
+  customerSafeSpecification: [],
+  sourceSpecification: {
+    version: "manufacturer-source-specification-v1",
+    canonical: {
+      frameProfile: { value: "140090 frame Nord-Line", sourceFieldId: "outer-frame:profile:2" },
+      externalFinish: { role: "outside", value: "Anthracite Grey Sand Structure", manufacturerCode: "AP060", manufacturerSourceValue: "1-side ext. AP060 / Anthracite Grey Sand Structure" },
+      internalFinish: { role: "inside", value: "White with black gasket" },
+      glazing: { value: "4th/14Ar/4/14Ar/4th [Ug=0.6] Rw=32dB (40mm)" },
+      glazingUnits: [
+        { sourceElementReference: "1.01", glassBuildUp: "4th/14Ar/4/14Ar/4th [Ug=0.6] Rw=32dB (40mm) 9005", ug: "0.6", acousticRw: "32dB", thicknessMm: 40, dimensions: "461 x 1034", warmEdge: "Warm edge: SWISSPACER ULTIMATE black (9005)", solarGainPercent: "54", lightTransmissionPercent: "74" },
+        { sourceElementReference: "2.01", glassBuildUp: "4th/14Ar/4/14Ar/4th [Ug=0.6] Rw=32dB (40mm) 9005", ug: "0.6", acousticRw: "32dB", thicknessMm: 40, dimensions: "540 x 1128", warmEdge: "Warm edge: SWISSPACER ULTIMATE black (9005)", solarGainPercent: "54", lightTransmissionPercent: "74" },
+      ],
+      sashes: [
+        { sourceElementReference: "1.01", profile: "140093 STRAIGHT Sash NOT FLUSHED 60mm", fitting: "Side Hung - Turn", hardware: "Standard", security: "Standard", closing: "Handle", locking: "Storm lock with 1 gasket" },
+        { sourceElementReference: "2.01", profile: "Fix in frame", fitting: null, hardware: null, security: null, closing: null, locking: null },
+        { sourceElementReference: "3.01", profile: "140093 STRAIGHT Sash NOT FLUSHED 60mm", fitting: "Side Hung - Turn", hardware: "Standard", security: "Standard", closing: "Handle", locking: "Storm lock with 1 gasket" },
+      ],
+      drainage: { value: "DRAINAGE STD (visible, at front)" },
+      frameDecompression: { value: "No" },
+      weldType: { value: "V-Super" },
+      weightKg: { value: "96.5" },
+      perimeterMetres: { value: "6" },
+      accessories: [{ description: "Sash daylight dim. 1, 1", quantity: "1.000" }],
+      messages: [{ label: "Message", value: "No warranty!" }],
+    },
+  },
+  ...overrides,
+});
+
+test("canonical customer-safe policy makes EKO position 005 useful without exposing production evidence", () => {
+  const projected = projectCustomerSafeManufacturerSpecification(ekoCanonicalEvidence(), "Window");
+  assert.equal(projected.version, "customer-safe-manufacturer-specification-v1");
+  assert.equal(projected.productSystem, "Aluplast Nord-Line");
+  assert.equal(projected.configurationDescription, "Side Hung – Turn / Fixed / Side Hung – Turn");
+  assert.deepEqual(Object.fromEntries(projected.items.map((item) => [item.label, item.value])), {
+    External: "Anthracite Grey Sand Structure (AP060)",
+    Internal: "White with black gasket",
+    Glazing: "4th/14Ar/4/14Ar/4th · 40 mm",
+    "Warm edge": "SWISSPACER ULTIMATE black",
+    Acoustic: "Rw 32 dB",
+    "Solar factor": "54%",
+    "Light transmission": "74%",
+    Hardware: "Standard",
+    Operation: "Handle",
+    Locking: "Storm lock with 1 gasket",
+    Security: "Standard",
+  });
+  const serialized = JSON.stringify(projected);
+  for (const internalOnly of ["140090", "140093", "DRAINAGE", "decompression", "V-Super", "96.5", "Sash daylight", "No warranty", "461 x 1034", "Ug", "Uw", "1.01"]) assert.doesNotMatch(serialized, new RegExp(internalOnly, "i"));
+});
+
+test("policy is supplier-neutral, omits blank labels, and keeps fixed positions free of irrelevant hardware", () => {
+  const fixed = ekoCanonicalEvidence({
+    productSystem: null,
+    configurationDescription: "1.01: Fix in frame",
+    sourceSpecification: { version: "manufacturer-source-specification-v1", canonical: { ...(ekoCanonicalEvidence().sourceSpecification as any).canonical, sashes: [{ sourceElementReference: "1.01", profile: "Fix in frame" }] } },
+  });
+  const projected = projectCustomerSafeManufacturerSpecification(fixed, "Window");
+  assert.equal(projected.productSystem, "Nord-Line");
+  assert.equal(projected.configurationDescription, "Fixed");
+  assert.equal(projected.items.some((item) => item.category === "hardware"), false);
+  assert.equal(projected.items.some((item) => !item.label || !item.value), false);
+  assert.doesNotMatch(JSON.stringify(projected), /outer-frame|outside-colour|glazing-used|sourceFieldId/i);
+
+  const fourField = ekoCanonicalEvidence({ sourceSpecification: { version: "manufacturer-source-specification-v1", canonical: { ...(ekoCanonicalEvidence().sourceSpecification as any).canonical, sashes: [
+    { profile: "Fix in frame" }, { fitting: "Projecting Top Hung 90 - SLIDE AND TURN 90", hardware: "Standard", locking: "Catch pawl" },
+    { profile: "Fix in frame" }, { fitting: "Projecting Top Hung 90 - SLIDE AND TURN 90", hardware: "Standard", locking: "Catch pawl" },
+  ] } } });
+  assert.equal(projectCustomerSafeManufacturerSpecification(fourField).configurationDescription, "Fixed / Projecting Top Hung 90 – Slide and Turn 90 / Fixed / Projecting Top Hung 90 – Slide and Turn 90");
+});
+
+test("policy declarations permanently separate customer defaults from internal defaults", () => {
+  assert.ok(CUSTOMER_SAFE_MANUFACTURER_SPECIFICATION_POLICY.customerDefaultConcepts.includes("spacer"));
+  for (const concept of ["weld", "drainage", "decompression", "weight", "perimeter", "manufacturer_warning", "pane_dimensions"] as const) {
+    assert.ok(CUSTOMER_SAFE_MANUFACTURER_SPECIFICATION_POLICY.internalDefaultConcepts.includes(concept));
+    assert.equal(CUSTOMER_SAFE_MANUFACTURER_SPECIFICATION_POLICY.customerDefaultConcepts.includes(concept as never), false);
+  }
 });
 
 test("reviewed manufacturer image is the customer-safe fallback without source evidence leakage", () => {
@@ -189,6 +277,20 @@ test("reviewed manufacturer image is the customer-safe fallback without source e
   const quote = buildCustomerQuotationProjection({ scenario: input, client, estimate }); const drawing = quote.positions.find((item) => item.reference === "D01")!.drawing;
   assert.deepEqual(drawing, { source: "manufacturer", available: true, imageUrl: "/api/manufacturer-position-visuals/0123456789012345678901234567890123456789/quotation.png", mediaType: "image/png", orientation: "unknown" });
   assert.doesNotMatch(JSON.stringify(quote), /word\/media|rId27|internal\/source|supplierPrice/);
+});
+
+test("manufacturer visual roles drive supplier-neutral orientation labels", () => {
+  assert.equal(manufacturerVisualOrientation({ role: "inside" }), "inside");
+  assert.equal(manufacturerVisualOrientation({ role: "outside" }), "outside");
+  assert.equal(manufacturerVisualOrientation({}, "View from inside Left opening"), "inside");
+  assert.equal(manufacturerVisualOrientation({}), "unknown");
+  assert.equal(manufacturerVisualOrientationLabel("inside"), "Inside view");
+  assert.equal(manufacturerVisualOrientationLabel("outside"), "Outside view");
+  assert.equal(manufacturerVisualOrientationLabel("unknown"), "Orientation not supplied");
+  const input = scenario(); const row = input.products.find((item) => item.displayReference === "D01")!;
+  row.sourceSnapshot!.manufacturerEvidence = { sourceVisual: { status: "available", role: "inside", mediaType: "image/png", url: "/api/manufacturer-position-visuals/0123456789012345678901234567890123456789/quotation.png" } };
+  const drawing = buildCustomerQuotationProjection({ scenario: input, client, estimate }).positions.find((item) => item.reference === "D01")!.drawing;
+  assert.equal(drawing.source === "manufacturer" ? drawing.orientation : null, "inside");
 });
 
 test("quotation display contract supports adaptive section and thermal combinations without reserved empty panels", () => {
@@ -271,7 +373,7 @@ test("dedicated Estimate containment and simplified thermal-aware Products colum
   ]);
   assert.match(appCss, /\.app-main-workspace > \.dedicated-estimate-workspace[\s\S]*height:\s*auto[\s\S]*overflow:\s*visible/);
   const header = worksheet.match(/<th>Reference<\/th>[\s\S]*?<th>Action<\/th>/)?.[0] ?? "";
-  assert.match(header, /Preview \/ Product Image[\s\S]*<th>Ug<\/th>[\s\S]*<th>Uw<\/th>/);
+  assert.match(header, /Preview \/ Product Image[\s\S]*<th>Ug<\/th>[\s\S]*<th>Uw<\/th>[\s\S]*<th>Specification<\/th>/);
   for (const removed of ["Supplier total", "Rate", "Markup"]) assert.doesNotMatch(header, new RegExp(`<th>${removed}<\\/th>`));
   assert.match(worksheet, /manufacturerQuotedUg[\s\S]*contractThermal\.ug[\s\S]*pricingInputs\.ug/);
 });

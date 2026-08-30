@@ -41,10 +41,13 @@ test('grouped and alternative supplier positions retain quantity, order, identit
   const {db}=await fixture(t,[b92('same-a','GF-W-W9',0),b92('same-b','GF-W-W9',1)]);
   const ambiguous=await linkSupplierPositionToEstimate(db,{estimateId:'estimate',sourcePositionId:'ambiguous',sourceRevisionId:'r1',sourceSequence:9,displayReference:'GF-W-W9',quantity:1,widthMm:1000,heightMm:1200});
   assert.equal(ambiguous.matchStatus,'review_required');assert.notEqual(ambiguous.position.id,'same-a');assert.notEqual(ambiguous.position.id,'same-b');
+  const base=await linkSupplierPositionToEstimate(db,{estimateId:'estimate',sourcePositionId:'base',sourceRevisionId:'r1',sourceSequence:9,displayReference:'W0.04',quantity:1,widthMm:900,heightMm:1000});
   const grouped=await linkSupplierPositionToEstimate(db,{estimateId:'estimate',sourcePositionId:'grouped',sourceRevisionId:'r1',sourceSequence:10,displayReference:'W7/W8',quantity:2,widthMm:610,heightMm:1200});
   const alternative=await linkSupplierPositionToEstimate(db,{estimateId:'estimate',sourcePositionId:'alt',sourceRevisionId:'r1',sourceSequence:11,displayReference:'W0.04ALT',quantity:1,widthMm:900,heightMm:1000,classification:'alternative',alternativeTo:'W0.04'});
-  const positions=await readCanonicalEstimatePositions(db,'estimate');assert.equal(grouped.position.qty,2);assert.equal(alternative.position.classification,'alternative');assert.equal(alternative.position.alternativeTo,'W0.04');assert.deepEqual(positions.slice(-2).map(item=>item.sourceSequence),[10,11]);
+  const positions=await readCanonicalEstimatePositions(db,'estimate');assert.equal(grouped.position.qty,2);assert.equal(alternative.position.classification,'alternative');assert.equal(alternative.position.alternativeTo,'W0.04');assert.equal(alternative.position.alternativeToPositionId,base.position.id);assert.deepEqual(positions.slice(-2).map(item=>item.sourceSequence),[10,11]);
 });
+
+test('historical alternative references resolve to stable canonical position ids',async t=>{const {db}=await fixture(t,[b92('base','W4'),{...b92('alternative','W4A',1),classification:'alternative',alternativeTo:'W4'}]);const positions=await readCanonicalEstimatePositions(db,'estimate');assert.equal(positions[1].alternativeTo,'W4');assert.equal(positions[1].alternativeToPositionId,'base');});
 
 test('supplier-first B92 enrichment preserves identity, evidence, price provenance, quantity and exclusion',async t=>{
   const {db,service}=await fixture(t,[]),linked=await linkSupplierPositionToEstimate(db,{estimateId:'estimate',sourcePositionId:'supplier-alt',sourceRevisionId:'r1',sourceSequence:4,displayReference:'W7/W8',quantity:2,widthMm:610,heightMm:1200,classification:'alternative',alternativeTo:'W7'});

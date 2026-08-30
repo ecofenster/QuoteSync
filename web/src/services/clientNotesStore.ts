@@ -1,10 +1,5 @@
 import type { ClientId, ClientNote } from "../models/types";
-
-const API_BASE_URL = "http://localhost:3001";
-
-function apiUrl(path: string) {
-  return `${API_BASE_URL}${path}`;
-}
+import { apiFetch } from "./api/apiClient";
 
 function escapeHtml(value: string) {
   return String(value ?? "")
@@ -57,15 +52,6 @@ function dbTextToClientNotes(clientId: ClientId, noteText: string, updatedAt?: s
 type Listener = (notes: ClientNote[]) => void;
 const listenersByClient = new Map<string, Set<Listener>>();
 
-async function requestJson(path: string, options?: RequestInit) {
-  const res = await fetch(apiUrl(path), options);
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(body || `API request failed: ${res.status}`);
-  }
-  return res.json();
-}
-
 function emit(clientId: ClientId, notes: ClientNote[]) {
   const set = listenersByClient.get(String(clientId));
   if (!set || set.size === 0) return;
@@ -80,7 +66,7 @@ function emit(clientId: ClientId, notes: ClientNote[]) {
 
 export async function loadClientNotes(clientId: ClientId): Promise<ClientNote[]> {
   try {
-    const data = await requestJson(`/api/client-notes?client_id=${encodeURIComponent(String(clientId))}`);
+    const data = await apiFetch(`/api/client-notes?client_id=${encodeURIComponent(String(clientId))}`);
     return dbTextToClientNotes(clientId, String(data?.note_text || ""), data?.updated_at ?? null);
   } catch {
     return [];
@@ -89,7 +75,7 @@ export async function loadClientNotes(clientId: ClientId): Promise<ClientNote[]>
 
 export async function saveClientNotes(clientId: ClientId, notes: ClientNote[]) {
   const noteText = notesToPlainText(notes);
-  const saved = await requestJson(`/api/client-notes/${encodeURIComponent(String(clientId))}`, {
+  const saved = await apiFetch(`/api/client-notes/${encodeURIComponent(String(clientId))}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ note_text: noteText }),
@@ -108,7 +94,7 @@ export async function appendClientNote(clientId: ClientId, note: ClientNote) {
     .filter(Boolean)
     .join("\n\n");
 
-  const saved = await requestJson(`/api/client-notes/${encodeURIComponent(String(clientId))}`, {
+  const saved = await apiFetch(`/api/client-notes/${encodeURIComponent(String(clientId))}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ note_text: appendedText }),

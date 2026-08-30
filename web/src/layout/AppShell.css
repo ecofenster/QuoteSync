@@ -151,6 +151,102 @@
   flex: 0 0 auto;
 }
 
+.runtime-health__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--qs-border-standard);
+  border-radius: var(--radius-pill);
+  background: var(--qs-bg-surface-elevated);
+  color: var(--qs-theme-text-muted);
+  font-size: var(--qs-type-badge);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.runtime-health__dot {
+  width: 0.55em;
+  height: 0.55em;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--qs-semantic-success);
+}
+
+.runtime-health__notice {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) max(var(--space-4), calc((100% - 1564px) / 2));
+  border-top: 1px solid var(--qs-info-border);
+  background: var(--qs-info-surface);
+  color: var(--qs-theme-text);
+  font-size: var(--qs-type-body);
+}
+
+.runtime-health__copy {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.runtime-health__copy strong {
+  flex: 0 0 auto;
+}
+
+.runtime-health__copy span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.runtime-health__startup-help {
+  color: var(--qs-theme-text-secondary);
+  font-size: var(--qs-type-meta);
+}
+
+.runtime-health__startup-help code {
+  white-space: normal;
+}
+
+.runtime-health__retry {
+  flex: 0 0 auto;
+}
+
+.runtime-health__notice[data-state="api_offline"],
+.runtime-health__notice[data-state="database_unavailable"] {
+  border-color: var(--qs-error-border);
+  background: var(--qs-error-surface);
+}
+
+.runtime-health__badge[data-state="api_offline"] .runtime-health__dot,
+.runtime-health__badge[data-state="database_unavailable"] .runtime-health__dot {
+  background: var(--qs-semantic-error);
+}
+
+.runtime-health__notice[data-state="runtime_mismatch"] {
+  border-color: var(--qs-warning-border);
+  background: var(--qs-warning-surface);
+}
+
+.runtime-health__badge[data-state="runtime_mismatch"] .runtime-health__dot {
+  background: var(--qs-semantic-warning);
+}
+
+.runtime-health__badge[data-state="connecting"] .runtime-health__dot,
+.runtime-health__badge[data-state="rechecking"] .runtime-health__dot {
+  background: var(--qs-semantic-info);
+}
+
+.runtime-health__notice[data-state="recovered"] {
+  border-color: var(--qs-success-border);
+  background: var(--qs-success-surface);
+}
+
 .app-shell__display-menu { position: relative; flex: 0 0 auto; }
 .app-shell__display-menu > summary { list-style: none; cursor: pointer; }
 .app-shell__display-menu > summary::-webkit-details-marker { display: none; }
@@ -180,4 +276,6 @@
   .app-shell__actions { gap: var(--space-2); }
   .app-shell__display-summary > span { display: none; }
   .app-shell__display-panel { position: fixed; top: var(--header-height); right: var(--space-3); }
+  .runtime-health__notice { align-items: flex-start; padding: var(--space-3); flex-direction: column; }
+  .runtime-health__retry { width: 100%; }
 }

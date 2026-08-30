@@ -7,6 +7,7 @@ import {
   type CustomerQuotationPositionThermal,
 } from "./customerQuotationDisplay";
 import type { CustomerQuotationPosition } from "./customerQuotationProjection";
+import { manufacturerVisualOrientationLabel } from "../manufacturerVisuals/manufacturerVisualRole";
 
 const money = (value: string | null | undefined) =>
   value == null
@@ -59,6 +60,11 @@ export default function CustomerQuotationPositionCard({
     sectionDetailIds: position.sectionDetailIds,
   });
   const area = ((position.widthMm * position.heightMm) / 1_000_000).toFixed(2);
+  const specificationGroups = Array.from(new Set(position.specification.map((item) => item.category))).map((category) => ({
+    category,
+    label: ({ finishes: "Finishes", glazing: "Glazing", performance: "Performance", hardware: "Hardware / fittings", frame: "Frame / profile", accessories: "Accessories" } as const)[category],
+    items: position.specification.filter((item) => item.category === category),
+  }));
   return (
     <section
       className={`customer-quotation-position${wide ? " customer-quotation-position--wide" : ""}${position.classification === "alternative" ? " customer-quotation-position--alternative" : ""}`}
@@ -106,17 +112,13 @@ export default function CustomerQuotationPositionCard({
           </div>
           {position.drawing.source === "manufacturer" ? (
             <small>
-              {position.drawing.orientation === "inside"
-                ? "Reviewed manufacturer evidence · View from inside"
-                : position.drawing.orientation === "outside"
-                  ? "Reviewed manufacturer evidence · View from outside"
-                  : "Reviewed manufacturer elevation · Orientation not supplied"}
+              Reviewed manufacturer evidence · {manufacturerVisualOrientationLabel(position.drawing.orientation)}
             </small>
           ) : null}
         </div>
         <div className="customer-quotation-position__specification">
           <h3>Specification</h3>
-          <dl>
+          <dl className="customer-quotation-position__specification-core">
             <div>
               <dt>Product / system</dt>
               <dd>{position.productSystem || position.description}</dd>
@@ -127,13 +129,11 @@ export default function CustomerQuotationPositionCard({
                 <dd>{position.configurationDescription}</dd>
               </div>
             ) : null}
-            {position.specification.map((item) => (
-              <div key={`${item.label}-${item.value}`}>
-                <dt>{item.label}</dt>
-                <dd>{item.value}</dd>
-              </div>
-            ))}
           </dl>
+          {specificationGroups.map((group) => <section className="customer-quotation-position__specification-group" key={group.category}>
+            <h4>{group.label}</h4>
+            <dl>{group.items.map((item) => <div key={`${item.concept}-${item.value}`}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl>
+          </section>)}
         </div>
         <aside className="customer-quotation-position__facts">
           <section>

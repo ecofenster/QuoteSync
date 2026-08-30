@@ -34,9 +34,9 @@ test("status rendering uses accessible text as well as colour", async () => {
 });
 
 test("chronology remains ordered and displays the current checkpoint", () => {
-  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 53 }, (_, index) => index + 1));
+  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 58 }, (_, index) => index + 1));
   assert.equal(ROADMAP_CHRONOLOGY.find((entry) => entry.title === "Checkpoint stabilization")?.checkpointSha, ROADMAP_CHECKPOINT_SHA);
-  assert.match(ROADMAP_CHRONOLOGY.at(-1)?.title ?? "", /Gmail live-sync and omnichannel/);
+  assert.match(ROADMAP_CHRONOLOGY.at(-1)?.title ?? "", /Global development runtime and database health/);
   assert.equal(ROADMAP_CHECKPOINT_SHA, "ed6537b99f0930357e19ea1f505958e088385ce0");
 });
 
@@ -96,4 +96,10 @@ test("end-to-end quotation programme is linked without duplicate canonical syste
   assert.match(serialized, /existing Estimates root/i);
   assert.match(serialized, /Provider configuration is entered once through Administration → Integrations and persists securely/i);
   assert.match(serialized, /infrastructure-managed master encryption/i);
+});
+
+test("quotation roadmap governs the three specification layers and defers detailed technical mode", () => {
+  const quotation = all.find((item) => item.id === "quotation");
+  assert.match((quotation?.notes ?? []).join(" "), /complete source evidence → rich supplier-neutral internal canonical evidence → curated customer-safe document projection/);
+  assert.match((quotation?.children ?? []).map((item) => item.title).join(" "), /Detailed Technical Specification document mode/);
 });

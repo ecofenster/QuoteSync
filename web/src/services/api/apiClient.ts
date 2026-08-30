@@ -1,5 +1,12 @@
 export const API_BASE_URL = String(import.meta.env?.VITE_API_BASE_URL || "http://localhost:3001").replace(/\/$/, "");
 
+export type ApiMutationSafety = {
+  allowed: boolean;
+  state: string;
+};
+
+let mutationSafety: ApiMutationSafety = { allowed: true, state: "unmonitored" };
+
 export function apiUrl(path: string) {
   return `${API_BASE_URL}${path}`;
 }
@@ -18,6 +25,30 @@ export class ApiRequestError extends Error {
     this.body = body;
     this.isConflict = status === 409;
   }
+}
+
+export class ApiMutationBlockedError extends Error {
+  path: string;
+  runtimeState: string;
+
+  constructor(path: string, runtimeState: string) {
+    super("Changes are temporarily paused until the QuoteSuite service is healthy.");
+    this.name = "ApiMutationBlockedError";
+    this.path = path;
+    this.runtimeState = runtimeState;
+  }
+}
+
+export function setApiMutationSafety(next: ApiMutationSafety) {
+  mutationSafety = { ...next };
+}
+
+export function getApiMutationSafety() {
+  return { ...mutationSafety };
+}
+
+export function isPersistenceMethod(method?: string) {
+  return ["POST", "PUT", "PATCH", "DELETE"].includes(String(method || "GET").toUpperCase());
 }
 
 export function extractApiErrorMessage(status: number, body: string) {
@@ -54,6 +85,10 @@ export function extractApiErrorMessage(status: number, body: string) {
 }
 
 export async function apiFetch(path: string, options?: RequestInit) {
+  if (isPersistenceMethod(options?.method) && !mutationSafety.allowed) {
+    throw new ApiMutationBlockedError(path, mutationSafety.state);
+  }
+
   const res = await fetch(apiUrl(path), options);
 
   if (!res.ok) {
