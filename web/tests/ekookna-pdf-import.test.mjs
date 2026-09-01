@@ -207,7 +207,7 @@ test('an unproven PDF panel remains review_required instead of becoming a Produc
   const row = { manufacturerEvidence: { sourceVisuals: [visual], sourceVisual: visual }, sourceVisual: visual };
   const result = await derivePdfPositionPreviews({ filename: sourceFile, attachment: { id: 'source', media_type: 'application/pdf', sha256: sourceSha256 }, document: { pages: [{ pageNumber: 6, width: 595, height: 842 }] }, rows: [row], visualRoot: root });
   assert.deepEqual({ eligible: result.eligible, rendered: result.rendered, unavailable: result.unavailable }, { eligible: 0, rendered: 0, unavailable: 1 });
-  assert.match(result.warnings.join(' '), /review_required.*complete automatic Inside region/i);
+  assert.match(result.warnings.join(' '), /review_required.*deterministic position ownership was not proven/i);
   assert.equal(row.manufacturerEvidence.sourceVisual.status, 'unavailable');
 });
 
@@ -366,6 +366,7 @@ test('missing canonical EkoOkna supplier stops before commercial mutation with t
   const review = await fixture.supplier.prepareImportReview('estimate', fixture.selection);
   assert.equal(review.positionCount, 12);
   assert.equal(review.metadata.recognizedSupplierName, 'EKO-OKNA');
+  assert.equal(review.metadata.recognizedManufacturerName, 'EKO-OKNA');
   assert.equal(review.metadata.supplierResolutionStatus, 'not_configured');
   assert.equal(review.metadata.supplierCode, null);
   assert.equal(review.documents[0].diagnostics.status, 'canonical_supplier_required');

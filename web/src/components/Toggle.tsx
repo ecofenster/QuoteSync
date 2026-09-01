@@ -7,6 +7,7 @@ type ToggleProps = {
   labelOn?: string;
   labelOff?: string;
   ariaLabel?: string;
+  disabled?: boolean;
 };
 
 export default function Toggle({
@@ -15,9 +16,10 @@ export default function Toggle({
   labelOn = "Yes",
   labelOff = "No",
   ariaLabel,
+  disabled = false,
 }: ToggleProps) {
   return (
-    <label className="toggle">
+    <label className={`toggle${disabled ? " toggle--disabled" : ""}`}>
       <span>{value ? labelOn : labelOff}</span>
 
       <div className="toggle__track-wrap">
@@ -26,6 +28,7 @@ export default function Toggle({
           type="checkbox"
           checked={value}
           aria-label={ariaLabel}
+          disabled={disabled}
           onChange={(e) => onChange(e.currentTarget.checked)}
         />
 

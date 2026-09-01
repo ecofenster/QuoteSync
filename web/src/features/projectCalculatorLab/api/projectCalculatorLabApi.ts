@@ -1,13 +1,26 @@
 import { apiFetch } from "../../../services/api/apiClient";
-import type { CalculatorAdminConfiguration, CalculatorScenario, ImportSource, InstallationWorkforce, ProductClass } from "../domain/projectCalculatorLab.types";
+import type { CalculatorAdminConfiguration, CalculatorCatalogueRemoval, CalculatorScenario, ImportSource, InstallationWorkforce, ProductClass } from "../domain/projectCalculatorLab.types";
 import type { ScenarioCreationInput } from "../domain/scenarioCreation";
 import { normalizeCalculatorScenario } from "../domain/normalizeCalculatorScenario";
 const base="/api/admin/project-calculator-lab";
 const scenarioResponse=(request:Promise<unknown>)=>request.then(value=>normalizeCalculatorScenario(value as CalculatorScenario));
+const supplierCostResponse=async(scenarioId:string,rowId:string,input:Record<string,unknown>)=>{
+  const expected=Object.hasOwn(input,"includedInCurrentEstimate")?Boolean(input.includedInCurrentEstimate):null;
+  const scenario=await scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/supplier-costs/${encodeURIComponent(rowId)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)}));
+  if(expected!==null){
+    const persisted=scenario.supplierCosts.find(row=>row.id===rowId);
+    if(!persisted||persisted.includedInCurrentEstimate!==expected){
+      throw new Error("The active QuoteSuite API did not persist the supplier commercial choice. Restart the API to load the current Project Costing contract, then try again.");
+    }
+  }
+  return scenario;
+};
 export const projectCalculatorLabApi={
   listImportSources:(estimateId?:string)=>apiFetch(`${base}/import-sources${estimateId?`?estimate_id=${encodeURIComponent(estimateId)}`:""}`) as Promise<ImportSource[]>,
   getAdminConfiguration:()=>apiFetch(`${base}/admin-configuration`) as Promise<CalculatorAdminConfiguration>,
+  createCatalogueItem:(input:Record<string,unknown>)=>apiFetch(`${base}/admin-configuration/catalogue`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)}) as Promise<CalculatorAdminConfiguration>,
   updateCatalogueItem:(id:string,input:Record<string,unknown>)=>apiFetch(`${base}/admin-configuration/catalogue/${encodeURIComponent(id)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)}) as Promise<CalculatorAdminConfiguration>,
+  removeCatalogueItem:(id:string)=>apiFetch(`${base}/admin-configuration/catalogue/${encodeURIComponent(id)}`,{method:"DELETE"}) as Promise<CalculatorCatalogueRemoval>,
   updateRule:(key:string,value:unknown)=>apiFetch(`${base}/admin-configuration/rules/${encodeURIComponent(key)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({value})}) as Promise<CalculatorAdminConfiguration>,
   getInstallationWorkforce:()=>apiFetch(`${base}/installation-workforce`) as Promise<InstallationWorkforce>,
   saveInstallationCompany:(id:string|undefined,input:Record<string,unknown>)=>apiFetch(`${base}/installation-workforce/companies/${encodeURIComponent(id??"new")}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)}) as Promise<InstallationWorkforce>,
@@ -21,7 +34,7 @@ export const projectCalculatorLabApi={
   updateVatTreatment:(id:string,input:Record<string,unknown>)=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(id)}/vat-treatment`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
   updateProductClass:(scenarioId:string,rowId:string,productClass:ProductClass)=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/products/${encodeURIComponent(rowId)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({productClass})})),
   updateProduct:(scenarioId:string,rowId:string,input:Record<string,unknown>)=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/products/${encodeURIComponent(rowId)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
-  updateSupplierCost:(scenarioId:string,rowId:string,input:Record<string,unknown>)=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/supplier-costs/${encodeURIComponent(rowId)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
+  updateSupplierCost:supplierCostResponse,
   updateManualCost:(scenarioId:string,rowId:string,input:Record<string,unknown>)=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/manual-costs/${encodeURIComponent(rowId)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
   updateSupplierCommercialPolicy:(scenarioId:string,revisionId:string,input:Record<string,unknown>)=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/supplier-commercial/${encodeURIComponent(revisionId)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
   updateCustomerPricing:(scenarioId:string,input:Record<string,unknown>)=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/customer-pricing`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
@@ -34,6 +47,7 @@ export const projectCalculatorLabApi={
   updateOptions:(scenarioId:string,input:Record<string,unknown>)=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/options`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
   updateInstallationProfile:(scenarioId:string,input:Record<string,unknown>)=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/installation-profile`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
   updateInstallationMaterials:(scenarioId:string,input:Record<string,unknown>)=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/installation-materials`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
+  useCurrentInstallationCatalogue:(scenarioId:string,input:{useCurrentDefaults?:boolean}={})=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/installation-materials/use-current-catalogue`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
   updatePackageItem:(scenarioId:string,itemId:string,input:{included:boolean;unitCost:string})=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/package-items/${encodeURIComponent(itemId)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
   addRouteSnapshot:(scenarioId:string,input:Record<string,unknown>)=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/route-snapshots`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
 };

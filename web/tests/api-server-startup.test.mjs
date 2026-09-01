@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import express from 'express';
-import { startApiServer } from '../server/apiServerStartup.js';
+import { formatApiStartupError, startApiServer } from '../server/apiServerStartup.js';
 
 const close = (server) => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 const listening = (server) => new Promise((resolve, reject) => {
@@ -44,9 +44,15 @@ test('occupied port reports EADDRINUSE, suppresses success, exits non-zero and l
   await new Promise((resolve) => contender.once('error', resolve));
 
   assert.equal(output.messages.log.length, 0);
-  assert.equal(output.messages.error[0][0], 'QuoteSuite API failed to start:');
-  assert.equal(output.messages.error[0][1].code, 'EADDRINUSE');
+  assert.match(output.messages.error[0][0], new RegExp(`port ${port} is already in use`));
+  assert.match(output.messages.error[0][0], /will not terminate it automatically/);
   assert.equal(processRef.exitCode, 1);
   assert.equal(owner.listening, true);
   assert.equal(owner.address().port, port);
+});
+
+test('production EADDRINUSE output remains bounded and omits development process guidance', () => {
+  const message = formatApiStartupError({ code: 'EADDRINUSE' }, { port: 3001, environment: 'production' });
+  assert.match(message, /could not bind to port 3001/);
+  assert.doesNotMatch(message, /runtime health|terminate it automatically/);
 });

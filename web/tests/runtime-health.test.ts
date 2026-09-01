@@ -15,6 +15,7 @@ import {
   getApiMutationSafety,
   setApiMutationSafety,
 } from "../src/services/api/apiClient";
+import { projectCalculatorLabApi } from "../src/features/projectCalculatorLab/api/projectCalculatorLabApi";
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -25,6 +26,7 @@ function healthResponse(overrides: Record<string, unknown> = {}, status = 200) {
     runtimeFamily: QUOTESUITE_RUNTIME_CONTRACT.family,
     runtimeVersion: QUOTESUITE_RUNTIME_CONTRACT.version,
     runtimeIdentity: QUOTESUITE_RUNTIME_CONTRACT.identity,
+    capabilities: [...QUOTESUITE_RUNTIME_CONTRACT.capabilities],
     startedAt: "2026-08-29T10:00:00.000Z",
     ...overrides,
   }), { status, headers: { "content-type": "application/json" } });
@@ -47,6 +49,19 @@ test("health probe distinguishes connected, database unavailable, runtime mismat
     timeoutMs: 50,
   });
   assert.equal(mismatch.phase, "runtime_mismatch");
+
+  const missingSupplierInstallationChoice = await requestRuntimeHealth({
+    fetchImpl: async () =>
+      healthResponse({
+        capabilities: QUOTESUITE_RUNTIME_CONTRACT.capabilities.filter(
+          (capability) =>
+            capability !== "project-costing-supplier-installation-choice-v1",
+        ),
+      }),
+    baseUrl: "http://fixture",
+    timeoutMs: 50,
+  });
+  assert.equal(missingSupplierInstallationChoice.phase, "runtime_mismatch");
 
   const incompatibleEndpoint = await requestRuntimeHealth({
     fetchImpl: async () => new Response("Not found", { status: 404 }),
@@ -100,6 +115,15 @@ test("server handler reports running-process identity and bounded SQLite readine
   assert.equal(readyResponse.statusCode, 200);
   assert.equal(readyResponse.body?.databaseAvailable, true);
   assert.equal(readyResponse.body?.runtimeIdentity, QUOTESUITE_RUNTIME_CONTRACT.identity);
+  assert.ok(readyResponse.body?.capabilities.includes("internorm-aspect-schedule-v1"));
+  assert.ok(readyResponse.body?.capabilities.includes("internorm-three-dealer-contract-v1"));
+  assert.ok(readyResponse.body?.capabilities.includes("internorm-pdf-image-ownership-v1"));
+  assert.ok(readyResponse.body?.capabilities.includes("manufacturer-commercial-isolation-v1"));
+  assert.ok(readyResponse.body?.capabilities.includes("supplier-commercial-classification-v1"));
+  assert.ok(readyResponse.body?.capabilities.includes("product-supply-reconciliation-v1"));
+  assert.ok(readyResponse.body?.capabilities.includes("project-costing-installation-materials-contract-v1"));
+  assert.ok(readyResponse.body?.capabilities.includes("project-costing-installation-current-catalogue-v1"));
+  assert.ok(readyResponse.body?.capabilities.includes("project-costing-supplier-installation-choice-v1"));
   assert.equal(readyResponse.body?.serverEntry, "server/index.js");
   assert.equal(readyResponse.headers["cache-control"], "no-store");
   const serialized = JSON.stringify(readyResponse.body).toLowerCase();
@@ -177,6 +201,41 @@ test("unsafe runtime health gates persistence without issuing repeated requests"
   } finally {
     setApiMutationSafety({ allowed: true, state: "unmonitored" });
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("legacy supplier-choice responses fail visibly instead of reverting the control silently", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        id: "scenario",
+        supplierCosts: [
+          {
+            id: "supplier-installation",
+            category: "other",
+            sourceSnapshot: { commercialRole: "installation" },
+            includedInCurrentEstimate: true,
+            inclusionEvidence: "Explicitly included in the selected supplier package total.",
+          },
+        ],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )) as typeof fetch;
+  try {
+    setApiMutationSafety({ allowed: true, state: "unmonitored" });
+    await assert.rejects(
+      () =>
+        projectCalculatorLabApi.updateSupplierCost(
+          "scenario",
+          "supplier-installation",
+          { includedInCurrentEstimate: true },
+        ),
+      /did not persist the supplier commercial choice/i,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    setApiMutationSafety({ allowed: true, state: "unmonitored" });
   }
 });
 

@@ -19,6 +19,7 @@ import {
 } from "./integrations/routeIntegration";
 import "./projectCalculatorLab.css";
 import CalculatorAdminCatalogue from "./CalculatorAdminCatalogue";
+import ProjectCostingFeatureBoundary from "./ProjectCostingFeatureBoundary";
 import ScenarioCostingWorksheet from "./ScenarioCostingWorksheet";
 
 const packages: [CalculatorPackageCode, string][] = [
@@ -445,6 +446,7 @@ export default function ProjectCalculatorLabWorkspace({
             </button>
           </div>
         ) : null}
+        <ProjectCostingFeatureBoundary resetKey={`${stage2b!.id}:${stage2b!.revisionNumber}`}>
         <ScenarioCostingWorksheet
           scenario={stage2b!}
           commercialView={commercialView}
@@ -525,6 +527,7 @@ export default function ProjectCalculatorLabWorkspace({
             }
           }}
         />
+        </ProjectCostingFeatureBoundary>
         {message ? (
           <p
             role={messageKind === "error" ? "alert" : "status"}

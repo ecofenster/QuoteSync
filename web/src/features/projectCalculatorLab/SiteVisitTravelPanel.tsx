@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import Toggle from "../../components/Toggle";
 import type { CalculatorScenario, SiteVisitTravelInput } from "./domain/projectCalculatorLab.types";
 import { resolveRouteEndpoint, calculateDirectionalRoute } from "./integrations/routeIntegration";

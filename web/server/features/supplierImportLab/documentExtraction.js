@@ -58,7 +58,7 @@ async function extractDocx(filename, attachment, options) {
   const blocks = lines.map((text, index) => ({ id: `docx-block-${index}`, text, pageNumber: null, boundingBox: null, readingOrder: index, sourceType: 'paragraph' }));
   const tables = [...html.value.matchAll(/<table[^>]*>([\s\S]*?)<\/table>/gi)].map((table, tableIndex) => ({ id: `docx-table-${tableIndex}`, pageNumber: null, rows: [...table[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)].map((row, rowIndex) => [...row[1].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)].map((cell, column) => ({ row: rowIndex, column, text: stripHtml(cell[1]), boundingBox: null }))), sourceTrace: [{ attachmentId: attachment.id, blockId: `docx-table-${tableIndex}`, coordinateSpace: null }] }));
   const visuals = await extractDocxManufacturerVisuals(buffer, attachment, options);
-  return { attachmentId: attachment.id, sessionId: attachment.sessionId, mediaType: attachment.mediaType, extractorName: 'mammoth', extractorVersion: EXTRACTOR_VERSION, createdAt: new Date().toISOString(), pages: [{ pageNumber: null, pageLabel: 'document', width: null, height: null, text: lines.join('\n'), blocks, tables }], manufacturerVisualCandidates: visuals.candidates, warnings: [...raw.messages.map((item) => item.message), ...visuals.warnings], textAvailable: lines.join('').length >= 20, extractionStatus: lines.join('').length >= 20 ? 'completed' : 'unsupported' };
+  return { attachmentId: attachment.id, sourceSha256: attachment.sha256 ?? null, sessionId: attachment.sessionId, mediaType: attachment.mediaType, extractorName: 'mammoth', extractorVersion: EXTRACTOR_VERSION, createdAt: new Date().toISOString(), pages: [{ pageNumber: null, pageLabel: 'document', width: null, height: null, text: lines.join('\n'), blocks, tables }], manufacturerVisualCandidates: visuals.candidates, warnings: [...raw.messages.map((item) => item.message), ...visuals.warnings], textAvailable: lines.join('').length >= 20, extractionStatus: lines.join('').length >= 20 ? 'completed' : 'unsupported' };
 }
 
 async function extractPdf(filename, attachment) {
@@ -85,9 +85,23 @@ async function extractPdf(filename, attachment) {
     let graphics = { transform: [1, 0, 0, 1, 0, 0], strokeColor: null, fillColor: null, lineWidth: 1 };
     const graphicsStack = [];
     const vectorEvidence = [];
+    const imageEvidence = [];
     for (const [operatorIndex, operator] of operators.fnArray.entries()) {
       const args = operators.argsArray[operatorIndex];
-      if (operator === OPS.paintImageXObject || operator === OPS.paintInlineImageXObject || operator === OPS.paintImageMaskXObject) images += 1;
+      if (operator === OPS.paintImageXObject || operator === OPS.paintInlineImageXObject || operator === OPS.paintImageMaskXObject) {
+        images += 1;
+        const boundingBox = transformedBox([0, 0, 1, 1], graphics.transform);
+        if (boundingBox) imageEvidence.push({
+          id: `pdf-${number}-image-${operatorIndex}`,
+          objectId: typeof args?.[0] === 'string' ? args[0] : null,
+          pageNumber: number,
+          boundingBox,
+          sourceOperatorIndex: operatorIndex,
+          sourceType: operator === OPS.paintImageXObject ? 'image_xobject_bounds' : operator === OPS.paintInlineImageXObject ? 'inline_image_bounds' : 'image_mask_bounds',
+          intrinsicWidth: Number.isFinite(Number(args?.[1])) ? Number(args[1]) : null,
+          intrinsicHeight: Number.isFinite(Number(args?.[2])) ? Number(args[2]) : null,
+        });
+      }
       else if (operator === OPS.save) graphicsStack.push({ ...graphics, transform: [...graphics.transform] });
       else if (operator === OPS.restore) graphics = graphicsStack.pop() || graphics;
       else if (operator === OPS.transform && Array.isArray(args) && args.length >= 6) graphics = { ...graphics, transform: multiplyTransform(graphics.transform, args.map(Number)) };
@@ -103,6 +117,7 @@ async function extractPdf(filename, attachment) {
       else if (operator === OPS.paintFormXObjectBegin) forms += 1;
     }
     layout.vectorEvidence = vectorEvidence;
+    layout.imageEvidence = imageEvidence;
     layout.contentEvidence = { textRunCount: layout.runs.length, lineCount: layout.lines.length, regionCount: layout.regions.length, imageObjectCount: images, vectorPathCount: vectors, formObjectCount: forms, hasText: layout.runs.length > 0, hasRasterImages: images > 0, hasVectorContent: vectors > 0 };
     if (!layout.runs.length) structure.emptyTextPages += 1;
     if (layout.runs.length && (images || vectors)) structure.mixedContentPages += 1;
@@ -111,10 +126,16 @@ async function extractPdf(filename, attachment) {
   }
   structure.fontNames = [...fontNames];
   const metadata = await pdf.getMetadata().catch(() => null); const permissions = await pdf.getPermissions().catch(() => null);
+  const documentMetadata = {
+    title: clean(metadata?.info?.Title),
+    creationDate: clean(metadata?.info?.CreationDate),
+    modificationDate: clean(metadata?.info?.ModDate),
+    producer: clean(metadata?.info?.Producer),
+  };
   await loadingTask.destroy();
   const textLength = pages.reduce((sum, page) => sum + page.text.replace(/\s/g, '').length, 0);
   const warnings = textLength < 20 ? ['No machine-readable text layer; bounded OCR fallback is required.'] : [];
-  return { attachmentId: attachment.id, sessionId: attachment.sessionId, mediaType: attachment.mediaType, extractorName: 'pdfjs-dist', extractorVersion: EXTRACTOR_VERSION, createdAt: new Date().toISOString(), pages, manufacturerVisualCandidates: [], pdfStructure: { ...structure, runtimeVersion: PDFJS_RUNTIME_VERSION, encrypted: Boolean(metadata?.info?.EncryptFilterName), restricted: Array.isArray(permissions) && permissions.length > 0, permissions: Array.isArray(permissions) ? permissions : null }, warnings, textAvailable: textLength >= 20, extractionStatus: textLength >= 20 ? 'completed' : 'ocr_required' };
+  return { attachmentId: attachment.id, sourceSha256: attachment.sha256 ?? null, sessionId: attachment.sessionId, mediaType: attachment.mediaType, extractorName: 'pdfjs-dist', extractorVersion: EXTRACTOR_VERSION, createdAt: new Date().toISOString(), pages, manufacturerVisualCandidates: [], pdfStructure: { ...structure, runtimeVersion: PDFJS_RUNTIME_VERSION, documentMetadata, encrypted: Boolean(metadata?.info?.EncryptFilterName), restricted: Array.isArray(permissions) && permissions.length > 0, permissions: Array.isArray(permissions) ? permissions : null }, warnings, textAvailable: textLength >= 20, extractionStatus: textLength >= 20 ? 'completed' : 'ocr_required' };
 }
 
 export async function extractSupplierDocument(filename, attachment, options = {}) {

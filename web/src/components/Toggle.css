@@ -6,6 +6,11 @@
   user-select: none;
 }
 
+.toggle--disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
 .toggle__track-wrap {
   position: relative;
   width: 48px;

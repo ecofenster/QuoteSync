@@ -108,7 +108,7 @@ test('mixed evidence preserves all parsed rows while committing only canonical-r
   assert.deepEqual(run, { status: 'failed', confirmation_status: 'review_required', error_code: 'confirmation_review_required' });
 });
 
-for (const stage of ['extraction', 'currency_validation', 'supplier_position_persistence', 'products_projection', 'project_costing_projection', 'diagnostics_persistence', 'transaction_commit', 'postcondition_validation']) {
+for (const stage of ['extraction', 'currency_validation', 'operation_journal', 'supplier_position_persistence', 'products_projection', 'project_costing_projection', 'package_adjustments', 'revision_reconciliation', 'diagnostics_persistence', 'transaction_commit', 'postcondition_validation']) {
   test(`failure injection at ${stage} never creates false completion`, async (t) => {
     const context = await setup(t, { rowCount: 2, failureInjector: async (currentStage) => { if (currentStage === stage) throw supplierImportFailure(stage); } });
     await assert.rejects(context.supplier.extractAndLoadSupplierCosts('estimate', context.scenario.id, context.selection, confirmationFor(context)), (error) => error.code === `supplier_import_${stage}_failed`);

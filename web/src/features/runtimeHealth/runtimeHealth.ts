@@ -17,6 +17,7 @@ export type RuntimeHealthState = {
   runtimeFamily?: string;
   serverEntry?: string;
   startedAt?: string;
+  capabilities?: string[];
 };
 
 type HealthPayload = {
@@ -27,6 +28,7 @@ type HealthPayload = {
   runtimeFamily?: string;
   serverEntry?: string;
   startedAt?: string;
+  capabilities?: unknown;
 };
 
 export const INITIAL_RUNTIME_HEALTH: RuntimeHealthState = { phase: "connecting" };
@@ -73,13 +75,28 @@ export async function requestRuntimeHealth({
           runtimeFamily: payload.runtimeFamily,
           serverEntry: payload.serverEntry,
           startedAt: payload.startedAt,
+          capabilities: Array.isArray(payload.capabilities)
+            ? payload.capabilities.filter(
+                (capability): capability is string =>
+                  typeof capability === "string",
+              )
+            : undefined,
         }
       : {};
+
+    const capabilities = Array.isArray(payload?.capabilities)
+      ? payload.capabilities.filter(
+          (capability): capability is string => typeof capability === "string",
+        )
+      : [];
 
     const compatible =
       payload?.apiAvailable === true &&
       payload.runtimeFamily === QUOTESUITE_RUNTIME_CONTRACT.family &&
-      payload.runtimeIdentity === QUOTESUITE_RUNTIME_CONTRACT.identity;
+      payload.runtimeIdentity === QUOTESUITE_RUNTIME_CONTRACT.identity &&
+      QUOTESUITE_RUNTIME_CONTRACT.capabilities.every((capability) =>
+        capabilities.includes(capability),
+      );
 
     if (!compatible) return { phase: "runtime_mismatch", ...common };
     if (payload?.databaseAvailable !== true) return { phase: "database_unavailable", ...common };

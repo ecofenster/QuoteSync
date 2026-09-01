@@ -109,6 +109,7 @@ export function buildManufacturerInternalSpecification({
     group('thermal', 'Thermal', [
       item('Ug', manufacturerQuotedUg),
       item('Uw', manufacturerQuotedUw ?? canonicalValue(canonical, 'thermalUw'), sourceIds(canonical.thermalUw)),
+      item('System heat insulation', canonicalValue(canonical, 'systemThermalPerformance'), sourceIds(canonical.systemThermalPerformance)),
     ]),
     group('accessories', 'Accessories', accessories.map((accessory, index) => item(
       `Accessory ${index + 1}`,

@@ -19,7 +19,7 @@ const sourceRow = (ordinal) => {
   return { id: `row-${ordinal}`, ordinal, ...original, ...manufacturerEvidence, sourcePages: [1], sourceTrace: [{ pageNumber: 1, boundingBox: { x: 1, y: ordinal + 1, width: 2, height: 2 } }], confidence: '0.98', warnings: [], status: 'extracted', originalExtractedSnapshot: original };
 };
 
-async function setup(t) {
+async function setup(t, { summary = null } = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'qs-confirmation-'));
   const db = await open({ filename: path.join(root, 'test.sqlite'), driver: sqlite3.Database });
   t.after(async () => { await db.close(); await fs.rm(root, { recursive: true, force: true }); });
@@ -33,7 +33,7 @@ async function setup(t) {
     attachmentRoot: root,
     extractDocument: async () => ({ textAvailable: true, warnings: [], pages: [{ blocks: rows.map((row) => ({ id: row.id, text: row.displayReference })) }] }),
     parseFields: () => ({ quotation: { supplierQuotationNumber: '343117', supplierRevision: '5' }, rows: rows.map((row) => structuredClone(row)), warnings: [] }),
-    parseSummary: () => ({ summary: null, additionalItems: [], warnings: [] }),
+    parseSummary: () => ({ summary, additionalItems: [], warnings: [] }),
   });
   const quote = await supplier.createQuote('estimate', { supplierCode: 'ZF', supplierName: 'Zyle Fenster' });
   const revision = await supplier.createRevision('estimate', quote.id, { supplierQuotationNumber: '343117', supplierRevision: '5', currency: 'EUR' });
@@ -75,9 +75,14 @@ test('22-position confirmation detects source currency, rejects mismatch before 
   assert.equal(response.counts.alternativeRows, 1);
   assert.equal(costing.products.length, 22);
   assert.equal(costing.products.filter((row) => row.includedInCurrentEstimate !== false).length, 21);
-  const savedVisual = JSON.parse((await context.db.get('SELECT source_snapshot_json FROM project_calculator_estimate_product_rows WHERE source_revision_id=? ORDER BY rowid LIMIT 1', context.revision.id)).source_snapshot_json).manufacturerEvidence.sourceVisual;
+  const savedSnapshot = JSON.parse((await context.db.get('SELECT source_snapshot_json FROM project_calculator_estimate_product_rows WHERE source_revision_id=? ORDER BY rowid LIMIT 1', context.revision.id)).source_snapshot_json);
+  const savedVisual = savedSnapshot.manufacturerEvidence.sourceVisual;
   assert.equal(savedVisual.status, 'available');
   assert.match(savedVisual.url, /fixtures\/W1\.png$/);
+  assert.equal(savedSnapshot.canonicalManufacturer.manufacturerName, 'Zyle Fenster');
+  assert.equal(savedSnapshot.supplierDealer.supplierName, 'Zyle Fenster');
+  assert.equal(savedSnapshot.supplierManufacturerRelationship.relationship, 'direct_manufacturer_supplier');
+  assert.equal(savedSnapshot.supplierManufacturerRelationship.pricingScope, 'supplier_dealer_quotation');
 
   const retry = await context.supplier.extractAndLoadSupplierCosts('estimate', context.scenario.id, context.selection, { selectedRowKeys, supplierCode: 'ZF', metadata: { quotationNumber: '343117', revision: '5', currency: 'GBP' } });
   assert.equal(retry.documents[0].loadedProducts, 0);
@@ -89,6 +94,16 @@ test('22-position confirmation detects source currency, rejects mismatch before 
   assert.equal((await context.db.get('SELECT COUNT(*) count FROM supplier_quote_import_operations WHERE revision_id=?', context.revision.id)).count, 1);
 });
 
+test('material pre-discount Products / Supply variance blocks confirmation before commercial rows persist', async (t) => {
+  const context = await setup(t, { summary: { currency: 'GBP', comparisonTotals: [{ classification: 'supplier_list_price', amount: '10000.00', currency: 'GBP' }] } });
+  const review = await context.supplier.prepareImportReview('estimate', context.selection);
+  const reconciliation = review.documents[0].commercialEvidence.productSupplyReconciliation;
+  assert.deepEqual({ status: reconciliation.status, blocking: reconciliation.blocking, expected: reconciliation.expectedSubtotal, extracted: reconciliation.extractedSubtotal, variance: reconciliation.variance }, { status: 'review_required', blocking: true, expected: '10000.00', extracted: '10500.00', variance: '500.00' });
+  await assert.rejects(context.supplier.extractAndLoadSupplierCosts('estimate', context.scenario.id, context.selection, { selectedRowKeys: review.documents[0].rows.map((row) => row.rowKey), supplierCode: 'ZF', metadata: { quotationNumber: '343117', revision: '5', currency: 'GBP' } }), (error) => error.code === 'supplier_product_reconciliation_failed' && error.productSupplyReconciliation.contributors.length === 21);
+  assert.equal((await context.db.get('SELECT COUNT(*) count FROM supplier_quote_positions WHERE revision_id=?', context.revision.id)).count, 0);
+  assert.equal((await context.db.get('SELECT COUNT(*) count FROM project_calculator_estimate_product_rows WHERE source_revision_id=?', context.revision.id)).count, 0);
+});
+
 test('review UI has deterministic loading and bounded responsive table contracts', async () => {
   const [component, styles, api] = await Promise.all([
     fs.readFile('src/features/estimateCommercial/EstimateSupplierCostImportControl.tsx', 'utf8'),
@@ -96,7 +111,15 @@ test('review UI has deterministic loading and bounded responsive table contracts
     fs.readFile('src/features/supplierQuotes/api/supplierQuotesApi.ts', 'utf8'),
   ]);
   assert.match(component, /aria-busy=\{busy\}/);
-  assert.match(component, /busy\?"Confirming…":confirmationBlocked\?"Select canonical supplier to confirm":"Confirm & Load to Project Costing"/);
+  assert.match(component, /busy\?"Confirming…":productReconciliationBlocked\?"Product price reconciliation required":commercialEvidenceBlocked\?"Commercial price review required":confirmationBlocked\?"Select manufacturer and supplier \/ dealer to confirm":"Confirm & Load to Project Costing"/);
+  assert.match(component, /<strong>Source supplier \/ dealer:<\/strong>/);
+  assert.match(component, /<strong>Manufacturer:<\/strong>/);
+  assert.match(component, /Canonical manufacturer/);
+  assert.match(component, /Configured supplier \/ dealer/);
+  assert.match(component, /<strong>Configured supplier \/ dealer:<\/strong>/);
+  assert.match(component, /<strong>Quotation \/ reference:<\/strong>/);
+  assert.doesNotMatch(component, /Canonical quotation supplier/);
+  assert.doesNotMatch(component, /Source supplier recognised/);
   assert.doesNotMatch(component, /busy\?"Loading…":"Confirm & Load to Project Costing"/);
   assert.match(component, /data-label="Customer reference"/);
   assert.match(component, /confirmationStatus==="confirmed"/);

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { projectCalculatorLabApi } from "./api/projectCalculatorLabApi";
 import type { CalculatorScenario, InstallationWorkforce } from "./domain/projectCalculatorLab.types";

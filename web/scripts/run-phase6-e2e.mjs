@@ -5,8 +5,12 @@ import { platform } from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
-import { cleanupPhase6Profile, createPhase6ProfileDirectory, terminateOwnedChrome } from "./e2e-chrome-profile.mjs";
+import { createPhase6ProfileDirectory } from "./e2e-chrome-profile.mjs";
+import { createBrowserRunController, countBrowserRunProfiles } from "./browser-run-lifecycle.mjs";
 import { terminateOwnedProcessTrees } from "./e2e-owned-process.mjs";
+
+const browserRunController = createBrowserRunController({ throwOnLeak: true, processOptions: { platformName: process.platform } });
+browserRunController.installInterruptHandlers();
 
 const APP_URL = process.env.QS_E2E_APP_URL ?? "http://localhost:4173";
 const API_URL = process.env.QS_E2E_API_URL ?? "http://localhost:3001";
@@ -109,6 +113,7 @@ function chromeCandidates() {
 
 async function launchChrome() {
   const userDataDir = await createPhase6ProfileDirectory();
+  browserRunController.setRun({ label: "phase6-e2e", userDataDir, debugPort: DEBUG_PORT, startedAt: new Date().toISOString(), profileProcessCountBefore: await countBrowserRunProfiles(userDataDir, { platformName: process.platform }) });
   console.log(`Phase 6 Chrome profile: ${userDataDir}`);
 
   let lastError = null;
@@ -124,6 +129,7 @@ async function launchChrome() {
         "about:blank",
       ], { stdio: "ignore" });
       ownedProcesses.push(child);
+      browserRunController.setRun({ child });
       await waitForAsync(async () => isReachable(`http://127.0.0.1:${DEBUG_PORT}/json/version`), "Chrome did not expose CDP", 10000);
       return { userDataDir, child };
     } catch (error) {
@@ -368,6 +374,7 @@ async function run() {
   try {
     chrome = await launchChrome();
     page = await createCdpPage(APP_URL);
+    browserRunController.setRun({ profileProcessCountDuring: await countBrowserRunProfiles(chrome.userDataDir, { platformName: process.platform }) });
     await waitForPage(page, () => document.body.innerText.includes("Client Database"), [], "App shell did not render", 90000);
     await page.evaluate(pageScript(() => {
       localStorage.clear();
@@ -646,20 +653,8 @@ async function run() {
     await cleanupTemporaryEstimate();
     await cleanupStalePhase6Estimates(client.id);
     await cleanupTemporaryClient();
-    if (chrome) {
-      const termination = await terminateOwnedChrome(chrome.child);
-      await delay(300);
-      const cleanup = await cleanupPhase6Profile(chrome.userDataDir);
-      if (!cleanup.removed) {
-        console.warn("Phase 6 Chrome profile cleanup was delayed", {
-          profile: chrome.userDataDir,
-          attempts: cleanup.attempts,
-          code: cleanup.error?.code ?? "unknown",
-          chromeExited: termination.exited,
-        });
-        if (!termination.exited) process.exitCode = 1;
-      }
-    }
+    const browserCleanup = await browserRunController.stop("final");
+    console.log(`Phase 6 browser cleanup summary: ${JSON.stringify(browserCleanup)}`);
   }
 }
 

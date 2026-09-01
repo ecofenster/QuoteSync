@@ -54,6 +54,28 @@ export async function readSupplierImportState(db, { scenarioId, revisionId }) {
   };
 }
 
+export async function inspectConfirmedProjectionDrift(db, { estimateId = null, revisionId = null } = {}) {
+  const clauses = ["operation.status='confirmed'"];
+  const parameters = [];
+  if (estimateId) { clauses.push('operation.estimate_id=?'); parameters.push(estimateId); }
+  if (revisionId) { clauses.push('operation.revision_id=?'); parameters.push(revisionId); }
+  const operations = await db.all(`SELECT operation.id,operation.revision_id,operation.scenario_id,operation.intended_counts_json,operation.post_state_json FROM supplier_quote_import_operations operation WHERE ${clauses.join(' AND ')} ORDER BY operation.confirmed_at,operation.id`, ...parameters);
+  const results = [];
+  for (const operation of operations) {
+    const intended = JSON.parse(operation.intended_counts_json || '{}');
+    const expected = Number(intended.validCanonicalPositions || 0);
+    const current = await readSupplierImportState(db, { scenarioId: operation.scenario_id, revisionId: operation.revision_id });
+    const missing = {
+      supplierPositions: Math.max(0, expected - current.supplierPositions),
+      productsSupplyRows: Math.max(0, expected - current.productsSupplyRows),
+      projectCostingRows: Math.max(0, expected - current.projectCostingRows),
+    };
+    const drifted = Object.values(missing).some((count) => count > 0);
+    results.push({ operationId: operation.id, revisionId: operation.revision_id, scenarioId: operation.scenario_id, expectedCanonicalPositions: expected, current, missing, status: drifted ? 'projection_drift' : 'current', historicalPostState: JSON.parse(operation.post_state_json || '{}') });
+  }
+  return results;
+}
+
 export async function reconcileStaleSupplierImportRuns(db, { now = new Date(), thresholdMs = 15 * 60 * 1000 } = {}) {
   const cutoff = new Date(now.getTime() - thresholdMs).toISOString();
   const stale = await db.all("SELECT id,operation_id FROM supplier_quote_import_runs WHERE status IN ('queued','running') AND started_at<?", cutoff);

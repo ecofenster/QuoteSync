@@ -30,18 +30,18 @@ function outputScale(page, region) {
   return Math.max(1, Math.min(regionScale, pageScale, MAX_RENDER_SCALE));
 }
 
-function previewToken(attachment, pageNumber, region, role) {
-  return createHash('sha256').update(JSON.stringify({ version: PDF_POSITION_PREVIEW_VERSION, source: attachment.sha256, pageNumber, region, role })).digest('hex').slice(0, 40);
+function previewToken(attachment, pageNumber, region, role, renderVersion = PDF_POSITION_PREVIEW_VERSION) {
+  return createHash('sha256').update(JSON.stringify({ version: renderVersion, source: attachment.sha256, pageNumber, region, role })).digest('hex').slice(0, 40);
 }
 
 async function exists(filename) {
   try { const info = await stat(filename); return info.isFile() && info.size > 0 && info.size <= MAX_PNG_BYTES; } catch (error) { if (error?.code === 'ENOENT') return false; throw error; }
 }
 
-function applyPreview(row, attachment, pageNumber, region, token, widthPx, heightPx, cached, role) {
+function applyPreview(row, attachment, pageNumber, region, token, widthPx, heightPx, cached, role, renderVersion = PDF_POSITION_PREVIEW_VERSION) {
   const evidence = row.manufacturerEvidence || {};
   const current = (evidence.sourceVisuals || []).find((visual) => visual.role === role) || evidence.sourceVisual || row.sourceVisual;
-  const renderedDerivative = { mediaType: 'image/png', url: `/api/manufacturer-position-visuals/${token}/quotation.png`, widthPx, heightPx, purpose: current?.primaryUse || (role === 'inside' ? 'products_supply' : 'manufacturer_evidence'), role, renderVersion: PDF_POSITION_PREVIEW_VERSION, cached };
+  const renderedDerivative = { mediaType: 'image/png', url: `/api/manufacturer-position-visuals/${token}/quotation.png`, widthPx, heightPx, purpose: current?.primaryUse || (role === 'inside' ? 'products_supply' : 'manufacturer_evidence'), role, renderVersion, cached };
   const sourceVisual = {
     ...current,
     kind: 'manufacturer_document_region',
@@ -55,7 +55,7 @@ function applyPreview(row, attachment, pageNumber, region, token, widthPx, heigh
     url: renderedDerivative.url,
     originalAsset: { ...(current?.originalAsset || {}), mediaType: 'application/pdf', attachmentId: attachment.id, sha256: attachment.sha256, sourcePage: pageNumber, boundingRegion: region, coordinateSpace: 'pdf_points' },
     renderedDerivative,
-    renderParameters: { targetFormat: 'image/png', status: 'rendered', renderVersion: PDF_POSITION_PREVIEW_VERSION, pdfRuntimeVersion: PDFJS_RUNTIME_VERSION, sourcePage: pageNumber, boundingRegion: region, sourceTextOverlay: 'not_required' },
+    renderParameters: { targetFormat: 'image/png', status: 'rendered', renderVersion, pdfRuntimeVersion: PDFJS_RUNTIME_VERSION, sourcePage: pageNumber, boundingRegion: region, sourceTextOverlay: 'not_required' },
     reason: null,
   };
   const sourceVisuals = Array.isArray(evidence.sourceVisuals)
@@ -80,13 +80,13 @@ export async function derivePdfPositionPreviews({ filename, attachment, document
       : [row.manufacturerEvidence?.sourceVisual || row.sourceVisual];
     for (const visual of visuals) {
       if (visual?.status === 'available' || visual?.sourceFormat !== 'pdf') continue;
-      if (visual.primary && (visual.role !== 'inside' || visual.mappingReviewStatus !== 'mapped_automatic')) {
-        reviewWarnings.push(`PDF page ${visual.sourcePage ?? 'unknown'} primary preview remains review_required because a complete automatic Inside region was not proven.`);
+      if (visual.mappingReviewStatus !== 'mapped_automatic') {
+        reviewWarnings.push(`PDF page ${visual.sourcePage ?? 'unknown'} preview remains review_required because deterministic position ownership was not proven.`);
         continue;
       }
       const page = pageByNumber.get(Number(visual.sourcePage));
       const region = page && boundedRegion(visual.boundingRegion, page);
-      if (page && region) candidates.push({ row, page, region, role: visual.role || 'combined_source' });
+      if (page && region) candidates.push({ row, page, region, role: visual.role || 'unknown', renderVersion: visual.renderCacheVersion || PDF_POSITION_PREVIEW_VERSION });
     }
   }
   if (candidates.length > MAX_REGIONS) throw Object.assign(new Error('PDF contains too many position preview regions.'), { code: 'unsafe_pdf_document' });
@@ -97,11 +97,11 @@ export async function derivePdfPositionPreviews({ filename, attachment, document
   const prepared = [];
   let cached = 0;
   for (const candidate of candidates) {
-    const token = previewToken(attachment, candidate.page.pageNumber, candidate.region, candidate.role);
+    const token = previewToken(attachment, candidate.page.pageNumber, candidate.region, candidate.role, candidate.renderVersion);
     const directory = path.join(visualRoot, token); const output = path.join(directory, 'quotation.png');
     const scale = outputScale(candidate.page, candidate.region);
     const widthPx = Math.max(1, Math.round(candidate.region.width * scale)); const heightPx = Math.max(1, Math.round(candidate.region.height * scale));
-    if (await exists(output)) { applyPreview(candidate.row, attachment, candidate.page.pageNumber, candidate.region, token, widthPx, heightPx, true, candidate.role); cached += 1; }
+    if (await exists(output)) { applyPreview(candidate.row, attachment, candidate.page.pageNumber, candidate.region, token, widthPx, heightPx, true, candidate.role, candidate.renderVersion); cached += 1; }
     else prepared.push({ ...candidate, token, directory, output, scale, widthPx, heightPx });
   }
   if (!prepared.length) return { eligible: candidates.length, rendered: 0, cached, unavailable: unavailableCount(), warnings: reviewWarnings };
@@ -134,7 +134,7 @@ export async function derivePdfPositionPreviews({ filename, attachment, document
         if (png.length > MAX_PNG_BYTES) { warnings.push(`PDF preview for page ${pageNumber} exceeded the safe derivative size limit.`); continue; }
         await mkdir(item.directory, { recursive: true });
         try { await writeFile(item.output, png, { flag: 'wx' }); } catch (error) { if (error?.code !== 'EEXIST') throw error; }
-        applyPreview(item.row, attachment, pageNumber, item.region, item.token, item.widthPx, item.heightPx, false, item.role); rendered += 1;
+        applyPreview(item.row, attachment, pageNumber, item.region, item.token, item.widthPx, item.heightPx, false, item.role, item.renderVersion); rendered += 1;
       }
       page.cleanup();
     }

@@ -9,7 +9,7 @@ import { initializeSupplierCommercialSchema } from '../server/schema/supplierCom
 import { createProjectCalculatorLabService } from '../server/features/projectCalculatorLab/projectCalculatorLabService.js';
 import { createSupplierQuotesService } from '../server/features/supplierQuotes/supplierQuotesService.js';
 import { normalizeCalculatorScenario } from '../src/features/projectCalculatorLab/domain/normalizeCalculatorScenario.js';
-import { originalSupplierPurchaseGroups, supplierNameForProduct } from '../src/features/projectCalculatorLab/domain/projectCostingPresentation.js';
+import { manufacturerNameForProduct, originalSupplierPurchaseGroups, productCommercialSourceLabel, supplierNameForProduct } from '../src/features/projectCalculatorLab/domain/projectCostingPresentation.js';
 
 const rates: Record<string, string> = { EUR: '0.86', GBP: '1', PLN: '0.20' };
 
@@ -71,6 +71,11 @@ test('EUR, GBP and PLN revisions retain independent FX provenance and aggregate 
     assert.equal(loaded.supplierSummary.finalSupplierTotalGbp, '11910.00');
     assert.deepEqual(originalSupplierPurchaseGroups(loaded), { EUR: ['1000'], GBP: ['4850'], PLN: ['31000'] });
     assert.equal(supplierNameForProduct(loaded.products.find((item: any) => item.currency === 'GBP')), 'GBP Supplier');
+    const dealerProduct = { ...loaded.products.find((item: any) => item.currency === 'GBP'), sourceSnapshot: { supplierName: 'EcoHaus', supplierQuotationNumber: '20260057', manufacturerEvidence: { manufacturerName: 'Internorm' } } };
+    assert.equal(manufacturerNameForProduct(dealerProduct), 'Internorm');
+    assert.equal(productCommercialSourceLabel(dealerProduct), 'Internorm · supplied by EcoHaus · quote 20260057');
+    const directProduct = { ...dealerProduct, sourceSnapshot: { supplierName: 'Internorm', supplierQuotationNumber: 'DIRECT-1', manufacturerEvidence: { manufacturerName: 'Internorm' } } };
+    assert.equal(productCommercialSourceLabel(directProduct), 'Internorm · quote DIRECT-1');
     const persistedRows = await db.all('SELECT currency,purchase_amount_gbp,selling_amount_gbp,fx_snapshot_id FROM project_calculator_estimate_product_rows WHERE scenario_id=? ORDER BY currency', scenario.id);
     assert.deepEqual(persistedRows.map(item => [item.currency, item.purchase_amount_gbp, item.selling_amount_gbp, Boolean(item.fx_snapshot_id)]), [['EUR', '860.00', '870.00', true], ['GBP', '4850.00', '4850.00', true], ['PLN', '6200.00', '6510.00', true]]);
     assert.deepEqual((await calculator.getScenario(scenario.id)).exchangeRates, loaded.exchangeRates);

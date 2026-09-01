@@ -1,4 +1,4 @@
-import {CALCULATOR_CATALOGUE_DEFAULTS,CALCULATION_RULE_DEFAULTS,PACKAGE_RULE_DEFAULTS} from '../features/projectCalculatorLab/calculatorCatalogueDefaults.js';
+import {CALCULATOR_CATALOGUE_DEFAULTS,CALCULATOR_LEGACY_CATALOGUE_IDS,CALCULATION_RULE_DEFAULTS,PACKAGE_RULE_DEFAULTS} from '../features/projectCalculatorLab/calculatorCatalogueDefaults.js';
 
 const tables = [
   `CREATE TABLE IF NOT EXISTS supplier_import_lab_sessions (
@@ -798,6 +798,9 @@ const tables = [
     supplier TEXT, notes TEXT, active INTEGER NOT NULL DEFAULT 1 CHECK(active IN(0,1)), version INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL, updated_at TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS project_calculator_admin_catalogue_migrations (
+    migration_key TEXT PRIMARY KEY, applied_at TEXT NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS project_calculator_admin_rules (
     rule_key TEXT PRIMARY KEY, rule_value_json TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL
   )`,
@@ -999,8 +1002,34 @@ export async function initializeSupplierCommercialSchema(db) {
   const supplierCommercialDefaultColumns=await db.all('PRAGMA table_info(supplier_commercial_defaults)');
   if(!supplierCommercialDefaultColumns.some(item=>item.name==='active'))await db.exec('ALTER TABLE supplier_commercial_defaults ADD COLUMN active INTEGER NOT NULL DEFAULT 1');
   const now=new Date().toISOString();
-  for(const [id,category,label,rateType,price,variant] of CALCULATOR_CATALOGUE_DEFAULTS)await db.run('INSERT OR IGNORE INTO project_calculator_admin_catalogue_items(id,category,label,rate_type,price_amount,currency,variant_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)',id,category,label,rateType,price,'GBP',JSON.stringify(variant||{}),now,now);
-  await db.run("UPDATE project_calculator_admin_catalogue_items SET active=0,updated_at=? WHERE id='me508_unconfigured' AND price_amount IS NULL",now);
+  for(const [id,category,label,rateType,price,variant] of CALCULATOR_CATALOGUE_DEFAULTS){
+    await db.run('INSERT OR IGNORE INTO project_calculator_admin_catalogue_items(id,category,label,rate_type,price_amount,currency,variant_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)',id,category,label,rateType,price,'GBP',JSON.stringify(variant||{}),now,now);
+    await db.run('UPDATE project_calculator_admin_catalogue_items SET category=?,label=?,rate_type=?,currency=?,variant_json=?,updated_at=? WHERE id=? AND version=1 AND price_amount IS NULL',category,label,rateType,'GBP',JSON.stringify(variant||{}),now,id);
+  }
+  const installationCatalogueMigrationKey='installation_material_catalogue_known_costs_v1';
+  if(!await db.get('SELECT migration_key FROM project_calculator_admin_catalogue_migrations WHERE migration_key=?',installationCatalogueMigrationKey)){
+    await db.exec('SAVEPOINT installation_catalogue_known_costs');
+    try{
+      for(const [id,category,label,rateType,price,variant] of CALCULATOR_CATALOGUE_DEFAULTS.filter(item=>item[5]?.catalogueStatus==='current')){
+        const variantJson=JSON.stringify(variant||{}),existing=await db.get('SELECT category,label,rate_type,price_amount,currency,variant_json,active FROM project_calculator_admin_catalogue_items WHERE id=?',id);
+        if(existing&&(existing.category!==category||existing.label!==label||existing.rate_type!==rateType||existing.price_amount!==price||existing.currency!=='GBP'||existing.variant_json!==variantJson||existing.active!==1))await db.run('UPDATE project_calculator_admin_catalogue_items SET category=?,label=?,rate_type=?,price_amount=?,currency=?,variant_json=?,active=1,version=version+1,updated_at=? WHERE id=?',category,label,rateType,price,'GBP',variantJson,now,id);
+      }
+      for(const id of CALCULATOR_LEGACY_CATALOGUE_IDS)await db.run('UPDATE project_calculator_admin_catalogue_items SET active=0,version=version+CASE WHEN active=1 THEN 1 ELSE 0 END,updated_at=? WHERE id=?',now,id);
+      const installationRule=CALCULATION_RULE_DEFAULTS.installation_materials_v1;
+      await db.run('UPDATE project_calculator_admin_rules SET rule_value_json=?,version=version+1,updated_at=? WHERE rule_key=?',JSON.stringify(installationRule),now,'installation_materials_v1');
+      await db.run('INSERT INTO project_calculator_admin_catalogue_migrations(migration_key,applied_at) VALUES(?,?)',installationCatalogueMigrationKey,now);
+      await db.exec('RELEASE SAVEPOINT installation_catalogue_known_costs');
+    }catch(error){await db.exec('ROLLBACK TO SAVEPOINT installation_catalogue_known_costs');await db.exec('RELEASE SAVEPOINT installation_catalogue_known_costs');throw error;}
+  }
+  const installationAdminCleanupKey='installation_admin_legacy_catalogue_cleanup_v1';
+  if(!await db.get('SELECT migration_key FROM project_calculator_admin_catalogue_migrations WHERE migration_key=?',installationAdminCleanupKey)){
+    await db.exec('SAVEPOINT installation_admin_legacy_cleanup');
+    try{
+      for(const id of CALCULATOR_LEGACY_CATALOGUE_IDS)await db.run('DELETE FROM project_calculator_admin_catalogue_items WHERE id=?',id);
+      await db.run('INSERT INTO project_calculator_admin_catalogue_migrations(migration_key,applied_at) VALUES(?,?)',installationAdminCleanupKey,now);
+      await db.exec('RELEASE SAVEPOINT installation_admin_legacy_cleanup');
+    }catch(error){await db.exec('ROLLBACK TO SAVEPOINT installation_admin_legacy_cleanup');await db.exec('RELEASE SAVEPOINT installation_admin_legacy_cleanup');throw error;}
+  }
   for(const [key,value] of Object.entries(CALCULATION_RULE_DEFAULTS))await db.run('INSERT OR IGNORE INTO project_calculator_admin_rules(rule_key,rule_value_json,updated_at) VALUES(?,?,?)',key,JSON.stringify(value),now);
   for(const [code,inclusions] of Object.entries(PACKAGE_RULE_DEFAULTS))await db.run('INSERT OR IGNORE INTO project_calculator_admin_package_rules(package_code,inclusions_json,updated_at) VALUES(?,?,?)',code,JSON.stringify(inclusions),now);
   for (const statement of indexes) await db.exec(statement);
@@ -1026,7 +1055,7 @@ export const supplierCommercialTableNames = Object.freeze([
   'project_calculator_lab_manual_product_rows', 'project_calculator_lab_manual_cost_lines',
   'project_calculator_lab_exchange_rate_snapshots', 'project_calculator_lab_markup_rules',
   'project_calculator_lab_revisions',
-  'project_calculator_admin_catalogue_items','project_calculator_admin_rules','project_calculator_admin_package_rules',
+  'project_calculator_admin_catalogue_items','project_calculator_admin_catalogue_migrations','project_calculator_admin_rules','project_calculator_admin_package_rules',
   'project_calculator_lab_catalogue_snapshots','project_calculator_lab_options',
   'installation_team_members','installation_teams','installation_installers','installation_companies',
 ]);

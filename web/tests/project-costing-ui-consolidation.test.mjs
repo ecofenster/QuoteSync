@@ -12,14 +12,14 @@ test("normal Project Costing has one canonical Products position workspace", asy
     source("src/App.tsx"),
     source("src/features/estimateCommercial/EstimateSupplierCostImportControl.tsx"),
   ]);
-  assert.doesNotMatch(workspace, /Preview|Temporary development entry|disposable development estimate/i);
+  assert.doesNotMatch(workspace, /Supplier Quotations & Project Costing \(Preview\)|Temporary development entry|disposable development estimate/i);
   assert.doesNotMatch(bridge, /<h3>Estimate Positions<\/h3>/);
   assert.doesNotMatch(app, /Add Position Disabled|<H3>Positions<\/H3>/);
   assert.match(worksheet, /title="Products \/ Supply Only"/);
   assert.match(worksheet, /No positions yet\./);
   assert.match(worksheet, /Import Manufacturer Quote/);
   assert.match(worksheet, /Add Position/);
-  assert.match(importer, /Import selected manufacturer quote/);
+  assert.match(importer, /Extract & Review Manufacturer Quote/);
 });
 
 test("Products rows configure the stable Estimate Position and preserve explicit B92 ownership", async () => {
@@ -28,8 +28,8 @@ test("Products rows configure the stable Estimate Position and preserve explicit
     source("src/features/estimateCommercial/EstimatePositionBridge.tsx"),
   ]);
   assert.match(worksheet, /row\.estimatePositionId/);
-  assert.match(worksheet, /Configure Position/);
   assert.match(worksheet, /Edit Configuration/);
+  assert.match(worksheet, />Specification<\/button>/);
   assert.match(bridge, /positionId:draft\.id/);
   assert.match(bridge, /configuredContract:compiled\.contract/);
   assert.match(bridge, /B92ConfiguratorShell/);

@@ -7,6 +7,7 @@ import {
   subtractDecimalAmounts,
   type ProjectCostingMarkups,
 } from "./projectCostingMarkup";
+import { normalizeSupplierCostsForProjectCosting } from "./supplierCostClassification";
 
 export type ProjectCostingScenarioView = CalculatorScenario & {
   estimateId?: string | null;
@@ -82,19 +83,48 @@ export function deriveProjectCostingCommercialResult(
   const transportAllocationByProduct = new Map(transportAllocation.map((item) => [item.productRowId, item]));
   const includedProducts = scenario.products.filter((row) => row.includedInCurrentEstimate !== false && row.classification !== "alternative");
   const alternativeProducts = scenario.products.filter((row) => row.classification === "alternative");
-  const costs = scenario.supplierCosts;
+  // Keep the pure commercial boundary safe for fixtures, previews and legacy
+  // responses that may not have passed through the API client normaliser.
+  const costs = normalizeSupplierCostsForProjectCosting(scenario.supplierCosts);
   const includedCosts = costs.filter((row) => row.includedInCurrentEstimate !== false);
+  const productSupplyCosts = costs.filter((row) => row.category === "product_supply");
+  const includedProductSupplyCosts = productSupplyCosts.filter((row) => includedCosts.includes(row));
   const transport = costs.filter((row) => row.category === "delivery");
-  const installation = costs.filter((row) => ["labour", "travel", "accommodation", "survey"].includes(row.category));
+  const installation = costs.filter((row) => ["labour", "travel", "accommodation", "supplier_installation"].includes(row.category));
+  const survey = costs.filter((row) => ["survey", "supplier_survey"].includes(row.category));
+  const supplierInstallationEvidence = costs.filter((row) => row.category === "supplier_installation");
+  const supplierSurveyEvidence = costs.filter((row) => row.category === "supplier_survey");
   const fees = costs.filter((row) => /import|dut(y|ies)/i.test(`${row.category} ${row.label}`));
-  const extras = costs.filter((row) => !transport.includes(row) && !installation.includes(row) && !fees.includes(row));
+  const extras = costs.filter((row) => !productSupplyCosts.includes(row) && !transport.includes(row) && !installation.includes(row) && !survey.includes(row) && !fees.includes(row) && row.category !== "supplier_information" && row.category !== "supplier_discount");
   const includedInstallation = installation.filter((row) => includedCosts.includes(row));
+  const includedSurvey = survey.filter((row) => includedCosts.includes(row));
+  const includedInternalInstallation = includedInstallation.filter((row) => row.category !== "supplier_installation");
+  const includedInternalSurvey = includedSurvey.filter((row) => row.category !== "supplier_survey");
+  const supplierInstallationCandidates = supplierInstallationEvidence.filter((row) => row.includedInCurrentEstimate === true);
+  const supplierInstallationSelectionConflict = supplierInstallationCandidates.length > 1;
+  const selectedSupplierInstallation = supplierInstallationSelectionConflict ? [] : supplierInstallationCandidates;
+  const selectedSupplierSurvey = supplierSurveyEvidence.filter((row) => row.includedInCurrentEstimate === true);
   const includedFees = fees.filter((row) => includedCosts.includes(row));
   const includedExtras = extras.filter((row) => includedCosts.includes(row));
   const selected = scenario.packageItems.filter((row) => row.included);
   const equipment = selected.filter((row) => /crane|lifter|robot|telehandler|skip/i.test(row.label));
   const materials = selected.filter((row) => /bracket|fixing|ME508|TP600|TP601|foam|membrane|tape|material/i.test(row.label));
   const unpricedTotals = scenario.unpricedSupplierTotals ?? [];
+  const quotedProductAdjustments = scenario.supplierProductCommercialAdjustments ?? [];
+  const applicableProductAdjustments = quotedProductAdjustments.filter((adjustment) => {
+    if (adjustment.status !== "applied" || adjustment.netProductPurchaseGbp == null || adjustment.netProductCommercialGbp == null || adjustment.grossPositionAmount == null) return false;
+    const sourceRows = includedProducts.filter((row) => row.sourceRevisionId === adjustment.sourceRevisionId);
+    const sourceProductSupplyCosts = includedProductSupplyCosts.filter((row) => row.sourceRevisionId === adjustment.sourceRevisionId);
+    return sourceRows.length > 0 && addDecimalAmounts([...sourceRows.map((row) => row.originalAmount), ...sourceProductSupplyCosts.map((row) => row.originalAmount)]) === addDecimalAmounts([adjustment.grossListAmount]);
+  });
+  const adjustedProductRevisionIds = new Set(applicableProductAdjustments.map((adjustment) => adjustment.sourceRevisionId));
+  const productAdjustmentWarnings = quotedProductAdjustments.flatMap((adjustment) => {
+    if (adjustment.status === "review_required") return adjustment.reasons;
+    if (adjustment.status === "available_not_applied") return [];
+    if (!applicableProductAdjustments.includes(adjustment)) return [`Quotation ${adjustment.quotationReference} product adjustment was not applied because its current Products / Supply rows no longer reconcile with the source list amount.`];
+    if (includedProducts.some((row) => row.sourceRevisionId === adjustment.sourceRevisionId && (rowOverrides[row.id] ?? "") !== "")) return [`Quotation ${adjustment.quotationReference} has row-specific product markups; the source discount remains aggregate and is not allocated to positions.`];
+    return [];
+  });
   const packageUplifts = scenario.supplierPackageUplifts ?? [];
   const uplifts = (...categories: string[]) => packageUplifts.filter((item) => item.category != null && categories.includes(item.category));
   const installationPackageUplifts = uplifts("installation", "installation_support");
@@ -103,17 +133,27 @@ export function deriveProjectCostingCommercialResult(
   const equipmentPackageUplifts = uplifts("equipment");
   const materialsPackageUplifts = uplifts("materials");
   const dutyPackageUplifts = uplifts("duties");
-  const baseProductGbp = addDecimalAmounts([gbp(includedProducts), ...unpricedTotals.map((item) => item.purchaseAmountGbp)]);
+  const grossBaseProductGbp = addDecimalAmounts([gbp(includedProducts), gbp(includedProductSupplyCosts), ...unpricedTotals.map((item) => item.purchaseAmountGbp)]);
+  const supplierProductDiscountGbp = addDecimalAmounts(applicableProductAdjustments.map((item) => item.purchaseDiscountGbp));
+  const baseProductGbp = subtractDecimalAmounts(grossBaseProductGbp, supplierProductDiscountGbp);
   const extrasGbp = addDecimalAmounts([gbp(includedExtras), ...extraPackageUplifts.map((item) => item.purchaseAmountGbp)]);
   const transportAllocated = transportModel.allocatedOriginalAmount;
   const transportGbp = addDecimalAmounts([transportModel.transportPurchaseGbp, ...transportPackageUplifts.map((item) => item.purchaseAmountGbp)]);
   const productGbp = addDecimalAmounts([baseProductGbp, transportModel.allocatedPurchaseGbp]);
   const calculatedInstallationCost = scenario.options?.installationRequired && scenario.options?.installationProfile && (scenario.options.installationProfile as Record<string, unknown>).enabled !== false ? scenario.installationProgramme?.costs.purchaseCost : null;
-  const installationGbp = addDecimalAmounts([gbp(includedInstallation), ...installationPackageUplifts.map((item) => item.purchaseAmountGbp), calculatedInstallationCost]);
+  const calculatedSurveyCost = calculatedInstallationCost ? scenario.installationProgramme?.costs.survey ?? "0" : "0";
+  const calculatedInstallationWithoutSurvey = calculatedInstallationCost ? subtractDecimalAmounts(calculatedInstallationCost, calculatedSurveyCost) : "0";
+  const internalInstallationGbp = addDecimalAmounts([gbp(includedInternalInstallation), ...installationPackageUplifts.map((item) => item.purchaseAmountGbp), calculatedInstallationWithoutSurvey]);
+  const installationGbp = selectedSupplierInstallation.length ? gbp(selectedSupplierInstallation) : internalInstallationGbp;
+  const internalSurveyGbp = addDecimalAmounts([gbp(includedInternalSurvey), calculatedSurveyCost]);
+  const surveyGbp = selectedSupplierSurvey.length ? gbp(selectedSupplierSurvey) : internalSurveyGbp;
   const feeGbp = addDecimalAmounts([gbp(includedFees), ...dutyPackageUplifts.map((item) => item.purchaseAmountGbp)]);
   const extrasCommercialGbp = addDecimalAmounts([commercialGbp(includedExtras), ...extraPackageUplifts.map((item) => item.sellingAmountGbp)]);
   const transportCommercialGbp = addDecimalAmounts([transportModel.transportCommercialGbp, ...transportPackageUplifts.map((item) => item.sellingAmountGbp)]);
-  const installationCommercialGbp = addDecimalAmounts([commercialGbp(includedInstallation), ...installationPackageUplifts.map((item) => item.sellingAmountGbp), calculatedInstallationCost]);
+  const internalInstallationCommercialGbp = addDecimalAmounts([commercialGbp(includedInternalInstallation), ...installationPackageUplifts.map((item) => item.sellingAmountGbp), calculatedInstallationWithoutSurvey]);
+  const installationCommercialGbp = selectedSupplierInstallation.length ? commercialGbp(selectedSupplierInstallation) : internalInstallationCommercialGbp;
+  const internalSurveyCommercialGbp = addDecimalAmounts([commercialGbp(includedInternalSurvey), calculatedSurveyCost]);
+  const surveyCommercialGbp = selectedSupplierSurvey.length ? commercialGbp(selectedSupplierSurvey) : internalSurveyCommercialGbp;
   const feeCommercialGbp = addDecimalAmounts([commercialGbp(includedFees), ...dutyPackageUplifts.map((item) => item.sellingAmountGbp)]);
   const equipmentCost = addDecimalAmounts([...equipment.map((row) => row.unitCost), ...equipmentPackageUplifts.map((item) => item.purchaseAmountGbp)]);
   const automaticMaterialsEnabled = (scenario.options?.installationMaterials as { enabled?: unknown } | undefined)?.enabled !== false;
@@ -126,7 +166,10 @@ export function deriveProjectCostingCommercialResult(
   };
   const productPricing = includedProducts.map((row) => priceProduct(row, true));
   const alternativeProductPricing = alternativeProducts.map((row) => priceProduct(row, false));
-  const baseProductSale = addDecimalAmounts([...productPricing.map((value) => value.totalSellingPrice), unpricedTotals.length ? selling(addDecimalAmounts(unpricedTotals.map((item) => item.sellingAmountGbp)), "product") : null]);
+  const unadjustedProductSale = addDecimalAmounts(productPricing.filter(({ row }) => !adjustedProductRevisionIds.has(row.sourceRevisionId ?? "")).map((value) => value.totalSellingPrice));
+  const unadjustedProductSupplySale = selling(commercialGbp(includedProductSupplyCosts.filter((row) => !adjustedProductRevisionIds.has(row.sourceRevisionId ?? ""))), "product");
+  const adjustedProductSale = addDecimalAmounts(applicableProductAdjustments.map((item) => selling(item.netProductCommercialGbp!, "product")));
+  const baseProductSale = addDecimalAmounts([unadjustedProductSale, unadjustedProductSupplySale, adjustedProductSale, unpricedTotals.length ? selling(addDecimalAmounts(unpricedTotals.map((item) => item.sellingAmountGbp)), "product") : null]);
   const extrasSale = selling(extrasCommercialGbp, "extras");
   const transportSale = selling(transportCommercialGbp, "transport");
   const supplierTransportSale = selling(transportModel.remainingSupplierPurchaseGbp, "transport");
@@ -134,6 +177,7 @@ export function deriveProjectCostingCommercialResult(
   const hiabTransportSale = selling(transportModel.remainingHiabDeliveryOffloadFee, "transport");
   const equipmentSale = selling(equipmentCost, "equipment");
   const installationSale = selling(installationCommercialGbp, "installation");
+  const surveySale = selling(surveyCommercialGbp, "siteVisit");
   const materialsSale = selling(materialsCost, "materials");
   const feeSale = selling(feeCommercialGbp, "duties");
   const siteVisitCost = scenario.siteVisitTravel?.total ?? "0";
@@ -143,21 +187,22 @@ export function deriveProjectCostingCommercialResult(
   const customerDiscountAmount = customerPricing.discount.mode === "fixed" ? customerPricing.discount.amount : percentageAmount(productSale, customerPricing.discount.percentage);
   const customerDiscountPercentage = customerPricing.discount.mode === "fixed" && Number(productSale) ? percentageRatio(customerDiscountAmount, productSale) : customerPricing.discount.percentage;
   const discountedProductSale = subtractDecimalAmounts(productSale, customerDiscountAmount);
-  const projectCost = addDecimalAmounts([productGbp, extrasGbp, transportGbp, equipmentCost, installationGbp, materialsCost, feeGbp, siteVisitCost]);
-  const calculatedSale = addDecimalAmounts([discountedProductSale, extrasSale, transportSale, equipmentSale, installationSale, materialsSale, feeSale, siteVisitAllocatedToProducts ? null : siteVisitSale]);
+  const projectCost = addDecimalAmounts([productGbp, extrasGbp, transportGbp, equipmentCost, installationGbp, surveyGbp, materialsCost, feeGbp, siteVisitCost]);
+  const calculatedSale = addDecimalAmounts([discountedProductSale, extrasSale, transportSale, equipmentSale, installationSale, surveySale, materialsSale, feeSale, siteVisitAllocatedToProducts ? null : siteVisitSale]);
   const actualSale = customerPricing.fixedSellingPrice.enabled ? customerPricing.fixedSellingPrice.amount : calculatedSale;
   const commercialAdjustment = subtractDecimalAmounts(actualSale, calculatedSale);
   const profit = subtractDecimalAmounts(actualSale, projectCost);
 
   return {
     markups, customerPricing, transportOptions, transportModel, transportAllocation, transportAllocationByProduct,
-    includedProducts, alternativeProducts, costs, includedCosts, transport, installation, fees, extras,
-    includedInstallation, includedFees, includedExtras, equipment, materials, unpricedTotals, packageUplifts,
+    includedProducts, alternativeProducts, costs, includedCosts, productSupplyCosts, includedProductSupplyCosts, transport, installation, survey, supplierInstallationEvidence, supplierSurveyEvidence, fees, extras,
+    includedInstallation, includedSurvey, includedInternalInstallation, includedInternalSurvey, supplierInstallationCandidates, supplierInstallationSelectionConflict, selectedSupplierInstallation, selectedSupplierSurvey, includedFees, includedExtras, equipment, materials, unpricedTotals, packageUplifts,
     installationPackageUplifts, extraPackageUplifts, transportPackageUplifts, equipmentPackageUplifts, materialsPackageUplifts,
-    dutyPackageUplifts, baseProductGbp, extrasGbp, transportAllocated, transportGbp, productGbp, installationGbp, feeGbp,
-    extrasCommercialGbp, transportCommercialGbp, installationCommercialGbp, feeCommercialGbp, equipmentCost, materialsCost,
-    productPricing, alternativeProductPricing, baseProductSale, extrasSale, transportSale, supplierTransportSale, storageTransportSale, hiabTransportSale,
-    equipmentSale, installationSale, materialsSale, feeSale, siteVisitCost, siteVisitAllocatedToProducts, siteVisitSale,
+    dutyPackageUplifts, quotedProductAdjustments, applicableProductAdjustments, adjustedProductRevisionIds, productAdjustmentWarnings,
+    grossBaseProductGbp, supplierProductDiscountGbp, baseProductGbp, extrasGbp, transportAllocated, transportGbp, productGbp, internalInstallationGbp, installationGbp, internalSurveyGbp, surveyGbp, feeGbp,
+    extrasCommercialGbp, transportCommercialGbp, internalInstallationCommercialGbp, installationCommercialGbp, internalSurveyCommercialGbp, surveyCommercialGbp, feeCommercialGbp, equipmentCost, materialsCost,
+    productPricing, alternativeProductPricing, unadjustedProductSale, unadjustedProductSupplySale, adjustedProductSale, baseProductSale, extrasSale, transportSale, supplierTransportSale, storageTransportSale, hiabTransportSale,
+    equipmentSale, installationSale, surveySale, materialsSale, feeSale, siteVisitCost, siteVisitAllocatedToProducts, siteVisitSale,
     productSale, customerDiscountAmount, customerDiscountPercentage, discountedProductSale, projectCost, calculatedSale,
     actualSale, commercialAdjustment, profit,
   };

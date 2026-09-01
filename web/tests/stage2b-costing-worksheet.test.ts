@@ -5,11 +5,12 @@ import { readFile } from 'node:fs/promises';
 test('approved Project Costing worksheet and quotation workflow mount', async () => {
   const workspace=await readFile('src/features/projectCalculatorLab/ProjectCalculatorLabWorkspace.tsx','utf8');
   const worksheet=await readFile('src/features/projectCalculatorLab/ScenarioCostingWorksheet.tsx','utf8');
-  assert.match(workspace,/if\(isOpenScenario\(active\)\).*ScenarioCostingWorksheet/s);
+  assert.match(workspace,/if\s*\(\s*isOpenScenario\(active\)\s*\)[\s\S]*ScenarioCostingWorksheet/);
   assert.match(workspace,/Project Costing/);
   for(const label of ['Supplier Quotations','Quotation','Extraction Review','Project Costing','Documents','History','Session Summary'])assert.match(worksheet,new RegExp(label));
   for(const column of ['Description','Supplier Cost','GBP','Markup %','Selling Price'])assert.match(worksheet,new RegExp(column));
-  for(const heading of ['Products / Supply Only','Extras','Transport','Equipment Hire','Installation','Installation Materials','Import Fees & Duties','Commercial Summary'])assert.match(worksheet,new RegExp(heading));
+  for(const heading of ['Products / Supply Only','Extras','Transport','Installation','Installation Materials','Import Fees & Duties','Commercial Summary'])assert.match(worksheet,new RegExp(heading));
+  assert.match(worksheet,/equipment\.map/);
 });
 
 test('worksheet sections preserve evidence, use icons and hide unused categories', async () => {
@@ -18,9 +19,9 @@ test('worksheet sections preserve evidence, use icons and hide unused categories
   assert.match(source,/row\.displayReference/);
   assert.match(source,/Original Supplier Transport/);
   assert.match(commercial,/packageItems\.filter\(\(row\) => row\.included\)/);
-  assert.match(source,/extras\.length\?<Section/);
-  assert.match(source,/equipment\.length\?<Section/);
-  assert.match(source,/fees\.length\?<Section/);
+  assert.match(source,/extras\.length\s*\?\s*\(\s*<Section/);
+  assert.match(source,/equipment\.map\(\s*\(?(?:item)?/);
+  assert.match(source,/fees\.length\s*\?\s*\(\s*<Section/);
   assert.match(source,/function Icon/);
   assert.match(source,/Supplier costs remain immutable/i);
   assert.doesNotMatch(source,/sourceId|sourceRowId|raw JSON|JSON\.stringify/);
@@ -53,11 +54,11 @@ test('Products / Supply keeps previews clean and opens rich evidence from the Sp
 test('commercial summary reconciles category totals and saved rate evidence', async () => {
   const source=await readFile('src/features/projectCalculatorLab/ScenarioCostingWorksheet.tsx','utf8');
   const commercial=await readFile('src/features/projectCalculatorLab/domain/projectCostingCommercialResult.ts','utf8');
-  for(const total of ['Project Cost \\(Ex VAT\\)','VAT','Project Cost \\(Inc VAT\\)','Selling Price','Gross Profit','Gross Margin','Overall Markup'])assert.match(source,new RegExp(total));
+  for(const total of ['Actual GBP Purchase Cost','VAT Treatment','Total Including VAT','Selling Price','Gross Profit','Gross Margin','Overall Markup'])assert.match(source,new RegExp(total));
   assert.match(source,/deriveProjectCostingCommercialResult/);
-  assert.match(commercial,/calculatedSale = addDecimalAmounts\(\[discountedProductSale, extrasSale, transportSale, equipmentSale, installationSale, materialsSale, feeSale, siteVisitAllocatedToProducts \? null : siteVisitSale\]\)/);
-  assert.match(commercial,/actualSale = customerPricing\.fixedSellingPrice\.enabled \? customerPricing\.fixedSellingPrice\.amount : calculatedSale/);
-  assert.match(source,/Site Visit \/ Travel/);
+  assert.match(commercial,/calculatedSale\s*=\s*addDecimalAmounts\(\[discountedProductSale, extrasSale, transportSale, equipmentSale, installationSale, surveySale, materialsSale, feeSale, siteVisitAllocatedToProducts \? null : siteVisitSale\]\)/);
+  assert.match(commercial,/actualSale\s*=\s*customerPricing\.fixedSellingPrice\.enabled\s*\?\s*customerPricing\.fixedSellingPrice\.amount\s*:\s*calculatedSale/);
+  assert.match(source,/Survey \/ Site Visit/);
   assert.match(source,/customerDiscountAmount/);
   assert.match(source,/providerTimestamp/);
   assert.match(source,/revisionNumber/);
@@ -66,7 +67,7 @@ test('commercial summary reconciles category totals and saved rate evidence', as
 test('commercial sections expand without rendering the Admin catalogue', async () => {
   const source=await readFile('src/features/projectCalculatorLab/ScenarioCostingWorksheet.tsx','utf8');
   assert.match(source,/aria-expanded=\{open\}/);
-  assert.match(source,/scenario\.products\.map\(\(row,index\)=><ProductRow/);
-  assert.match(source,/setOpen\(current=>current===key\?null:key\)/);
+  assert.match(source,/scenario\.products\.map\(\(row, index\)\s*=>\s*\(\s*<ProductRow/);
+  assert.match(source,/setOpen\(\(current\)\s*=>\s*\(current === key \? null : key\)\)/);
   assert.doesNotMatch(source,/CalculatorAdminCatalogue|catalogueSnapshot\.catalogue/);
 });

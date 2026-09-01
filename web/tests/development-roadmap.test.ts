@@ -34,10 +34,18 @@ test("status rendering uses accessible text as well as colour", async () => {
 });
 
 test("chronology remains ordered and displays the current checkpoint", () => {
-  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 58 }, (_, index) => index + 1));
+  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 71 }, (_, index) => index + 1));
   assert.equal(ROADMAP_CHRONOLOGY.find((entry) => entry.title === "Checkpoint stabilization")?.checkpointSha, ROADMAP_CHECKPOINT_SHA);
-  assert.match(ROADMAP_CHRONOLOGY.at(-1)?.title ?? "", /Global development runtime and database health/);
+  assert.match(ROADMAP_CHRONOLOGY.at(-1)?.title ?? "", /Final Installation commercial integration/);
   assert.equal(ROADMAP_CHECKPOINT_SHA, "ed6537b99f0930357e19ea1f505958e088385ce0");
+});
+
+test("development runtime governance retains explicit API ownership restoration", () => {
+  const platformWeb = ROADMAP_ITEMS.find((item) => item.id === "platform-web");
+  const runtimeEntry = ROADMAP_CHRONOLOGY.find((entry) => entry.title === "Global development runtime and database health");
+  assert.match(platformWeb?.notes?.join(" ") ?? "", /port-3001 ownership baseline/);
+  assert.match(platformWeb?.notes?.join(" ") ?? "", /exact owned process trees/);
+  assert.match(runtimeEntry?.validation ?? "", /isolated-port ownership\/reuse\/cleanup/);
 });
 
 test("Configurator foundation is distinct from an overall in-progress product programme", () => {

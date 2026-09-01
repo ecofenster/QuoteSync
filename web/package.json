@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "api": "node server/index.js",
+    "api:status": "node scripts/development-api-status.mjs",
     "dev": "vite",
     "configure:integration-key": "node scripts/ensure-local-integration-key.mjs",
     "build": "tsc -b && vite build",

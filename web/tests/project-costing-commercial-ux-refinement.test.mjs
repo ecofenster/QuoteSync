@@ -63,7 +63,7 @@ test("route totals distinguish driving time from person-hours", () => {
 
 test("Products retains Alternative, Extras owns Include, and Selling Price hosts Fix Price", async () => {
   const source = await readFile(new URL("../src/features/projectCalculatorLab/ScenarioCostingWorksheet.tsx", import.meta.url), "utf8");
-  assert.match(source, /<th>Reference<\/th><th>Alternative\?<\/th>/);
+  assert.match(source, /<th>Reference<\/th>[\s\S]*?<th>Alternative\?<\/th>/);
   assert.doesNotMatch(source, /<th>Reference<\/th><th>Include<\/th>/);
   assert.match(source, /costing-sheet__extras-head[^]*Description[^]*Include[^]*Supplier Cost/);
   assert.doesNotMatch(source, /\?Yes/);
