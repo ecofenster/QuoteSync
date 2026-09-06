@@ -3,9 +3,11 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { initialiseQuoteSyncTheme, loadCompanyThemeConfiguration } from './theme/themes.ts'
+import { initialiseQuoteSuiteVisualTheme } from './theme/visualDesignV2.ts'
 
 initialiseQuoteSyncTheme()
-void loadCompanyThemeConfiguration()
+initialiseQuoteSuiteVisualTheme()
+void loadCompanyThemeConfiguration().then(initialiseQuoteSuiteVisualTheme)
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

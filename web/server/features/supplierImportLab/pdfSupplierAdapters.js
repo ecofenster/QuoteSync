@@ -72,11 +72,36 @@ const pageSegments = (document, marker) => {
   return starts.map((start,index)=>all.slice(start,starts[index+1]??all.length));
 };
 
+function frameQuotationIdentity(document) {
+  const all = flatten(document); const text = textOf(document);
+  const manufacturer = /\bVELFAC\b/i.test(text) ? 'VELFAC' : /\bRationel\b/i.test(text) ? 'Rationel' : null;
+  const issuerEvidence = all.filter((block) => /^(?:Aspect Aluminium(?: Ltd)?|Frame Windows and Doors|ADW(?:\s+[^,]*)?)(?:,|$)/i.test(block.text));
+  const sourceLegalName = cleanMetadataValue(issuerEvidence[0]?.text?.split(',')[0]);
+  const supplier = /^Aspect Aluminium/i.test(sourceLegalName ?? '') ? 'Aspect Aluminium'
+    : /^Frame Windows and Doors/i.test(sourceLegalName ?? '') ? 'Frame Windows and Doors'
+      : /^ADW\b/i.test(sourceLegalName ?? '') ? sourceLegalName : null;
+  const manufacturerBlocks = manufacturer ? all.filter((block) => new RegExp(`\\b${manufacturer}\\b`, 'i').test(block.text)) : [];
+  return {
+    supplier,
+    manufacturer,
+    supplierIdentity: { role: 'quotation_issuer', authority: supplier ? 'explicit_document_issuer' : 'not_supplied', sourceLegalName, dealerName: supplier, evidence: sourceTrace(document, issuerEvidence) },
+    manufacturerIdentity: { role: 'product_manufacturer', authority: manufacturer ? 'explicit_manufacturer_product_family' : 'unavailable', evidence: sourceTrace(document, manufacturerBlocks) },
+    commercialSupplierIdentity: { role: 'commercial_supplier', authority: supplier ? 'document_family_issuer_is_commercial_supplier' : 'not_proposed', proposedName: supplier, evidence: sourceTrace(document, issuerEvidence) },
+    supplierManufacturerRelationship: supplier && manufacturer ? { relationship: 'dealer_supplies_manufacturer_products', documentIssuerName: supplier, documentIssuerLegalName: sourceLegalName, commercialSupplierName: supplier, manufacturerName: manufacturer, pricingScope: 'commercial_supplier_quotation' } : null,
+  };
+}
+
+function frameProductSystem(product, manufacturer) {
+  if (!product || !manufacturer) return null;
+  const match = product.match(new RegExp(`\\b${manufacturer}\\s+([A-Z0-9-]+)`, 'i'));
+  return match ? `${manufacturer} ${match[1]}` : null;
+}
+
 function parseFrameQuotation(document){
-  const rows=[]; const segments=pageSegments(document,/^Frame No:\s*\d+\s+Qty:/i);
-  for(const blocks of segments){const header=blocks[0].text.match(/^Frame No:\s*(\d+)\s+Qty:\s*(\d+)\s+(.+?)\s*Location:\s*(.+?)\s+£\s*([\d,.]+)$/i);if(!header)continue;const dimension=blocks.find(block=>/\b\d{2,5}\s*x\s*\d{2,5}\b/i.test(block.text))?.text.match(/\b(\d{2,5})\s*x\s*(\d{2,5})\b/i);const uw=blocks.map(block=>block.text).join(' ').match(/\bU(?:w|-Value(?:\s*\(element\))?)\s*[:=]?\s*([\d.,]+)/i)?.[1]??null;const location=cleanMetadataValue(header[4]);rows.push(row(document,{ordinal:rows.length,reference:location||`Frame ${header[1]}`,manufacturerItemNumber:header[1],roomLocation:location,product:cleanMetadataValue(header[3]),configurationDescription:cleanMetadataValue(header[3]),quantity:integerQuantity(header[2]),widthMm:dimension?Number(dimension[1]):null,heightMm:dimension?Number(dimension[2]):null,unitPrice:decimal(header[5]),totalPrice:decimal(header[5]),manufacturerQuotedUw:decimal(uw),blocks,warnings:dimension?[]:['Position dimensions were not recognised.']}));}
-  const all=flatten(document),quotation=all.find(block=>/^(?:Quotation|Quote)\s+(?:No\.?\s*)?\d+/i.test(block.text))?.text.match(/\d[\d/-]*/)?.[0]??null;
-  return{adapter:'frame_schedule_geometry_v1',supplier:/VELFAC/i.test(textOf(document))?'VELFAC':'Rationel',documentType:'complete_quotation',quotation:{supplierQuotationNumber:quotation,supplierRevision:null,fullQuotationReference:quotation,warnings:[]},metadata:{supplierCustomer:null,projectReference:cleanMetadataValue(all[all.findIndex(block=>/^Customer Reference:$/i.test(block.text))+1]?.text),quotationDate:null},rows,warnings:rows.length?[]:['Frame quotation positions were not detected.']};
+  const identity=frameQuotationIdentity(document),rows=[]; const segments=pageSegments(document,/^Frame No:\s*\d+\s+Qty:/i);
+  for(const blocks of segments){const header=blocks[0].text.match(/^Frame No:\s*(\d+)\s+Qty:\s*(\d+)\s+(.+?)\s*Location:\s*(.+?)\s+£\s*([\d,.]+)$/i);if(!header)continue;const dimension=blocks.find(block=>/\b\d{2,5}\s*x\s*\d{2,5}\b/i.test(block.text))?.text.match(/\b(\d{2,5})\s*x\s*(\d{2,5})\b/i);const uw=blocks.map(block=>block.text).join(' ').match(/\bU(?:w|-Value(?:\s*\(element\))?)\s*[:=]?\s*([\d.,]+)/i)?.[1]??null;const location=cleanMetadataValue(header[4]),product=cleanMetadataValue(header[3]);rows.push(row(document,{ordinal:rows.length,reference:location||`Frame ${header[1]}`,manufacturerName:identity.manufacturer,manufacturerItemNumber:header[1],roomLocation:location,product,productSystem:frameProductSystem(product,identity.manufacturer),configurationDescription:product,quantity:integerQuantity(header[2]),widthMm:dimension?Number(dimension[1]):null,heightMm:dimension?Number(dimension[2]):null,unitPrice:decimal(header[5]),totalPrice:decimal(header[5]),manufacturerQuotedUw:decimal(uw),blocks,warnings:dimension?[]:['Position dimensions were not recognised.']}));}
+  const all=flatten(document),quoteLabel=all.findIndex(block=>/^Quote Number:$/i.test(block.text)),quotation=quoteLabel>=0?cleanMetadataValue(all.slice(quoteLabel+1,quoteLabel+6).find(block=>/^Q[A-Z0-9/-]+$/i.test(block.text))?.text):all.find(block=>/^(?:Quotation|Quote)\s+(?:No\.?\s*)?\d+/i.test(block.text))?.text.match(/\d[\d/-]*/)?.[0]??null,dateLabel=all.findIndex(block=>/^Quotation Date:$/i.test(block.text)),quotationDate=dateLabel>=0?dateIso(all.slice(dateLabel+1,dateLabel+8).find(block=>/^\d{2}[./]\d{2}[./]\d{4}$/.test(block.text))?.text):null;
+  return{adapter:'frame_schedule_geometry_v1',...identity,documentType:'complete_quotation',quotation:{supplierQuotationNumber:quotation,supplierRevision:null,fullQuotationReference:quotation,referenceAuthority:quotation?'explicit_source_document':'unavailable',warnings:[]},metadata:{supplierCustomer:null,projectReference:cleanMetadataValue(all[all.findIndex(block=>/^Customer Reference:$/i.test(block.text))+1]?.text),quotationDate},rows,warnings:rows.length?[]:['Frame quotation positions were not detected.']};
 }
 
 function parseIdealcombi(document){
@@ -427,6 +452,12 @@ function parseInternormEcohaus(document) {
       dealerName: 'EcoHaus',
       evidence: issuerBlock ? sourceTrace(document, [issuerBlock]) : [],
     },
+    commercialSupplierIdentity: {
+      role: 'commercial_supplier',
+      authority: 'document_family_issuer_is_commercial_supplier',
+      proposedName: 'EcoHaus',
+      evidence: issuerBlock ? sourceTrace(document, [issuerBlock]) : [],
+    },
     manufacturerIdentity: {
       role: 'product_manufacturer',
       authority: 'explicit_product_brand',
@@ -434,10 +465,11 @@ function parseInternormEcohaus(document) {
     },
     supplierManufacturerRelationship: {
       relationship: 'dealer_supplies_manufacturer_products',
-      supplierDealerName: 'EcoHaus',
-      supplierSourceLegalName: issuerBlock?.text ?? 'ecoHaus SW Ltd.',
+      documentIssuerName: 'EcoHaus',
+      documentIssuerLegalName: issuerBlock?.text ?? 'ecoHaus SW Ltd.',
+      commercialSupplierName: 'EcoHaus',
       manufacturerName: 'Internorm',
-      pricingScope: 'supplier_dealer_quotation',
+      pricingScope: 'commercial_supplier_quotation',
     },
     documentType: 'complete_quotation',
     quotation: { supplierQuotationNumber: offer, supplierRevision: null, fullQuotationReference: offer, warnings: [] },
@@ -559,9 +591,10 @@ function parseInternormAspect(document) {
       role: 'quotation_issuer', authority: 'explicit_document_issuer', sourceLegalName: issuerBlock?.text ?? 'Aspect Aluminium', dealerName: 'Aspect Aluminium',
       evidence: issuerBlock ? sourceTrace(document, [issuerBlock]) : [],
     },
+    commercialSupplierIdentity: { role: 'commercial_supplier', authority: 'document_family_issuer_is_commercial_supplier', proposedName: 'Aspect Aluminium', evidence: issuerBlock ? sourceTrace(document, [issuerBlock]) : [] },
     manufacturerIdentity: { role: 'product_manufacturer', authority: 'explicit_product_brand', evidence: sourceTrace(document, manufacturerBlocks) },
     supplierManufacturerRelationship: {
-      relationship: 'dealer_supplies_manufacturer_products', supplierDealerName: 'Aspect Aluminium', supplierSourceLegalName: issuerBlock?.text ?? 'Aspect Aluminium', manufacturerName: 'Internorm', pricingScope: 'supplier_dealer_quotation',
+      relationship: 'dealer_supplies_manufacturer_products', documentIssuerName: 'Aspect Aluminium', documentIssuerLegalName: issuerBlock?.text ?? 'Aspect Aluminium', commercialSupplierName: 'Aspect Aluminium', manufacturerName: 'Internorm', pricingScope: 'commercial_supplier_quotation',
     },
     documentType: 'complete_quotation',
     quotation: {
@@ -589,22 +622,258 @@ function parseInternormAspect(document) {
   };
 }
 
+function quoteSuitePositionCardHeader(text) {
+  const match = String(text).match(/^\s*(\d{1,3})\s+([A-Z0-9][A-Z0-9.-]{0,20})\s+(.+?)\s+Quantity\s*:\s*(\d+)\s+Total\s*:\s*([£€$])\s*([\d,.]+)\s*$/i);
+  if (!match) return null;
+  return { sequence: Number(match[1]), reference: match[2], middle: cleanMetadataValue(match[3]), quantity: integerQuantity(match[4]), currencySymbol: match[5], totalPrice: decimal(match[6]) };
+}
+
+function quoteSuiteCardVisualRegion(document, segment, pageNumber) {
+  const page = document.pages.find((item) => item.pageNumber === pageNumber);
+  const boxes = segment.map((block) => block.boundingBox).filter(Boolean);
+  if (!page || !boxes.length) return null;
+  const bottom = Math.max(0, Math.min(...boxes.map((box) => box.y)));
+  const top = Math.min(page.height, Math.max(...boxes.map((box) => box.y + box.height)));
+  return {
+    sourcePage: pageNumber,
+    boundingRegion: { x: page.width * 0.04, y: bottom, width: page.width * 0.45, height: Math.max(1, top - bottom) },
+    role: 'combined_source',
+    primary: true,
+    mappingMethod: 'quotesuite_position_card_layout_v1',
+    geometryEvidence: {
+      version: 'quotesuite_position_card_layout_v1',
+      classifier: 'explicit_position_card_boundary',
+      confidence: 'strong',
+      reviewState: 'mapped_automatic',
+      reason: 'The drawing is contained in the position card headed by the same explicit position reference.',
+    },
+  };
+}
+
+function parseQuoteSuiteManufacturerSchedule(document) {
+  const rows = [];
+  for (const page of document.pages) {
+    const pageLines = (page.lines?.length ? page.lines : page.blocks).map((block) => ({ ...block, text: String(block.text).trim(), pageNumber: page.pageNumber })).filter((block) => block.text);
+    const starts = pageLines.map((block, index) => quoteSuitePositionCardHeader(block.text) ? index : -1).filter((index) => index >= 0);
+    for (const [positionIndex, start] of starts.entries()) {
+      const segment = pageLines.slice(start, starts[positionIndex + 1] ?? pageLines.length);
+      const header = quoteSuitePositionCardHeader(segment[0].text);
+      if (!header) continue;
+      const productLine = segment.find((block) => /Product\s*\/\s*system/i.test(block.text));
+      const productMatch = productLine?.text.match(/Product\s*\/\s*system\s+(.+?)(?=\s+Unit\s+price\b|$)/i);
+      const productSystem = cleanMetadataValue(productMatch?.[1]) ?? cleanMetadataValue(header.middle?.replace(/^Location not supplied\s*/i, ''));
+      const unitMatch = productLine?.text.match(/Unit\s+price\s*[£€$]\s*([\d,.]+)/i);
+      const width = segment.find((block) => /^Width\s+\d+\s*mm\b/i.test(block.text))?.text.match(/(\d+)\s*mm/i)?.[1];
+      const height = segment.find((block) => /^Height\s+\d+\s*mm\b/i.test(block.text))?.text.match(/(\d+)\s*mm/i)?.[1];
+      const ug = segment.find((block) => /Manufacturer quoted Ug/i.test(block.text))?.text.match(/\b(\d+[.,]\d+)\b/)?.[1] ?? null;
+      const uw = segment.find((block) => /Manufacturer quoted Uw/i.test(block.text))?.text.match(/\b(\d+[.,]\d+)\b/)?.[1] ?? null;
+      const currency = header.currencySymbol === '€' ? 'EUR' : header.currencySymbol === '£' ? 'GBP' : null;
+      const missing = !header.reference || !header.quantity || !width || !height || !header.totalPrice || !currency;
+      rows.push(row(document, {
+        ordinal: rows.length,
+        reference: header.reference,
+        manufacturerItemNumber: header.reference,
+        roomLocation: /^Location not supplied/i.test(header.middle ?? '') ? null : cleanMetadataValue(header.middle?.replace(productSystem ?? '', '')),
+        product: /\bdoor\b/i.test(productSystem ?? '') ? 'Door' : 'Window',
+        productSystem,
+        quantity: header.quantity,
+        widthMm: width ? Number(width) : null,
+        heightMm: height ? Number(height) : null,
+        unitPrice: decimal(unitMatch?.[1]) ?? header.totalPrice,
+        totalPrice: header.totalPrice,
+        currency,
+        manufacturerQuotedUg: decimal(ug),
+        manufacturerQuotedUw: decimal(uw),
+        blocks: segment,
+        warnings: missing ? ['One or more required OCR position fields were not recognised.'] : [],
+        visualRegion: quoteSuiteCardVisualRegion(document, segment, page.pageNumber),
+      }));
+    }
+  }
+  const all = flatten(document);
+  const fullText = all.map((block) => block.text).join('\n');
+  const reference = fullText.match(/\b([A-Z]{2,8}-[A-Z]{2,8}-\d{4}-\d{3,})\b/)?.[1] ?? null;
+  const date = fullText.match(/\b(\d{2}[./]\d{2}[./]\d{4})\b/)?.[1] ?? null;
+  const explicitSystems = rows.map((item) => item.productSystem).filter((value) => value && !/^(?:window|door)$/i.test(value));
+  const manufacturer = explicitSystems.map((value) => value.match(/^([A-Z][A-Za-z0-9-]+)/)?.[1] ?? null).find(Boolean) ?? null;
+  const manufacturerBlocks = manufacturer ? all.filter((block) => new RegExp(`\\b${manufacturer.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(block.text)) : [];
+  return {
+    adapter: 'quotesuite_raster_manufacturer_schedule_v1',
+    supplier: null,
+    manufacturer,
+    supplierIdentity: { role: 'quotation_issuer', authority: 'not_supplied', sourceLegalName: null, dealerName: null, evidence: [] },
+    manufacturerIdentity: { role: 'product_manufacturer', authority: manufacturer ? 'explicit_product_brand' : 'unavailable', evidence: sourceTrace(document, manufacturerBlocks) },
+    supplierManufacturerRelationship: null,
+    documentType: 'complete_quotation',
+    quotation: { supplierQuotationNumber: reference, supplierRevision: null, fullQuotationReference: reference, referenceAuthority: reference ? 'explicit_source_document' : 'unavailable', warnings: [] },
+    metadata: { supplierCustomer: null, projectReference: reference, quotationDate: dateIso(date) },
+    rows,
+    warnings: rows.length ? ['Position evidence was recovered through bounded OCR because the PDF has no machine-readable text layer.'] : ['OCR position cards were not detected.'],
+  };
+}
+
+function ekoWebOverallDimensions(page, markerIndex) {
+  if (!page || !Number.isFinite(page.width)) return { widthMm: null, heightMm: null, evidence: [] };
+  const candidates = page.blocks.slice(0, markerIndex)
+    .filter((block) => /^\d{3,4}$/.test(String(block.text).trim()) && block.boundingBox)
+    .map((block) => ({ block, value: Number(block.text), x: block.boundingBox.x }));
+  const widthCandidates = candidates.filter((item) => item.x >= page.width * 0.15 && item.x <= page.width * 0.28);
+  const heightCandidates = candidates.filter((item) => item.x >= page.width * 0.29 && item.x <= page.width * 0.5);
+  const width = widthCandidates.sort((left, right) => right.value - left.value)[0] ?? null;
+  const height = heightCandidates.sort((left, right) => right.value - left.value)[0] ?? null;
+  return { widthMm: width?.value ?? null, heightMm: height?.value ?? null, evidence: [width?.block, height?.block].filter(Boolean) };
+}
+
+function ekoWebSystem(blocks, markerIndex) {
+  const systemIndex = blocks.slice(markerIndex + 1).findIndex((block) => /^System\s*:/i.test(block.text));
+  if (systemIndex < 0) return { value: null, blocks: [] };
+  const absoluteIndex = markerIndex + 1 + systemIndex;
+  const evidence = [];
+  for (const block of blocks.slice(absoluteIndex, absoluteIndex + 8)) {
+    if (evidence.length && /^(?:Colour|Page|Window)\s*:/i.test(block.text)) break;
+    evidence.push(block);
+  }
+  return { value: cleanMetadataValue(evidence.map((block, index) => index ? block.text : block.text.replace(/^System\s*:\s*/i, '')).join(' ')), blocks: evidence };
+}
+
+const EKO_WEB_MANUFACTURER = 'EKO-OKNA';
+const EKO_WEB_INSIDE_REGION_VERSION = 'eko-web-inside-position-region-v1';
+
+function ekoWebInsideVisualRegion(page, marker) {
+  const markerBox = marker?.boundingBox;
+  const label = page?.blocks.find((block) => /^Inside View$/i.test(String(block.text).trim()) && block.boundingBox && (!markerBox || block.boundingBox.y < markerBox.y));
+  if (!page || !markerBox || !label?.boundingBox || !Number.isFinite(page.width) || !Number.isFinite(page.height)) return null;
+  const x = page.width * 0.05; const right = page.width * 0.455;
+  const y = label.boundingBox.y + label.boundingBox.height + 8; const top = markerBox.y - 10;
+  if (right - x <= 40 || top - y <= 40) return null;
+  const boundingRegion = { x, y, width: right - x, height: top - y };
+  const sourceImages = (page.imageEvidence || []).filter((image) => {
+    const box = image.boundingBox; if (!box) return false;
+    const centreX = box.x + box.width / 2; const centreY = box.y + box.height / 2;
+    return centreX >= x && centreX <= right && centreY >= y && centreY <= top;
+  });
+  return {
+    sourcePage: page.pageNumber,
+    boundingRegion,
+    sourceObjectIds: sourceImages.map((image) => image.objectId || image.id),
+    role: 'inside',
+    primary: true,
+    mappingMethod: EKO_WEB_INSIDE_REGION_VERSION,
+    renderCacheVersion: EKO_WEB_INSIDE_REGION_VERSION,
+    geometryEvidence: {
+      version: EKO_WEB_INSIDE_REGION_VERSION,
+      classifier: 'explicit_position_marker_and_inside_view_label',
+      confidence: 'strong',
+      reviewState: 'mapped_automatic',
+      positionMarker: marker.text,
+      insideViewLabel: label.text,
+      sourceObjectIds: sourceImages.map((image) => image.objectId || image.id),
+      reason: 'The drawing is bounded by the explicit position header, the same-page Inside View label and the document-family drawing column.',
+    },
+  };
+}
+
+function parseEkoWebItemised(document) {
+  const rows = [];
+  const markers = document.pages.flatMap((page, pageIndex) => page.blocks.flatMap((block, blockIndex) => {
+    const match = String(block.text).trim().match(/^(Window|Door)\s+(\d{3})$/i);
+    return match ? [{ page, pageIndex, blockIndex, block, product: match[1], reference: match[2] }] : [];
+  }));
+  for (const marker of markers) {
+    const continuationPages = [];
+    for (const page of document.pages.slice(marker.pageIndex + 1)) {
+      if (page.blocks.some((block) => /^(?:Window|Door)\s+\d{3}$/i.test(String(block.text).trim()))) break;
+      if (page.blocks.some((block) => /^(?:Price|Fillings)$/i.test(String(block.text).trim()))) continuationPages.push(page);
+    }
+    const positionBlocks = [marker.page, ...continuationPages].flatMap((page) => page.blocks.map((block) => ({ ...block, text: String(block.text).trim(), pageNumber: page.pageNumber })).filter((block) => block.text));
+    const markerIndex = marker.page.blocks.indexOf(marker.block);
+    const quantityBlock = marker.page.blocks.slice(markerIndex + 1).find((block) => /^Quantity\s*:/i.test(String(block.text).trim()));
+    const system = ekoWebSystem(marker.page.blocks.map((block) => ({ ...block, text: String(block.text).trim(), pageNumber: marker.page.pageNumber })), markerIndex);
+    const dimensions = ekoWebOverallDimensions(marker.page, markerIndex);
+    const priceLabel = positionBlocks.findIndex((block) => /^Price$/i.test(block.text));
+    const priceBlock = priceLabel >= 0 ? positionBlocks.slice(priceLabel + 1, priceLabel + 8).find((block) => /^[£€$]\s*[\d,.]+$/.test(block.text)) : null;
+    const totalPrice = decimal(priceBlock?.text);
+    const quantity = integerQuantity(quantityBlock?.text.split(':').slice(1).join(':'));
+    const currency = priceBlock?.text.startsWith('€') ? 'EUR' : priceBlock?.text.startsWith('£') ? 'GBP' : priceBlock?.text.startsWith('$') ? 'USD' : null;
+    const joined = positionBlocks.map((block) => block.text).join(' ');
+    const glazingBlock = positionBlocks.find((block) => /\[Ug\s*=\s*[\d.,]+\]/i.test(block.text));
+    const warnings = [
+      ...(!system.value ? ['The product/system brand was not identified from the explicit system evidence.'] : []),
+      ...(!quantity ? ['Position quantity was not recognised.'] : []),
+      ...(!dimensions.widthMm || !dimensions.heightMm ? ['Overall position dimensions were not reconstructed from the source drawing dimensions.'] : []),
+      ...(!totalPrice || !currency ? ['Position price or currency was not recognised.'] : []),
+    ];
+    rows.push(row(document, {
+      ordinal: rows.length,
+      reference: marker.reference,
+      manufacturerName: EKO_WEB_MANUFACTURER,
+      manufacturerItemNumber: marker.reference,
+      product: marker.product,
+      productSystem: system.value,
+      quantity,
+      widthMm: dimensions.widthMm,
+      heightMm: dimensions.heightMm,
+      unitPrice: totalPrice && quantity ? (Number(totalPrice) / quantity).toFixed(2) : totalPrice,
+      totalPrice,
+      currency,
+      glassSpecification: cleanMetadataValue(glazingBlock?.text),
+      manufacturerQuotedUg: decimal(joined.match(/\bUg\s*=\s*([\d.,]+)/i)?.[1]),
+      manufacturerQuotedUw: decimal(joined.match(/\bUw\s*=\s*([\d.,]+)/i)?.[1]),
+      blocks: [...positionBlocks, ...dimensions.evidence],
+      warnings,
+      visualRegion: ekoWebInsideVisualRegion(marker.page, marker.block),
+    }));
+  }
+  const all = flatten(document);
+  const referenceBlock = all.find((block) => /Price details\s+WEB\/\d+\/\d+/i.test(block.text));
+  const reference = referenceBlock?.text.match(/WEB\/\d+\/\d+/i)?.[0] ?? null;
+  const dateBlock = all.find((block) => /^\d{2}\/\d{2}\/\d{4}$/.test(block.text));
+  const companyIndex = all.findIndex((block) => /^Company information\s*:?$/i.test(block.text));
+  const supplierBlock = companyIndex >= 0 ? all[companyIndex + 1] : null;
+  const sourceLegalName = cleanMetadataValue(supplierBlock?.text);
+  const supplier = sourceLegalName?.replace(/\s+(?:Ltd|Limited)$/i, '') ?? null;
+  const manufacturer = rows.length ? EKO_WEB_MANUFACTURER : null;
+  const documentFamilyBlocks = all.filter((block) => /(?:Price details\s+WEB\/\d+\/\d+|WEB\/\d+\/\d+\s+\d{4}-\d{2}-\d{2})/i.test(block.text));
+  const clientIndex = all.findIndex((block) => /^Client\s*:?$/i.test(block.text));
+  const customer = clientIndex >= 0 ? cleanMetadataValue(all[clientIndex + 1]?.text) : null;
+  const projectReference = cleanMetadataValue(all.find((block) => /^Your reference\s*:/i.test(block.text))?.text.replace(/^Your reference\s*:\s*/i, ''));
+  return {
+    adapter: 'eko_okna_web_itemised_v1',
+    supplier,
+    manufacturer,
+    supplierIdentity: { role: 'quotation_issuer', authority: sourceLegalName ? 'explicit_document_issuer' : 'not_supplied', sourceLegalName, dealerName: supplier, evidence: sourceTrace(document, [supplierBlock].filter(Boolean)) },
+    manufacturerIdentity: { role: 'product_manufacturer', authority: manufacturer ? 'document_family_and_header_evidence' : 'unavailable', evidence: sourceTrace(document, documentFamilyBlocks) },
+    commercialSupplierIdentity: { role: 'commercial_supplier', authority: manufacturer ? 'eko_web_document_family_direct_supply' : 'not_proposed', proposedName: manufacturer, evidence: sourceTrace(document, documentFamilyBlocks) },
+    supplierManufacturerRelationship: supplier && manufacturer ? { relationship: 'direct_manufacturer_supplier', documentIssuerName: supplier, documentIssuerLegalName: sourceLegalName, commercialSupplierName: manufacturer, manufacturerName: manufacturer, pricingScope: 'commercial_supplier_quotation' } : null,
+    documentType: 'complete_quotation',
+    quotation: { supplierQuotationNumber: reference, supplierRevision: null, fullQuotationReference: reference, referenceAuthority: reference ? 'explicit_source_document' : 'unavailable', warnings: [] },
+    metadata: { supplierCustomer: customer, projectReference, quotationDate: dateIso(dateBlock?.text) },
+    rows,
+    warnings: rows.length ? [] : ['EKO Web itemised positions were not detected.'],
+  };
+}
+
 function parseEkoItemised(document,variant){
   const pages=document.pages,rows=[];const currencyEvidence=detectPdfDocumentCurrency(document);const currencyWarnings=currencyEvidence.currency?[]:['The document currency is absent or ambiguous and requires review.'];
   const segments=variant==='eko'?(()=>{const blocks=flatten(document),markers=blocks.map((block,index)=>/^(?:Window|Door)\s+\d{3}$/i.test(block.text)?index:-1).filter(index=>index>=0);return markers.map((start,index)=>blocks.slice(start,markers[index+1]??blocks.length));})():pages.map(page=>page.blocks.map(block=>({...block,text:String(block.text).trim(),pageNumber:page.pageNumber})).filter(block=>block.text));
-  for(const blocks of segments){const markerIndex=blocks.findIndex(block=>/^(?:Window|Door)\s+\d{3}$/i.test(block.text));if(markerIndex<0)continue;const marker=blocks[markerIndex],quantityBlock=blocks.slice(markerIndex+1).find(block=>/^(?:Qty\s*:|Quantity:)/i.test(block.text));const priceLabel=blocks.findIndex(block=>/^Price$|^Window price$/i.test(block.text));const priceBlock=priceLabel>=0?blocks.slice(priceLabel+1).find(block=>decimal(block.text)!=null):null;const dimensions=blocks.find(block=>/^Dimensions\s+\d+\s*mm\s*x\s*\d+\s*mm$/i.test(block.text))?.text.match(/(\d+)\s*mm\s*x\s*(\d+)\s*mm/i);let width=dimensions?Number(dimensions[1]):null,height=dimensions?Number(dimensions[2]):null;if(variant==='gutmann'){const diagram=blocks.slice(0,markerIndex).filter(block=>/^\d{3,4}$/.test(block.text)).map(block=>Number(block.text));if(diagram.length){width=Math.max(...diagram);height=diagram.filter(value=>value!==width).sort((a,b)=>b-a)[0]||null;}}const reference=marker.text.replace(/^(Window|Door)\s+/i,'');const totalPrice=decimal(priceBlock?.text),joined=blocks.map(block=>block.text).join(' ');const system=joined.match(/\bSystem\s*:\s*(.{1,120}?)(?=\s+(?:Page\s+\d|Colour|Window|Door|Price|Dimensions|FIX|Outer frame)\b|$)/i)?.[1]??null;const ug=joined.match(/\bUg\s*=\s*([\d.,]+)/i)?.[1]??null,uw=joined.match(/\bUw\s*=\s*([\d.,]+)/i)?.[1]??null;const glazing=blocks.find(block=>/\bUg\s*=\s*[\d.,]+/i.test(block.text))?.text??null;const visualRegions=variant==='eko'?ekoPositionVisualRegions(document,blocks,marker.pageNumber):null;const sourceSpecification=variant==='eko'?extractEkoOknaSourceSpecification(document,blocks,visualRegions?.[0]?.sourcePage):null;rows.push(row(document,{ordinal:rows.length,reference,manufacturerItemNumber:reference,product:/^Door/i.test(marker.text)?'Door':'Window',productSystem:cleanMetadataValue(system),glassSpecification:cleanMetadataValue(glazing),quantity:integerQuantity(quantityBlock?.text.split(':').slice(1).join(':')),widthMm:width,heightMm:height,unitPrice:totalPrice,totalPrice,currency:currencyEvidence.currency,manufacturerQuotedUg:decimal(ug),manufacturerQuotedUw:decimal(uw),blocks,warnings:currencyWarnings,visualRegions,sourceSpecification}));}
+  for(const blocks of segments){const markerIndex=blocks.findIndex(block=>/^(?:Window|Door)\s+\d{3}$/i.test(block.text));if(markerIndex<0)continue;const marker=blocks[markerIndex],quantityBlock=blocks.slice(markerIndex+1).find(block=>/^(?:Qty\s*:|Quantity:)/i.test(block.text));const priceLabel=blocks.findIndex(block=>/^Price$|^Window price$/i.test(block.text));const priceBlock=priceLabel>=0?blocks.slice(priceLabel+1).find(block=>decimal(block.text)!=null):null;const dimensions=blocks.find(block=>/^Dimensions\s+\d+\s*mm\s*x\s*\d+\s*mm$/i.test(block.text))?.text.match(/(\d+)\s*mm\s*x\s*(\d+)\s*mm/i);let width=dimensions?Number(dimensions[1]):null,height=dimensions?Number(dimensions[2]):null;if(variant==='gutmann'){const diagram=blocks.slice(0,markerIndex).filter(block=>/^\d{3,4}$/.test(block.text)).map(block=>Number(block.text));if(diagram.length){width=Math.max(...diagram);height=diagram.filter(value=>value!==width).sort((a,b)=>b-a)[0]||null;}}const reference=marker.text.replace(/^(Window|Door)\s+/i,'');const totalPrice=decimal(priceBlock?.text),joined=blocks.map(block=>block.text).join(' ');const system=joined.match(/\bSystem\s*:\s*(.{1,120}?)(?=\s+(?:Page\s+\d|Colour|Window|Door|Price|Dimensions|FIX|Outer frame)\b|$)/i)?.[1]??null;const ug=joined.match(/\bUg\s*=\s*([\d.,]+)/i)?.[1]??null,uw=joined.match(/\bUw\s*=\s*([\d.,]+)/i)?.[1]??null;const glazing=blocks.find(block=>/\bUg\s*=\s*[\d.,]+/i.test(block.text))?.text??null;const visualRegions=variant==='eko'?ekoPositionVisualRegions(document,blocks,marker.pageNumber):null;const sourceSpecification=variant==='eko'?extractEkoOknaSourceSpecification(document,blocks,visualRegions?.[0]?.sourcePage):null;rows.push(row(document,{ordinal:rows.length,reference,manufacturerName:variant==='gutmann'?'Gutmann':'EKO-OKNA',manufacturerItemNumber:reference,product:/^Door/i.test(marker.text)?'Door':'Window',productSystem:cleanMetadataValue(system),glassSpecification:cleanMetadataValue(glazing),quantity:integerQuantity(quantityBlock?.text.split(':').slice(1).join(':')),widthMm:width,heightMm:height,unitPrice:totalPrice,totalPrice,currency:currencyEvidence.currency,manufacturerQuotedUg:decimal(ug),manufacturerQuotedUw:decimal(uw),blocks,warnings:currencyWarnings,visualRegions,sourceSpecification}));}
   const all=flatten(document),quotationText=variant==='gutmann'?all.find(block=>/Price details\s+WEB\//i.test(block.text))?.text:all.find(block=>/^Quotation\s+OF\//i.test(block.text))?.text;const full=quotationText?.match(/(?:WEB|OF)\/\d+\/\d+/i)?.[0]||null;const client=variant==='gutmann'?all[all.findIndex(block=>/^Client:$/i.test(block.text))+1]?.text:all.find(block=>/^ECOFENSTER LTD/i.test(block.text))?.text;const project=variant==='gutmann'?all.find(block=>/^Your reference:/i.test(block.text))?.text.split(':').slice(1).join(':'):null;const date=variant==='gutmann'?all.find(block=>/^\d{2}\/\d{2}\/\d{4}$/.test(block.text))?.text:all.find(block=>/^\d{2}\/\d{2}\/\d{4}$/.test(block.text))?.text;
-  return{adapter:variant==='gutmann'?'gutmann_web_v1':'eko_okna_winpro_v1',supplier:variant==='gutmann'?'Ecofenster / Gutmann':'EKO-OKNA',documentType:'complete_quotation',quotation:{supplierQuotationNumber:full,supplierRevision:null,fullQuotationReference:full,warnings:currencyWarnings},metadata:{supplierCustomer:cleanMetadataValue(client),projectReference:cleanMetadataValue(project),quotationDate:dateIso(date)},rows,warnings:rows.length?currencyWarnings:['Itemised PDF positions were not detected.']};
+  const identityBlocks=variant==='eko'?all.filter(block=>/\bEKO-OKNA\s+S\.A\./i.test(block.text)):all.filter(block=>/\bEcofenster\s+Ltd\b/i.test(block.text));
+  const manufacturerBlocks=variant==='gutmann'?all.filter(block=>/\[GUTMANN\]/i.test(block.text)):identityBlocks;
+  const identity=variant==='gutmann'?{supplier:'Ecofenster',manufacturer:'Gutmann',supplierIdentity:{role:'quotation_issuer',authority:'explicit_document_issuer',sourceLegalName:identityBlocks[0]?.text??'Ecofenster Ltd',dealerName:'Ecofenster',evidence:sourceTrace(document,identityBlocks)},commercialSupplierIdentity:{role:'commercial_supplier',authority:'document_family_issuer_is_commercial_supplier',proposedName:'Ecofenster',evidence:sourceTrace(document,identityBlocks)},manufacturerIdentity:{role:'product_manufacturer',authority:'explicit_product_brand',evidence:sourceTrace(document,manufacturerBlocks)},supplierManufacturerRelationship:{relationship:'dealer_supplies_manufacturer_products',documentIssuerName:'Ecofenster',documentIssuerLegalName:identityBlocks[0]?.text??'Ecofenster Ltd',commercialSupplierName:'Ecofenster',manufacturerName:'Gutmann',pricingScope:'commercial_supplier_quotation'}}:{supplier:'EKO-OKNA',manufacturer:'EKO-OKNA',supplierIdentity:{role:'quotation_issuer',authority:'explicit_document_issuer',sourceLegalName:identityBlocks[0]?.text??'EKO-OKNA S.A.',dealerName:'EKO-OKNA',evidence:sourceTrace(document,identityBlocks)},commercialSupplierIdentity:{role:'commercial_supplier',authority:'explicit_direct_manufacturer_supply',proposedName:'EKO-OKNA',evidence:sourceTrace(document,identityBlocks)},manufacturerIdentity:{role:'product_manufacturer',authority:'explicit_legal_manufacturer',evidence:sourceTrace(document,identityBlocks)},supplierManufacturerRelationship:{relationship:'direct_manufacturer_supplier',documentIssuerName:'EKO-OKNA',documentIssuerLegalName:identityBlocks[0]?.text??'EKO-OKNA S.A.',commercialSupplierName:'EKO-OKNA',manufacturerName:'EKO-OKNA',pricingScope:'commercial_supplier_quotation'}};
+  return{adapter:variant==='gutmann'?'gutmann_web_v1':'eko_okna_winpro_v1',...identity,documentType:'complete_quotation',quotation:{supplierQuotationNumber:full,supplierRevision:null,fullQuotationReference:full,warnings:currencyWarnings},metadata:{supplierCustomer:cleanMetadataValue(client),projectReference:cleanMetadataValue(project),quotationDate:dateIso(date)},rows,warnings:rows.length?currencyWarnings:['Itemised PDF positions were not detected.']};
 }
 
 function parseGlassWorxCover(document){const blocks=flatten(document),reference=blocks.find(block=>/^25\s*-\s*\d+\s*-/i.test(block.text))?.text||null,preparedFor=blocks[blocks.findIndex(block=>/^Prepared for$/i.test(block.text))+1]?.text||null,date=blocks.find(block=>/^\d{2}\.\d{2}\.\d{4}$/.test(block.text))?.text;return{adapter:'glass_worx_cover_v1',supplier:'Glass Worx',documentType:'quotation_letter',quotation:{supplierQuotationNumber:cleanMetadataValue(reference),supplierRevision:null,fullQuotationReference:cleanMetadataValue(reference),warnings:[]},metadata:{supplierCustomer:cleanMetadataValue(preparedFor),projectReference:cleanMetadataValue(reference),quotationDate:dateIso(date)},rows:[],warnings:[]};}
 
 const adapters=[
+  {recognizes:text=>/\bMANUFACTURER ELEVATION\b/i.test(text)&&/\bProducts\s*\/\s*Supply Only\b/i.test(text)&&/\bincluded position\(s\)/i.test(text),parse:parseQuoteSuiteManufacturerSchedule},
   {recognizes:text=>/\becoHaus\b[\s\S]*Offer number:\s*\d+/i.test(text)&&/\bHF410\b[\s\S]*\bHS330\b[\s\S]*SUPPLY & INSTALL PACKAGE/i.test(text)&&/\bPos\.\s*\nQuantity\b/i.test(text),parse:parseInternormEcohaus},
   {recognizes:text=>/^Aspect Aluminium$/im.test(text)&&/\bwww\.aspectaluminium\.co\.uk\b/i.test(text)&&/\bInternorm\b/i.test(text)&&/\bPos\.\s*\nQuantity\s*\nDescription\b/i.test(text)&&/Internorm Triple Glazed[\s\S]*Supply and install in the sum of £/i.test(text),parse:parseInternormAspect},
   {recognizes:text=>/Glass Worx Limited[\s\S]*Offer number:\s*\d+/i.test(text)&&/\bPos\.\s*\nQuantity\b/i.test(text),parse:parseInternormSchedule},
   {recognizes:text=>/Glass Worx Ltd[\s\S]*YOUR PROJECT COSTS/i.test(text),parse:parseGlassWorxCover},
   {recognizes:text=>/EKO-OKNA S\.A\.[\s\S]*Quotation\s+OF\//i.test(text),parse:document=>parseEkoItemised(document,'eko')},
+  {recognizes:text=>/Price details\s+WEB\/\d+\/\d+/i.test(text)&&/Company information\s*:/i.test(text)&&/\b(?:Window|Door)\s+\d{3}\b/i.test(text)&&!/\[GUTMANN\]/i.test(text),parse:parseEkoWebItemised},
   {recognizes:text=>/Price details\s+WEB\//i.test(text)&&/\[GUTMANN\]/i.test(text),parse:document=>parseEkoItemised(document,'gutmann')},
   {recognizes:text=>/\bFrame No:\s*\d+\b[\s\S]*\bQty:\s*\d+/i.test(text)&&/\b(?:VELFAC|Rationel)\b/i.test(text),parse:parseFrameQuotation},
   {recognizes:text=>/\bIdealcombi\b/i.test(text)&&/\bQuotation no\./i.test(text)&&/\bGBP\/ Unit\b/i.test(text),parse:parseIdealcombi},
@@ -769,6 +1038,35 @@ function parseInternormAspectSummary(document, parsed, positionRows) {
 
 export function parsePdfSupplierSummary(document,positionRows=[]){
   const parsed=parsePdfSupplierFields(document);if(!parsed)return null;const blocks=flatten(document);
+  if(parsed.adapter==='eko_okna_web_itemised_v1'){
+    const productIndex=blocks.findIndex(block=>/^Products$/i.test(block.text));
+    const productAmounts=productIndex>=0?blocks.slice(productIndex+1,productIndex+8).filter(block=>/^[£€$]\s*[\d,.]+$/.test(block.text)).map(block=>({block,value:decimal(block.text)})):[];
+    const totalIndex=blocks.findIndex(block=>/^TOTAL price$/i.test(block.text));
+    const totalAmount=totalIndex>=0?blocks.slice(totalIndex+1,totalIndex+6).find(block=>/^[£€$]\s*[\d,.]+$/.test(block.text)):null;
+    const productSubtotal=productAmounts[0]?.value??null,vatTotal=productAmounts[1]?.value??null,finalSupplierTotal=decimal(totalAmount?.text)??productAmounts[2]?.value??null;
+    const rowCurrencies=[...new Set(positionRows.map(item=>item.currency).filter(Boolean))];
+    const currency=rowCurrencies.length===1?rowCurrencies[0]:detectPdfDocumentCurrency(document).currency;
+    const value=summary(document,{currency,productSubtotal,vatTotal,finalSupplierTotal});
+    const positionSubtotal=positionRows.every(item=>item.totalPrice!=null)?positionRows.reduce((sum,item)=>sum+Number(item.totalPrice),0).toFixed(2):null;
+    const expectedFinal=productSubtotal!=null&&vatTotal!=null?(Number(productSubtotal)+Number(vatTotal)).toFixed(2):null;
+    const sourceProductMatches=positionSubtotal!=null&&productSubtotal!=null&&Number(positionSubtotal)===Number(productSubtotal);
+    const finalMatches=expectedFinal!=null&&finalSupplierTotal!=null&&Number(expectedFinal)===Number(finalSupplierTotal);
+    const warnings=[...(!sourceProductMatches?['Supplied Products total does not match extracted position totals.']:[]),...(!finalMatches?['Supplied tax and final total do not reconcile.']:[])];
+    value.comparisonTotals=productSubtotal?[{classification:'supplier_list_price',label:'Products',amount:productSubtotal,currency,includedInSupplierTotal:true,selected:false,sourceTrace:sourceTrace(document,productAmounts[0]?[productAmounts[0].block]:[])}]:[];
+    value.reconciliation={positionSubtotal,additionalSubtotal:null,deliverySubtotal:null,expectedFinal,reconciled:sourceProductMatches&&finalMatches,warnings};
+    value.warnings=warnings;value.status=warnings.length?'needs_review':'extracted';value.originalExtractedSnapshot.comparisonTotals=value.comparisonTotals;
+    return{summary:value,additionalItems:[],warnings};
+  }
+  if(parsed.adapter==='quotesuite_raster_manufacturer_schedule_v1'){
+    const amount=(pattern)=>{const block=blocks.find(item=>pattern.test(item.text));return{value:decimal(block?.text.match(/[£€$]\s*([\d,.]+)/)?.[1]),blocks:block?[block]:[]};};
+    const packageAmount=amount(/^Products\s*\/\s*Supply Only\b/i),productSubtotal=amount(/^Subtotal excluding VAT\b/i),vatTotal=amount(/^VAT\s*\(/i),finalSupplierTotal=amount(/^Total including VAT\b/i);
+    const currency=detectPdfDocumentCurrency(document).currency;const value=summary(document,{currency,productSubtotal:productSubtotal.value??packageAmount.value,vatTotal:vatTotal.value,finalSupplierTotal:finalSupplierTotal.value});
+    const positionSubtotal=positionRows.every(item=>item.totalPrice!=null)?positionRows.reduce((sum,item)=>sum+Number(item.totalPrice),0).toFixed(2):null;const expectedFinal=value.productSubtotal&&value.vatTotal?(Number(value.productSubtotal)+Number(value.vatTotal)).toFixed(2):null;const sourceProductMatches=positionSubtotal!=null&&value.productSubtotal!=null&&Number(positionSubtotal)===Number(value.productSubtotal);const finalMatches=expectedFinal!=null&&value.finalSupplierTotal!=null&&Number(expectedFinal)===Number(value.finalSupplierTotal);
+    const warnings=[...(!sourceProductMatches?['Supplied product subtotal does not match extracted position totals.']:[]),...(!finalMatches?['Supplied VAT and final total do not reconcile.']:[])];
+    value.comparisonTotals=packageAmount.value?[{classification:'supplier_list_price',label:'Products / Supply subtotal',amount:packageAmount.value,currency,includedInSupplierTotal:true,selected:false,sourceTrace:sourceTrace(document,packageAmount.blocks)},{classification:'package_option',label:'Products / Supply Only',amount:packageAmount.value,currency,includedInSupplierTotal:true,selected:true,sourceTrace:sourceTrace(document,packageAmount.blocks)}]:[];
+    value.reconciliation={positionSubtotal,additionalSubtotal:null,deliverySubtotal:null,expectedFinal,reconciled:sourceProductMatches&&finalMatches,warnings};value.warnings=warnings;value.status=warnings.length?'needs_review':'extracted';value.originalExtractedSnapshot.comparisonTotals=value.comparisonTotals;
+    return{summary:value,additionalItems:[],warnings};
+  }
   if(parsed.adapter==='internorm_ecohaus_complete_quotation_v1')return parseInternormEcohausSummary(document,parsed,positionRows);
   if(parsed.adapter==='internorm_aspect_schedule_v1')return parseInternormAspectSummary(document,parsed,positionRows);
   if(parsed.adapter==='internorm_schedule_v1')return{summary:null,additionalItems:[],warnings:['Line prices and quotation total are supplied separately.']};

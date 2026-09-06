@@ -5060,26 +5060,8 @@ return (
             {/* ESTIMATE WORKSPACE */}
             {topShellPage === "app" && view === "estimate_workspace" && selectedClient && selectedEstimate && (
                 <Card className="qs-migrated-98 dedicated-estimate-workspace">
-                  <div className="qs-migrated-94">
-                    <div>
-                      <H2>Estimate</H2>
-                      <div className="qs-migrated-95">
-                        <Pill>{selectedClient.clientRef}</Pill>
-                        <Pill>{selectedEstimate.estimateRef}</Pill>
-                        <Small>{selectedClient.clientName}</Small>
-                      </div>
-                      <Small>Supplier/Product Defaults are set separately. Add Position starts at Position Configuration.</Small>
-                    </div>
-
-                    <div className="qs-migrated-96">
-                      <Button variant="secondary" onClick={() => setView("customers")}>
-                        Back
-                      </Button>
-                    </div>
-                  </div>
-
                   <div className="qs-migrated-99">
-                    <EstimateCommercialWorkspace estimateId={String(selectedEstimate.id)} estimateRef={selectedEstimate.estimateRef} client={selectedClient} estimate={selectedEstimate} PositionPreview={PositionPreview} onOpenFollowUps={()=>selectMenu("follow_ups")} onStatus={status=>persistEstimateOutcome(selectedClient.id,selectedEstimate.id,status)} onCopy={()=>copyEstimateForClient(selectedClient,selectedEstimate.id)} onDelete={()=>confirmDeleteGlobalEstimate(selectedEstimate.id)} />
+                    <EstimateCommercialWorkspace estimateId={String(selectedEstimate.id)} estimateRef={selectedEstimate.estimateRef} client={selectedClient} estimate={selectedEstimate} PositionPreview={PositionPreview} onBack={()=>setView("customers")} onStatus={status=>persistEstimateOutcome(selectedClient.id,selectedEstimate.id,status)} onCopy={()=>copyEstimateForClient(selectedClient,selectedEstimate.id)} onDelete={()=>confirmDeleteGlobalEstimate(selectedEstimate.id)} />
                   </div>
 
                   <div className="qs-migrated-100">

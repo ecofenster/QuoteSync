@@ -11,10 +11,11 @@ import { createSupplierImportOperationIdentity, evaluateSupplierImportCompletion
 import { derivePdfPositionPreviews, PDF_POSITION_PREVIEW_VERSION } from '../supplierImportLab/pdfPositionPreviews.js';
 import { PDFJS_RUNTIME_VERSION } from '../supplierImportLab/pdfJsRuntime.js';
 import { EKO_INSIDE_DRAWING_PANEL_GEOMETRY_VERSION } from '../supplierImportLab/ekoOknaDrawingPanelGeometry.js';
-import { assertCommercialDealerIdentity, resolveCanonicalSupplier } from './supplierIdentity.js';
+import { resolveCanonicalSupplier } from './supplierIdentity.js';
 import { canonicalManufacturerSystemIdentity, createSupplierManufacturerRelationship, normalizeManufacturerIdentity, resolveCanonicalManufacturer } from './manufacturerIdentity.js';
 import { assertExtractedCommercialEvidence, buildCommercialFingerprint, createManufacturerEvidenceRefreshIdentity, enrichManufacturerSourceSnapshot, MANUFACTURER_EVIDENCE_REFRESH_VERSION, summarizeManufacturerEvidence } from './manufacturerEvidenceRefresh.js';
 import { assertSupplierProductSupplyReconciliation, buildSupplierQuotationCommercialClassification, classifySupplierCommercialItem } from '../projectCalculatorLab/supplierQuotationCommercialClassification.js';
+import { buildQuotationPackageEvidence } from '../../../shared/quotationPackageModel.js';
 
 function nowIso() { return new Date().toISOString(); }
 function mapQuote(row) { return { id: row.id, estimateId: row.estimate_id, supplierCode: row.supplier_code, supplierName: row.supplier_name, createdAt: row.created_at, updatedAt: row.updated_at, archivedAt: row.archived_at }; }
@@ -31,6 +32,7 @@ const quotationRevisionKey = (quotationNumber, supplierRevision) => {
 const unsignedDecimal = /^\d+(?:\.\d+)?$/;
 const signedDecimal = /^-?\d+(?:\.\d+)?$/;
 const complementaryDocumentKinds = new Set(['window_schedule','quotation_letter','installation_pricing']);
+const allowedManufacturerDocumentKinds = new Set(['complete_quotation','window_schedule','quotation_letter','installation_pricing','supporting_document']);
 function geometry(widthMm, heightMm, quantity) { const area = BigInt(widthMm) * BigInt(heightMm) * BigInt(quantity); const perimeter = 2n * BigInt(widthMm + heightMm) * BigInt(quantity) * 1000n; const decimal = (value) => { const raw = value.toString().padStart(7, '0'); return `${raw.slice(0, -6)}.${raw.slice(-6)}`.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1'); }; return { area: decimal(area), perimeter: decimal(perimeter) }; }
 const isCanonicalPositionRow = (row, currency = row.currency) => Boolean(row.commercialReadiness !== 'review_required' && normalizeReference(row.displayReference) && Number.isInteger(row.quantity) && row.quantity > 0 && Number.isInteger(row.widthMm) && row.widthMm > 0 && Number.isInteger(row.heightMm) && row.heightMm > 0 && row.currency === currency && (row.unitPrice == null || unsignedDecimal.test(String(row.unitPrice))) && (row.totalPrice == null || unsignedDecimal.test(String(row.totalPrice))));
 const isTechnicallySelectablePositionRow = (row) => Boolean(normalizeReference(row.displayReference) && Number.isInteger(row.quantity) && row.quantity > 0 && Number.isInteger(row.widthMm) && row.widthMm > 0 && Number.isInteger(row.heightMm) && row.heightMm > 0 && /^[A-Z]{3}$/.test(String(row.currency || '')));
@@ -39,14 +41,32 @@ async function listCanonicalManufacturers(db) {
   return (await db.all('SELECT id,name,code,updated_at FROM configurator_manufacturers WHERE is_active<>0 ORDER BY name').catch(() => [])).map((row) => ({ manufacturerId: row.id, manufacturerName: row.name, manufacturerCode: row.code, updatedAt: row.updated_at }));
 }
 
-function recognizedManufacturer(fields, fallbackSupplierName) {
-  return fields.manufacturer ?? fields.rows.find((row) => row.manufacturerEvidence?.manufacturerName)?.manufacturerEvidence?.manufacturerName ?? fallbackSupplierName;
+function recognizedManufacturer(fields) {
+  return fields.manufacturer ?? fields.rows.find((row) => row.manufacturerEvidence?.manufacturerName)?.manufacturerEvidence?.manufacturerName ?? null;
 }
 
 function manufacturerResolutionForFields(fields, configuredManufacturers, commercialSupplier) {
-  const recognizedManufacturerName = recognizedManufacturer(fields, fields.supplier ?? commercialSupplier?.supplierName ?? null);
+  const recognizedManufacturerName = recognizedManufacturer(fields);
   const resolution = resolveCanonicalManufacturer({ recognizedManufacturerName, configuredManufacturers });
-  if (resolution.manufacturer || fields.manufacturer) return { recognizedManufacturerName, ...resolution };
+  if (resolution.manufacturer) return { recognizedManufacturerName, ...resolution };
+  const explicitlyDirect = fields.supplierManufacturerRelationship?.relationship === 'direct_manufacturer_supplier'
+    && fields.manufacturerIdentity?.authority
+    && normalizeManufacturerIdentity(recognizedManufacturerName) === normalizeManufacturerIdentity(fields.supplier);
+  if (commercialSupplier && explicitlyDirect) {
+    return {
+      recognizedManufacturerName,
+      status: 'resolved',
+      method: 'document_supported_direct_identity',
+      candidates: [],
+      manufacturer: {
+        manufacturerId: `legacy-direct-supplier:${commercialSupplier.supplierCode}`,
+        manufacturerName: recognizedManufacturerName,
+        manufacturerCode: commercialSupplier.supplierCode,
+        compatibilityIdentity: true,
+      },
+    };
+  }
+  if (fields.manufacturer) return { recognizedManufacturerName, ...resolution };
   if (!commercialSupplier) return { recognizedManufacturerName, ...resolution };
   return {
     recognizedManufacturerName,
@@ -76,15 +96,49 @@ function resolveReviewQuotationReference(revision, fields) {
   };
 }
 
-function enrichManufacturerDealerEvidence(row, fields, manufacturer, supplierDealer) {
+function commercialSupplierOption(row) {
+  let policy = {};
+  try { policy = JSON.parse(row.policy_json || '{}'); } catch {}
+  const pricingMethod = policy.pricingMethod || policy.pricingBasis || null;
+  return { supplierCode: row.supplier_code, supplierName: row.supplier_name, pricingMethod, pricingPolicyAvailable: Boolean(pricingMethod), active: true, policyUpdatedAt: row.updated_at };
+}
+
+const legacyPricingMethodHolderCodes = new Set(['FACTORY PRICE', '1 TO 1 PRICING', 'STAGED DISCOUNT']);
+function isCommercialSupplierRecord(option) {
+  return !(normalizeManufacturerIdentity(option.supplierName) === 'ANY' && legacyPricingMethodHolderCodes.has(String(option.supplierCode).trim().toUpperCase()));
+}
+async function listCommercialSupplierOptions(db) {
+  return (await db.all('SELECT supplier_code,supplier_name,policy_json,updated_at,active FROM supplier_commercial_defaults ORDER BY supplier_name')).map(commercialSupplierOption).filter(isCommercialSupplierRecord);
+}
+function proposalSource(authority) {
+  if (/^explicit_/.test(String(authority || ''))) return 'quotation';
+  if (/document_family|eko_web/.test(String(authority || ''))) return 'document_family';
+  if (authority === 'configured_manufacturer_supplier_relationship') return 'configured_relationship';
+  return null;
+}
+function commercialSupplierProposalForFields(fields, manufacturerResolution, suppliers) {
+  const proposedName = String(fields.commercialSupplierIdentity?.proposedName || fields.supplierManufacturerRelationship?.commercialSupplierName || '').trim();
+  if (proposedName) {
+    const authority = fields.commercialSupplierIdentity?.authority ?? 'explicit_supplier_relationship';
+    return { proposedName, authority, source: proposalSource(authority) };
+  }
+  const manufacturer = manufacturerResolution?.manufacturer;
+  if (!manufacturer) return { proposedName: null, authority: null, source: null };
+  const matches = suppliers.filter((item) => normalizeManufacturerIdentity(item.supplierName) === normalizeManufacturerIdentity(manufacturer.manufacturerName));
+  if (matches.length !== 1) return { proposedName: null, authority: null, source: null };
+  return { proposedName: matches[0].supplierName, authority: 'configured_manufacturer_supplier_relationship', source: 'configured_relationship' };
+}
+
+function enrichManufacturerCommercialEvidence(row, fields, manufacturer, commercialSupplier, proposal = null) {
   const manufacturerSystem = canonicalManufacturerSystemIdentity(manufacturer, row.manufacturerEvidence?.productSystem ?? row.productSystem);
-  const relationship = createSupplierManufacturerRelationship({ manufacturer, supplier: supplierDealer, sourceSupplierName: fields.supplier, sourceLegalName: fields.supplierIdentity?.sourceLegalName });
+  const relationship = createSupplierManufacturerRelationship({ manufacturer, supplier: commercialSupplier, sourceSupplierName: fields.supplier, sourceLegalName: fields.supplierIdentity?.sourceLegalName });
   const manufacturerEvidence = {
     ...(row.manufacturerEvidence || {}),
     manufacturerName: manufacturer.manufacturerName,
     canonicalManufacturer: manufacturer,
     manufacturerSystemIdentity: manufacturerSystem,
-    commercialSupplier: { supplierCode: supplierDealer.supplierCode, supplierName: supplierDealer.supplierName, sourceName: fields.supplier ?? supplierDealer.supplierName },
+    documentIssuer: { name: fields.supplier ?? null, legalName: fields.supplierIdentity?.sourceLegalName ?? null, authority: fields.supplierIdentity?.authority ?? 'not_supplied' },
+    commercialSupplier: { supplierCode: commercialSupplier.supplierCode, supplierName: commercialSupplier.supplierName, proposedSourceName: proposal?.proposedName ?? null, proposalAuthority: proposal?.authority ?? null, proposalSource: proposal?.source ?? null },
     supplierManufacturerRelationship: relationship,
   };
   row.manufacturerEvidence = manufacturerEvidence;
@@ -225,7 +279,7 @@ export function createSupplierQuotesService(db, { attachmentRoot = resolveAttach
     await reconcileStaleSupplierImportRuns(db);
     if (!(await estimateExists(estimateId))) return null;
     if (!Array.isArray(documents) || !documents.length) throw Object.assign(new Error('Select at least one supplier document.'), { code: 'no_attachments_selected' });
-    const suppliers = (await db.all('SELECT supplier_code,supplier_name,policy_json,updated_at FROM supplier_commercial_defaults WHERE active<>0 ORDER BY supplier_name')).map(row => ({ supplierCode: row.supplier_code, supplierName: row.supplier_name, pricingMethod: JSON.parse(row.policy_json || '{}').pricingMethod || JSON.parse(row.policy_json || '{}').pricingBasis || 'factory_price', policyUpdatedAt: row.updated_at }));
+    const suppliers = await listCommercialSupplierOptions(db);
     const manufacturers = await listCanonicalManufacturers(db);
     const reviewedDocuments = [];
     for (const item of documents) {
@@ -245,13 +299,29 @@ export function createSupplierQuotesService(db, { attachmentRoot = resolveAttach
       reviewedDocuments.push({ quoteId, revisionId, attachmentId, adapter: fields.adapter ?? null, quote, revision, fields, diagnostics, commercialEvidence, rows: fields.rows.map(row => { const technicallySelectable=isTechnicallySelectablePositionRow(row),commerciallyReady=isCanonicalPositionRow(row);return { rowKey: `${attachment.id}:${row.ordinal}`, include: technicallySelectable, technicallySelectable, commerciallyReady, commercialReadiness: row.commercialReadiness ?? (commerciallyReady?'canonical_ready':'review_required'), manufacturerName: row.manufacturerEvidence?.manufacturerName ?? fields.manufacturer ?? fields.supplier ?? null, manufacturerItemNumber: row.manufacturerEvidence?.manufacturerItemNumber ?? null, customerReference: row.manufacturerEvidence?.customerReference ?? row.displayReference ?? null, roomLocation: row.manufacturerEvidence?.roomLocation ?? null, product: row.manufacturerEvidence?.product ?? null, productSystem: row.manufacturerEvidence?.productSystem ?? null, configurationDescription: row.manufacturerEvidence?.configurationDescription ?? null, widthMm: row.widthMm ?? null, heightMm: row.heightMm ?? null, areaSquareMetres: row.manufacturerEvidence?.areaSquareMetres ?? null, weightKg: row.manufacturerEvidence?.weightKg ?? null, glassSpecification: row.manufacturerEvidence?.glassSpecification ?? null, fittingsSpecification: row.manufacturerEvidence?.fittingsSpecification ?? null, quantity: row.quantity ?? null, currency: row.currency ?? null, unitPrice: row.unitPrice ?? null, totalPrice: row.totalPrice ?? null, manufacturerQuotedUg: row.manufacturerEvidence?.manufacturerQuotedUg ?? null, manufacturerQuotedUw: row.manufacturerEvidence?.manufacturerQuotedUw ?? null, sourceSpecification: row.manufacturerEvidence?.sourceSpecification ?? null, canonicalSpecification: row.manufacturerEvidence?.canonicalSpecification ?? null, sourceVisuals: row.manufacturerEvidence?.sourceVisuals ?? [], sourceVisual: row.manufacturerEvidence?.sourceVisual ?? { status: 'unavailable', reason: 'No mapped manufacturer visual.' }, warnings: [...(row.warnings ?? []),...(technicallySelectable?[]:['Reference, positive quantity, dimensions and currency are required before this position can be selected.']),...(technicallySelectable&&!commerciallyReady?['Commercial price evidence is incomplete; technical review is available but confirmation remains blocked.']:[])] }; }) });
     }
     const first = reviewedDocuments[0], quotationReference = resolveReviewQuotationReference(first.revision, first.fields), detectedRevision = first.revision.supplier_revision ?? first.fields.quotation?.supplierRevision;
+    const detectedDocumentTypes = new Set(reviewedDocuments.map((item) => item.fields.documentType).filter(Boolean));
+    const detectedDocumentType = detectedDocumentTypes.size === 1 ? [...detectedDocumentTypes][0] : null;
+    const detectedQuotationDate = first.fields.metadata?.quotationDate ?? first.revision.quotation_date ?? null;
+    const expectedSupplierSubtotal = first.commercialEvidence?.productSupplyReconciliation?.expectedSubtotal ?? null;
+    const hasSourceBackedProductAmount = Boolean(first.commercialEvidence?.productEvidence || first.fields.rows.some((row) => row.totalPrice != null));
+    const supplierQuotedSubtotal = expectedSupplierSubtotal ?? (hasSourceBackedProductAmount ? first.commercialEvidence?.categories?.productsSupply?.amount ?? null : null);
+    const supplierQuotedTotal = first.commercialEvidence?.supplierQuotedTotal ?? null;
     const positionCurrencies = new Set(reviewedDocuments.flatMap((item) => item.fields.rows.map((row) => row.currency)).filter((currency) => /^[A-Z]{3}$/.test(String(currency || ''))));
     const detectedCurrency = positionCurrencies.size === 1 ? [...positionCurrencies][0] : first.revision.currency;
-    const recognizedDealerName = first.fields.supplier ?? first.quote.supplier_name;
+    const automaticPendingQuote = String(first.quote.supplier_code || '').startsWith('AUTO-') && normalizeManufacturerIdentity(first.quote.supplier_name) === normalizeManufacturerIdentity('Automatic identification pending');
+    const recognizedDealerName = first.fields.supplier ?? (automaticPendingQuote ? null : first.quote.supplier_name);
     const issuerIsAuthoritative = first.fields.supplierIdentity?.authority === 'explicit_document_issuer';
-    const dealerResolution = resolveCanonicalSupplier({ recognizedSupplierName: recognizedDealerName, storedSupplierCode: issuerIsAuthoritative ? null : first.quote.supplier_code, storedSupplierName: issuerIsAuthoritative ? null : first.quote.supplier_name, configuredSuppliers: suppliers });
-    const manufacturerResolution = manufacturerResolutionForFields(first.fields, manufacturers, dealerResolution.supplier);
-    for (const item of reviewedDocuments) item.diagnostics = createSupplierImportDiagnostics({ ...item.diagnostics.counts, confirmationAttempted: false, canonicalSupplierStatus: dealerResolution.status });
+    const dealerResolution = recognizedDealerName
+      ? resolveCanonicalSupplier({ recognizedSupplierName: recognizedDealerName, storedSupplierCode: issuerIsAuthoritative ? null : first.quote.supplier_code, storedSupplierName: issuerIsAuthoritative ? null : first.quote.supplier_name, configuredSuppliers: suppliers })
+      : { status: 'not_supplied', supplier: null, method: null, candidates: [] };
+    const preliminaryManufacturerResolution = manufacturerResolutionForFields(first.fields, manufacturers, null);
+    const commercialSupplierProposal = commercialSupplierProposalForFields(first.fields, preliminaryManufacturerResolution, suppliers);
+    const recognizedCommercialSupplierName = commercialSupplierProposal.proposedName;
+    const commercialSupplierResolution = recognizedCommercialSupplierName
+      ? resolveCanonicalSupplier({ recognizedSupplierName: recognizedCommercialSupplierName, storedSupplierCode: null, storedSupplierName: null, configuredSuppliers: suppliers })
+      : { status: 'not_supplied', supplier: null, method: null, candidates: [] };
+    const manufacturerResolution = preliminaryManufacturerResolution.manufacturer ? preliminaryManufacturerResolution : manufacturerResolutionForFields(first.fields, manufacturers, commercialSupplierResolution.supplier);
+    for (const item of reviewedDocuments) item.diagnostics = createSupplierImportDiagnostics({ ...item.diagnostics.counts, confirmationAttempted: false, canonicalSupplierStatus: commercialSupplierResolution.status });
     return {
       estimateId,
       documents: reviewedDocuments.map(({ fields: _fields, quote: _quote, revision: _revision, ...item }) => item),
@@ -259,26 +329,36 @@ export function createSupplierQuotesService(db, { attachmentRoot = resolveAttach
         recognizedSupplierName: recognizedDealerName,
         recognizedDealerName,
         recognizedManufacturerName: manufacturerResolution.recognizedManufacturerName,
+        recognizedCommercialSupplierName,
         supplierIdentityRole: 'quotation_issuer',
         manufacturerIdentityRole: 'product_manufacturer',
+        commercialSupplierIdentityRole: 'commercial_supplier',
         storedSupplierName: first.quote.supplier_name,
         supplierResolutionStatus: dealerResolution.status,
         supplierResolutionMethod: dealerResolution.method,
         dealerResolutionStatus: dealerResolution.status,
         dealerResolutionMethod: dealerResolution.method,
-        supplierName: dealerResolution.supplier?.supplierName ?? recognizedDealerName,
-        supplierCode: dealerResolution.supplier?.supplierCode ?? null,
+        supplierName: commercialSupplierResolution.supplier?.supplierName ?? recognizedCommercialSupplierName,
+        supplierCode: commercialSupplierResolution.supplier?.supplierCode ?? null,
+        commercialSupplierName: commercialSupplierResolution.supplier?.supplierName ?? recognizedCommercialSupplierName,
+        commercialSupplierCode: commercialSupplierResolution.supplier?.supplierCode ?? null,
+        commercialSupplierResolutionStatus: commercialSupplierResolution.status,
+        commercialSupplierResolutionMethod: commercialSupplierResolution.method,
+        commercialSupplierProposalAuthority: commercialSupplierProposal.authority,
+        commercialSupplierProposalSource: commercialSupplierProposal.source,
+        commercialSupplierActive: commercialSupplierResolution.supplier?.active ?? null,
         manufacturerResolutionStatus: manufacturerResolution.status,
         manufacturerResolutionMethod: manufacturerResolution.method,
         manufacturerId: manufacturerResolution.manufacturer?.manufacturerId ?? null,
         manufacturerName: manufacturerResolution.manufacturer?.manufacturerName ?? manufacturerResolution.recognizedManufacturerName,
         manufacturerCode: manufacturerResolution.manufacturer?.manufacturerCode ?? null,
-        supplierManufacturerRelationship: first.fields.supplierManufacturerRelationship ?? {
-          relationship: normalizeManufacturerIdentity(manufacturerResolution.recognizedManufacturerName) === normalizeManufacturerIdentity(recognizedDealerName) ? 'direct_manufacturer_supplier' : 'dealer_supplies_manufacturer_products',
-          supplierDealerName: recognizedDealerName,
+        supplierManufacturerRelationship: first.fields.supplierManufacturerRelationship ?? (recognizedCommercialSupplierName ? {
+          relationship: normalizeManufacturerIdentity(manufacturerResolution.recognizedManufacturerName) === normalizeManufacturerIdentity(recognizedCommercialSupplierName) ? 'direct_manufacturer_supplier' : 'dealer_supplies_manufacturer_products',
+          documentIssuerName: recognizedDealerName,
+          commercialSupplierName: recognizedCommercialSupplierName,
           manufacturerName: manufacturerResolution.recognizedManufacturerName,
-          pricingScope: 'supplier_dealer_quotation',
-        },
+          pricingScope: 'commercial_supplier_quotation',
+        } : null),
         quotationNumber: quotationReference.quotationNumber,
         quotationReferenceAuthority: quotationReference.quotationReferenceAuthority,
         reviewedQuotationReference: quotationReference.reviewedQuotationReference,
@@ -287,6 +367,10 @@ export function createSupplierQuotesService(db, { attachmentRoot = resolveAttach
         documentMetadataReference: quotationReference.documentMetadataReference,
         revision: detectedRevision,
         currency: detectedCurrency,
+        quotationDate: detectedQuotationDate,
+        documentType: detectedDocumentType,
+        supplierQuotedSubtotal,
+        supplierQuotedTotal,
       },
       canonicalManufacturers: manufacturers,
       commercialSuppliers: suppliers,
@@ -474,11 +558,13 @@ export function createSupplierQuotesService(db, { attachmentRoot = resolveAttach
     if (!scenario) throw Object.assign(new Error('Project Costing record not found for this estimate.'), { code: 'scenario_not_found' });
     if (!Array.isArray(documents) || !documents.length) throw Object.assign(new Error('Select at least one supplier document.'), { code: 'no_attachments_selected' });
     if (Array.isArray(confirmation.selectedRowKeys) && !confirmation.selectedRowKeys.length) throw Object.assign(new Error('Select at least one extracted position.'), { code: 'no_positions_selected' });
-    const configuredSuppliers = (await db.all('SELECT supplier_code,supplier_name,policy_json,updated_at FROM supplier_commercial_defaults WHERE active<>0 ORDER BY supplier_name')).map((row) => ({ supplierCode: row.supplier_code, supplierName: row.supplier_name, pricingMethod: JSON.parse(row.policy_json || '{}').pricingMethod || JSON.parse(row.policy_json || '{}').pricingBasis || 'factory_price', policyUpdatedAt: row.updated_at }));
+    const configuredSuppliers = await listCommercialSupplierOptions(db);
     const configuredManufacturers = await listCanonicalManufacturers(db);
-    const requestedDealer = confirmation.supplierCode ? configuredSuppliers.find((item) => item.supplierCode === String(confirmation.supplierCode).trim().toUpperCase()) : null;
+    const requestedCommercialSupplierCode = confirmation.commercialSupplierCode ?? confirmation.supplierCode;
+    const requestedCommercialSupplier = requestedCommercialSupplierCode ? configuredSuppliers.find((item) => item.supplierCode === String(requestedCommercialSupplierCode).trim().toUpperCase()) : null;
     const requestedManufacturer = confirmation.manufacturerId ? configuredManufacturers.find((item) => item.manufacturerId === String(confirmation.manufacturerId).trim()) : null;
-    if (confirmation.supplierCode && !requestedDealer) throw Object.assign(new Error('Choose an active configured supplier / dealer.'), { code: 'supplier_not_configured' });
+    if (!requestedCommercialSupplierCode || !requestedCommercialSupplier) throw Object.assign(new Error('Commercial supplier/pricing required before Import to Project Costing.'), { code: 'commercial_supplier_required' });
+    if (!requestedCommercialSupplier.pricingPolicyAvailable) throw Object.assign(new Error('Commercial supplier/pricing required before Import to Project Costing.'), { code: 'commercial_supplier_pricing_required' });
     if (confirmation.manufacturerId && !requestedManufacturer) throw Object.assign(new Error('Choose an active canonical manufacturer.'), { code: 'canonical_manufacturer_required' });
     const selectedDocuments = [];
     for (const item of documents) {
@@ -487,31 +573,29 @@ export function createSupplierQuotesService(db, { attachmentRoot = resolveAttach
       const revision = attachment && await revisionRow(estimateId, quoteId, revisionId); const quote = attachment && await quoteRow(estimateId, quoteId);
       if (!attachment || !revision || !quote || attachment.role === 'derived_artifact' || !attachment.parser_eligible) throw Object.assign(new Error('A selected supplier document is unavailable or not eligible for extraction.'), { code: 'attachment_not_eligible' });
       const storedRevisionCurrency = revision.currency;
-      if (confirmation.metadata) { const metadata = confirmation.metadata; revision.supplier_quotation_number = String(metadata.quotationNumber || revision.supplier_quotation_number || '').trim(); revision.supplier_revision = String(metadata.revision || '').trim() || null; revision.full_quotation_reference = [revision.supplier_quotation_number, revision.supplier_revision].filter(Boolean).join('-') || revision.full_quotation_reference; revision.currency = String(metadata.currency || revision.currency).trim().toUpperCase(); }
+      if (confirmation.metadata) { const metadata = confirmation.metadata; revision.supplier_quotation_number = String(metadata.quotationNumber || revision.supplier_quotation_number || '').trim(); revision.supplier_revision = String(metadata.revision || '').trim() || null; revision.full_quotation_reference = [revision.supplier_quotation_number, revision.supplier_revision].filter(Boolean).join('-') || revision.full_quotation_reference; revision.currency = String(metadata.currency || revision.currency).trim().toUpperCase(); revision.quotation_date = String(metadata.quotationDate || revision.quotation_date || '').trim() || null; }
       const extracted = await extractDocument(resolveManagedPath(attachment.storage_key, attachmentRoot), { id: attachment.id, sha256: attachment.sha256, sessionId: estimateId, mediaType: attachment.media_type }, { visualRoot: path.join(attachmentRoot, 'manufacturer-position-visuals') });
       await failureInjector('extraction', { estimateId, quoteId, revisionId, attachmentId: attachment.id });
       if (!extracted.textAvailable) throw Object.assign(new Error('OCR required — unsupported for this document.'), { code: 'ocr_required' });
       const fields = parseFields(extracted, { currency: revision.currency });
       const previewResult = await derivePreviews({ filename: resolveManagedPath(attachment.storage_key, attachmentRoot), attachment, document: extracted, rows: fields.rows, visualRoot: path.join(attachmentRoot, 'manufacturer-position-visuals') });
       extracted.warnings.push(...previewResult.warnings);
-      const issuerIsAuthoritative = fields.supplierIdentity?.authority === 'explicit_document_issuer';
-      const dealerResolution = requestedDealer ? { status: 'resolved', supplier: requestedDealer, method: 'reviewed_supplier_dealer_selection' } : resolveCanonicalSupplier({ recognizedSupplierName: fields.supplier, storedSupplierCode: issuerIsAuthoritative ? null : quote.supplier_code, storedSupplierName: issuerIsAuthoritative ? null : quote.supplier_name, configuredSuppliers });
-      if (!dealerResolution.supplier) throw Object.assign(new Error(`Configured supplier / dealer required. Quotation issuer recognised: ${fields.supplier || quote.supplier_name || 'unknown'}. Configure or select the commercial source before confirmation.`), { code: 'canonical_supplier_required', supplierResolutionStatus: dealerResolution.status });
-      assertCommercialDealerIdentity({ sourceDealerName: fields.supplier, sourceAuthority: fields.supplierIdentity?.authority, configuredDealer: dealerResolution.supplier, quotationDealerName: quote.supplier_name, quotationDealerCode: quote.supplier_code });
-      const detectedManufacturer = recognizedManufacturer(fields, dealerResolution.supplier.supplierName);
+      const detectedManufacturer = recognizedManufacturer(fields, requestedCommercialSupplier.supplierName);
       if (requestedManufacturer && fields.manufacturer && normalizeManufacturerIdentity(requestedManufacturer.manufacturerName) !== normalizeManufacturerIdentity(detectedManufacturer)) throw Object.assign(new Error(`Selected canonical manufacturer ${requestedManufacturer.manufacturerName} conflicts with explicit source manufacturer ${detectedManufacturer}.`), { code: 'manufacturer_identity_mismatch' });
       const manufacturerResolution = requestedManufacturer
         ? { recognizedManufacturerName: detectedManufacturer, status: 'resolved', manufacturer: requestedManufacturer, method: 'reviewed_manufacturer_selection' }
-        : manufacturerResolutionForFields(fields, configuredManufacturers, dealerResolution.supplier);
+        : manufacturerResolutionForFields(fields, configuredManufacturers, requestedCommercialSupplier);
       if (!manufacturerResolution.manufacturer) throw Object.assign(new Error(`Canonical manufacturer required. Manufacturer recognised: ${detectedManufacturer || 'unknown'}. Configure or select one controlled manufacturer identity before confirmation.`), { code: 'canonical_manufacturer_required', manufacturerResolutionStatus: manufacturerResolution.status });
-      quote.supplier_code = dealerResolution.supplier.supplierCode; quote.supplier_name = dealerResolution.supplier.supplierName;
-      for (const row of fields.rows) enrichManufacturerDealerEvidence(row, fields, manufacturerResolution.manufacturer, dealerResolution.supplier);
+      quote.supplier_code = requestedCommercialSupplier.supplierCode; quote.supplier_name = requestedCommercialSupplier.supplierName;
+      const commercialSupplierProposal = commercialSupplierProposalForFields(fields, manufacturerResolution, configuredSuppliers);
+      for (const row of fields.rows) enrichManufacturerCommercialEvidence(row, fields, manufacturerResolution.manufacturer, requestedCommercialSupplier, commercialSupplierProposal);
       const extractedPositionCount=fields.rows.length;
       const allRows=fields.rows.map((row)=>structuredClone(row));
       if (Array.isArray(confirmation.selectedRowKeys)) fields.rows = fields.rows.filter(row => confirmation.selectedRowKeys.includes(`${attachment.id}:${row.ordinal}`));
       if (Array.isArray(confirmation.selectedRowKeys)) for (const row of fields.rows) { const visual=row.manufacturerEvidence?.sourceVisual; if (visual?.status==='available') { visual.customerReviewStatus='approved'; visual.reviewedAt=nowIso(); if(row.originalExtractedSnapshot?.manufacturerEvidence?.sourceVisual){row.originalExtractedSnapshot.manufacturerEvidence.sourceVisual.customerReviewStatus='approved';row.originalExtractedSnapshot.manufacturerEvidence.sourceVisual.reviewedAt=visual.reviewedAt;} } }
       const summaryResult = parseSummary(extracted, { currency: revision.currency, positionRows: fields.rows });
-      const effectiveDocumentKind = complementaryDocumentKinds.has(fields.documentType) ? fields.documentType : attachment.document_kind;
+      const reviewedDocumentKind = confirmation.metadata && allowedManufacturerDocumentKinds.has(String(confirmation.metadata.documentType || '')) ? String(confirmation.metadata.documentType) : null;
+      const effectiveDocumentKind = reviewedDocumentKind ?? (complementaryDocumentKinds.has(fields.documentType) ? fields.documentType : attachment.document_kind);
       selectedDocuments.push({ quoteId, revisionId, quote, revision, storedRevisionCurrency, attachment: { ...attachment, document_kind: effectiveDocumentKind }, extracted, fields, allRows, summaryResult, effectiveDocumentKind, extractedPositionCount });
     }
     const groups = new Map();
@@ -602,7 +686,7 @@ export function createSupplierQuotesService(db, { attachmentRoot = resolveAttach
           }
           await failureInjector('operation_journal', operationContext);
           await db.run('UPDATE supplier_quotes SET supplier_code=?,supplier_name=?,updated_at=? WHERE id=? AND estimate_id=?', quote.supplier_code, quote.supplier_name, completedAt, quote.id, estimateId);
-          await db.run('UPDATE supplier_quote_revisions SET supplier_quotation_number=?,supplier_revision=?,full_quotation_reference=?,currency=? WHERE id=? AND estimate_id=?', revision.supplier_quotation_number, revision.supplier_revision, revision.full_quotation_reference, revision.currency, revision.id, estimateId);
+          await db.run('UPDATE supplier_quote_revisions SET supplier_quotation_number=?,supplier_revision=?,full_quotation_reference=?,quotation_date=?,currency=? WHERE id=? AND estimate_id=?', revision.supplier_quotation_number, revision.supplier_revision, revision.full_quotation_reference, revision.quotation_date, revision.currency, revision.id, estimateId);
           const revisionIdentity=quotationRevisionKey(revision.supplier_quotation_number,revision.supplier_revision); if(revisionIdentity) await db.run(`UPDATE supplier_quote_revisions SET lifecycle_status=CASE WHEN EXISTS(SELECT 1 FROM supplier_quote_import_runs run WHERE run.revision_id=supplier_quote_revisions.id AND run.status IN ('completed','completed_with_warnings')) THEN 'parsed' ELSE 'uploaded' END,superseded_at=NULL,superseded_by_revision_id=NULL WHERE supplier_quote_id=? AND estimate_id=? AND UPPER(TRIM(supplier_quotation_number))=? AND UPPER(TRIM(COALESCE(supplier_revision,'')))=? AND lifecycle_status='superseded'`,quote.id,estimateId,normalizeReference(revision.supplier_quotation_number),normalizeReference(revision.supplier_revision));
           for (const item of selected) {
             const role = item.effectiveDocumentKind === 'window_schedule' ? 'original_quote' : complementaryDocumentKinds.has(item.effectiveDocumentKind) ? 'supporting_document' : item.attachment.role;
@@ -617,7 +701,7 @@ export function createSupplierQuotesService(db, { attachmentRoot = resolveAttach
           const selectedAttachmentIds=new Set(attachments.map(item=>item.id));const existingProductQueues=new Map();for(const existing of await db.all('SELECT c.*,p.review_status source_review_status FROM project_calculator_estimate_product_rows c LEFT JOIN supplier_quote_positions p ON p.id=c.source_position_id WHERE c.scenario_id=? AND c.source_revision_id=? ORDER BY c.rowid',scenarioId,revision.id)){if(!selectedAttachmentIds.has(existing.source_attachment_id))continue;const identity=[existing.source_attachment_id,normalizeReference(existing.display_reference),existing.width_mm,existing.height_mm,existing.quantity].join('|');if(!existingProductQueues.has(identity))existingProductQueues.set(identity,[]);existingProductQueues.get(identity).push(existing);}
           for (const [sourceSequence,{ row, key, attachment, sourceDocuments }] of [...products.values()].entries()) {
             const sourceId = stableRevisionEvidenceId('supplier-position', revision.id, key);
-            const snapshot = { ...row.originalExtractedSnapshot, supplierName: quote.supplier_name, supplierCode: quote.supplier_code, supplierDealer: row.manufacturerEvidence?.commercialSupplier ?? { supplierCode: quote.supplier_code, supplierName: quote.supplier_name }, canonicalManufacturer: row.manufacturerEvidence?.canonicalManufacturer ?? null, manufacturerSystemIdentity: row.manufacturerEvidence?.manufacturerSystemIdentity ?? null, supplierManufacturerRelationship: row.manufacturerEvidence?.supplierManufacturerRelationship ?? null, supplierQuoteId: quote.id, supplierQuotationNumber: revision.supplier_quotation_number, supplierRevisionId: revision.id, supplierRevision: revision.supplier_revision, attachmentId: attachment.id, attachmentFileName: attachment.original_file_name, documentKind: attachment.document_kind, sourceDocuments, extractionRunId: runId, currency: effectiveCurrency, originalSupplierAmount: row.totalPrice, reference: row.displayReference, category: 'product', sourceTrace: row.sourceTrace, warnings: row.warnings };
+            const snapshot = { ...row.originalExtractedSnapshot, supplierName: quote.supplier_name, supplierCode: quote.supplier_code, commercialSupplier: row.manufacturerEvidence?.commercialSupplier ?? { supplierCode: quote.supplier_code, supplierName: quote.supplier_name }, documentIssuer: row.manufacturerEvidence?.documentIssuer ?? null, supplierDealer: row.manufacturerEvidence?.documentIssuer ?? null, canonicalManufacturer: row.manufacturerEvidence?.canonicalManufacturer ?? null, manufacturerSystemIdentity: row.manufacturerEvidence?.manufacturerSystemIdentity ?? null, supplierManufacturerRelationship: row.manufacturerEvidence?.supplierManufacturerRelationship ?? null, supplierQuoteId: quote.id, supplierQuotationNumber: revision.supplier_quotation_number, supplierRevisionId: revision.id, supplierRevision: revision.supplier_revision, attachmentId: attachment.id, attachmentFileName: attachment.original_file_name, documentKind: attachment.document_kind, sourceDocuments, extractionRunId: runId, currency: effectiveCurrency, originalSupplierAmount: row.totalPrice, reference: row.displayReference, category: 'product', sourceTrace: row.sourceTrace, warnings: row.warnings };
             const manufacturer=row.manufacturerEvidence||{};const specificationItems=[...(manufacturer.customerSafeSpecification||[]),...([['product',manufacturer.product],['system',manufacturer.productSystem],['glass',manufacturer.glassSpecification],['fittings',manufacturer.fittingsSpecification],['Ug',manufacturer.manufacturerQuotedUg],['Uw',manufacturer.manufacturerQuotedUw]].filter(([,value])=>value!=null).map(([label,value])=>({label,value})))];const specificationText=[...new Map(specificationItems.map(item=>[`${item.label}:${item.value}`,item])).values()].map(item=>`${item.label}: ${item.value}`).join('\n');
             await db.run(`INSERT INTO supplier_quote_positions(id,estimate_id,revision_id,source_sequence,classification,included_in_supplier_total,alternative_to_reference,classification_evidence,display_reference,supplier_reference_tokens_json,quantity,product,product_system,original_specification_text,width_mm,height_mm,supplier_area_square_metres,unit_purchase_price_amount,total_purchase_price_amount,currency,source_pages_json,trace_json,review_status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET source_sequence=excluded.source_sequence,classification=CASE WHEN supplier_quote_positions.review_status='reviewed' THEN supplier_quote_positions.classification ELSE excluded.classification END,included_in_supplier_total=CASE WHEN supplier_quote_positions.review_status='reviewed' THEN supplier_quote_positions.included_in_supplier_total ELSE excluded.included_in_supplier_total END,alternative_to_reference=CASE WHEN supplier_quote_positions.review_status='reviewed' THEN supplier_quote_positions.alternative_to_reference ELSE excluded.alternative_to_reference END,classification_evidence=excluded.classification_evidence,display_reference=excluded.display_reference,supplier_reference_tokens_json=excluded.supplier_reference_tokens_json,quantity=excluded.quantity,product=excluded.product,product_system=excluded.product_system,original_specification_text=excluded.original_specification_text,width_mm=excluded.width_mm,height_mm=excluded.height_mm,supplier_area_square_metres=excluded.supplier_area_square_metres,unit_purchase_price_amount=excluded.unit_purchase_price_amount,total_purchase_price_amount=excluded.total_purchase_price_amount,currency=excluded.currency,source_pages_json=excluded.source_pages_json,trace_json=excluded.trace_json,updated_at=excluded.updated_at`, sourceId, estimateId, revision.id, sourceSequence, row.classification||'standard', row.includedInSupplierTotal===false?0:1, row.alternativeTo||null, row.classificationEvidence||null, row.displayReference, JSON.stringify(row.supplierReferenceTokens), row.quantity, manufacturer.product??row.product??null, manufacturer.productSystem??row.productSystem??null, specificationText, row.widthMm, row.heightMm, manufacturer.areaSquareMetres??null, row.unitPrice, row.totalPrice, row.currency, JSON.stringify(row.sourcePages), JSON.stringify(row.sourceTrace), row.status === 'needs_review' ? 'needs_review' : 'unreviewed', completedAt, completedAt);
             const identity=[attachment.id,normalizeReference(row.displayReference),row.widthMm,row.heightMm,row.quantity].join('|');let existingCostingRow=existingProductQueues.get(identity)?.shift();const productClass=manufacturer.productSystem??manufacturer.product??row.productSystem??row.product??'Needs review';
@@ -641,7 +725,7 @@ export function createSupplierQuotesService(db, { attachmentRoot = resolveAttach
             loadedCosts += inserted.changes;
           }
           await db.run(`UPDATE supplier_quote_revisions SET currency=?,product_subtotal_amount=COALESCE(?,product_subtotal_amount),extras_total_amount=COALESCE(?,extras_total_amount),delivery_total_amount=COALESCE(?,delivery_total_amount),vat_total_amount=COALESCE(?,vat_total_amount),final_supplier_total_amount=COALESCE(?,final_supplier_total_amount),comparison_totals_json=?,lifecycle_status=CASE WHEN lifecycle_status='superseded' THEN 'superseded' ELSE 'parsed' END WHERE id=? AND estimate_id=?`, effectiveCurrency, summary.productSubtotal, summary.additionalItemsSubtotal, summary.deliveryTotal, summary.vatTotal, summary.finalSupplierTotal,JSON.stringify(summary.comparisonTotals||[]), revision.id, estimateId);
-          const supplierDefault=await db.get('SELECT policy_json FROM supplier_commercial_defaults WHERE supplier_code=?',quote.supplier_code);const evidencePackages=(summary.comparisonTotals||[]).filter(item=>item.classification==='package_option').map((item,index)=>({id:`evidence-${index}`,label:item.label,description:item.label,enabled:true,isBase:index===0,packageType:index===0?'supply_only':'service',upliftCategory:index===0?null:'installation',amount:item.amount,displayOrder:index,selected:item.selected}));const documentPackageId=evidencePackages.find(item=>item.selected)?.id??null,defaults=supplierDefault?JSON.parse(supplierDefault.policy_json):{},sourceProductCommercialEvidence=sourceCommercialClassification.productEvidence,sourceProductListAmount=productSupplyReconciliation?.expectedSubtotal??sourceProductCommercialEvidence?.grossListAmount??summary.finalSupplierTotal;const commercialPolicy={...defaults,quotedCurrency:effectiveCurrency,quotedAmount:sourceProductListAmount,manufacturerListAmount:sourceProductListAmount,paidInQuotedCurrency:supplierDefault?defaults.paidInQuotedCurrency!==false:true,settlementCurrency:supplierDefault&&defaults.paidInQuotedCurrency===false?defaults.settlementCurrency||effectiveCurrency:effectiveCurrency,pricingBasis:supplierDefault?defaults.pricingBasis||'factory_price':'factory_price',pricingMethod:supplierDefault?defaults.pricingMethod||defaults.pricingBasis||'factory_price':'factory_price',pricingPolicyVersion:supplierDefault?defaults.pricingPolicyVersion??2:2,packages:evidencePackages.length?evidencePackages:(supplierDefault?defaults.packages||[]:[]),packagePricingAvailable:evidencePackages.length>0||Boolean(supplierDefault&&defaults.packagePricingAvailable),supplierDocumentPackageId:documentPackageId,selectedPackageId:documentPackageId??evidencePackages.find(item=>item.isBase)?.id??null,projectDiscount:sourceProductCommercialEvidence?{mode:'percentage',percentage:'0',amount:'0'}:defaults.projectDiscount,sourceAdjustmentMode:'user_decision_required',sourceQuotedPriceBasis:sourceProductCommercialEvidence?'gross_list':'source_document',sourceDiscountDecision:{status:'not_applied'},sourceProductCommercialEvidence,sourceCommercialClassification};
+          const supplierDefault=await db.get('SELECT policy_json FROM supplier_commercial_defaults WHERE supplier_code=?',quote.supplier_code);const evidencePackages=buildQuotationPackageEvidence(summary.comparisonTotals||[]);const documentPackageId=evidencePackages.find(item=>item.selected)?.id??null,defaults=supplierDefault?JSON.parse(supplierDefault.policy_json):{},sourceProductCommercialEvidence=sourceCommercialClassification.productEvidence,sourceProductListAmount=productSupplyReconciliation?.expectedSubtotal??sourceProductCommercialEvidence?.grossListAmount??summary.finalSupplierTotal;const commercialPolicy={...defaults,quotedCurrency:effectiveCurrency,quotedAmount:sourceProductListAmount,manufacturerListAmount:sourceProductListAmount,paidInQuotedCurrency:supplierDefault?defaults.paidInQuotedCurrency!==false:true,settlementCurrency:supplierDefault&&defaults.paidInQuotedCurrency===false?defaults.settlementCurrency||effectiveCurrency:effectiveCurrency,pricingBasis:supplierDefault?defaults.pricingBasis||'factory_price':'factory_price',pricingMethod:supplierDefault?defaults.pricingMethod||defaults.pricingBasis||'factory_price':'factory_price',pricingPolicyVersion:supplierDefault?defaults.pricingPolicyVersion??2:2,packages:evidencePackages,packagePricingAvailable:evidencePackages.length>0,supplierDocumentPackageId:documentPackageId,selectedPackageId:documentPackageId??evidencePackages.find(item=>item.isBase)?.id??null,projectDiscount:sourceProductCommercialEvidence?{mode:'percentage',percentage:'0',amount:'0'}:defaults.projectDiscount,sourceAdjustmentMode:'user_decision_required',sourceQuotedPriceBasis:sourceProductCommercialEvidence?'gross_list':'source_document',sourceDiscountDecision:{status:'not_applied'},sourceProductCommercialEvidence,sourceCommercialClassification};
           await db.run(`INSERT INTO project_calculator_supplier_quote_revisions(scenario_id,supplier_quote_id,revision_id,import_run_id,commercial_policy_json,currency,linked_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(scenario_id,revision_id) DO UPDATE SET import_run_id=excluded.import_run_id,currency=excluded.currency,linked_at=excluded.linked_at,commercial_policy_json=COALESCE(project_calculator_supplier_quote_revisions.commercial_policy_json,excluded.commercial_policy_json)`, scenarioId, quote.id, revision.id, runId,JSON.stringify(commercialPolicy), effectiveCurrency, completedAt);
           await failureInjector('package_adjustments', {...operationContext,sourceProductCommercialEvidence});
           const supersededOwnRevisions=await db.all(`SELECT linked.revision_id FROM project_calculator_supplier_quote_revisions linked JOIN supplier_quote_revisions prior ON prior.id=linked.revision_id WHERE linked.scenario_id=? AND linked.supplier_quote_id=? AND linked.revision_id<>? AND (prior.superseded_by_revision_id=? OR prior.lifecycle_status='superseded')`,scenarioId,quote.id,revision.id,revision.id);

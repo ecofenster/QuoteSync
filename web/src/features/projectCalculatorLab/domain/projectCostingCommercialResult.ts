@@ -105,6 +105,8 @@ export function deriveProjectCostingCommercialResult(
   const selectedSupplierInstallation = supplierInstallationSelectionConflict ? [] : supplierInstallationCandidates;
   const selectedSupplierSurvey = supplierSurveyEvidence.filter((row) => row.includedInCurrentEstimate === true);
   const includedFees = fees.filter((row) => includedCosts.includes(row));
+  const importCustomsEntries = scenario.importCustoms ? [scenario.importCustoms] : [];
+  const activeImportCustomsEntries = importCustomsEntries.filter((entry) => entry.included && entry.status === "configured");
   const includedExtras = extras.filter((row) => includedCosts.includes(row));
   const selected = scenario.packageItems.filter((row) => row.included);
   const equipment = selected.filter((row) => /crane|lifter|robot|telehandler|skip/i.test(row.label));
@@ -147,14 +149,18 @@ export function deriveProjectCostingCommercialResult(
   const installationGbp = selectedSupplierInstallation.length ? gbp(selectedSupplierInstallation) : internalInstallationGbp;
   const internalSurveyGbp = addDecimalAmounts([gbp(includedInternalSurvey), calculatedSurveyCost]);
   const surveyGbp = selectedSupplierSurvey.length ? gbp(selectedSupplierSurvey) : internalSurveyGbp;
-  const feeGbp = addDecimalAmounts([gbp(includedFees), ...dutyPackageUplifts.map((item) => item.purchaseAmountGbp)]);
+  const legacyFeeGbp = scenario.importCustoms ? "0.00" : addDecimalAmounts([gbp(includedFees), ...dutyPackageUplifts.map((item) => item.purchaseAmountGbp)]);
+  const importCustomsGbp = addDecimalAmounts(activeImportCustomsEntries.map((entry) => entry.purchaseCost));
+  const feeGbp = addDecimalAmounts([legacyFeeGbp, importCustomsGbp]);
   const extrasCommercialGbp = addDecimalAmounts([commercialGbp(includedExtras), ...extraPackageUplifts.map((item) => item.sellingAmountGbp)]);
   const transportCommercialGbp = addDecimalAmounts([transportModel.transportCommercialGbp, ...transportPackageUplifts.map((item) => item.sellingAmountGbp)]);
   const internalInstallationCommercialGbp = addDecimalAmounts([commercialGbp(includedInternalInstallation), ...installationPackageUplifts.map((item) => item.sellingAmountGbp), calculatedInstallationWithoutSurvey]);
   const installationCommercialGbp = selectedSupplierInstallation.length ? commercialGbp(selectedSupplierInstallation) : internalInstallationCommercialGbp;
   const internalSurveyCommercialGbp = addDecimalAmounts([commercialGbp(includedInternalSurvey), calculatedSurveyCost]);
   const surveyCommercialGbp = selectedSupplierSurvey.length ? commercialGbp(selectedSupplierSurvey) : internalSurveyCommercialGbp;
-  const feeCommercialGbp = addDecimalAmounts([commercialGbp(includedFees), ...dutyPackageUplifts.map((item) => item.sellingAmountGbp)]);
+  const legacyFeeCommercialGbp = scenario.importCustoms ? "0.00" : addDecimalAmounts([commercialGbp(includedFees), ...dutyPackageUplifts.map((item) => item.sellingAmountGbp)]);
+  const importCustomsCommercialGbp = addDecimalAmounts(activeImportCustomsEntries.map((entry) => entry.purchaseCost));
+  const feeCommercialGbp = addDecimalAmounts([legacyFeeCommercialGbp, importCustomsCommercialGbp]);
   const equipmentCost = addDecimalAmounts([...equipment.map((row) => row.unitCost), ...equipmentPackageUplifts.map((item) => item.purchaseAmountGbp)]);
   const automaticMaterialsEnabled = (scenario.options?.installationMaterials as { enabled?: unknown } | undefined)?.enabled !== false;
   const materialsCost = addDecimalAmounts([...materials.map((row) => row.unitCost), ...materialsPackageUplifts.map((item) => item.purchaseAmountGbp), scenario.me508Calculation?.totalCost, automaticMaterialsEnabled ? scenario.installationMaterials?.purchaseCost : null]);
@@ -196,11 +202,11 @@ export function deriveProjectCostingCommercialResult(
   return {
     markups, customerPricing, transportOptions, transportModel, transportAllocation, transportAllocationByProduct,
     includedProducts, alternativeProducts, costs, includedCosts, productSupplyCosts, includedProductSupplyCosts, transport, installation, survey, supplierInstallationEvidence, supplierSurveyEvidence, fees, extras,
-    includedInstallation, includedSurvey, includedInternalInstallation, includedInternalSurvey, supplierInstallationCandidates, supplierInstallationSelectionConflict, selectedSupplierInstallation, selectedSupplierSurvey, includedFees, includedExtras, equipment, materials, unpricedTotals, packageUplifts,
+    includedInstallation, includedSurvey, includedInternalInstallation, includedInternalSurvey, supplierInstallationCandidates, supplierInstallationSelectionConflict, selectedSupplierInstallation, selectedSupplierSurvey, includedFees, importCustomsEntries, activeImportCustomsEntries, includedExtras, equipment, materials, unpricedTotals, packageUplifts,
     installationPackageUplifts, extraPackageUplifts, transportPackageUplifts, equipmentPackageUplifts, materialsPackageUplifts,
     dutyPackageUplifts, quotedProductAdjustments, applicableProductAdjustments, adjustedProductRevisionIds, productAdjustmentWarnings,
-    grossBaseProductGbp, supplierProductDiscountGbp, baseProductGbp, extrasGbp, transportAllocated, transportGbp, productGbp, internalInstallationGbp, installationGbp, internalSurveyGbp, surveyGbp, feeGbp,
-    extrasCommercialGbp, transportCommercialGbp, internalInstallationCommercialGbp, installationCommercialGbp, internalSurveyCommercialGbp, surveyCommercialGbp, feeCommercialGbp, equipmentCost, materialsCost,
+    grossBaseProductGbp, supplierProductDiscountGbp, baseProductGbp, extrasGbp, transportAllocated, transportGbp, productGbp, internalInstallationGbp, installationGbp, internalSurveyGbp, surveyGbp, legacyFeeGbp, importCustomsGbp, feeGbp,
+    extrasCommercialGbp, transportCommercialGbp, internalInstallationCommercialGbp, installationCommercialGbp, internalSurveyCommercialGbp, surveyCommercialGbp, legacyFeeCommercialGbp, importCustomsCommercialGbp, feeCommercialGbp, equipmentCost, materialsCost,
     productPricing, alternativeProductPricing, unadjustedProductSale, unadjustedProductSupplySale, adjustedProductSale, baseProductSale, extrasSale, transportSale, supplierTransportSale, storageTransportSale, hiabTransportSale,
     equipmentSale, installationSale, surveySale, materialsSale, feeSale, siteVisitCost, siteVisitAllocatedToProducts, siteVisitSale,
     productSale, customerDiscountAmount, customerDiscountPercentage, discountedProductSale, projectCost, calculatedSale,

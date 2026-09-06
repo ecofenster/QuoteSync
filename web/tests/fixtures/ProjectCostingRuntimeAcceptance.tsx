@@ -43,7 +43,7 @@ function App() {
     </nav>
     {view === "costing" ? <section data-estimate-ref={state.estimateRef}>
       <ProjectCostingFeatureBoundary resetKey={`${state.scenario.id}:${state.scenario.revisionNumber}`}>
-        <ScenarioCostingWorksheet scenario={state.scenario} onNew={async()=>{}} onSaveMarkups={async()=>{}} onUpdateProduct={async()=>{}} onUpdateSupplierCost={async()=>{}} onUpdateManualCost={async()=>{}} onCreateRevision={async()=>{}} onRefreshRate={async()=>{}} />
+        <ScenarioCostingWorksheet scenario={state.scenario} onSaveMarkups={async()=>{}} onUpdateProduct={async()=>{}} onUpdateSupplierCost={async()=>{}} onUpdateManualCost={async()=>{}} onRefreshRate={async()=>{}} />
       </ProjectCostingFeatureBoundary>
     </section> : <CalculatorAdminCatalogue />}
   </main>;

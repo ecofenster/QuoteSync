@@ -33,7 +33,7 @@ test('Aspect selects a bounded dealer-specific Internorm schedule adapter and me
   assert.equal(parsed.supplierIdentity.sourceLegalName, 'Aspect Aluminium');
   assert.equal(parsed.manufacturerIdentity.role, 'product_manufacturer');
   assert.equal(parsed.supplierManufacturerRelationship.relationship, 'dealer_supplies_manufacturer_products');
-  assert.equal(parsed.supplierManufacturerRelationship.pricingScope, 'supplier_dealer_quotation');
+  assert.equal(parsed.supplierManufacturerRelationship.pricingScope, 'commercial_supplier_quotation');
   assert.equal(parsed.quotation.supplierQuotationNumber, '6366');
   assert.equal(parsed.quotation.referenceAuthority, 'pdf_title_metadata');
   assert.deepEqual(parsed.quotation.sourceDocumentMetadata, { reference: '6366', authority: 'pdf_title_metadata', field: 'Title', value: 'Microsoft Word - 6366 - Internorm Quote Letter' });
@@ -121,22 +121,22 @@ test('Aspect and EcoHaus reuse one Internorm manufacturer/system while dealer qu
   const aspect = createSupplierManufacturerRelationship({ manufacturer: internorm, supplier: { supplierCode: 'ASPECT', supplierName: 'Aspect Aluminium' }, sourceLegalName: 'Aspect Aluminium' });
   assert.equal(ecoHaus.manufacturerId, aspect.manufacturerId);
   assert.notEqual(ecoHaus.supplierCode, aspect.supplierCode);
-  assert.equal(aspect.pricingScope, 'supplier_dealer_quotation');
+  assert.equal(aspect.pricingScope, 'commercial_supplier_quotation');
   assert.equal(aspect.relationship, 'dealer_supplies_manufacturer_products');
 });
 
 test('Review UI distinguishes manufacturer, dealer and commercial confirmation without disabling technical selection', async () => {
   const source = await fs.readFile(new URL('../src/features/estimateCommercial/EstimateSupplierCostImportControl.tsx', import.meta.url), 'utf8');
-  assert.match(source, /<strong>Manufacturer:<\/strong>/);
-  assert.match(source, /<strong>Source supplier \/ dealer:<\/strong>/);
+  assert.match(source, /<strong>Manufacturer \/ fabricator:<\/strong>/);
+  assert.match(source, /<strong>Document issuer \/ branded dealer:<\/strong>/);
   assert.match(source, /<strong>Canonical manufacturer:<\/strong>/);
-  assert.match(source, /<strong>Configured supplier \/ dealer:<\/strong>/);
+  assert.match(source, /<strong>Commercial Supplier:<\/strong>/);
   assert.match(source, /<strong>Quotation \/ reference:<\/strong>/);
   assert.match(source, /<strong>Currency:<\/strong>/);
-  assert.match(source, /Select configured supplier \/ dealer/);
+  assert.match(source, /Commercial supplier\/pricing required/);
   assert.match(source, /disabled=\{busy\|\|!row\.include\}/);
   assert.match(source, /Commercial price review required/);
-  assert.match(source, /no positions have complete commercial evidence/);
+  assert.match(source, /Selected positions require commercial evidence review/);
 });
 
 test('read-only review shows Aspect dealer unresolved, canonical Internorm resolved and 35 parsed / zero ready', async (t) => {

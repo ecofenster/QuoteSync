@@ -1,6 +1,7 @@
 import React from "react";
 import QuoteSyncLogo from "../components/QuoteSyncLogo";
 import ThemeSelector from "../components/ThemeSelector";
+import VisualThemeLabSelector from "../components/VisualThemeLabSelector";
 import TextSizeSelector from "../components/TextSizeSelector";
 import { RuntimeHealthProvider } from "../features/runtimeHealth/RuntimeHealthContext";
 import { RuntimeHealthBadge, RuntimeHealthNotice } from "../features/runtimeHealth/RuntimeHealthStatus";
@@ -71,6 +72,7 @@ function AppShellFrame(props: Props) {
             </nav>
 
             <RuntimeHealthBadge />
+            <VisualThemeLabSelector />
             <ThemeSelector className="app-shell__theme-selector" />
             <TextSizeSelector />
           </div>

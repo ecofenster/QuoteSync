@@ -6,7 +6,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import sqlite3 from "sqlite3";
 import { open } from "sqlite";
 import { initializeWorkflowSchema } from "../server/features/workflow/workflowSchema.js";
-import { createGoogleWorkspaceService } from "../server/features/integrations/googleWorkspaceService.js";
+import { createGoogleWorkspaceService, GOOGLE_WORKSPACE_SCOPES } from "../server/features/integrations/googleWorkspaceService.js";
 import { createIssuedQuotationService } from "../server/features/customerQuotations/issuedQuotationService.js";
 
 const encryptionKey=Buffer.alloc(32,7);
@@ -31,7 +31,7 @@ async function fixture(t,{gmailFailure=false}={}){
   const accessFixture=Buffer.alloc(24,41).toString("base64url"),refreshFixture=Buffer.alloc(24,42).toString("base64url"),secretFixture=Buffer.alloc(24,43).toString("base64url");
   const fetchImpl=async(url)=>{
     const value=String(url);
-    if(value==="https://oauth2.googleapis.com/token")return jsonResponse({access_token:accessFixture,refresh_token:refreshFixture,token_type:"Bearer",expires_in:3600,scope:"openid email profile https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/drive"});
+    if(value==="https://oauth2.googleapis.com/token")return jsonResponse({access_token:accessFixture,refresh_token:refreshFixture,token_type:"Bearer",expires_in:3600,scope:GOOGLE_WORKSPACE_SCOPES.join(" ")});
     if(value==="https://openidconnect.googleapis.com/v1/userinfo")return jsonResponse({sub:"google-account-1",email:"quotes@example.com",name:"QuoteSuite"});
     if(value.endsWith("/messages/send")){gmailSendCount+=1;return gmailFailure?jsonResponse({error:{message:"Provider rejected message"}},{ok:false,status:503}):jsonResponse({id:"gmail-message-1",threadId:"gmail-thread-1"})}
     throw new Error(`Unexpected Google request: ${value}`);

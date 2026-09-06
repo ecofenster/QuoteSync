@@ -136,6 +136,20 @@ export async function initializeCommercialIdentitySchema(db) {
       FOREIGN KEY(estimate_id) REFERENCES estimates(id) ON DELETE SET NULL,
       FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE SET NULL
     );
+    CREATE TABLE IF NOT EXISTS canonical_document_sync_states (
+      provider TEXT NOT NULL,
+      provider_account_id TEXT NOT NULL,
+      scope_kind TEXT NOT NULL CHECK(scope_kind IN ('enquiry','client','project','estimate')),
+      scope_id TEXT NOT NULL,
+      strategy TEXT NOT NULL DEFAULT 'full_enumeration',
+      status TEXT NOT NULL,
+      last_attempt_at TEXT NOT NULL,
+      last_success_at TEXT,
+      error_message TEXT,
+      details_json TEXT NOT NULL DEFAULT '{}',
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY(provider, provider_account_id, scope_kind, scope_id)
+    );
     CREATE TABLE IF NOT EXISTS protected_client_identities (
       client_id TEXT PRIMARY KEY,
       protection_reason TEXT NOT NULL,
@@ -198,6 +212,7 @@ export async function initializeCommercialIdentitySchema(db) {
     CREATE INDEX IF NOT EXISTS idx_canonical_documents_client ON canonical_documents(client_id, provider_modified_at DESC);
     CREATE INDEX IF NOT EXISTS idx_canonical_documents_project ON canonical_documents(project_id, provider_modified_at DESC);
     CREATE INDEX IF NOT EXISTS idx_canonical_documents_estimate ON canonical_documents(estimate_id, provider_modified_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_canonical_document_sync_scope ON canonical_document_sync_states(scope_kind, scope_id, updated_at DESC);
     CREATE INDEX IF NOT EXISTS idx_clients_live_canonical_ref_lookup
       ON clients(UPPER(TRIM(client_ref)))
       WHERE deleted_at IS NULL AND reference_namespace='live' AND client_ref GLOB 'EF-CL-[0-9][0-9][0-9]';

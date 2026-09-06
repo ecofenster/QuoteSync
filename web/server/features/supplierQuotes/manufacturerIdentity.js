@@ -46,8 +46,12 @@ export function createSupplierManufacturerRelationship({ manufacturer, supplier,
     manufacturerName: manufacturer.manufacturerName,
     supplierCode: supplier.supplierCode,
     supplierName: supplier.supplierName,
+    commercialSupplierCode: supplier.supplierCode,
+    commercialSupplierName: supplier.supplierName,
+    documentIssuerName: sourceSupplierName,
+    documentIssuerLegalName: sourceLegalName,
     supplierSourceName: sourceSupplierName ?? supplier.supplierName,
     supplierSourceLegalName: sourceLegalName ?? sourceSupplierName ?? supplier.supplierName,
-    pricingScope: 'supplier_dealer_quotation',
+    pricingScope: 'commercial_supplier_quotation',
   };
 }

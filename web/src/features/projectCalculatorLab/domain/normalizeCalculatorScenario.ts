@@ -1,4 +1,4 @@
-import type { CalculatorScenario, InstallationMaterialsResult } from "./projectCalculatorLab.types";
+import type { CalculatorScenario, InstallationMaterialsResult, SupplierFxSnapshot } from "./projectCalculatorLab.types";
 import { resolveManufacturerVisualAssetUrl } from "../../manufacturerVisuals/manufacturerVisualAssetUrl";
 import { normalizeSupplierCostsForProjectCosting } from "./supplierCostClassification";
 
@@ -18,6 +18,19 @@ function normalizeProductVisual<T extends CalculatorScenario["products"][number]
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+function normalizeSupplierFxSnapshot(value: SupplierFxSnapshot): SupplierFxSnapshot {
+  const liveMarketRate = value.liveMarketRate ?? value.supplierToGbpLiveRate;
+  const protectiveAdjustedRate = value.protectiveAdjustedRate ?? value.supplierToGbpSellingRate;
+  const costingRateBasis = value.costingRateBasis === "estimate_fixed" ? "estimate_fixed" : "legacy_live_market";
+  return {
+    ...value,
+    liveMarketRate,
+    protectiveAdjustedRate,
+    costingRateBasis,
+    estimateFixedRate: value.estimateFixedRate ?? (costingRateBasis === "estimate_fixed" ? protectiveAdjustedRate : liveMarketRate),
+  };
+}
 
 const neutralPurchasingRow = () => ({
   requiredQuantity: null,
@@ -86,7 +99,13 @@ function normalizeInstallationMaterials(value: unknown): InstallationMaterialsRe
 }
 
 export function normalizeCalculatorScenario(value: CalculatorScenario): CalculatorScenario {
-  return {
+  const valueWithHistory = value as CalculatorScenario & { exchangeRateHistory?: SupplierFxSnapshot[] };
+  const rawImportCustoms: unknown = value.importCustoms;
+  const importCustomsValue = isRecord(rawImportCustoms) && Array.isArray(rawImportCustoms.entries)
+    ? rawImportCustoms.entries.find(isRecord) ?? null
+    : rawImportCustoms;
+  const exchangeRates = Array.isArray(value.exchangeRates) ? value.exchangeRates.map(normalizeSupplierFxSnapshot) : [];
+  const normalized = {
     ...value,
     products: Array.isArray(value.products) ? value.products.map(normalizeProductVisual) : [],
     supplierCosts: normalizeSupplierCostsForProjectCosting(value.supplierCosts),
@@ -94,8 +113,12 @@ export function normalizeCalculatorScenario(value: CalculatorScenario): Calculat
     supplierCommercialClassifications: Array.isArray(value.supplierCommercialClassifications) ? value.supplierCommercialClassifications : [],
     packageItems: Array.isArray(value.packageItems) ? value.packageItems : [],
     routeSnapshots: Array.isArray(value.routeSnapshots) ? value.routeSnapshots : [],
-    exchangeRates: Array.isArray(value.exchangeRates) ? value.exchangeRates : [],
+    exchangeRates,
+    exchangeRateHistory: Array.isArray(valueWithHistory.exchangeRateHistory) ? valueWithHistory.exchangeRateHistory.map(normalizeSupplierFxSnapshot) : exchangeRates,
     revisions: Array.isArray(value.revisions) ? value.revisions : [],
+    importCustoms: isRecord(importCustomsValue)
+      ? { ...importCustomsValue, id: "global-import-customs" } as NonNullable<CalculatorScenario["importCustoms"]>
+      : null,
     installationMaterials: normalizeInstallationMaterials(value.installationMaterials),
     supplierSummary: value.supplierSummary ? {
       ...value.supplierSummary,
@@ -104,5 +127,6 @@ export function normalizeCalculatorScenario(value: CalculatorScenario): Calculat
       finalSupplierTotalGbp: value.supplierSummary.finalSupplierTotalGbp ?? null,
       quotations: Array.isArray(value.supplierSummary.quotations) ? value.supplierSummary.quotations : [],
     } : null,
-  };
+  } as CalculatorScenario & { exchangeRateHistory: SupplierFxSnapshot[] };
+  return normalized;
 }

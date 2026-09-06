@@ -46,7 +46,7 @@ export function RuntimeHealthNotice() {
         <span>{copy.message}</span>
         {development && state.phase === "api_offline" && (
           <span className="runtime-health__startup-help">
-            Start either from <code>web\server: node index.js</code> or from <code>web: npm run api</code>.
+            Normal start: <code>web: npm run dev:quotesuite</code>. The watched API reconnects here automatically after server changes.
           </span>
         )}
       </div>

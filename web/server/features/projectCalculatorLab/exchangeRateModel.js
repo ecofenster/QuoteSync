@@ -19,16 +19,40 @@ export function multiplyDecimal(amount, rate, outputScale = 2) {
   return `${rounded / 100n}.${String(rounded % 100n).padStart(2, '0')}`;
 }
 
-export function createProjectCostingFx({ supplierToGbpLiveRate, supplierToGbpSellingRate, adjustmentEnabled = true }) {
-  const liveRate = String(supplierToGbpLiveRate);
+export const ESTIMATE_FX_BASIS = Object.freeze({
+  FIXED: 'estimate_fixed',
+  LEGACY_LIVE: 'legacy_live_market',
+});
+
+export function createProjectCostingFx({
+  liveMarketRate,
+  estimateFixedRate,
+  costingRateBasis = ESTIMATE_FX_BASIS.FIXED,
+  supplierToGbpLiveRate,
+  supplierToGbpSellingRate,
+  adjustmentEnabled = true,
+}) {
+  const liveRate = String(liveMarketRate ?? supplierToGbpLiveRate);
   const calculated = calculateAdjustedRate(liveRate);
-  const sellingRate = adjustmentEnabled ? String(supplierToGbpSellingRate ?? calculated.adjustedRate) : liveRate;
-  calculateAdjustedRate(sellingRate);
+  const protectiveRate = adjustmentEnabled
+    ? String(estimateFixedRate ?? supplierToGbpSellingRate ?? calculated.adjustedRate)
+    : liveRate;
+  calculateAdjustedRate(protectiveRate);
+  const basis = costingRateBasis === ESTIMATE_FX_BASIS.LEGACY_LIVE
+    ? ESTIMATE_FX_BASIS.LEGACY_LIVE
+    : ESTIMATE_FX_BASIS.FIXED;
+  const costingRate = basis === ESTIMATE_FX_BASIS.LEGACY_LIVE ? liveRate : protectiveRate;
   return {
+    liveMarketRate: liveRate,
+    estimateFixedRate: costingRate,
+    protectiveAdjustedRate: protectiveRate,
+    costingRateBasis: basis,
+    // Persisted/API aliases remain until a separately governed schema migration.
     supplierToGbpLiveRate: liveRate,
-    supplierToGbpSellingRate: sellingRate,
+    supplierToGbpSellingRate: protectiveRate,
     roundedUpRate: calculated.roundedUpRate,
     upliftAmount: calculated.upliftAmount,
+    calculatedEstimateFixedRate: calculated.adjustedRate,
     calculatedSellingRate: calculated.adjustedRate,
     adjustmentEnabled: Boolean(adjustmentEnabled),
   };
@@ -36,8 +60,8 @@ export function createProjectCostingFx({ supplierToGbpLiveRate, supplierToGbpSel
 
 export function convertSupplierAmountToGbp(amount, fx) {
   return {
-    purchaseGbpAmount: multiplyDecimal(amount, fx.supplierToGbpLiveRate),
-    sellingGbpAmount: multiplyDecimal(amount, fx.supplierToGbpSellingRate),
+    purchaseGbpAmount: multiplyDecimal(amount, fx.estimateFixedRate ?? fx.supplierToGbpLiveRate),
+    sellingGbpAmount: multiplyDecimal(amount, fx.protectiveAdjustedRate ?? fx.supplierToGbpSellingRate),
   };
 }
 

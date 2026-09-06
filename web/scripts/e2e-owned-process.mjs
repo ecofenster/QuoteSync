@@ -43,7 +43,7 @@ function runCommand(command, args, spawnImpl = spawn) {
   return new Promise((resolve) => {
     const process = spawnImpl(command, args, { stdio: "ignore", shell: false });
     process.once("error", () => resolve(false));
-    process.once("exit", () => resolve(true));
+    process.once("exit", (code) => resolve(code === 0));
   });
 }
 
@@ -82,6 +82,8 @@ function parseWin32ChromeProcesses(output) {
       .filter((entry) => entry && Number(entry.ProcessId) > 0)
       .map((entry) => ({
         pid: Number(entry.ProcessId),
+        parentPid: Number(entry.ParentProcessId) || 0,
+        creationDate: entry.CreationDate ?? null,
         commandLine: entry.CommandLine ?? "",
       }));
   } catch {
@@ -95,9 +97,14 @@ function parsePosixChromeProcesses(output) {
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
-      const match = line.match(/^(\d+)\s+(.*)$/);
+      const match = line.match(/^(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/);
       if (!match) return null;
-      return { pid: Number(match[1]), commandLine: match[2] || "" };
+      return {
+        pid: Number(match[1]),
+        parentPid: Number(match[2]),
+        creationDate: new Date(Date.now() - Number(match[3]) * 1000).toISOString(),
+        commandLine: match[4] || "",
+      };
     })
     .filter((entry) => entry !== null && Number.isFinite(entry.pid) && entry.pid > 0);
 }
@@ -118,19 +125,72 @@ export async function listChromeProcesses(options = {}) {
   if (platformName === "win32") {
     const output = await runCommandWithOutput(
       "powershell",
-      ["-NoProfile", "-Command", "Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" | Select-Object ProcessId, CommandLine | ConvertTo-Json -Compress"],
+      [
+        "-NoProfile",
+        "-Command",
+        "$rows = @(Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\"); $rows | ForEach-Object { [pscustomobject]@{ ProcessId = $_.ProcessId; ParentProcessId = $_.ParentProcessId; CreationDate = if ($_.CreationDate) { $_.CreationDate.ToString('o') } else { $null }; CommandLine = $_.CommandLine } } | ConvertTo-Json -Compress",
+      ],
       options.spawnImpl,
     );
     return parseWin32ChromeProcesses(output);
   }
 
-  const output = await runCommandWithOutput("ps", ["-eo", "pid=,args="], options.spawnImpl);
+  const output = await runCommandWithOutput("ps", ["-eo", "pid=,ppid=,etimes=,args="], options.spawnImpl);
   return parsePosixChromeProcesses(output);
+}
+
+function startedWithinRun(processEntry, startedAt) {
+  if (!startedAt) return true;
+  const processStartedAt = Date.parse(processEntry.creationDate ?? "");
+  const runStartedAt = Date.parse(startedAt);
+  if (!Number.isFinite(processStartedAt) || !Number.isFinite(runStartedAt)) return false;
+  return processStartedAt >= runStartedAt - 5000;
+}
+
+export function selectOwnedChromeProcesses(processes, run = {}) {
+  const rows = uniqueProcesses(processes);
+  const byPid = new Map(rows.map((entry) => [entry.pid, entry]));
+  const rootPid = Number(run.rootPid ?? run.child?.pid) || 0;
+  const anchors = new Set();
+
+  for (const entry of rows) {
+    if (commandMatchesProfile(entry.commandLine, run.userDataDir, true)) anchors.add(entry.pid);
+  }
+
+  if (rootPid > 0) {
+    const currentRoot = byPid.get(rootPid);
+    if (!currentRoot || commandMatchesProfile(currentRoot.commandLine, run.userDataDir, true)) {
+      anchors.add(rootPid);
+    }
+  }
+
+  const ownedPids = new Set(anchors);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const entry of rows) {
+      if (ownedPids.has(entry.pid) || !ownedPids.has(entry.parentPid)) continue;
+      if (!startedWithinRun(entry, run.startedAt)) continue;
+      ownedPids.add(entry.pid);
+      changed = true;
+    }
+  }
+
+  return rows.filter((entry) => ownedPids.has(entry.pid));
+}
+
+export async function listOwnedChromeProcesses(run, options = {}) {
+  const rows = options.processes ?? await (options.listChromeProcessesImpl ?? listChromeProcesses)(options);
+  return selectOwnedChromeProcesses(rows, run);
+}
+
+export async function countOwnedChromeProcesses(run, options = {}) {
+  return (await listOwnedChromeProcesses(run, options)).length;
 }
 
 export async function listChromeProcessesForProfile(profilePath, options = {}) {
   const exactOnly = options.exactOnly ?? true;
-  const processes = await listChromeProcesses(options);
+  const processes = options.processes ?? await (options.listChromeProcessesImpl ?? listChromeProcesses)(options);
   const matching = processes.filter((entry) => commandMatchesProfile(entry.commandLine, profilePath, exactOnly));
   return uniqueProcesses(matching);
 }
@@ -204,6 +264,46 @@ export async function terminateChromeProcessesForProfile(profilePath, options = 
     pids,
     results,
     remaining,
+  };
+}
+
+export async function terminateOwnedChromeProcessTree(run, options = {}) {
+  const list = options.listChromeProcessesImpl ?? options.processOptions?.listChromeProcessesImpl ?? listChromeProcesses;
+  const terminate = options.terminateChromeProcessByPidImpl ?? options.processOptions?.terminateChromeProcessByPidImpl ?? terminateChromeProcessByPid;
+  const wait = options.delayImpl ?? delay;
+  const processOptions = options.processOptions ?? options;
+  const listOwned = async () => selectOwnedChromeProcesses(await list(processOptions), run);
+  const terminated = [];
+  let remaining = await listOwned();
+  const before = remaining;
+  const attempts = options.attempts ?? 4;
+
+  for (let attempt = 1; attempt <= attempts && remaining.length > 0; attempt += 1) {
+    const remainingPids = new Set(remaining.map((entry) => entry.pid));
+    const subtreeRoots = remaining.filter((entry) => !remainingPids.has(entry.parentPid));
+    for (const entry of subtreeRoots.sort((left, right) => right.pid - left.pid)) {
+      terminated.push(await terminate(entry.pid, processOptions));
+    }
+    await wait(options.retryDelayMs ?? 150);
+    remaining = await listOwned();
+  }
+
+  return {
+    rootPid: Number(run.rootPid ?? run.child?.pid) || null,
+    before: before.map((entry) => ({
+      pid: entry.pid,
+      parentPid: entry.parentPid,
+      creationDate: entry.creationDate,
+      profileRoot: commandMatchesProfile(entry.commandLine, run.userDataDir, true),
+    })),
+    terminated,
+    remaining: remaining.map((entry) => ({
+      pid: entry.pid,
+      parentPid: entry.parentPid,
+      creationDate: entry.creationDate,
+      profileRoot: commandMatchesProfile(entry.commandLine, run.userDataDir, true),
+    })),
+    remainingCount: remaining.length,
   };
 }
 

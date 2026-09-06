@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { countChromeProcessesForProfile, terminateChromeProcessesForProfile } from "./e2e-owned-process.mjs";
-import { isManagedPhase6ProfilePath, cleanupPhase6Profile, terminateOwnedChrome } from "./e2e-chrome-profile.mjs";
+import { access } from "node:fs/promises";
+import { countChromeProcessesForProfile, countOwnedChromeProcesses, terminateOwnedChromeProcessTree, terminateOwnedProcessTree } from "./e2e-owned-process.mjs";
+import { isManagedPhase6ProfilePath, cleanupPhase6Profile, createPhase6ProfileDirectory } from "./e2e-chrome-profile.mjs";
 
 const DEFAULT_SIGNAL_CODES = Object.freeze({
   SIGINT: 130,
@@ -18,12 +19,7 @@ export async function cleanupBrowserRun(run, options = {}) {
   }
 
   if (!isManagedPhase6ProfilePath(run.userDataDir)) {
-    return {
-      skipped: true,
-      reason: "profile path is not managed",
-      profile: run.userDataDir,
-      leak: false,
-    };
+    throw new Error(`Refusing browser cleanup for unmanaged profile path: ${run.userDataDir}`);
   }
 
   const processOptions = {
@@ -38,30 +34,77 @@ export async function cleanupBrowserRun(run, options = {}) {
     debugPort: run.debugPort,
     startedAt: run.startedAt,
     childPid: run.child?.pid ?? null,
+    rootPid: run.rootPid ?? run.child?.pid ?? null,
+    rootIdentity: run.rootIdentity ?? null,
     throwOnLeak: options.throwOnLeak ?? true,
     skipped: false,
+    profileProcessCountBefore: run.profileProcessCountBefore ?? null,
+    profileProcessCountDuring: run.profileProcessCountDuring ?? null,
   };
 
-  summary.profileProcessCountBefore =
-    run.profileProcessCountBefore ??
-    (await countChromeProcessesForProfile(run.userDataDir, processOptions));
-  summary.profileProcessCountDuring =
-    run.profileProcessCountDuring ??
-    (await countChromeProcessesForProfile(run.userDataDir, processOptions));
-
-  if (run.child) {
-    summary.ownedChromeTermination = await terminateOwnedChrome(run.child, options.terminateOptions);
-  } else {
-    summary.ownedChromeTermination = { skipped: true, reason: "no child process handle" };
+  const cleanupErrors = [];
+  try {
+    summary.ownedProcessCountBeforeCleanup = await countOwnedChromeProcesses(run, processOptions);
+  } catch (error) {
+    summary.ownedProcessCountBeforeCleanup = null;
+    cleanupErrors.push(error);
   }
 
-  summary.profileProcessKills = await terminateChromeProcessesForProfile(run.userDataDir, processOptions);
-  summary.profileCleanup = await cleanupPhase6Profile(run.userDataDir, options.profileCleanupOptions);
-  summary.profileProcessCountAfter = await countChromeProcessesForProfile(run.userDataDir, processOptions);
-  summary.leak = summary.profileProcessCountAfter > 0;
+  try {
+    summary.rootTreeTermination = run.child
+      ? await terminateOwnedProcessTree(run.child, { ...processOptions, ...(options.terminateOptions ?? {}) })
+      : { skipped: true, reason: "no child process handle" };
+  } catch (error) {
+    summary.rootTreeTermination = { failed: true, error: error?.message ?? String(error) };
+    cleanupErrors.push(error);
+  }
+
+  try {
+    summary.descendantTreeTermination = await terminateOwnedChromeProcessTree(run, {
+      processOptions,
+      ...(options.treeTerminationOptions ?? {}),
+    });
+  } catch (error) {
+    summary.descendantTreeTermination = { failed: true, error: error?.message ?? String(error) };
+    cleanupErrors.push(error);
+  }
+
+  try {
+    summary.profileCleanup = await cleanupPhase6Profile(run.userDataDir, options.profileCleanupOptions);
+  } catch (error) {
+    summary.profileCleanup = { removed: false, error: error?.message ?? String(error) };
+    cleanupErrors.push(error);
+  }
+
+  try {
+    summary.ownedProcessCountAfter = await countOwnedChromeProcesses(run, processOptions);
+    summary.profileProcessCountAfter = await countChromeProcessesForProfile(run.userDataDir, processOptions);
+  } catch (error) {
+    summary.ownedProcessCountAfter = null;
+    summary.profileProcessCountAfter = null;
+    cleanupErrors.push(error);
+  }
+
+  try {
+    await access(run.userDataDir);
+    summary.ownedProfileCountAfter = 1;
+  } catch (error) {
+    summary.ownedProfileCountAfter = error?.code === "ENOENT" ? 0 : null;
+    if (error?.code !== "ENOENT") cleanupErrors.push(error);
+  }
+
+  summary.ownedBrowserProcessesRemaining = summary.ownedProcessCountAfter;
+  summary.ownedTemporaryProfilesRemaining = summary.ownedProfileCountAfter;
+  summary.verified = cleanupErrors.length === 0 && summary.ownedProcessCountAfter === 0 && summary.ownedProfileCountAfter === 0;
+  summary.leak = !summary.verified;
 
   if (summary.leak && summary.throwOnLeak) {
-    throw new Error(`QuoteSync-owned Chrome processes were not fully removed for profile ${summary.profile}; remaining=${summary.profileProcessCountAfter}`);
+    const failure = new Error(
+      `Browser cleanup verification failed for ${summary.label}; owned browser processes remaining=${summary.ownedProcessCountAfter ?? "unverified"}; owned temporary profiles remaining=${summary.ownedProfileCountAfter ?? "unverified"}`,
+    );
+    failure.summary = summary;
+    if (cleanupErrors.length > 0) failure.cause = cleanupErrors[0];
+    throw failure;
   }
 
   return summary;
@@ -70,7 +113,7 @@ export async function cleanupBrowserRun(run, options = {}) {
 export function createBrowserRunController(options = {}) {
   let activeRun = null;
   let installed = false;
-  let cleaning = false;
+  let cleanupPromise = null;
 
   function normalizeRun(run) {
     if (!run) return null;
@@ -81,34 +124,47 @@ export function createBrowserRunController(options = {}) {
       profileProcessCountAfter: run.profileProcessCountAfter,
       startedAt: run.startedAt ?? new Date().toISOString(),
       ...run,
+      rootPid: run.rootPid ?? run.child?.pid ?? activeRun?.rootPid ?? null,
+      rootIdentity: run.rootIdentity ?? (run.child?.pid ? {
+        pid: run.child.pid,
+        executable: run.child.spawnfile ?? null,
+        spawnedAt: new Date().toISOString(),
+      } : activeRun?.rootIdentity ?? null),
     };
   }
 
   async function stop(reason = "final") {
-    if (cleaning) {
-      return { skipped: true, reason: "cleanup already in progress", run: activeRun };
+    if (cleanupPromise) return cleanupPromise;
+    const run = activeRun;
+    if (!run) {
+      return {
+        skipped: true,
+        reason: "no active run",
+      };
     }
 
-    cleaning = true;
-    const run = activeRun;
-    activeRun = null;
+    cleanupPromise = cleanupBrowserRun(
+      { ...run, stoppedReason: reason },
+      { ...options, throwOnLeak: options.throwOnLeak ?? true },
+    );
     try {
-      if (!run) {
-        return {
-          skipped: true,
-          reason: "no active run",
-        };
-      }
-      return await cleanupBrowserRun({ ...run, stoppedReason: reason }, { ...options, throwOnLeak: options.throwOnLeak ?? true });
+      const result = await cleanupPromise;
+      activeRun = null;
+      return result;
+    } catch (error) {
+      activeRun = run;
+      throw error;
     } finally {
-      cleaning = false;
+      cleanupPromise = null;
     }
   }
 
   function setRun(run) {
     const profileProcessCountBefore = activeRun?.profileProcessCountBefore;
+    const startedAt = activeRun?.startedAt;
     activeRun = normalizeRun({ ...(activeRun ?? {}), ...(run ?? {}) });
     if (profileProcessCountBefore !== undefined) activeRun.profileProcessCountBefore = profileProcessCountBefore;
+    if (startedAt !== undefined) activeRun.startedAt = startedAt;
     return activeRun;
   }
 
@@ -116,23 +172,59 @@ export function createBrowserRunController(options = {}) {
     activeRun = null;
   }
 
+  async function createProfile(run = {}, profileOptions = {}) {
+    const userDataDir = await createPhase6ProfileDirectory(profileOptions);
+    setRun({ ...run, userDataDir, startedAt: run.startedAt ?? new Date().toISOString() });
+    try {
+      const profileProcessCountBefore = await countBrowserRunProfiles(userDataDir, options.processOptions ?? {});
+      setRun({ profileProcessCountBefore });
+      return userDataDir;
+    } catch (error) {
+      try {
+        await stop("profile-initialization-failure");
+      } catch (cleanupError) {
+        error.cleanupError = cleanupError;
+      }
+      throw error;
+    }
+  }
+
   function installInterruptHandlers() {
     if (installed) return;
     installed = true;
-    const handler = (signal) => {
-      const code = DEFAULT_SIGNAL_CODES[signal] ?? 130;
-      void stop(signal).finally(() => {
+    let terminating = false;
+    const terminateAfterCleanup = (reason, code, error) => {
+      if (terminating) return;
+      terminating = true;
+      void stop(reason).catch((cleanupError) => {
+        console.error(cleanupError);
         process.exitCode = 1;
+      }).finally(() => {
+        if (error) console.error(error);
         process.exit(code);
       });
     };
-    process.on("SIGINT", handler);
-    process.on("SIGTERM", handler);
-    process.on("SIGBREAK", handler);
+    const signalHandler = (signal) => {
+      const code = DEFAULT_SIGNAL_CODES[signal] ?? 130;
+      terminateAfterCleanup(signal, code);
+    };
+    process.once("SIGINT", signalHandler);
+    process.once("SIGTERM", signalHandler);
+    process.once("SIGBREAK", signalHandler);
+    process.once("beforeExit", () => {
+      if (!activeRun || terminating) return;
+      void stop("beforeExit").catch((error) => {
+        console.error(error);
+        process.exitCode = 1;
+      });
+    });
+    process.once("uncaughtException", (error) => terminateAfterCleanup("uncaughtException", 1, error));
+    process.once("unhandledRejection", (error) => terminateAfterCleanup("unhandledRejection", 1, error));
   }
 
   return {
     setRun,
+    createProfile,
     clearRun,
     stop,
     installInterruptHandlers,

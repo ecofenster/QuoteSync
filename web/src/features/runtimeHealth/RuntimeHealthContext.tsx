@@ -25,6 +25,8 @@ export function RuntimeHealthProvider({ children }: { children: React.ReactNode 
   useEffect(() => {
     setApiMutationSafety({ allowed: false, state: "connecting" });
     const monitor = createRuntimeHealthMonitor({
+      connectedIntervalMs: import.meta.env.DEV ? 3000 : 15000,
+      unhealthyBackoffMs: import.meta.env.DEV ? [500, 1000, 2000, 5000] : undefined,
       onState: (next) => {
         setState(next);
         setApiMutationSafety({ allowed: runtimeAllowsMutations(next), state: next.phase });
@@ -51,4 +53,8 @@ export function useRuntimeHealth() {
   const context = useContext(RuntimeHealthContext);
   if (!context) throw new Error("useRuntimeHealth must be used within RuntimeHealthProvider");
   return context;
+}
+
+export function useOptionalRuntimeHealth() {
+  return useContext(RuntimeHealthContext);
 }

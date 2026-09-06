@@ -325,17 +325,18 @@ test("manufacturer visual URLs use the API origin without altering external asse
 });
 
 test("the canonical entry point and A4 print path are present and misleading legacy outputs are not exposed", async () => {
-  const [workspace, preview, css, pickerActions, collectionActions, collectionView, costing, adminPreview] = await Promise.all([
+  const [workspace, headerRows, viewSwitch, preview, css, pickerActions, collectionActions, collectionView, costing] = await Promise.all([
     readFile("src/features/estimateCommercial/EstimateCommercialWorkspace.tsx", "utf8"),
+    readFile("src/features/estimateCommercial/EstimateCommercialHeaderRows.tsx", "utf8"),
+    readFile("src/features/estimateCommercial/EstimateCommercialViewSwitch.tsx", "utf8"),
     readFile("src/features/customerQuotation/CustomerQuotationPreview.tsx", "utf8"),
     readFile("src/features/customerQuotation/customerQuotation.css", "utf8"),
     readFile("src/features/estimatePicker/components/EstimateActionsBar.tsx", "utf8"),
     readFile("src/features/estimateCollection/EstimateCollectionActions.tsx", "utf8"),
     readFile("src/features/estimateCollection/EstimateCollectionView.tsx", "utf8"),
     readFile("src/features/projectCalculatorLab/ScenarioCostingWorksheet.tsx", "utf8"),
-    readFile("src/features/admin/AdminSupplierQuoteImportBeta.tsx", "utf8"),
   ]);
-  assert.match(workspace, /Customer Quotation\s*<\/button>/);
+  assert.match(headerRows, /Review Customer Quotation\s*<\/button>/);
   assert.doesNotMatch(workspace, /aria-label="Estimate actions"/);
   for (const action of ["Email", "Follow up", "Estimate Status", "Copy", "Delete"]) assert.match(collectionView, new RegExp(action));
   assert.match(collectionView, /estimate-index-action-headings/);
@@ -350,12 +351,12 @@ test("the canonical entry point and A4 print path are present and misleading leg
   assert.match(preview, /data-thermal-mode/);
   assert.match(preview, /data-section-details/);
   assert.match(preview, /projection\.showCustomerDiscount/);
-  assert.match(workspace, /aria-label="Commercial view"/);
-  assert.match(workspace, /Internal View<\/button>/);
-  assert.match(workspace, /Customer View<\/button>/);
+  assert.match(headerRows, /<EstimateCommercialViewSwitch/);
+  assert.match(viewSwitch, /aria-label=\{`Switch to \$\{label\}`\}/);
+  assert.match(viewSwitch, /view === "internal" \? "customer" : "internal"/);
+  assert.equal(viewSwitch.match(/<button/g)?.length, 1);
   assert.match(costing, /Reference[\s\S]*Room[\s\S]*Item Type \/ Picture/);
   assert.match(costing, /data-commercial-view/);
-  assert.match(adminPreview, /initialCommercialView="internal"/);
   assert.doesNotMatch(preview, /DOCX|Print Word Doc|supplier purchase price|purchase FX|gross margin|Supplier Import Lab/);
   assert.doesNotMatch(`${pickerActions}\n${collectionActions}`, />Print Word Doc<|>Print PDF</);
   assert.match(css, /@page\{size:A4 portrait/);

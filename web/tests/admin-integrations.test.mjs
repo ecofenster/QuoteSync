@@ -153,7 +153,7 @@ test("browser rendering and tenant Google business capabilities remain isolated"
   assert.match(routeIntegration, /\/api\/integrations\/googleMaps\/route/);
   assert.match(routeIntegration, /apiFetch\("\/api\/integrations\/googleMaps\/geocode"/);
   assert.doesNotMatch(routeIntegration, /fetch\("\/api\/integrations\/googleMaps\/(?:geocode|route)"/);
-  assert.match(apiClient, /API_BASE_URL = "http:\/\/localhost:3001"/);
+  assert.match(apiClient, /VITE_API_BASE_URL \|\| "http:\/\/localhost:3001"/);
   assert.match(mapPanel, /Map display is not configured for this QuoteSuite deployment/);
   assert.doesNotMatch(mapPanel, /Add VITE_GOOGLE_MAPS_API_KEY to \.env\.local/);
   assert.doesNotMatch(serverService, /VITE_GOOGLE_MAPS_API_KEY|GOOGLE_MAPS_API_KEY/);

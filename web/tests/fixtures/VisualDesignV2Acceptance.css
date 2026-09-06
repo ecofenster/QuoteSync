@@ -1,0 +1,4 @@
+.visual-v2-acceptance { display: grid; gap: var(--qs-v2-space-section, var(--space-8)); }
+.visual-v2-acceptance__admin { display: grid; gap: var(--qs-v2-space-group, var(--space-6)); padding-top: var(--qs-v2-space-section, var(--space-8)); }
+.visual-v2-acceptance__admin > .ui-page-header { padding: var(--qs-v2-space-card, var(--space-5)); border-radius: var(--radius-card); background: var(--qs-bg-surface); }
+@media (max-width: 600px) { .visual-v2-acceptance__admin { padding-top: var(--space-4); } }

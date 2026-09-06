@@ -14,9 +14,9 @@ const documentOutputFiles = new Set([
   // does not style the QuoteSuite application chrome or sender-authored HTML.
   "features/communications/domain/emailPresentation.ts",
 ]);
-const themeAuthorityFiles = new Set(["styles/tokens.css", "theme/themes.ts"]);
+const themeAuthorityFiles = new Set(["styles/tokens.css", "styles/visual-design-v2.css", "theme/themes.ts"]);
 const themeAuthoringFiles = new Set(["features/admin/AdminThemeColoursPanel.tsx"]);
-const sharedThemeSelectorFiles = new Set(["styles/tokens.css", "styles/base.css", "layout/AppShell.css"]);
+const sharedThemeSelectorFiles = new Set(["styles/tokens.css", "styles/visual-design-v2.css", "styles/base.css", "layout/AppShell.css"]);
 const technicalFiles = new Set([
   "features/admin/windowTypes/B92ProfileSectionAssemblyPreview.tsx",
   "features/admin/windowTypes/WindowTypeEditor.tsx",

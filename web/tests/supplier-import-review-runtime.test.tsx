@@ -24,12 +24,17 @@ const response = (overrides: Record<string, unknown> = {}) => ({
     recognizedSupplierName: "EcoHaus",
     recognizedDealerName: "EcoHaus",
     recognizedManufacturerName: "Internorm",
+    recognizedCommercialSupplierName: "EcoHaus",
     supplierResolutionStatus: "not_configured",
     dealerResolutionStatus: "not_configured",
     manufacturerResolutionStatus: "resolved",
     manufacturerId: "manufacturer-internorm",
     manufacturerName: "Internorm",
     manufacturerCode: "IN",
+    commercialSupplierCode: null,
+    commercialSupplierName: "EcoHaus",
+    commercialSupplierResolutionStatus: "not_configured",
+    commercialSupplierProposalAuthority: "document_family_issuer_is_commercial_supplier",
     quotationNumber: "20260057",
     currency: "GBP",
   },
@@ -40,16 +45,45 @@ const response = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-test("EcoHaus review keeps canonical Internorm and sixteen positions while an unconfigured dealer blocks confirmation", () => {
+test("EcoHaus review keeps issuer, manufacturer and proposed commercial supplier separate while only final import is blocked", () => {
   const review = normalizeManufacturerImportReview(response());
   const state = deriveSupplierImportReviewState(review, review.metadata.supplierCode ?? "", review.metadata.manufacturerId ?? "");
   assert.equal(review.metadata.recognizedManufacturerName, "Internorm");
   assert.equal(review.metadata.recognizedDealerName, "EcoHaus");
+  assert.equal(review.metadata.recognizedCommercialSupplierName, "EcoHaus");
   assert.equal(review.metadata.currency, "GBP");
   assert.equal(state.rows.length, 16);
   assert.equal(state.canonicalManufacturer?.manufacturerName, "Internorm");
   assert.equal(state.commercialSupplier, null);
   assert.equal(state.confirmationBlocked, true);
+});
+
+test("EKO WEB keeps Ecofenster issuer separate from EKO commercial supply", () => {
+  const review = normalizeManufacturerImportReview(response({
+    metadata: {
+      ...(response().metadata as Record<string, unknown>),
+      recognizedDealerName: "Ecofenster",
+      recognizedManufacturerName: "EKO-OKNA",
+      recognizedCommercialSupplierName: "EKO-OKNA",
+      manufacturerId: "manufacturer-eko",
+      commercialSupplierCode: "EKO",
+      commercialSupplierName: "EKO-OKNA",
+      commercialSupplierResolutionStatus: "resolved",
+      commercialSupplierResolutionMethod: "normalized_supplier_name",
+      commercialSupplierProposalAuthority: "eko_web_document_family_direct_supply",
+      commercialSupplierProposalSource: "document_family",
+      commercialSupplierActive: true,
+    },
+    canonicalManufacturers: [{ manufacturerId: "manufacturer-eko", manufacturerName: "EKO-OKNA", manufacturerCode: "EKO" }],
+    commercialSuppliers: [{ supplierCode: "EKO", supplierName: "EKO-OKNA", pricingMethod: "factory_price", pricingPolicyAvailable: true }],
+  }));
+  const state = deriveSupplierImportReviewState(review, review.metadata.commercialSupplierCode ?? "", review.metadata.manufacturerId ?? "");
+  assert.equal(review.metadata.recognizedDealerName, "Ecofenster");
+  assert.equal(state.canonicalManufacturer?.manufacturerName, "EKO-OKNA");
+  assert.equal(state.commercialSupplier?.supplierName, "EKO-OKNA");
+  assert.equal(review.metadata.commercialSupplierProposalSource, "document_family");
+  assert.equal(state.sameSupplierAndManufacturer, true);
+  assert.equal(state.finalImportBlocked, false);
 });
 
 test("legacy Review response arrays normalize at the API boundary instead of reaching render as undefined", () => {
@@ -79,6 +113,17 @@ test("loading, empty documents and unavailable pricing policy remain safe and fa
   assert.equal(state.confirmationBlocked, true);
 });
 
+test("inactive detected supplier remains proposed while legacy Any pricing holders stay outside import options", () => {
+  const review = normalizeManufacturerImportReview(response({
+    metadata: { ...(response().metadata as Record<string, unknown>), recognizedCommercialSupplierName: "EKO-OKNA", commercialSupplierName: "EKO-OKNA", commercialSupplierCode: "EKO", commercialSupplierResolutionStatus: "resolved", commercialSupplierProposalSource: "document_family", commercialSupplierActive: false },
+    commercialSuppliers: [{ supplierCode: "EKO", supplierName: "EKO-OKNA", active: false, pricingMethod: "factory_price", pricingPolicyAvailable: false }],
+  }));
+  const state = deriveSupplierImportReviewState(review, review.metadata.commercialSupplierCode ?? "", review.metadata.manufacturerId ?? "");
+  assert.equal(state.commercialSupplier?.supplierName, "EKO-OKNA");
+  assert.equal(state.commercialSupplier?.active, false);
+  assert.equal(state.finalImportBlocked, true);
+});
+
 test("direct manufacturer/supplier cases collapse naturally for EKO and Zyle", () => {
   for (const [name, code, manufacturerId] of [["EKO-OKNA", "EKO", "manufacturer-eko"], ["Zyle Fenster", "ZF", "manufacturer-zyle"]]) {
     const review = normalizeManufacturerImportReview(response({
@@ -105,7 +150,9 @@ test("component module is Fast Refresh compatible and contains supplier failures
   assert.match(source, /class SupplierImportFeatureBoundary extends Component/);
   assert.match(source, /Supplier Import is temporarily unavailable/);
   const markup = renderToStaticMarkup(<EstimateSupplierCostImportControl estimateId="estimate" scenarioId="scenario" onLoaded={() => undefined}/>);
-  assert.match(markup, /No supplier documents are stored for this estimate yet/);
+  assert.match(markup, /Upload quotation/);
+  assert.match(markup, /Upload &amp; Analyse/);
+  assert.doesNotMatch(markup, /Supplier|Quotation \/ reference|Currency/);
 });
 
 test("ScenarioCostingWorksheet has a stable import boundary for commercial provenance", async () => {
@@ -163,5 +210,6 @@ test("supplier commercial evidence is classified separately from the default Pro
   assert.match(commercialReviewSource, /Apply supplier discount/);
   assert.match(commercialReviewSource, /source list prices remain unchanged/);
   assert.match(worksheetSource, /Include supplier installation cost/);
-  assert.match(worksheetSource, /does not overwrite the Estimate-owned installation programme/);
+  assert.match(worksheetSource, /Required by programme/);
+  assert.match(worksheetSource, /Supplier installation price supplied/);
 });

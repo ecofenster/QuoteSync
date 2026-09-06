@@ -34,6 +34,7 @@ export type CommercialSupplierOption = {
   supplierName: string;
   pricingMethod: string | null;
   pricingPolicyAvailable: boolean;
+  active: boolean;
   policyUpdatedAt: string;
 };
 
@@ -104,22 +105,31 @@ export type ManufacturerImportReview = {
   estimateId: string;
   positionCount: number;
   metadata: {
-    recognizedSupplierName: string;
-    recognizedDealerName: string;
-    recognizedManufacturerName: string;
+    recognizedSupplierName: string | null;
+    recognizedDealerName: string | null;
+    recognizedManufacturerName: string | null;
+    recognizedCommercialSupplierName: string | null;
     supplierIdentityRole: "quotation_issuer";
     manufacturerIdentityRole: "product_manufacturer";
+    commercialSupplierIdentityRole: "commercial_supplier";
     storedSupplierName: string;
-    supplierResolutionStatus: "resolved" | "ambiguous" | "not_configured";
+    supplierResolutionStatus: "resolved" | "ambiguous" | "not_configured" | "not_supplied";
     supplierResolutionMethod: string | null;
-    dealerResolutionStatus: "resolved" | "ambiguous" | "not_configured";
+    dealerResolutionStatus: "resolved" | "ambiguous" | "not_configured" | "not_supplied";
     dealerResolutionMethod: string | null;
-    supplierName: string;
+    supplierName: string | null;
     supplierCode: string | null;
+    commercialSupplierName: string | null;
+    commercialSupplierCode: string | null;
+    commercialSupplierResolutionStatus: "resolved" | "ambiguous" | "not_configured" | "not_supplied";
+    commercialSupplierResolutionMethod: string | null;
+    commercialSupplierProposalAuthority: string | null;
+    commercialSupplierProposalSource: "quotation" | "document_family" | "configured_relationship" | null;
+    commercialSupplierActive: boolean | null;
     manufacturerResolutionStatus: "resolved" | "ambiguous" | "not_configured" | "not_recognized";
     manufacturerResolutionMethod: string | null;
     manufacturerId: string | null;
-    manufacturerName: string;
+    manufacturerName: string | null;
     manufacturerCode: string | null;
     supplierManufacturerRelationship: Record<string, unknown>;
     quotationNumber: string | null;
@@ -130,6 +140,10 @@ export type ManufacturerImportReview = {
     documentMetadataReference: string | null;
     revision: string | null;
     currency: string;
+    quotationDate: string | null;
+    documentType: string | null;
+    supplierQuotedSubtotal: string | null;
+    supplierQuotedTotal: string | null;
   };
   canonicalManufacturers: CanonicalManufacturerOption[];
   commercialSuppliers: CommercialSupplierOption[];
@@ -149,7 +163,8 @@ function normalizeSupplierOptions(value: unknown): CommercialSupplierOption[] {
     const supplierName = stringValue(item?.supplierName);
     if (!supplierCode || !supplierName) return [];
     const pricingMethod = stringValue(item?.pricingMethod);
-    return [{ supplierCode, supplierName, pricingMethod, pricingPolicyAvailable: pricingMethod !== null, policyUpdatedAt: stringValue(item?.policyUpdatedAt) ?? "" }];
+    const active = item?.active !== false;
+    return [{ supplierCode, supplierName, pricingMethod, pricingPolicyAvailable: active && item?.pricingPolicyAvailable !== false && pricingMethod !== null, active, policyUpdatedAt: stringValue(item?.policyUpdatedAt) ?? "" }];
   });
 }
 
@@ -304,10 +319,12 @@ export function normalizeManufacturerImportReview(value: unknown): ManufacturerI
   const commercialSuppliers = normalizeSupplierOptions(response.commercialSuppliers ?? response.canonicalSuppliers);
   const canonicalManufacturers = normalizeManufacturerOptions(response.canonicalManufacturers);
   const documents = normalizeDocuments(response.documents);
-  const recognizedSupplierName = stringValue(metadata.recognizedSupplierName) ?? stringValue(metadata.supplierName) ?? "Supplier not recognised";
+  const recognizedSupplierName = stringValue(metadata.recognizedSupplierName) ?? stringValue(metadata.supplierName);
   const recognizedDealerName = stringValue(metadata.recognizedDealerName) ?? recognizedSupplierName;
-  const recognizedManufacturerName = stringValue(metadata.recognizedManufacturerName) ?? stringValue(metadata.manufacturerName) ?? recognizedSupplierName;
-  const supplierStatus = metadata.supplierResolutionStatus === "resolved" || metadata.supplierResolutionStatus === "ambiguous" ? metadata.supplierResolutionStatus : "not_configured";
+  const recognizedManufacturerName = stringValue(metadata.recognizedManufacturerName) ?? stringValue(metadata.manufacturerName);
+  const recognizedCommercialSupplierName = stringValue(metadata.recognizedCommercialSupplierName) ?? stringValue(metadata.commercialSupplierName);
+  const supplierStatus = metadata.supplierResolutionStatus === "resolved" || metadata.supplierResolutionStatus === "ambiguous" || metadata.supplierResolutionStatus === "not_supplied" ? metadata.supplierResolutionStatus : "not_configured";
+  const commercialSupplierStatus = metadata.commercialSupplierResolutionStatus === "resolved" || metadata.commercialSupplierResolutionStatus === "ambiguous" || metadata.commercialSupplierResolutionStatus === "not_supplied" ? metadata.commercialSupplierResolutionStatus : "not_configured";
   const manufacturerStatus = metadata.manufacturerResolutionStatus === "resolved" || metadata.manufacturerResolutionStatus === "ambiguous" || metadata.manufacturerResolutionStatus === "not_recognized" ? metadata.manufacturerResolutionStatus : "not_configured";
 
   return {
@@ -317,15 +334,24 @@ export function normalizeManufacturerImportReview(value: unknown): ManufacturerI
       recognizedSupplierName,
       recognizedDealerName,
       recognizedManufacturerName,
+      recognizedCommercialSupplierName,
       supplierIdentityRole: "quotation_issuer",
       manufacturerIdentityRole: "product_manufacturer",
-      storedSupplierName: stringValue(metadata.storedSupplierName) ?? recognizedDealerName,
+      commercialSupplierIdentityRole: "commercial_supplier",
+      storedSupplierName: stringValue(metadata.storedSupplierName) ?? recognizedDealerName ?? "",
       supplierResolutionStatus: supplierStatus,
       supplierResolutionMethod: stringValue(metadata.supplierResolutionMethod),
-      dealerResolutionStatus: metadata.dealerResolutionStatus === "resolved" || metadata.dealerResolutionStatus === "ambiguous" ? metadata.dealerResolutionStatus : supplierStatus,
+      dealerResolutionStatus: metadata.dealerResolutionStatus === "resolved" || metadata.dealerResolutionStatus === "ambiguous" || metadata.dealerResolutionStatus === "not_supplied" ? metadata.dealerResolutionStatus : supplierStatus,
       dealerResolutionMethod: stringValue(metadata.dealerResolutionMethod) ?? stringValue(metadata.supplierResolutionMethod),
       supplierName: stringValue(metadata.supplierName) ?? recognizedDealerName,
       supplierCode: stringValue(metadata.supplierCode),
+      commercialSupplierName: stringValue(metadata.commercialSupplierName) ?? recognizedCommercialSupplierName,
+      commercialSupplierCode: stringValue(metadata.commercialSupplierCode) ?? stringValue(metadata.supplierCode),
+      commercialSupplierResolutionStatus: commercialSupplierStatus,
+      commercialSupplierResolutionMethod: stringValue(metadata.commercialSupplierResolutionMethod),
+      commercialSupplierProposalAuthority: stringValue(metadata.commercialSupplierProposalAuthority),
+      commercialSupplierProposalSource: metadata.commercialSupplierProposalSource === "quotation" || metadata.commercialSupplierProposalSource === "document_family" || metadata.commercialSupplierProposalSource === "configured_relationship" ? metadata.commercialSupplierProposalSource : null,
+      commercialSupplierActive: typeof metadata.commercialSupplierActive === "boolean" ? metadata.commercialSupplierActive : null,
       manufacturerResolutionStatus: manufacturerStatus,
       manufacturerResolutionMethod: stringValue(metadata.manufacturerResolutionMethod),
       manufacturerId: stringValue(metadata.manufacturerId),
@@ -339,7 +365,11 @@ export function normalizeManufacturerImportReview(value: unknown): ManufacturerI
       sourceQuotationReferenceAuthority: stringValue(metadata.sourceQuotationReferenceAuthority),
       documentMetadataReference: stringValue(metadata.documentMetadataReference),
       revision: stringValue(metadata.revision),
-      currency: stringValue(metadata.currency)?.toUpperCase() ?? "GBP",
+      currency: stringValue(metadata.currency)?.toUpperCase() ?? "XXX",
+      quotationDate: stringValue(metadata.quotationDate),
+      documentType: stringValue(metadata.documentType),
+      supplierQuotedSubtotal: stringValue(metadata.supplierQuotedSubtotal),
+      supplierQuotedTotal: stringValue(metadata.supplierQuotedTotal),
     },
     canonicalManufacturers,
     commercialSuppliers,

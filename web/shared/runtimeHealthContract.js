@@ -1,7 +1,7 @@
 export const QUOTESUITE_RUNTIME_CONTRACT = Object.freeze({
   family: 'quotesuite-api',
-  version: 'runtime-health-v3',
-  identity: 'quotesuite-runtime-health-2026-08-31-v3',
+  version: 'runtime-health-v5',
+  identity: 'quotesuite-runtime-health-2026-09-05-v5',
   capabilities: Object.freeze([
     'api-readiness',
     'sqlite-readiness',
@@ -15,6 +15,18 @@ export const QUOTESUITE_RUNTIME_CONTRACT = Object.freeze({
     'product-supply-reconciliation-v1',
     'project-costing-installation-materials-contract-v1',
     'project-costing-installation-current-catalogue-v1',
-    'project-costing-supplier-installation-choice-v1'
+    'project-costing-supplier-installation-choice-v1',
+    'project-costing-installation-component-choices-v1',
+    'project-costing-global-import-customs-v1',
+    'project-costing-live-exchange-rate-v1',
+    'project-costing-fixed-estimate-rate-v1',
+    'manufacturer-raw-pdf-extraction-v1',
+    'manufacturer-three-role-identity-position-previews-v1',
+    'manufacturer-four-role-commercial-supplier-gate-v1',
+    'manufacturer-real-source-final-import-reload-v1',
+    'manufacturer-commercial-supplier-auto-proposal-v1',
+    'supplier-current-availability-delete-v1',
+    'quotation-package-canonical-source-pricing-v1',
+    'manufacturer-position-source-ownership-v1'
   ])
 });

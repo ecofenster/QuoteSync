@@ -1,0 +1,32 @@
+export type ImportCustomsDefaults = {
+  includedByDefault: boolean;
+  baseImportCost: string;
+  contingencyPercent: string;
+  defaultImports: number;
+  dutyPercent: string;
+  dutyBasisAmount: string;
+  markupPercent: string;
+  provenance?: Record<string, unknown> | null;
+};
+export type ImportCustomsCalculation = ImportCustomsDefaults & {
+  id: "global-import-customs";
+  included: boolean;
+  importVatTreatment: "excluded";
+  allowanceType: "internal_commercial_allowance";
+  status: "configured";
+  ruleVersion: string;
+  contingencyAmount: string;
+  budgetedImportCostPerImport: string;
+  importAllowanceCost: string;
+  dutyCost: string;
+  purchaseCost: string;
+  sellingPrice: string;
+  reviewRequired: string[];
+};
+export const IMPORT_CUSTOMS_RULE_VERSION: string;
+export const GLOBAL_IMPORT_CUSTOMS_DEFAULTS: Readonly<ImportCustomsDefaults>;
+export function normalizeImportCustomsDefaults(value: unknown): ImportCustomsDefaults & Record<string, unknown>;
+export function validateImportCustomsConfiguration(value: unknown): ImportCustomsDefaults & Record<string, unknown>;
+export function normalizeImportCustomsSnapshot(value: unknown): Record<string, unknown> | null;
+export function calculateImportCustoms(value: unknown, markupOverride?: string | null): ImportCustomsCalculation | null;
+export function createImportCustomsSnapshot(defaults: unknown, context?: { capturedAt?: string; source?: string }): ImportCustomsCalculation;

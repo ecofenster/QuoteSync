@@ -125,11 +125,39 @@ export function calculateInstallationProgramme({ positions = [], rules = {}, pro
   const cillQuantity = calculateApplicableCillQuantity(positions);
   const cillInstallationRate = number(profile.cillInstallationRate ?? rules.cillInstallationRate, 25);
   const cillCost = cillQuantity * cillInstallationRate;
-  const purchaseCost = labourCost + mileageCost + foodCost + accommodationCost + supportCost + surveyCost + cillCost;
+  const lifting=profile.liftingEquipment&&typeof profile.liftingEquipment==='object'?profile.liftingEquipment:{required:profile.liftingDecision==='required'};
+  const liftingRequired=lifting.required===true;
+  const liftingHire=liftingRequired?number(lifting.hireCost):0,liftingDelivery=liftingRequired?number(lifting.deliveryCost):0,liftingCollection=liftingRequired?number(lifting.collectionCost):0;
+  const liftingCost=liftingHire+liftingDelivery+liftingCollection;
+  const skip=profile.skipHire&&typeof profile.skipHire==='object'?profile.skipHire:{required:false},skipRequired=skip.required===true,skipQuantity=skipRequired?clampInt(skip.quantity,1):0;
+  const skipUnitHire=skipRequired?number(skip.hireCost):0,skipDelivery=skipRequired?number(skip.deliveryCost):0,skipCollection=skipRequired?number(skip.collectionCost):0,skipCost=skipUnitHire*skipQuantity+skipDelivery+skipCollection;
+  const savedInclusions = profile.componentInclusions && typeof profile.componentInclusions === 'object' ? profile.componentInclusions : {};
+  const componentInclusions = {
+    mileage: savedInclusions.mileage !== false,
+    food: savedInclusions.food !== false,
+    accommodation: savedInclusions.accommodation !== false,
+    support: savedInclusions.support !== false,
+    cillInstallation: savedInclusions.cillInstallation !== false,
+  };
+  const calculatedCosts = { labour: money(labourCost), mileage: money(mileageCost), food: money(foodCost), accommodation: money(accommodationCost), support: money(supportCost), survey: money(surveyCost), cillInstallation: money(cillCost), liftingEquipment: money(liftingCost), skipHire:money(skipCost) };
+  const activeCosts = {
+    labour: calculatedCosts.labour,
+    mileage: componentInclusions.mileage ? calculatedCosts.mileage : '0.00',
+    food: componentInclusions.food ? calculatedCosts.food : '0.00',
+    accommodation: componentInclusions.accommodation ? calculatedCosts.accommodation : '0.00',
+    support: componentInclusions.support ? calculatedCosts.support : '0.00',
+    survey: calculatedCosts.survey,
+    cillInstallation: componentInclusions.cillInstallation ? calculatedCosts.cillInstallation : '0.00',
+    liftingEquipment: liftingRequired ? calculatedCosts.liftingEquipment : '0.00',
+    skipHire: skipRequired ? calculatedCosts.skipHire : '0.00',
+  };
+  const purchaseCost = Object.values(activeCosts).reduce((total, value) => total + number(value), 0);
   const returnByMinutes = 17 * 60 + routeMinutes;
   if (returnByMinutes > number(rules.latestReturnHomeMinutes, 23 * 60)) reviewRequired.push('Final return is forecast after 23:00 and requires programme review.');
   if (profile.projectType === 'refurbishment' && !profile.skipDecision) reviewRequired.push('Skip Hire is recommended for retrofit and requires selection/pricing review.');
-  if (!profile.liftingDecision) reviewRequired.push('Lifting equipment remains Review Required until position thresholds and products are supplied.');
+  if (liftingRequired && (!lifting.productId || !lifting.productName)) reviewRequired.push('Lifting equipment product selection is required.');
+  if (liftingRequired && (lifting.hireCost == null || lifting.hireCost === '' || !Number.isFinite(Number(lifting.hireCost)))) reviewRequired.push('Lifting equipment hire cost is required.');
+  if(skipRequired&&(!skip.productId||!skip.productName))reviewRequired.push('Skip Hire size selection is required.');
   const requiredCapabilities = [...new Set(derived.tasks.flatMap(task => task.family === 'standard' ? ['standard_windows'] : [task.family === 'sliding_door' ? 'sliding_doors' : task.family === 'bifold' ? 'bifolds' : task.family, ...(task.kitFormat ? ['kit_assembly'] : [])]))];
   return {
     status: reviewRequired.length ? 'review_required' : 'available', crewSize, productiveHoursPerDay, programmeDays,
@@ -137,8 +165,8 @@ export function calculateInstallationProgramme({ positions = [], rules = {}, pro
     standardUnits: derived.standardUnits, standardUnitsPerDay: derived.capacity, recommendFourPersonTeam: derived.standardUnits > number(rules.fourPersonRecommendationThresholdUnits, 28),
     tasks: derived.tasks, days: days.map((day, index) => ({ day: index + 1, capacityHours: day.capacityHours, tasks: day.tasks })), requiredCapabilities,
     travel: { mode: travelMode, recommendation: routeMinutes > number(rules.stayAwayThresholdMinutes, 90) ? 'stay_away' : 'daily_travel', oneWayMiles: money(oneWayMiles), oneWayDurationMinutes: routeMinutes, vehicleCount, chargeableMiles: money(chargeableMiles), mileageRate: money(profile.mileageRate ?? rules.mileageRate ?? 0.55), cost: money(mileageCost), finalReturnBy: `${String(Math.floor(returnByMinutes / 60)).padStart(2,'0')}:${String(returnByMinutes % 60).padStart(2,'0')}`, returnsBy2300: returnByMinutes <= number(rules.latestReturnHomeMinutes, 23 * 60) },
-    costs: { labour: money(labourCost), mileage: money(mileageCost), food: money(foodCost), accommodation: money(accommodationCost), support: money(supportCost), survey: money(surveyCost), cillInstallation: money(cillCost), purchaseCost: money(purchaseCost) },
-    allowances: { nights, foodDays: programmeDays, supportDays, surveyDays, cillApplicableQuantity: cillQuantity, cillInstallationRate: money(cillInstallationRate) },
+    componentInclusions, calculatedCosts, costs: { ...activeCosts, purchaseCost: money(purchaseCost) },
+    allowances: { nights, accommodationRooms: travelMode === 'stay_away' ? crewSize : 0, accommodationRate: money(profile.accommodationPerPersonNight ?? rules.accommodationPerPersonNight ?? 125), foodDays: programmeDays, supportDays, surveyDays, cillApplicableQuantity: cillQuantity, cillInstallationRate: money(cillInstallationRate), liftingEquipment: liftingRequired?{...lifting,hireCost:money(liftingHire),deliveryCost:money(liftingDelivery),collectionCost:money(liftingCollection),totalCost:money(liftingCost)}:{required:false},skipHire:skipRequired?{...skip,quantity:skipQuantity,hireCost:money(skipUnitHire),deliveryCost:money(skipDelivery),collectionCost:money(skipCollection),totalCost:money(skipCost)}:{required:false,quantity:Number(skip.quantity??1)||1} },
     selectedTeamId: profile.selectedTeamId ?? null, ruleVersion: profile.capturedRuleVersion ?? null, reviewRequired,
     provenance: { productivity: 'administration_snapshot', positionOverrides: 'estimate_snapshot', route: profile.route?.snapshotId ? 'google_route_snapshot' : profile.route?.manuallyOverridden ? 'estimate_override' : 'missing' },
   };

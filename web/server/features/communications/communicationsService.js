@@ -65,7 +65,7 @@ export async function findRelationshipSuggestions(db, message) {
   const supplierReferences = [...new Set(text.match(/\b\d{5,}-\d+\b/g) || [])];
   if (supplierReferences.length) {
     const placeholders = supplierReferences.map(() => "?").join(",");
-    const revisions = await db.all(`SELECT r.id,r.full_quotation_reference,q.supplier_code,q.supplier_name,d.supplier_code canonical_supplier_code,d.supplier_name canonical_supplier_name FROM supplier_quote_revisions r JOIN supplier_quotes q ON q.id=r.supplier_quote_id LEFT JOIN supplier_commercial_defaults d ON d.supplier_code=q.supplier_code AND d.active<>0 WHERE r.full_quotation_reference IN (${placeholders}) AND q.archived_at IS NULL`, ...supplierReferences).catch(() => []);
+    const revisions = await db.all(`SELECT r.id,r.full_quotation_reference,q.supplier_code,q.supplier_name,d.supplier_code canonical_supplier_code,d.supplier_name canonical_supplier_name FROM supplier_quote_revisions r JOIN supplier_quotes q ON q.id=r.supplier_quote_id LEFT JOIN supplier_commercial_defaults d ON d.supplier_code=q.supplier_code AND NOT (upper(trim(d.supplier_name))='ANY' AND upper(trim(d.supplier_code)) IN ('FACTORY PRICE','1 TO 1 PRICING','STAGED DISCOUNT')) WHERE r.full_quotation_reference IN (${placeholders}) AND q.archived_at IS NULL`, ...supplierReferences).catch(() => []);
     for (const revision of revisions) {
       suggestions.push({ kind: "supplier_quotation", id: revision.id, label: `${revision.supplier_name} · ${revision.full_quotation_reference}`, evidence: "Exact supplier quotation reference", autoLinkAllowed: false });
       if (revision.canonical_supplier_code) suggestions.push({ kind: "supplier", id: revision.canonical_supplier_code, label: revision.canonical_supplier_name, evidence: "Canonical supplier on the exact quotation reference", autoLinkAllowed: false });
@@ -83,7 +83,7 @@ export async function resolveCanonicalRelationship(db, kind, id) {
     const order = await db.get("SELECT id FROM orders WHERE id=?", id).catch(() => null);
     return order || db.get("SELECT id FROM estimates WHERE id=? AND deleted_at IS NULL AND outcome='Order'", id);
   }
-  if (kind === "supplier") return db.get("SELECT supplier_code id FROM supplier_commercial_defaults WHERE supplier_code=? AND active<>0", id);
+  if (kind === "supplier") return db.get("SELECT supplier_code id FROM supplier_commercial_defaults WHERE supplier_code=? AND NOT (upper(trim(supplier_name))='ANY' AND upper(trim(supplier_code)) IN ('FACTORY PRICE','1 TO 1 PRICING','STAGED DISCOUNT'))", id);
   if (kind === "supplier_quotation") return db.get("SELECT r.id FROM supplier_quote_revisions r JOIN supplier_quotes q ON q.id=r.supplier_quote_id JOIN estimates e ON e.id=r.estimate_id WHERE r.id=? AND q.archived_at IS NULL AND e.deleted_at IS NULL", id);
   throw Object.assign(new Error("Unsupported canonical communication relationship."), { status: 400, code: "unsupported_communication_link" });
 }

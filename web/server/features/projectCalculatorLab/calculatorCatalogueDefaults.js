@@ -4,6 +4,7 @@ export const CALCULATOR_LEGACY_CATALOGUE_IDS=Object.freeze([
   'me508_unconfigured','tp600_unconfigured','tp601_unconfigured','me020_pending',
   'bracket_unconfigured','bracket_150_pending','bracket_200_pending','bracket_250_pending',
   'frame_screw_pending','concrete_fixing_pending','masonry_fixing_pending','timber_fixing_pending','icf_fixing_pending','packer_pending',
+  'mini_spider_crane','glass_vacuum_lifter','glazing_robot',
 ]);
 
 export const CALCULATOR_CATALOGUE_DEFAULTS=Object.freeze([
@@ -11,7 +12,13 @@ export const CALCULATOR_CATALOGUE_DEFAULTS=Object.freeze([
   ['installer_mileage','travel','Installer mileage','per_mile','0.55'],['supplier_site_mileage','travel','Supplier / site-visit mileage','per_mile','0.55'],
   ['installation_accommodation','accommodation','Installation accommodation','per_person_night','125.00'],['bnb','accommodation','B&B','per_person_night','100.00'],['hotel','accommodation','Hotel','per_person_night','150.00'],['airbnb','accommodation','Airbnb','per_crew_week','750.00'],
   ['food_allowance','accommodation','Food allowance','per_person_day','30.00'],['stay_away_allowance','accommodation','Staying-away allowance','per_person_night','50.00'],
-  ['mini_spider_crane','mechanical_lifting','Mini spider crane','hire',null],['glass_vacuum_lifter','mechanical_lifting','Glass vacuum lifter','hire',null],['glazing_robot','mechanical_lifting','Glazing robot','hire',null],
+  ['lifting_telehandler','mechanical_lifting','Telehandler — Day Hire','hire','200.00',currentCatalogue({equipmentType:'telehandler',hirePeriod:'day',productName:'Telehandler — Day Hire',purchaseUnit:'hire',deliveryCost:null,collectionCost:null,defaultMarkupPercent:0})],
+  ['lifting_telehandler_week','mechanical_lifting','Telehandler — Week Hire','hire','750.00',currentCatalogue({equipmentType:'telehandler',hirePeriod:'week',productName:'Telehandler — Week Hire',purchaseUnit:'hire',deliveryCost:null,collectionCost:null,defaultMarkupPercent:0})],
+  ['lifting_robot','mechanical_lifting','Robot','hire','650.00',currentCatalogue({equipmentType:'robot',productName:'Robot',purchaseUnit:'hire',deliveryCost:'150.00',collectionCost:'150.00',defaultMarkupPercent:0})],
+  ['lifting_spider_crane','mechanical_lifting','Spider Crane','hire','550.00',currentCatalogue({equipmentType:'spider_crane',productName:'Spider Crane',purchaseUnit:'hire',deliveryCost:'150.00',collectionCost:'150.00',defaultMarkupPercent:0})],
+  ['lifting_crane','mechanical_lifting','Crane','hire',null,currentCatalogue({equipmentType:'crane',productName:'Crane',purchaseUnit:'hire',deliveryCost:null,collectionCost:null,defaultMarkupPercent:0,sourceStatus:'Hire and transport costs require Administration configuration'})],
+  ...[['1','100.00'],['2','200.00'],['3','300.00'],['4','400.00']].map(([option,price])=>[`lifting_glass_vacuum_${option}`,'mechanical_lifting',`Glass Vacuum Lifter — Option ${option}`,'hire',price,currentCatalogue({equipmentType:'glass_vacuum_lifter',productName:`Glass Vacuum Lifter — Option ${option}`,purchaseUnit:'hire',deliveryCost:'150.00',collectionCost:'150.00',defaultMarkupPercent:0,temporaryCommercialDefault:true})]),
+  ...[['6','175.00'],['8','250.00'],['12','350.00']].map(([yards,price])=>[`equipment_skip_${yards}_yard`,'mechanical_lifting',`${yards} Yard Skip`,'hire',price,currentCatalogue({equipmentType:'skip_hire',capacityYards:Number(yards),productName:`${yards} Yard Skip`,purchaseUnit:'hire',deliveryCost:'0.00',collectionCost:'0.00',defaultMarkupPercent:0})]),
   ['skip_4_yard','skip','4-yard skip','each',null],['skip_6_yard','skip','6-yard skip','each',null],['skip_8_yard','skip','8-yard skip','each',null],['skip_12_yard','skip','12-yard skip','each',null],
   ['me508_501392','illbruck_me508','Illbruck ME508 Airtightness Membrane Internal · 70 mm × 75 m','roll','145.69',currentCatalogue({itemNumber:'501392',manufacturer:'Illbruck',productCode:'ME508',productName:'Illbruck ME508 Airtightness Membrane Internal',role:'internal installation membrane',rollLengthM:75,rollWidthCode:'EW-70',rollWidthMm:70,rollsPerBox:1,purchaseUnit:'roll'})],
   ['me508_501393','illbruck_me508','Illbruck ME508 Airtightness Membrane Internal · 100 mm × 75 m','roll','190.61',currentCatalogue({itemNumber:'501393',manufacturer:'Illbruck',productCode:'ME508',productName:'Illbruck ME508 Airtightness Membrane Internal',role:'internal installation membrane',rollLengthM:75,rollWidthCode:'EW-100',rollWidthMm:100,rollsPerBox:1,purchaseUnit:'roll'})],
@@ -43,5 +50,5 @@ export const CALCULATION_RULE_DEFAULTS=Object.freeze({
 export const PACKAGE_RULE_DEFAULTS=Object.freeze({
   supply_only:['products','extras','transport'],
   support:['products','extras','transport','survey','installation_support','travel'],
-  full_installation:['products','extras','transport','installation','sealing','brackets','mechanical_lifting','travel','accommodation','skip'],
+  full_installation:['products','extras','transport','installation','sealing','brackets','travel','accommodation','skip'],
 });

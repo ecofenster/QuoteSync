@@ -2,6 +2,7 @@ const corporateSuffixes = new Set(['LIMITED', 'LTD', 'PLC', 'INC', 'LLC', 'SA'])
 const controlledDealerAliases = new Map([
   ['EKO', new Set(['EKO', 'EKOOKNA'])],
 ]);
+const automaticPendingName = normalizeSupplierIdentity('Automatic identification pending');
 
 export function normalizeSupplierIdentity(value) {
   const tokens = String(value || '')
@@ -41,9 +42,10 @@ export function assertCommercialDealerIdentity({ sourceDealerName, sourceAuthori
   }
   const aggregateName = normalizeSupplierIdentity(quotationDealerName);
   const aggregateCode = String(quotationDealerCode || '').trim().toUpperCase();
+  const pendingAutomaticAggregate = aggregateCode.startsWith('AUTO-') && aggregateName === automaticPendingName;
   const aggregateAliases = controlledDealerAliases.get(aggregateCode);
   const aggregateMatches = aggregateCode === configuredCode || aggregateName === sourceIdentity || Boolean(aggregateAliases?.has(aggregateName) && aggregateAliases.has(sourceIdentity));
-  if (aggregateName && !aggregateMatches) {
+  if (aggregateName && !aggregateMatches && !pendingAutomaticAggregate) {
     throw Object.assign(new Error(`This quotation aggregate belongs to ${quotationDealerName}, not the explicit source dealer ${sourceDealerName}. Create or select the dealer-owned quotation aggregate before confirmation.`), {
       code: 'quotation_aggregate_dealer_mismatch', sourceDealerName, quotationDealerCode: quotationDealerCode ?? null, quotationDealerName,
     });

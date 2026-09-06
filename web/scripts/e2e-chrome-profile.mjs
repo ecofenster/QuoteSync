@@ -63,13 +63,13 @@ function runOwnedCommand(command, args, spawnImpl = spawn) {
 
 export async function terminateOwnedChrome(child, options = {}) {
   if (!child || child.exitCode !== null || child.signalCode !== null) return { exited: true, forced: false };
+  if ((options.platformName ?? process.platform) === "win32" && child.pid) {
+    const taskkillCompleted = await runOwnedCommand("taskkill", ["/PID", String(child.pid), "/T", "/F"], options.spawnImpl);
+    return { exited: await waitForExit(child, options.forceTimeoutMs ?? 3000, options.delayImpl), forced: true, taskkillCompleted };
+  }
+
   child.kill("SIGTERM");
   if (await waitForExit(child, options.gracefulTimeoutMs ?? 3000, options.delayImpl)) return { exited: true, forced: false };
-
-  if ((options.platformName ?? process.platform) === "win32" && child.pid) {
-    await runOwnedCommand("taskkill", ["/PID", String(child.pid), "/T", "/F"], options.spawnImpl);
-  } else {
-    child.kill("SIGKILL");
-  }
+  child.kill("SIGKILL");
   return { exited: await waitForExit(child, options.forceTimeoutMs ?? 3000, options.delayImpl), forced: true };
 }

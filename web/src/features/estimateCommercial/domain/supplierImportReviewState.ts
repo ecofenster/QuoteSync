@@ -9,25 +9,27 @@ export function updateDocumentSelection(current: ReadonlySet<string>, itemId: st
 
 export function deriveSupplierImportReviewState(
   review: ManufacturerImportReview,
-  supplierCode: string,
+  commercialSupplierCode: string,
   manufacturerId: string,
 ) {
   const rows = review.documents.flatMap((document) => document.rows);
-  const commercialSupplier = review.commercialSuppliers.find((item) => item.supplierCode === supplierCode) ?? null;
+  const commercialSupplier = review.commercialSuppliers.find((item) => item.supplierCode === commercialSupplierCode) ?? null;
   const canonicalManufacturer = review.canonicalManufacturers.find((item) => item.manufacturerId === manufacturerId) ?? null;
-  const legacyDirect = review.metadata.manufacturerResolutionMethod === "legacy_direct_supplier_compatibility";
+  const legacyDirect = ["legacy_direct_supplier_compatibility", "document_supported_direct_identity"].includes(review.metadata.manufacturerResolutionMethod ?? "");
   const pricingPolicyAvailable = commercialSupplier?.pricingPolicyAvailable !== false;
+  const finalImportBlocked = !commercialSupplier || !pricingPolicyAvailable || (!canonicalManufacturer && !legacyDirect);
   return {
     rows,
     commercialSupplier,
     canonicalManufacturer,
     legacyDirect,
     pricingPolicyAvailable,
-    confirmationBlocked: !commercialSupplier || !pricingPolicyAvailable || (!canonicalManufacturer && !legacyDirect),
-    sameSupplierAndManufacturer: review.metadata.recognizedDealerName.localeCompare(
+    finalImportBlocked,
+    confirmationBlocked: finalImportBlocked,
+    sameSupplierAndManufacturer: Boolean(commercialSupplier?.supplierName && review.metadata.recognizedManufacturerName && commercialSupplier.supplierName.localeCompare(
       review.metadata.recognizedManufacturerName,
       undefined,
       { sensitivity: "base" },
-    ) === 0,
+    ) === 0),
   };
 }

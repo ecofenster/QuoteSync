@@ -657,6 +657,7 @@ const tables = [
     supplier_name TEXT NOT NULL,
     policy_json TEXT NOT NULL,
     pricing_display_policy_json TEXT NOT NULL,
+    import_customs_defaults_json TEXT NOT NULL DEFAULT '{}',
     updated_at TEXT NOT NULL,
     active INTEGER NOT NULL DEFAULT 1
   )`,
@@ -675,6 +676,7 @@ const tables = [
     uplift_amount TEXT NOT NULL,
     calculated_selling_rate TEXT NOT NULL,
     supplier_to_gbp_selling_rate TEXT NOT NULL,
+    costing_rate_basis TEXT NOT NULL DEFAULT 'estimate_fixed' CHECK (costing_rate_basis IN ('estimate_fixed','legacy_live_market')),
     adjustment_enabled INTEGER NOT NULL CHECK (adjustment_enabled IN (0,1)),
     manually_overridden INTEGER NOT NULL DEFAULT 0 CHECK (manually_overridden IN (0,1)),
     override_reason TEXT,
@@ -762,6 +764,7 @@ const tables = [
     uplift_amount TEXT NOT NULL,
     calculated_adjusted_rate TEXT NOT NULL,
     adjusted_rate TEXT NOT NULL,
+    costing_rate_basis TEXT NOT NULL DEFAULT 'estimate_fixed' CHECK (costing_rate_basis IN ('estimate_fixed','legacy_live_market')),
     adjustment_enabled INTEGER NOT NULL CHECK (adjustment_enabled IN (0,1)),
     manually_overridden INTEGER NOT NULL DEFAULT 0 CHECK (manually_overridden IN (0,1)),
     override_reason TEXT,
@@ -947,6 +950,7 @@ export async function initializeSupplierCommercialSchema(db) {
   }
   const calculatorRateColumns=await db.all('PRAGMA table_info(project_calculator_lab_exchange_rate_snapshots)');
   if(!calculatorRateColumns.some(column=>column.name==='inverse_rate'))await db.exec('ALTER TABLE project_calculator_lab_exchange_rate_snapshots ADD COLUMN inverse_rate TEXT');
+  if(!calculatorRateColumns.some(column=>column.name==='costing_rate_basis'))await db.exec('ALTER TABLE project_calculator_lab_exchange_rate_snapshots ADD COLUMN costing_rate_basis TEXT');
   const importSessionColumns=await db.all('PRAGMA table_info(supplier_import_lab_sessions)');
   if(!importSessionColumns.some(column=>column.name==='estimate_id'))await db.exec('ALTER TABLE supplier_import_lab_sessions ADD COLUMN estimate_id TEXT');
   const importAttachmentColumns=await db.all('PRAGMA table_info(supplier_import_lab_attachments)');
@@ -960,6 +964,8 @@ export async function initializeSupplierCommercialSchema(db) {
   const calculatorQuoteRevisionColumns=await db.all('PRAGMA table_info(project_calculator_supplier_quote_revisions)');
   if(!calculatorQuoteRevisionColumns.some(column=>column.name==='fx_snapshot_id'))await db.exec('ALTER TABLE project_calculator_supplier_quote_revisions ADD COLUMN fx_snapshot_id TEXT');
   if(!calculatorQuoteRevisionColumns.some(column=>column.name==='commercial_policy_json'))await db.exec('ALTER TABLE project_calculator_supplier_quote_revisions ADD COLUMN commercial_policy_json TEXT');
+  const supplierFxSnapshotColumns=await db.all('PRAGMA table_info(project_calculator_supplier_fx_snapshots)');
+  if(!supplierFxSnapshotColumns.some(column=>column.name==='costing_rate_basis'))await db.exec('ALTER TABLE project_calculator_supplier_fx_snapshots ADD COLUMN costing_rate_basis TEXT');
   const estimateProductFxColumns=await db.all('PRAGMA table_info(project_calculator_estimate_product_rows)');
   if(!estimateProductFxColumns.some(column=>column.name==='fx_snapshot_id'))await db.exec('ALTER TABLE project_calculator_estimate_product_rows ADD COLUMN fx_snapshot_id TEXT');
   if(!estimateProductFxColumns.some(column=>column.name==='purchase_amount_gbp'))await db.exec('ALTER TABLE project_calculator_estimate_product_rows ADD COLUMN purchase_amount_gbp TEXT');
@@ -1001,6 +1007,7 @@ export async function initializeSupplierCommercialSchema(db) {
   if(!installationCompanyColumns.some(item=>item.name==='day_rate'))await db.exec('ALTER TABLE installation_companies ADD COLUMN day_rate TEXT');
   const supplierCommercialDefaultColumns=await db.all('PRAGMA table_info(supplier_commercial_defaults)');
   if(!supplierCommercialDefaultColumns.some(item=>item.name==='active'))await db.exec('ALTER TABLE supplier_commercial_defaults ADD COLUMN active INTEGER NOT NULL DEFAULT 1');
+  if(!supplierCommercialDefaultColumns.some(item=>item.name==='import_customs_defaults_json'))await db.exec("ALTER TABLE supplier_commercial_defaults ADD COLUMN import_customs_defaults_json TEXT NOT NULL DEFAULT '{}'");
   const now=new Date().toISOString();
   for(const [id,category,label,rateType,price,variant] of CALCULATOR_CATALOGUE_DEFAULTS){
     await db.run('INSERT OR IGNORE INTO project_calculator_admin_catalogue_items(id,category,label,rate_type,price_amount,currency,variant_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)',id,category,label,rateType,price,'GBP',JSON.stringify(variant||{}),now,now);
@@ -1029,6 +1036,33 @@ export async function initializeSupplierCommercialSchema(db) {
       await db.run('INSERT INTO project_calculator_admin_catalogue_migrations(migration_key,applied_at) VALUES(?,?)',installationAdminCleanupKey,now);
       await db.exec('RELEASE SAVEPOINT installation_admin_legacy_cleanup');
     }catch(error){await db.exec('ROLLBACK TO SAVEPOINT installation_admin_legacy_cleanup');await db.exec('RELEASE SAVEPOINT installation_admin_legacy_cleanup');throw error;}
+  }
+  const installationLiftingCatalogueKey='installation_lifting_equipment_catalogue_v1';
+  if(!await db.get('SELECT migration_key FROM project_calculator_admin_catalogue_migrations WHERE migration_key=?',installationLiftingCatalogueKey)){
+    await db.exec('SAVEPOINT installation_lifting_catalogue');
+    try{
+      for(const [id,category,label,rateType,price,variant] of CALCULATOR_CATALOGUE_DEFAULTS.filter(item=>item[1]==='mechanical_lifting'&&item[5]?.catalogueStatus==='current')){
+        await db.run('INSERT INTO project_calculator_admin_catalogue_items(id,category,label,rate_type,price_amount,currency,variant_json,active,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET category=excluded.category,label=excluded.label,rate_type=excluded.rate_type,price_amount=excluded.price_amount,currency=excluded.currency,variant_json=excluded.variant_json,active=1,version=project_calculator_admin_catalogue_items.version+1,updated_at=excluded.updated_at',id,category,label,rateType,price,'GBP',JSON.stringify(variant||{}),1,now,now);
+      }
+      for(const id of ['mini_spider_crane','glass_vacuum_lifter','glazing_robot'])await db.run('UPDATE project_calculator_admin_catalogue_items SET active=0,version=version+CASE WHEN active=1 THEN 1 ELSE 0 END,updated_at=? WHERE id=?',now,id);
+      await db.run('INSERT INTO project_calculator_admin_catalogue_migrations(migration_key,applied_at) VALUES(?,?)',installationLiftingCatalogueKey,now);
+      await db.exec('RELEASE SAVEPOINT installation_lifting_catalogue');
+    }catch(error){await db.exec('ROLLBACK TO SAVEPOINT installation_lifting_catalogue');await db.exec('RELEASE SAVEPOINT installation_lifting_catalogue');throw error;}
+  }
+  const installationEquipmentHireCatalogueKey='installation_equipment_hire_catalogue_v2';
+  if(!await db.get('SELECT migration_key FROM project_calculator_admin_catalogue_migrations WHERE migration_key=?',installationEquipmentHireCatalogueKey)){
+    await db.exec('SAVEPOINT installation_equipment_hire_catalogue');
+    try{
+      for(const [id,category,label,rateType,price,variant] of CALCULATOR_CATALOGUE_DEFAULTS.filter(item=>item[1]==='mechanical_lifting'&&item[5]?.catalogueStatus==='current'))await db.run('INSERT INTO project_calculator_admin_catalogue_items(id,category,label,rate_type,price_amount,currency,variant_json,active,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET category=excluded.category,label=excluded.label,rate_type=excluded.rate_type,price_amount=excluded.price_amount,currency=excluded.currency,variant_json=excluded.variant_json,active=1,version=project_calculator_admin_catalogue_items.version+1,updated_at=excluded.updated_at',id,category,label,rateType,price,'GBP',JSON.stringify(variant||{}),1,now,now);
+      await db.run('INSERT INTO project_calculator_admin_catalogue_migrations(migration_key,applied_at) VALUES(?,?)',installationEquipmentHireCatalogueKey,now);
+      await db.exec('RELEASE SAVEPOINT installation_equipment_hire_catalogue');
+    }catch(error){await db.exec('ROLLBACK TO SAVEPOINT installation_equipment_hire_catalogue');await db.exec('RELEASE SAVEPOINT installation_equipment_hire_catalogue');throw error;}
+  }
+  const installationLiftingPackageRuleKey='installation_lifting_explicit_choice_v1';
+  if(!await db.get('SELECT migration_key FROM project_calculator_admin_catalogue_migrations WHERE migration_key=?',installationLiftingPackageRuleKey)){
+    const packageRow=await db.get('SELECT inclusions_json FROM project_calculator_admin_package_rules WHERE package_code=?','full_installation'),savedInclusions=packageRow?.inclusions_json?JSON.parse(packageRow.inclusions_json):[],inclusions=(Array.isArray(savedInclusions)?savedInclusions:PACKAGE_RULE_DEFAULTS.full_installation).filter(value=>value!=='mechanical_lifting');
+    await db.run('UPDATE project_calculator_admin_package_rules SET inclusions_json=?,version=version+1,updated_at=? WHERE package_code=?',JSON.stringify(inclusions),now,'full_installation');
+    await db.run('INSERT INTO project_calculator_admin_catalogue_migrations(migration_key,applied_at) VALUES(?,?)',installationLiftingPackageRuleKey,now);
   }
   for(const [key,value] of Object.entries(CALCULATION_RULE_DEFAULTS))await db.run('INSERT OR IGNORE INTO project_calculator_admin_rules(rule_key,rule_value_json,updated_at) VALUES(?,?,?)',key,JSON.stringify(value),now);
   for(const [code,inclusions] of Object.entries(PACKAGE_RULE_DEFAULTS))await db.run('INSERT OR IGNORE INTO project_calculator_admin_package_rules(package_code,inclusions_json,updated_at) VALUES(?,?,?)',code,JSON.stringify(inclusions),now);

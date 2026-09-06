@@ -1,20 +1,23 @@
+import { spawn } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
-import { createPhase6ProfileDirectory, cleanupPhase6Profile, terminateOwnedChrome } from "./e2e-chrome-profile.mjs";
+import { createBrowserRunController, countBrowserRunProfiles } from "./browser-run-lifecycle.mjs";
 
 const APP_URL = process.env.E2E_APP_URL ?? "http://localhost:5173";
-const DEBUG_PORT = 9277;
+const DEBUG_PORT = 9278;
 const assert = (value, message) => { if (!value) throw new Error(message); };
 const reachable = async (url) => { try { return (await fetch(url)).ok; } catch { return false; } };
 const waitFor = async (fn, message, timeout = 30000) => { const started = Date.now(); while (Date.now() - started < timeout) { const value = await fn().catch(() => false); if (value) return value; await delay(150); } throw new Error(message); };
 
+const browserRunController = createBrowserRunController({ throwOnLeak: true, processOptions: { platformName: process.platform } });
+browserRunController.installInterruptHandlers();
+
 async function launchChrome() {
-  const userDataDir = await createPhase6ProfileDirectory();
-  const executable = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
-  const child = spawn(executable, ["--headless=new", `--remote-debugging-port=${DEBUG_PORT}`, `--user-data-dir=${userDataDir}`, "--no-first-run", "--disable-gpu", "--disable-extensions", "about:blank"], { stdio: "ignore" });
+  const userDataDir = await browserRunController.createProfile({ label: "estimate-index-actions", debugPort: DEBUG_PORT });
+  const child = spawn("C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", ["--headless=new", `--remote-debugging-port=${DEBUG_PORT}`, `--user-data-dir=${userDataDir}`, "--no-first-run", "--disable-gpu", "--disable-extensions", "about:blank"], { stdio: "ignore" });
+  browserRunController.setRun({ child });
   await waitFor(() => reachable(`http://127.0.0.1:${DEBUG_PORT}/json/version`), "Chrome unavailable", 10000);
   return { child, userDataDir };
 }
@@ -28,9 +31,25 @@ async function connect() {
   let id = 0;
   const pending = new Map();
   const diagnostics = [];
-  socket.addEventListener("message", (event) => { const message = JSON.parse(String(event.data)); if (message.method === "Runtime.exceptionThrown") diagnostics.push(message.params?.exceptionDetails?.text); if (message.id && pending.has(message.id)) { const task = pending.get(message.id); pending.delete(message.id); message.error ? task.reject(new Error(message.error.message)) : task.resolve(message.result); } });
-  const send = (method, params = {}) => new Promise((resolve, reject) => { const call = ++id; pending.set(call, { resolve, reject }); socket.send(JSON.stringify({ id: call, method, params })); });
-  const evaluate = async (expression) => { const result = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }); if (result.exceptionDetails) throw new Error(result.exceptionDetails.text); return result.result?.value; };
+  socket.addEventListener("message", (event) => {
+    const message = JSON.parse(String(event.data));
+    if (message.method === "Runtime.exceptionThrown") diagnostics.push(message.params?.exceptionDetails?.text);
+    if (message.id && pending.has(message.id)) {
+      const task = pending.get(message.id);
+      pending.delete(message.id);
+      message.error ? task.reject(new Error(message.error.message)) : task.resolve(message.result);
+    }
+  });
+  const send = (method, params = {}) => new Promise((resolve, reject) => {
+    const call = ++id;
+    pending.set(call, { resolve, reject });
+    socket.send(JSON.stringify({ id: call, method, params }));
+  });
+  const evaluate = async (expression) => {
+    const result = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
+    if (result.exceptionDetails) throw new Error(result.exceptionDetails.text);
+    return result.result?.value;
+  };
   await send("Runtime.enable");
   await send("Page.enable");
   await send("Page.navigate", { url: APP_URL });
@@ -45,7 +64,7 @@ const inspect = (tab) => tab.evaluate(`(() => {
   const rects = controls.map((node) => node.getBoundingClientRect());
   return {
     headings: headings.map((node) => node.textContent.trim()),
-    alignment: headings.map((node, index) => Math.abs((node.getBoundingClientRect().left + node.getBoundingClientRect().width / 2) - (rects[index].left + rects[index].width / 2))),
+    alignment: headings.map((node, index) => Math.abs((node.getBoundingClientRect().left + node.getBoundingClientRect().width / 2) - (rects[index]?.left + rects[index].width / 2)),
     widths: rects.map((rect) => Math.round(rect.width)),
     rowHeight: row ? Math.round(row.getBoundingClientRect().height) : 0,
     horizontalOverflow: wrap ? Math.max(0, wrap.scrollWidth - wrap.clientWidth) : -1,
@@ -60,11 +79,25 @@ async function run() {
   const browser = await launchChrome();
   let tab;
   try {
+    browserRunController.setRun({
+      label: "estimate-index-actions",
+      userDataDir: browser.userDataDir,
+      child: browser.child,
+      debugPort: DEBUG_PORT,
+      profileProcessCountBefore: await countBrowserRunProfiles(browser.userDataDir, { platformName: process.platform }),
+      startedAt: new Date().toISOString(),
+    });
+
     tab = await connect();
     await delay(1500);
-    await waitFor(() => tab.evaluate(`Boolean([...document.querySelectorAll('.app-sidebar-item')].find((node) => node.textContent.trim() === 'Estimates'))`), "Application shell unavailable");
+    await waitFor(() => tab.evaluate(`Boolean([...document.querySelectorAll('.app-sidebar-item')].find((node) => node.textContent.trim() === 'Estimates') )`), "Application shell unavailable");
     await waitFor(() => tab.evaluate(`(() => { const item = [...document.querySelectorAll('.app-sidebar-item')].find((node) => node.textContent.trim() === 'Estimates'); if (!item) return false; item.click(); return true; })()`), "Estimates navigation unavailable");
     await waitFor(() => tab.evaluate(`Boolean(document.querySelector('.estimate-index-table tbody tr'))`), "No Estimate row available for layout acceptance");
+
+    browserRunController.setRun({
+      profileProcessCountDuring: await countBrowserRunProfiles(browser.userDataDir, { platformName: process.platform }),
+    });
+
     const results = {};
     for (const [width, height] of [[1920, 1080], [1366, 768]]) {
       await tab.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
@@ -83,9 +116,9 @@ async function run() {
     console.log(JSON.stringify(results, null, 2));
   } finally {
     tab?.close();
-    await terminateOwnedChrome(browser.child);
-    await cleanupPhase6Profile(browser.userDataDir);
+    const cleanup = await browserRunController.stop("final");
+    console.log(`Estimate index actions browser cleanup: ${JSON.stringify(cleanup)}`);
   }
 }
 
-run().catch((error) => { console.error(error); process.exitCode = 1; });
+run().catch((error) => { console.error(error); process.exitCode = 1; }).finally(async () => { const cleanup = await browserRunController.stop("top-level"); if (!cleanup.skipped) console.log("Browser top-level cleanup: " + JSON.stringify(cleanup)); });

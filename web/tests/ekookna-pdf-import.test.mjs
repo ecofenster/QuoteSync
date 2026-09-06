@@ -313,7 +313,7 @@ test('EkoOkna source regions render as bounded, deterministic browser-safe PNG d
   assert.equal(await fs.readFile(previewFilename(root, cached005)).then((bytes) => createHash('sha256').update(bytes).digest('hex')), await fs.readFile(previewFilename(root, inside005)).then((bytes) => createHash('sha256').update(bytes).digest('hex')));
 });
 
-async function setupFixture(t, { configureSupplier }) {
+async function setupFixture(t, { configureSupplier, automaticPending = false }) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'qs-eko-import-'));
   const db = await open({ filename: path.join(root, 'fixture.sqlite'), driver: sqlite3.Database });
   t.after(async () => { await db.close(); await fs.rm(root, { recursive: true, force: true }); });
@@ -327,8 +327,8 @@ async function setupFixture(t, { configureSupplier }) {
   const bytes = await fs.readFile(storedSource);
   assert.equal(createHash('sha256').update(bytes).digest('hex'), sourceSha256);
   const supplier = createSupplierQuotesService(db, { attachmentRoot: root, fileSupplierAttachments: false });
-  const quote = await supplier.createQuote('estimate', { supplierCode: 'DOC-EKO', supplierName: 'EkoOkna' });
-  const revision = await supplier.createRevision('estimate', quote.id, { supplierQuotationNumber: '2263569', currency: 'EUR' });
+  const quote = await supplier.createQuote('estimate', automaticPending ? { supplierCode: 'AUTO-EKO-ANALYSIS', supplierName: 'Automatic identification pending' } : { supplierCode: 'DOC-EKO', supplierName: 'EkoOkna' });
+  const revision = await supplier.createRevision('estimate', quote.id, automaticPending ? { supplierQuotationNumber: '', fullQuotationReference: 'Analysis pending', currency: 'XXX' } : { supplierQuotationNumber: '2263569', currency: 'EUR' });
   await supplier.insertAttachments('estimate', quote.id, revision.id, [{ id: 'source', role: 'original_quote', documentKind: 'complete_quotation', originalFileName: 'Kosztorys - OF_25_2263569.pdf', mediaType: 'application/pdf', sizeBytes: bytes.length, sha256: sourceSha256, storageKey: 'source.pdf', parserEligible: true, createdAt: '2026-08-28T00:00:00.000Z' }]);
   return { db, root, calculator, scenario, supplier, quote, revision, selection: [{ quoteId: quote.id, revisionId: revision.id, attachmentId: 'source' }] };
 }
@@ -371,21 +371,27 @@ test('missing canonical EkoOkna supplier stops before commercial mutation with t
   assert.equal(review.metadata.supplierCode, null);
   assert.equal(review.documents[0].diagnostics.status, 'canonical_supplier_required');
   const selectedRowKeys = review.documents[0].rows.map((row) => row.rowKey);
-  await assert.rejects(fixture.supplier.extractAndLoadSupplierCosts('estimate', fixture.scenario.id, fixture.selection, { selectedRowKeys, metadata: { quotationNumber: 'OF/25/2263569', revision: '', currency: 'GBP' } }), (error) => error.code === 'canonical_supplier_required');
+  await assert.rejects(fixture.supplier.extractAndLoadSupplierCosts('estimate', fixture.scenario.id, fixture.selection, { selectedRowKeys, metadata: { quotationNumber: 'OF/25/2263569', revision: '', currency: 'GBP' } }), (error) => error.code === 'commercial_supplier_required');
   assert.equal(await count(fixture.db, 'supplier_quote_import_runs'), 0);
   assert.equal(await count(fixture.db, 'supplier_quote_import_operations'), 0);
   assert.equal(await count(fixture.db, 'supplier_quote_positions'), 0);
   assert.equal(await count(fixture.db, 'project_calculator_estimate_product_rows'), 0);
 });
 
-test('12-position EkoOkna fixture confirms 12/12/12 and replays idempotently', async (t) => {
-  const fixture = await setupFixture(t, { configureSupplier: true });
+test('automatic-first EkoOkna evidence identifies, confirms and imports 12/12/12 without duplicate upload', async (t) => {
+  const fixture = await setupFixture(t, { configureSupplier: true, automaticPending: true });
   const review = await fixture.supplier.prepareImportReview('estimate', fixture.selection);
   assert.equal(review.positionCount, 12);
   assert.equal(review.metadata.supplierResolutionStatus, 'resolved');
   assert.equal(review.metadata.supplierResolutionMethod, 'normalized_supplier_name');
   assert.equal(review.metadata.supplierCode, 'EKO');
   assert.equal(review.metadata.currency, 'GBP');
+  assert.equal(review.metadata.quotationNumber, 'OF/25/2263569');
+  assert.equal(review.metadata.quotationDate, '2025-11-18');
+  assert.equal(review.metadata.documentType, 'complete_quotation');
+  assert.equal(review.metadata.supplierQuotedSubtotal, '5989.85');
+  assert.equal(review.metadata.supplierQuotedTotal, '5989.85');
+  assert.equal((await fixture.supplier.listAttachments('estimate', fixture.quote.id, fixture.revision.id)).length, 1);
   assert.equal(review.documents[0].diagnostics.status, 'ready_to_confirm');
   assert.equal(review.documents[0].rows.filter((row) => row.include).length, 12);
   assert.equal(review.documents[0].rows.filter((row) => row.sourceVisual.status === 'available').length, 12);
@@ -393,7 +399,7 @@ test('12-position EkoOkna fixture confirms 12/12/12 and replays idempotently', a
   assert.equal(review.documents[0].rows.every((row) => row.sourceVisuals.map((visual) => visual.role).join(',') === 'inside,outside,combined_source'), true);
   assert.equal(review.documents[0].rows.every((row) => row.sourceSpecification.fieldCount >= 40), true);
   const selectedRowKeys = review.documents[0].rows.map((row) => row.rowKey);
-  const confirmation = { selectedRowKeys, supplierCode: 'EKO', metadata: { quotationNumber: 'OF/25/2263569', revision: '', currency: 'GBP' } };
+  const confirmation = { selectedRowKeys, supplierCode: 'EKO', metadata: { quotationNumber: 'OF/25/2263569', revision: '', quotationDate: '2025-11-18', currency: 'GBP', documentType: 'complete_quotation' } };
   const first = await fixture.supplier.extractAndLoadSupplierCosts('estimate', fixture.scenario.id, fixture.selection, confirmation);
   const counts = first.documents[0].diagnostics.counts;
   assert.deepEqual([counts.parsedPositions, counts.selectedPositions, counts.validCanonicalPositions, counts.persistedPositions, counts.productsSupplyRows, counts.projectCostingRows], [12, 12, 12, 12, 12, 12]);
@@ -402,6 +408,8 @@ test('12-position EkoOkna fixture confirms 12/12/12 and replays idempotently', a
   assert.equal(await count(fixture.db, 'project_calculator_estimate_product_rows', 'scenario_id=? AND source_revision_id=?', fixture.scenario.id, fixture.revision.id), 12);
   assert.equal(await count(fixture.db, 'project_calculator_estimate_product_rows', 'scenario_id=? AND source_revision_id=? AND estimate_position_id IS NOT NULL', fixture.scenario.id, fixture.revision.id), 12);
   assert.equal((await fixture.db.get('SELECT supplier_code FROM supplier_quotes WHERE id=?', fixture.quote.id)).supplier_code, 'EKO');
+  assert.equal((await fixture.db.get('SELECT supplier_name FROM supplier_quotes WHERE id=?', fixture.quote.id)).supplier_name, 'EKO-OKNA');
+  assert.equal((await fixture.db.get('SELECT quotation_date FROM supplier_quote_revisions WHERE id=?', fixture.revision.id)).quotation_date, '2025-11-18');
   assert.equal((await fixture.db.get('SELECT currency FROM supplier_quote_revisions WHERE id=?', fixture.revision.id)).currency, 'GBP');
   assert.equal((await fixture.db.get('SELECT currency FROM project_calculator_supplier_quote_revisions WHERE revision_id=?', fixture.revision.id)).currency, 'GBP');
   const savedRows = await fixture.db.all('SELECT display_reference,source_snapshot_json FROM project_calculator_estimate_product_rows WHERE source_revision_id=? ORDER BY display_reference', fixture.revision.id);

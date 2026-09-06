@@ -32,7 +32,8 @@ async function fixture(t) {
   await db.run("INSERT INTO projects VALUES(?,?,?,NULL)","project-1","client-1","Exact Project");
   await db.run("INSERT INTO estimates VALUES(?,?,?,?,?,NULL)","estimate-1","client-1","project-1","EF-EST-2026-041","Order");
   await db.run("INSERT INTO orders VALUES(?,?)","order-1","EF-ORD-2026-003");
-  await db.run("INSERT INTO supplier_commercial_defaults VALUES(?,?,1)","ZYLE","Zyle Fenster");
+  await db.run("INSERT INTO supplier_commercial_defaults VALUES(?,?,0)","ZYLE","Zyle Fenster");
+  await db.run("INSERT INTO supplier_commercial_defaults VALUES(?,?,1)","FACTORY PRICE","Any");
   await db.run("INSERT INTO supplier_quotes VALUES(?,?,?,?,NULL)","quote-1","estimate-1","ZYLE","Zyle Fenster");
   await db.run("INSERT INTO supplier_quote_revisions VALUES(?,?,?,?)","revision-1","quote-1","estimate-1","343718-1");
   t.after(async()=>{await db.close();await rm(root,{recursive:true,force:true})});
@@ -66,6 +67,7 @@ test("exact evidence produces conservative canonical suggestions without auto-li
   assert.equal((await resolveCanonicalRelationship(db,"order","order-1")).id,"order-1");
   assert.equal((await resolveCanonicalRelationship(db,"order","estimate-1")).id,"estimate-1");
   assert.equal((await resolveCanonicalRelationship(db,"supplier","ZYLE")).id,"ZYLE");
+  assert.equal(await resolveCanonicalRelationship(db,"supplier","FACTORY PRICE"),undefined);
   assert.equal(await resolveCanonicalRelationship(db,"order","missing"),undefined);
 });
 

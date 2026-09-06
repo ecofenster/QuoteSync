@@ -4,6 +4,8 @@ import type {
   CalculatorProductRow,
   CalculatorScenario,
   CalculatorSupplierCost,
+  InstallationProgrammeComponent,
+  LiveExchangeRateResult,
 } from "./domain/projectCalculatorLab.types";
 import {
   addDecimalAmounts,
@@ -15,10 +17,7 @@ import {
   type MarkupCategory,
   type ProjectCostingMarkups,
 } from "./domain/projectCostingMarkup";
-import {
-  originalSupplierPurchaseGroups,
-  productCommercialSourceLabel,
-} from "./domain/projectCostingPresentation";
+import { productCommercialSourceLabel } from "./domain/projectCostingPresentation";
 import {
   calculateCommercialMargin,
   DEFAULT_COMMERCIAL_MARGIN_POLICY,
@@ -27,9 +26,7 @@ import {
   type CommercialMarginPolicy,
 } from "./domain/commercialMargin";
 import Toggle from "../../components/Toggle";
-import SupplierCommercialReview, {
-  type SupplierCommercialResult,
-} from "./SupplierCommercialReview";
+import type { SupplierCommercialResult } from "./SupplierCommercialReview";
 import { projectCalculatorLabApi } from "./api/projectCalculatorLabApi";
 import SiteVisitTravelPanel from "./SiteVisitTravelPanel";
 import InstallationMaterialsAssumptions from "./InstallationMaterialsAssumptions";
@@ -44,6 +41,7 @@ import {
   type ProjectCostingScenarioView,
 } from "./domain/projectCostingCommercialResult";
 import { resolveVatTreatment, VAT_TREATMENTS, type VatTreatmentCode } from "./domain/vatTreatment";
+import { useOptionalRuntimeHealth } from "../runtimeHealth/RuntimeHealthContext";
 
 type WorksheetScenario = ProjectCostingScenarioView & {
   commercialMarginPolicy?: CommercialMarginPolicy;
@@ -101,10 +99,6 @@ const quotationTotals = (
     },
     {},
   ) ?? {};
-const formatGroupedTotals = (groups: Record<string, string[]>) =>
-  Object.entries(groups)
-    .map(([currency, values]) => money(addDecimalAmounts(values), currency))
-    .join(" + ") || "—";
 const supplierEvidenceParty = (row: { label: string; sourceSnapshot?: Record<string, unknown> | null }, kind: "installation" | "survey") => {
   const explicit = kind === "installation"
     ? row.label.replace(/^Supplier quoted installation\s*—?\s*/i, "").replace(/^Installation by\s+/i, "")
@@ -233,6 +227,32 @@ function CommercialRow({
     </div>
   );
 }
+function InstallationTableRow({
+  description,
+  include,
+  basis,
+  purchase,
+  markup,
+  sale,
+  retained = false,
+}: {
+  description: ReactNode;
+  include: ReactNode;
+  basis: ReactNode;
+  purchase: string;
+  markup: string;
+  sale: string;
+  retained?: boolean;
+}) {
+  return <tr className={`costing-sheet__installation-row${retained ? " is-retained" : ""}`}>
+    <th scope="row">{description}</th>
+    <td>{include}</td>
+    <td>{basis}</td>
+    <td>{purchase}</td>
+    <td>{markup}</td>
+    <td><strong>{sale}</strong></td>
+  </tr>;
+}
 function ProductRow({
   row,
   allocation,
@@ -302,7 +322,7 @@ function ProductRow({
     thermal = positionThermal(row);
   if (commercialView === "customer") {
     const room = typeof evidence.roomLocation === "string" && evidence.roomLocation.trim() ? evidence.roomLocation : "—";
-    return <tr className={!included ? "is-excluded" : "is-inherited"}><td><strong>{row.displayReference}</strong><small>{productCommercialSourceLabel(row)}</small></td>{customerPolicy.room?<td>{room}</td>:null}<td className="costing-sheet__product-image"><div className="costing-sheet__product-preview">{imageUrl ? <button type="button" onClick={() => row.estimatePositionId && configured && customerPolicy.quickConfigurator ? commercialActions?.configurePosition?.(row.estimatePositionId) : window.open(imageUrl, "_blank", "noopener,noreferrer")} aria-label={`Open manufacturer preview for ${row.displayReference}`}><img src={imageUrl} alt={`Manufacturer preview for ${row.displayReference}`} /></button> : <span aria-label="Preview unavailable">▧</span>}<span>{typeof evidence.product === "string" ? evidence.product : row.productClass}</span></div></td>{customerPolicy.dimensions?<><td className="is-dimension">{row.widthMm}</td><td className="is-dimension">{row.heightMm}</td></>:null}<td>{row.quantity}</td>{customerPolicy.itemPrice?<td>{!included ? "Excluded" : money(pricing?.unitSellingPrice)}</td>:null}{customerPolicy.quantityPrice?<td>{!included ? "Excluded" : money(pricing?.totalSellingPrice)}</td>:null}<td>{customerPolicy.alternative?<label className="costing-sheet__alternative-control"><span>Alternative</span><Toggle ariaLabel={`${row.displayReference} alternative`} value={alternative} onChange={() => positionAction("alternative")} /></label>:null}{row.estimatePositionId ? <span className="costing-sheet__position-actions">{customerPolicy.reorder?<><button className="ui-button" onClick={() => positionAction("up")} aria-label={`Move ${row.displayReference} up`} title="Move Up">↑</button><button className="ui-button" onClick={() => positionAction("down")} aria-label={`Move ${row.displayReference} down`} title="Move Down">↓</button></>:null}{customerPolicy.duplicate?<button className="ui-button" onClick={() => positionAction("duplicate")} aria-label={`Duplicate ${row.displayReference}`} title="Duplicate Position">⧉</button>:null}<button className="ui-button" onClick={() => positionAction("delete")} aria-label={`Delete ${row.displayReference}`} title="Delete Position">×</button></span> : null}</td></tr>;
+    return <tr className={!included ? "is-excluded" : "is-inherited"}><td><strong>{row.displayReference}</strong></td>{customerPolicy.room?<td>{room}</td>:null}<td className="costing-sheet__product-image"><div className="costing-sheet__product-preview">{imageUrl ? <button type="button" onClick={() => row.estimatePositionId && configured && customerPolicy.quickConfigurator ? commercialActions?.configurePosition?.(row.estimatePositionId) : window.open(imageUrl, "_blank", "noopener,noreferrer")} aria-label={`Open manufacturer preview for ${row.displayReference}`}><img src={imageUrl} alt={`Manufacturer preview for ${row.displayReference}`} /></button> : <span aria-label="Preview unavailable">▧</span>}<span>{typeof evidence.product === "string" ? evidence.product : row.productClass}</span></div></td>{customerPolicy.dimensions?<><td className="is-dimension">{row.widthMm}</td><td className="is-dimension">{row.heightMm}</td></>:null}<td>{row.quantity}</td>{customerPolicy.itemPrice?<td>{!included ? "Excluded" : money(pricing?.unitSellingPrice)}</td>:null}{customerPolicy.quantityPrice?<td>{!included ? "Excluded" : money(pricing?.totalSellingPrice)}</td>:null}<td>{customerPolicy.alternative?<label className="costing-sheet__alternative-control"><span>Alternative</span><Toggle ariaLabel={`${row.displayReference} alternative`} value={alternative} onChange={() => positionAction("alternative")} /></label>:null}{row.estimatePositionId ? <span className="costing-sheet__position-actions">{customerPolicy.reorder?<><button className="ui-button" onClick={() => positionAction("up")} aria-label={`Move ${row.displayReference} up`} title="Move Up">↑</button><button className="ui-button" onClick={() => positionAction("down")} aria-label={`Move ${row.displayReference} down`} title="Move Down">↓</button></>:null}{customerPolicy.duplicate?<button className="ui-button" onClick={() => positionAction("duplicate")} aria-label={`Duplicate ${row.displayReference}`} title="Duplicate Position">⧉</button>:null}<button className="ui-button" onClick={() => positionAction("delete")} aria-label={`Delete ${row.displayReference}`} title="Delete Position">×</button></span> : null}</td></tr>;
   }
   return (
     <>
@@ -453,6 +473,7 @@ function Section({
   return (
     <section
       className={`costing-sheet__section costing-sheet__section--${kind}${open ? " costing-sheet__section--open" : ""}`}
+      data-costing-section={index}
     >
       <div className="costing-sheet__section-row">
         <button
@@ -504,14 +525,11 @@ export default function ScenarioCostingWorksheet({
   scenario,
   commercialView = "internal",
   estimateMetrics,
-  onNew,
   onSaveMarkups,
   onUpdateProduct,
   onUpdateSupplierCost,
   onUpdateManualCost,
-  onUpdateSupplierCommercial,
   onUpdateCustomerPricing,
-  onCreateRevision,
   onRefreshRate,
 }: {
   scenario: WorksheetScenario;
@@ -523,7 +541,6 @@ export default function ScenarioCostingWorksheet({
     totalQuantity: number;
     customerEstimateValue: string;
   };
-  onNew?: () => void;
   onSaveMarkups: (
     markups: ProjectCostingMarkups & { targetGrossMarginPercent: string },
     productOverrides: Array<{
@@ -543,16 +560,12 @@ export default function ScenarioCostingWorksheet({
     rowId: string,
     input: Record<string, unknown>,
   ) => Promise<void>;
-  onUpdateSupplierCommercial?: (
-    revisionId: string,
-    input: Record<string, unknown>,
-  ) => Promise<void>;
   onUpdateCustomerPricing?: (input: Record<string, unknown>) => Promise<void>;
-  onCreateRevision: () => Promise<void>;
   onRefreshRate: () => Promise<void>;
 }) {
   const commercialActions = useEstimateCommercialActions();
   const customerPolicy = useCustomerViewPolicy();
+  const runtimeHealth = useOptionalRuntimeHealth();
   useEffect(() => {
     if (!commercialActions) return;
     const open = () => commercialActions.openManufacturerImport();
@@ -612,11 +625,49 @@ export default function ScenarioCostingWorksheet({
     [supplierChoiceStatus, setSupplierChoiceStatus] = useState<
       Record<string, { pending: boolean; error: string }>
     >({}),
+    [installationComponentStatus, setInstallationComponentStatus] = useState<
+      Partial<Record<InstallationProgrammeComponent, { pending: boolean; error: string }>>
+    >({}),
     [error, setError] = useState(""),
-    [saving, setSaving] = useState(false);
+    [saving, setSaving] = useState(false),
+    [liveExchangeRates, setLiveExchangeRates] = useState<LiveExchangeRateResult | null>(null),
+    [rateHistoryOpen, setRateHistoryOpen] = useState(false);
+  const runtimePhase = runtimeHealth?.state.phase;
+  const liveFxCapabilityAvailable = runtimeHealth
+    ? Boolean(
+        runtimeHealth.state.capabilities?.includes(
+          "project-costing-live-exchange-rate-v1",
+        ),
+      )
+    : true;
   useEffect(() => {
     setSellingPriceHost(document.querySelector(".costing-sheet__summary-sale"));
   }, [scenario.id]);
+  useEffect(() => {
+    const liveFxCompatible =
+      commercialView === "internal" &&
+      (runtimePhase === undefined ||
+        runtimePhase === "connected" ||
+        runtimePhase === "recovered") &&
+      liveFxCapabilityAvailable;
+    if (!liveFxCompatible) return;
+    let active = true;
+    let controller: AbortController | null = null;
+    const refreshLiveRate = async () => {
+      controller?.abort();
+      controller = new AbortController();
+      try { const value = await projectCalculatorLabApi.getLiveExchangeRate(scenario.id, controller.signal); if (active) setLiveExchangeRates(value); }
+      catch (reason) { if (active && !(reason instanceof DOMException && reason.name === "AbortError")) setLiveExchangeRates(null); }
+    };
+    void refreshLiveRate();
+    const timer = window.setInterval(() => void refreshLiveRate(), 60_000);
+    return () => { active = false; controller?.abort(); window.clearInterval(timer); };
+  }, [
+    commercialView,
+    scenario.id,
+    runtimePhase,
+    liveFxCapabilityAvailable,
+  ]);
   useEffect(() => {
     const overrides = productOverrides(scenario.products),
       target =
@@ -772,6 +823,7 @@ export default function ScenarioCostingWorksheet({
     transport,
     installation,
     fees,
+    importCustomsEntries,
     extras,
     includedExtras,
     equipment,
@@ -821,6 +873,20 @@ export default function ScenarioCostingWorksheet({
     commercialAdjustment,
     profit,
   } = commercialResult;
+  const installationComponentIncluded = (component: InstallationProgrammeComponent) =>
+    scenario.installationProgramme?.componentInclusions?.[component] !== false;
+  const calculatedInstallationComponentCost = (component: InstallationProgrammeComponent) =>
+    scenario.installationProgramme?.calculatedCosts?.[component]
+      ?? scenario.installationProgramme?.costs[component]
+      ?? "0";
+  const installationComponentToggle = (component: InstallationProgrammeComponent, label: string) => {
+    const status = installationComponentStatus[component];
+    return <><Toggle ariaLabel={`Include ${label}`} value={installationComponentIncluded(component)} disabled={status?.pending === true} onChange={(value) => { void updateInstallationComponent(component, value, label); }}/>{status?.pending ? <small role="status">Saving…</small> : null}</>;
+  };
+  const installationComponentDescription = (component: InstallationProgrammeComponent, label: string) => {
+    const status = installationComponentStatus[component];
+    return <><b>{label}</b>{!installationComponentIncluded(component) && Number(calculatedInstallationComponentCost(component)) > 0 ? <small>Calculated {money(calculatedInstallationComponentCost(component))} retained</small> : null}{status?.error ? <small className="costing-sheet__choice-error" role="alert">{status.error}</small> : null}</>;
+  };
   const saveCustomerPricing = async () => {
     setSaving(true);
     setError("");
@@ -914,6 +980,66 @@ export default function ScenarioCostingWorksheet({
       setSaving(false);
     }
   };
+  const updateLiftingRequired = async (required: boolean) => {
+    setSaving(true);
+    setError("");
+    try {
+      const profile = (scenario.options?.installationProfile ?? {}) as Record<string, unknown>;
+      const lifting = sourceRecord(profile.liftingEquipment);
+      const updated = await projectCalculatorLabApi.updateInstallationProfile(scenario.id, { liftingEquipment: { ...lifting, required } });
+      window.dispatchEvent(new CustomEvent("quotesuite:costing-updated", { detail: updated }));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Equipment Hire choice could not be saved.");
+    } finally { setSaving(false); }
+  };
+  const updateSkipHireRequired = async (required: boolean) => {
+    setSaving(true); setError("");
+    try {
+      const profile = (scenario.options?.installationProfile ?? {}) as Record<string, unknown>;
+      const skip = sourceRecord(profile.skipHire);
+      const updated = await projectCalculatorLabApi.updateInstallationProfile(scenario.id,{skipHire:{...skip,required,quantity:Number(skip.quantity??1)||1}});
+      window.dispatchEvent(new CustomEvent("quotesuite:costing-updated",{detail:updated}));
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Skip Hire choice could not be saved."); }
+    finally { setSaving(false); }
+  };
+  const updateImportCustoms = async (input: Record<string, unknown>) => {
+    setSaving(true);
+    setError("");
+    try {
+      const updated = await projectCalculatorLabApi.updateImportCustoms(scenario.id, input);
+      window.dispatchEvent(new CustomEvent("quotesuite:costing-updated", { detail: updated }));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Import / Customs allowance could not be saved.");
+    } finally {
+      setSaving(false);
+    }
+  };
+  const updateInstallationComponent = async (
+    component: InstallationProgrammeComponent,
+    included: boolean,
+    label: string,
+  ) => {
+    setInstallationComponentStatus((current) => ({ ...current, [component]: { pending: true, error: "" } }));
+    try {
+      const updated = await projectCalculatorLabApi.updateInstallationProfile(scenario.id, {
+        componentInclusions: { [component]: included },
+      });
+      window.dispatchEvent(new CustomEvent("quotesuite:costing-updated", { detail: updated }));
+      setInstallationComponentStatus((current) => {
+        const next = { ...current };
+        delete next[component];
+        return next;
+      });
+    } catch (reason) {
+      setInstallationComponentStatus((current) => ({
+        ...current,
+        [component]: {
+          pending: false,
+          error: reason instanceof Error ? reason.message : `${label} choice could not be saved.`,
+        },
+      }));
+    }
+  };
   const updateMaterialsRequired = async (required: boolean) => {
     setSaving(true);
     setError("");
@@ -945,11 +1071,9 @@ export default function ScenarioCostingWorksheet({
       Number(margin?.grossMarginPercent ?? 0) <
       Number(policy.minimumAcceptableGrossMarginPercent),
     lossMaking = Number(actualSale) < Number(projectCost),
-    marginStatus = belowMinimum ? "low" : resolvedMarginStatus;
+    marginStatus = belowMinimum ? "low" : resolvedMarginStatus,
+    marginVarianceToTarget = Number(margin?.grossMarginPercent ?? 0) - Number(targetDraft);
   const productOriginal = originalTotals([...includedProducts, ...includedProductSupplyCosts, ...unpricedTotals]),
-    supplierTotal = formatGroupedTotals(
-      originalSupplierPurchaseGroups(scenario, unpricedTotals),
-    ),
     supplierPurchaseGbp = addDecimalAmounts([
       productGbp,
       extrasGbp,
@@ -957,34 +1081,36 @@ export default function ScenarioCostingWorksheet({
       installationGbp,
       surveyGbp,
       feeGbp,
-    ]),
-    hasPackagePricing = Boolean(
-      commercialScenario.supplierCommercialPolicies?.some(
-        (item) => item.policy.packagePricingAvailable,
-      ),
-    );
-  const quote = scenario.sourceRevision
-    ? scenario.name.replace(/\s*·\s*revision\s+\d+$/i, "")
-    : scenario.name;
-  const supplier =
-    scenario.origin === "supplier_import"
-      ? quote.split(/\s+\d{4,}/)[0] || "Supplier quotation"
-      : "Manual costing";
-  const rateSummary = scenario.exchangeRates.length
-    ? scenario.exchangeRates
-        .map(
-          (item) =>
-            `${item.supplierCurrency} 1 = GBP ${item.supplierToGbpLiveRate} live / ${item.supplierToGbpSellingRate} selling${item.providerTimestamp ? ` · captured ${item.providerTimestamp}` : ""}`,
-        )
-        .join(" · ")
-    : scenario.exchangeRate
-      ? `${scenario.currency} 1 = GBP ${scenario.exchangeRate.supplierToGbpLiveRate} live / ${scenario.exchangeRate.supplierToGbpSellingRate} selling${scenario.exchangeRate.providerTimestamp ? ` · captured ${scenario.exchangeRate.providerTimestamp}` : ""}`
-      : "No foreign-currency rate";
+    ]);
+  const actualLiveRate = liveExchangeRates?.rates.map((item) => `${item.currency} 1 = GBP ${item.rate}`).join(" · ") || "Unavailable";
+  const estimateRatePairs = scenario.exchangeRates.length
+    ? scenario.exchangeRates.map((item) => ({ currency: item.supplierCurrency, rate: Number(item.estimateFixedRate ?? item.supplierToGbpLiveRate) }))
+    : scenario.exchangeRate ? [{ currency: scenario.currency, rate: Number(scenario.exchangeRate.usedRate) }] : [];
+  const capturedMarketRatePairs = scenario.exchangeRates.length
+    ? scenario.exchangeRates.map((item) => ({ currency: item.supplierCurrency, rate: Number(item.liveMarketRate ?? item.supplierToGbpLiveRate) }))
+    : scenario.exchangeRate ? [{ currency: scenario.currency, rate: Number(scenario.exchangeRate.rawRate) }] : [];
+  const capturedEstimateRate = estimateRatePairs.length
+    ? estimateRatePairs.map((item) => `${item.currency} 1 = GBP ${item.rate}`).join(" · ")
+    : "Not required";
+  const liveRateByCurrency = new Map((liveExchangeRates?.rates ?? []).map((item) => [item.currency, Number(item.rate)]));
+  const liveRateVariancePercent = capturedMarketRatePairs.reduce((maximum, item) => {
+    const current = liveRateByCurrency.get(item.currency);
+    if (!Number.isFinite(current) || !Number.isFinite(item.rate) || item.rate === 0) return maximum;
+    return Math.max(maximum, Math.abs((Number(current) - item.rate) / item.rate) * 100);
+  }, 0);
+  const fxReviewThreshold = policy.fxMaterialityThresholdPercent == null ? null : Number(policy.fxMaterialityThresholdPercent);
+  const liveRateReviewRecommended = fxReviewThreshold != null && Number.isFinite(fxReviewThreshold) && liveRateVariancePercent >= fxReviewThreshold && liveRateVariancePercent > 0;
   const installVisible =
     commercialView === "internal" ||
     scenario.packageCode === "full_installation" ||
     installation.length > 0 ||
     installationPackageUplifts.length > 0;
+  const installationProfile = (scenario.options?.installationProfile ?? {}) as Record<string, unknown>;
+  const installationRequired = Boolean(scenario.options?.installationRequired);
+  const installationCompanySnapshot = sourceRecord(installationProfile.selectedInstallationCompanySnapshot);
+  const companyInstallationName = sourceText(installationCompanySnapshot.name) ?? scenario.selectedInstallationTeam?.companyName ?? "Company";
+  const liftingSelection = sourceRecord(scenario.installationProgramme?.allowances.liftingEquipment);
+  const skipHireSelection = sourceRecord(scenario.installationProgramme?.allowances.skipHire);
   const materialsVisible =
     commercialView === "internal" ||
     materials.length > 0 ||
@@ -1000,138 +1126,47 @@ export default function ScenarioCostingWorksheet({
   });
   const vatTreatment=resolveVatTreatment(scenario.options?.vatTreatment,scenario.options?.projectType),vatAmount=percentageAmount(actualSale,vatTreatment.percentage),totalIncludingVat=addDecimalAmounts([actualSale,vatAmount]);
   const saveVatTreatment=async(code:VatTreatmentCode)=>{setSaving(true);setError("");try{const selected=VAT_TREATMENTS[code],updated=await projectCalculatorLabApi.updateVatTreatment(scenario.id,{code,percentage:selected.percentage,source:"manual_override",manuallyOverridden:true});window.dispatchEvent(new CustomEvent("quotesuite:costing-updated",{detail:updated}));}catch(reason){setError(reason instanceof Error?reason.message:"VAT Treatment could not be saved.");}finally{setSaving(false);}};
-  const nav = [
-    "Quotation",
-    "Extraction Review",
-    "Project Costing",
-    "Documents",
-    "History",
-  ];
   return (
     <>
       <div className={`project-costing project-costing--${commercialView}`} data-commercial-view={commercialView}>
-        <header className="project-costing__topbar">
-          <div className="project-costing__brand">
-            <span>▧</span>
-            <strong>Ecofenster</strong>
-            <small>ARCHITECTURAL WINDOWS &amp; DOORS</small>
-          </div>
-          <div className="project-costing__breadcrumbs">
-            <span>Supplier Quotations</span>
-            <b>›</b>
-            <span>
-              {scenario.estimateRef ||
-                scenario.estimateId ||
-                "Legacy commercial record"}
-            </span>
-            <b>›</b>
-            <strong>Project Costing</strong>
-          </div>
-          <div className="project-costing__rate">{rateSummary}</div>
-          {commercialView === "internal" ? <SupplierCommercialReview scenarioId={scenario.id} policies={commercialScenario.supplierCommercialPolicies ?? []} onSaveSupplier={onUpdateSupplierCommercial}/> : null}
-          <button className="ui-button">View rate history</button>
-          <button
-            className="ui-button"
-            disabled={saving}
-            onClick={() => void onRefreshRate()}
-          >
-            Refresh Rate
-          </button>
-          <button
-            className="ui-button"
-            disabled={
-              !dirty ||
-              saving ||
-              invalidCategories.length > 0 ||
-              invalidOverrides.length > 0
-            }
-            onClick={() => void save()}
-          >
-            {saving ? "Saving…" : "Save"}
-          </button>
-          <span className={dirty ? "costing-sheet__unsaved" : "costing-sheet__saved"}>{dirty ? "Unsaved" : `Saved · Revision ${scenario.revisionNumber}`}</span>
-          <button
-            className="ui-button ui-button--primary"
-            disabled={dirty || saving}
-            onClick={() => void onCreateRevision()}
-          >
-            Create Revision
-          </button>
-          <button
-            className="ui-button project-costing__more"
-            aria-label="More actions"
-          >
-            ⋮
-          </button>
-        </header>
-        <div className="project-costing__layout">
-          <aside className="project-costing__sidebar">
-            <section className="project-costing__quote-card">
-              <h3>{supplier}</h3>
-              <strong>{quote}</strong>
-              <span className="project-costing__extracted">✓ Extracted</span>
-              <small>
-                Extracted: {new Date(scenario.createdAt).toLocaleString()}
-              </small>
-              <nav aria-label="Project workflow">
-                {nav.map((label, index) => (
-                  <button
-                    key={label}
-                    className={label === "Project Costing" ? "is-active" : ""}
-                  >
-                    <span>{["▤", "◫", "▦", "□", "◷"][index]}</span>
-                    <span>
-                      <b>{label}</b>
-                      <small>
-                        {
-                          [
-                            "Document & extraction",
-                            `${scenario.products.length} items, ${extras.length} extras`,
-                            "Commercial worksheet",
-                            "Attachments & notes",
-                            "Revisions & activity",
-                          ][index]
-                        }
-                      </small>
-                    </span>
-                    {index < 2 ? <i>✓</i> : null}
-                  </button>
-                ))}
-              </nav>
-            </section>
-            <section className="project-costing__session">
-              <h3>Session Summary</h3>
-              <div>
-                <span>Products ({scenario.products.length})</span>
-                <b>{productOriginal}</b>
-              </div>
-              <div>
-                <span>Extras ({extras.length})</span>
-                <b>{originalTotals(extras)}</b>
-              </div>
-              <div>
-                <span>Transport</span>
-                <b>{originalTotals(transport)}</b>
-              </div>
-              <hr />
-              <div>
-                <span>Supplier Total</span>
-                <b>{supplierTotal}</b>
-              </div>
-              {onNew ? (
-                <button className="ui-button" onClick={onNew}>
-                  View extraction summary
-                </button>
-              ) : null}
-            </section>
-          </aside>
-          <main className="costing-sheet">
-            <div className="costing-sheet__title">
-              <div>
+        <main className="costing-sheet">
+            <header className="project-costing__worksheet-header" data-project-costing-order="project-costing">
+              <div className="project-costing__worksheet-title">
                 <h1>Project Costing</h1>
                 <p>Commercial worksheet for this quotation</p>
               </div>
-            </div>
+              {commercialView === "internal" ? <div className="project-costing__headline-metrics" aria-label="Project Costing headline commercial totals">
+                <span><small>Project cost</small><b>{money(projectCost)}</b><em>GBP purchase basis</em></span>
+                <span><small>Selling price</small><b>{money(sale)}</b><em>Ex VAT</em></span>
+                <span><small>Gross profit</small><b>{money(profit)}</b><em>Commercial return</em></span>
+                <span><small>Gross margin</small><b>{margin?.grossMarginPercent ?? percentageRatio(profit, sale)}%</b><em>Target {targetDraft}%</em></span>
+              </div> : null}
+              {commercialView === "internal" ? <div className="project-costing__worksheet-actions">
+              <div className="project-costing__fx-rates" aria-label="Estimate and live exchange rates">
+                <span className="project-costing__fx-rate project-costing__fx-rate--estimate"><small>Estimate Rate</small><b>{capturedEstimateRate}</b><em>Fixed costing rate used by this Estimate</em></span>
+                <span className="project-costing__fx-rate project-costing__fx-rate--live"><small>Live Rate</small><b>{actualLiveRate}</b><em>Informational · refreshes every 60 seconds</em></span>
+              </div>
+              {liveRateReviewRecommended ? <small className="project-costing__fx-warning" role="status" title={`Live rate differs from the saved rate by ${liveRateVariancePercent.toFixed(2)}%`}>Rate changed — refresh recommended</small> : null}
+              <div className="project-costing__worksheet-buttons">
+              <button type="button" className="ui-button" aria-expanded={rateHistoryOpen} onClick={() => setRateHistoryOpen((value) => !value)}>View Rate History</button>
+              <button type="button" className="ui-button" disabled={saving} onClick={() => void onRefreshRate()}>Refresh Rate</button>
+              <button
+                className="ui-button"
+                disabled={
+                  !dirty ||
+                  saving ||
+                  invalidCategories.length > 0 ||
+                  invalidOverrides.length > 0
+                }
+                onClick={() => void save()}
+              >
+                {saving ? "Saving…" : "Save"}
+              </button>
+              <span className={dirty ? "costing-sheet__unsaved" : "costing-sheet__saved"}>{dirty ? "Unsaved" : "Saved"}</span>
+              </div>
+              </div> : null}
+            </header>
+            {commercialView === "internal" && rateHistoryOpen ? <div className="project-costing__fx-history" role="region" aria-label="Captured exchange-rate history">{((scenario as CalculatorScenario & { exchangeRateHistory?: typeof scenario.exchangeRates }).exchangeRateHistory ?? scenario.exchangeRates).length ? ((scenario as CalculatorScenario & { exchangeRateHistory?: typeof scenario.exchangeRates }).exchangeRateHistory ?? scenario.exchangeRates).map((item) => <span key={`${item.id}-${item.createdAt ?? item.providerTimestamp}`}><b>{item.supplierCurrency} 1 = GBP {item.estimateFixedRate ?? item.supplierToGbpLiveRate}</b><small>Fixed Estimate Rate adopted · {item.provider} · {item.providerTimestamp || "capture time unavailable"}</small><small>Raw/live market rate: GBP {item.liveMarketRate ?? item.supplierToGbpLiveRate}</small></span>) : <span>No foreign-currency capture history is required for this Estimate.</span>}</div> : null}
             {error ? (
               <p
                 role="alert"
@@ -1140,7 +1175,7 @@ export default function ScenarioCostingWorksheet({
                 {error}
               </p>
             ) : null}
-            <div className="costing-sheet__columns">
+            <div className="costing-sheet__columns" data-project-costing-order="columns">
               <span>Description</span>
               <span>
                 Supplier Cost<small>Original currency</small>
@@ -1595,6 +1630,25 @@ export default function ScenarioCostingWorksheet({
             ) : null}
             <Section
               index={4}
+              kind="duties"
+              title="Import / Customs"
+              summary={importCustomsEntries.length ? "Standard Estimate allowance" : "Saved before global defaults"}
+              cost={fees.length ? originalTotals(fees) : "Internal allowance"}
+              converted={money(feeGbp)}
+              markup={markupDraft.duties}
+              sale={money(feeSale)}
+              open={open === "duties"}
+              onToggle={() => toggle("duties")}
+              onMarkupChange={(value) => editMarkup("duties", value)}
+              onMarkupKeyDown={markupKeys("duties")}
+              invalid={Boolean(validateMarkupPercentage(markupDraft.duties))}
+            >
+              {importCustomsEntries.length ? <div className="costing-sheet__installation-table-wrap"><table className="costing-sheet__installation-table"><thead><tr><th scope="col">Description</th><th scope="col">Include</th><th scope="col">Basis / Quantity</th><th scope="col">Purchase Cost</th><th scope="col">Markup</th><th scope="col">Selling Price</th></tr></thead><tbody>{importCustomsEntries.map((entry) => <React.Fragment key={entry.id}><tr><td><b>Import / Customs Allowance</b><small>Standard internal Estimate provision</small></td><td><Toggle ariaLabel="Include Import Customs allowance" value={entry.included} disabled={saving} onChange={(value)=>void updateImportCustoms({included:value})}/></td><td><div className="costing-sheet__compact-fields"><label className="costing-sheet__compact-field">Base GBP<input className="ui-input" inputMode="decimal" defaultValue={entry.baseImportCost} onBlur={(event)=>void updateImportCustoms({baseImportCost:event.currentTarget.value})}/></label><label className="costing-sheet__compact-field">Contingency %<input className="ui-input" inputMode="decimal" defaultValue={entry.contingencyPercent} onBlur={(event)=>void updateImportCustoms({contingencyPercent:event.currentTarget.value})}/></label><label className="costing-sheet__compact-field">Imports<input className="ui-input" type="number" min="1" step="1" defaultValue={entry.defaultImports} onBlur={(event)=>void updateImportCustoms({defaultImports:Number(event.currentTarget.value)})}/></label></div><small>{money(entry.contingencyAmount)} contingency · {money(entry.budgetedImportCostPerImport)} per import</small></td><td>{money(entry.included?entry.importAllowanceCost:"0")}</td><td>{markupDraft.duties}%</td><td>{money(applyMarkupPercentage(entry.included?entry.importAllowanceCost:"0",markupDraft.duties)?.sellingPrice)}</td></tr><tr className="costing-sheet__secondary-row"><td><b>Customs Duty</b><small>Import VAT excluded</small></td><td>{entry.included?(Number(entry.dutyPercent)>0?"Included":"No duty"):"Excluded"}</td><td><div className="costing-sheet__compact-fields"><label className="costing-sheet__compact-field">Duty %<input className="ui-input" inputMode="decimal" defaultValue={entry.dutyPercent} onBlur={(event)=>void updateImportCustoms({dutyPercent:event.currentTarget.value})}/></label><label className="costing-sheet__compact-field">Basis GBP<input className="ui-input" inputMode="decimal" defaultValue={entry.dutyBasisAmount} onBlur={(event)=>void updateImportCustoms({dutyBasisAmount:event.currentTarget.value})}/></label></div></td><td>{entry.included?money(entry.dutyCost):money("0")}</td><td>{markupDraft.duties}%</td><td>{entry.included&&Number(entry.dutyCost)?money(applyMarkupPercentage(entry.dutyCost,markupDraft.duties)?.sellingPrice):money("0")}</td></tr></React.Fragment>)}</tbody></table></div>:<div className="costing-sheet__empty-action"><p>This saved costing predates the global Import / Customs default.</p><button type="button" className="ui-button" disabled={saving} onClick={async()=>{setSaving(true);setError("");try{const updated=await projectCalculatorLabApi.useCurrentImportCustomsDefaults(scenario.id);window.dispatchEvent(new CustomEvent("quotesuite:costing-updated",{detail:updated}));}catch(reason){setError(reason instanceof Error?reason.message:"Current Import / Customs defaults could not be adopted.");}finally{setSaving(false);}}}>Use current Import / Customs defaults</button></div>}
+              {fees.length ? <details className="costing-sheet__diagnostic"><summary>Legacy import fee evidence</summary><p>Retained for audit; not added while the standard global allowance is active.</p><div className="costing-sheet__detail-list">{fees.map((row)=><CommercialRow key={row.id} description={row.label} cost={money(row.originalAmount,row.originalCurrency??scenario.currency)} converted={money(row.gbpAmount)} rate={`${row.markupPercent}%`} sale={money(row.markedUpAmount)}/>)}</div></details>:null}
+              {error ? <p role="alert">{error}</p> : null}
+            </Section>
+            <Section
+              index={5}
               kind="siteVisit"
               title="Survey / Site Visit"
               summary={
@@ -1618,13 +1672,13 @@ export default function ScenarioCostingWorksheet({
               onMarkupKeyDown={markupKeys("siteVisit")}
               invalid={Boolean(validateMarkupPercentage(markupDraft.siteVisit))}
             >
-              {supplierSurveyEvidence.length ? <div className="costing-sheet__simple-source-choices" role="status"><strong>Supplier survey options</strong>{supplierSurveyEvidence.map((row) => <div key={row.id}><span><b>Supplier survey — {supplierEvidenceParty(row,"survey")}</b><small>{money(row.originalAmount,row.originalCurrency??scenario.currency)}</small></span><span>Use supplier survey?</span><Toggle ariaLabel={`Use supplier survey cost ${row.label}`} value={row.includedInCurrentEstimate === true} disabled={supplierChoiceStatus[row.id]?.pending === true} onChange={(value) => { void saveSupplierChoice(row.id,value,"survey"); }}/><b>{supplierChoiceStatus[row.id]?.pending ? "Saving…" : row.includedInCurrentEstimate === true ? "Yes" : "No"}</b>{supplierChoiceStatus[row.id]?.error ? <small className="costing-sheet__choice-error" role="alert">{supplierChoiceStatus[row.id].error}</small> : null}</div>)}<small>Choosing No preserves the Estimate-owned survey calculation. Source evidence is never overwritten.</small></div> : null}
+              {supplierSurveyEvidence.length ? <div className="costing-sheet__simple-source-choices" role="status"><strong>Supplier survey options</strong>{supplierSurveyEvidence.map((row) => <div key={row.id}><span><b>Supplier survey — {supplierEvidenceParty(row,"survey")}</b><small>{money(row.originalAmount,row.originalCurrency??scenario.currency)}</small></span><span>Use supplier survey?</span><Toggle ariaLabel={`Use supplier survey cost ${row.label}`} value={row.includedInCurrentEstimate === true} disabled={supplierChoiceStatus[row.id]?.pending === true} onChange={(value) => { void saveSupplierChoice(row.id,value,"survey"); }}/>{supplierChoiceStatus[row.id]?.pending ? <small role="status">Saving…</small> : null}{supplierChoiceStatus[row.id]?.error ? <small className="costing-sheet__choice-error" role="alert">{supplierChoiceStatus[row.id].error}</small> : null}</div>)}<small>Choosing No preserves the Estimate-owned survey calculation. Source evidence is never overwritten.</small></div> : null}
               {scenario.installationProgramme ? <CommercialRow description="Ecofenster / manual survey" cost={money(scenario.installationProgramme.costs.survey)} converted={selectedSupplierSurvey.length ? "Retained · supplier survey active" : "Active survey cost"} rate={`${markupDraft.siteVisit}%`} sale={selectedSupplierSurvey.length ? "—" : money(applyMarkupPercentage(scenario.installationProgramme.costs.survey,markupDraft.siteVisit)?.sellingPrice)} /> : null}
               <SiteVisitTravelPanel scenario={scenario} />
             </Section>
             {installVisible ? (
               <Section
-                index={6}
+                index={7}
                 kind="installation"
                 title="Installation"
                 summary={
@@ -1646,56 +1700,36 @@ export default function ScenarioCostingWorksheet({
                   validateMarkupPercentage(markupDraft.installation),
                 )}
               >
-                <div className="costing-sheet__detail-list">
-                  {supplierInstallationEvidence.length ? <div className="costing-sheet__simple-source-choices" role="status"><strong>Supplier installation available</strong>{supplierInstallationEvidence.map((row) => <div key={row.id}><span><b>{supplierEvidenceParty(row,"installation")}</b><small>{money(row.originalAmount,row.originalCurrency??scenario.currency)}</small></span><span>Include supplier installation?</span><Toggle ariaLabel={`Include supplier installation cost ${row.label}`} value={row.includedInCurrentEstimate === true} disabled={supplierChoiceStatus[row.id]?.pending === true} onChange={(value) => { void saveSupplierChoice(row.id,value,"installation"); }}/><b>{supplierChoiceStatus[row.id]?.pending ? "Saving…" : row.includedInCurrentEstimate === true ? "Yes" : "No"}</b>{supplierChoiceStatus[row.id]?.error ? <small className="costing-sheet__choice-error" role="alert">{supplierChoiceStatus[row.id].error}</small> : null}</div>)}{supplierInstallationSelectionConflict ? <small role="alert">Multiple supplier installation options are selected. Choose one supplier basis before this section can use supplier installation.</small> : null}<small>Choosing No keeps the Ecofenster / manual installation active. Choosing Yes substitutes the active cost and does not overwrite the Estimate-owned installation programme.</small></div> : null}
-                  <div className="costing-sheet__product-actions"><span>Installation Included?</span><Toggle ariaLabel="Installation required" value={Boolean(scenario.options?.installationRequired)} onChange={(value)=>void updateInstallationRequired(value)} /><ConfigureInstallation scenario={scenario}/>{scenario.installationProgramme?.status==="review_required"?<span className="ui-badge">Review Required</span>:null}</div>
-                  {scenario.installationProgramme ? <>
-                    <h4 className="costing-sheet__group-title">Team / Programme</h4>
-                    <div className="costing-sheet__facts"><span>Team <b>{scenario.selectedInstallationTeam?`${scenario.selectedInstallationTeam.companyName} · ${scenario.selectedInstallationTeam.name}`:"Select team"}</b></span><span>Crew <b>{scenario.installationProgramme.crewSize}</b></span><span>Programme <b>{scenario.installationProgramme.programmeDays} full day(s)</b></span><span>Travel <b>{scenario.installationProgramme.travel.mode.replaceAll("_"," ")}</b></span><span>Vehicles <b>{scenario.installationProgramme.travel.vehicleCount}</b></span></div>
-                    <h4 className="costing-sheet__group-title">Labour</h4>
-                    <CommercialRow description="Installer labour · full-day charging" cost={money(scenario.installationProgramme.costs.labour)} converted={`${scenario.installationProgramme.crewSize} people · ${scenario.installationProgramme.programmeDays} day(s)`} rate={`${markupDraft.installation}%`} sale={money(applyMarkupPercentage(scenario.installationProgramme.costs.labour,markupDraft.installation)?.sellingPrice)} />
-                    <h4 className="costing-sheet__group-title">Travel / Vehicles</h4>
-                    <CommercialRow description="Mileage" cost={money(scenario.installationProgramme.costs.mileage)} converted={`${scenario.installationProgramme.travel.chargeableMiles} mi · ${scenario.installationProgramme.travel.vehicleCount} vehicle(s)`} rate={`${markupDraft.installation}%`} sale={money(applyMarkupPercentage(scenario.installationProgramme.costs.mileage,markupDraft.installation)?.sellingPrice)} />
-                    <h4 className="costing-sheet__group-title">Food / Accommodation</h4>
-                    <CommercialRow description="Food allowance" cost={money(scenario.installationProgramme.costs.food)} converted={`${scenario.installationProgramme.allowances.foodDays} day(s)`} rate={`${markupDraft.installation}%`} sale={money(applyMarkupPercentage(scenario.installationProgramme.costs.food,markupDraft.installation)?.sellingPrice)} />
-                    <CommercialRow description="Accommodation" cost={money(scenario.installationProgramme.costs.accommodation)} converted={`${scenario.installationProgramme.allowances.nights} night(s)`} rate={`${markupDraft.installation}%`} sale={money(applyMarkupPercentage(scenario.installationProgramme.costs.accommodation,markupDraft.installation)?.sellingPrice)} />
-                    <h4 className="costing-sheet__group-title">Survey / Support / Cills</h4>
-                    <CommercialRow description="Installation Support" cost={money(scenario.installationProgramme.costs.support)} converted={`${scenario.installationProgramme.allowances.supportDays} full day(s)`} rate={`${markupDraft.installation}%`} sale={money(applyMarkupPercentage(scenario.installationProgramme.costs.support,markupDraft.installation)?.sellingPrice)} />
-                    <CommercialRow description="Cill Installation" cost={money(scenario.installationProgramme.costs.cillInstallation)} converted={`${scenario.installationProgramme.allowances.cillApplicableQuantity} applicable window(s)`} rate={`${markupDraft.installation}%`} sale={money(applyMarkupPercentage(scenario.installationProgramme.costs.cillInstallation,markupDraft.installation)?.sellingPrice)} />
-                    <h4 className="costing-sheet__group-title">Skip / Lifting Review</h4>{scenario.installationProgramme.reviewRequired.length?<details><summary>Review Required ({scenario.installationProgramme.reviewRequired.length})</summary><ul>{scenario.installationProgramme.reviewRequired.map(item=><li key={item}>{item}</li>)}</ul></details>:<p>No skip or lifting review outstanding.</p>}
-                    <details><summary>Programme calculation trail</summary>{scenario.installationProgramme.days.map((day,index)=><div className="costing-sheet__facts" key={index}><span><b>Day {String(day.day)}</b> · {String(day.capacityHours)} productive hours available</span><span>{Array.isArray(day.tasks)?day.tasks.map(task=>`${String(task.reference)} (${String(task.durationHours)} h / ${String(task.minimumCrew)} people)`).join(" · "):""}</span></div>)}</details>
-                  </> : <p>Configure Installation to create the Estimate-owned programme and costing snapshot.</p>}
-                  {equipment.map(item=><CommercialRow key={item.id} description={item.label} cost={money(item.unitCost,item.currency)} converted={money(item.unitCost)} rate={`${markupDraft.equipment}%`} sale={money(applyMarkupPercentage(item.unitCost??"0",markupDraft.equipment)?.sellingPrice)}/>)}
-                </div>
-                <div className="costing-sheet__facts">
-                  <span>
-                    Physical quantity{" "}
-                    <b>
-                      {scenario.products.reduce(
-                        (sum, row) => sum + row.quantity,
-                        0,
-                      )}
-                    </b>
-                  </span>
-                  <span>
-                    Installation openings{" "}
-                    <b>{scenario.installationOpeningCount}</b>
-                  </span>
-                  <span>
-                    Crew <b>{scenario.options?.crewSize ?? 2}</b>
-                  </span>
-                  <span>
-                    Programme{" "}
-                    <b>
-                      Day 1 set-out · productive days · completion and return
-                    </b>
-                  </span>
+                <div className="costing-sheet__detail-list costing-sheet__section-body">
+                  <div className="costing-sheet__product-actions"><span>Installation Included?</span><Toggle ariaLabel="Installation required" value={installationRequired} onChange={(value)=>void updateInstallationRequired(value)} /></div>
+                  {!installationRequired ? <p className="costing-sheet__excluded-note">Installation excluded from this Estimate.</p> : <>
+                    {supplierInstallationEvidence.length ? <section className="costing-sheet__supplier-installation-notice"><div><b>Supplier installation price supplied</b><small>Choose whether it substitutes for Company Installation.</small></div>{supplierInstallationEvidence.map((row)=>{const included=row.includedInCurrentEstimate===true,purchase=row.commercialGbpAmount??row.gbpAmount??row.originalAmount??"0";return <div key={row.id}><span><small>Supplier</small><b>{supplierEvidenceParty(row,"installation")}</b></span><span><small>Quoted installation cost</small><b>{money(purchase)}</b></span><label><span>Use Supplier Installation?</span><Toggle ariaLabel={`Include supplier installation cost ${row.label}`} value={included} disabled={supplierChoiceStatus[row.id]?.pending===true} onChange={(value)=>void saveSupplierChoice(row.id,value,"installation")}/></label>{supplierChoiceStatus[row.id]?.error?<small className="costing-sheet__choice-error" role="alert">{supplierChoiceStatus[row.id].error}</small>:null}</div>})}</section>:null}
+                    <div className="costing-sheet__installation-basis"><span>Installation Basis</span><b>{selectedSupplierInstallation.length ? "Supplier Installation" : `${companyInstallationName} Installation`}</b><small>{selectedSupplierInstallation.length ? `${supplierEvidenceParty(selectedSupplierInstallation[0],"installation")} · quoted installation` : scenario.selectedInstallationTeam ? `${scenario.selectedInstallationTeam.name} · saved user selection` : "Review and approve a recommended Company / Team"}</small></div>
+                    {selectedSupplierInstallation.length ? <div className="costing-sheet__installation-table-wrap"><table className="costing-sheet__installation-table"><thead><tr><th scope="col">Description</th><th scope="col">Include</th><th scope="col">Basis / Quantity</th><th scope="col">Purchase Cost</th><th scope="col">Markup</th><th scope="col">Selling Price</th></tr></thead><tbody>{selectedSupplierInstallation.map((row)=>{const purchase=row.commercialGbpAmount??row.gbpAmount??row.originalAmount??"0";return <InstallationTableRow key={row.id} description={<b>{supplierEvidenceParty(row,"installation")} Supplier Installation</b>} include="Yes" basis="Supplier quoted installation · active substitute" purchase={money(purchase)} markup={`${markupDraft.installation}%`} sale={money(applyMarkupPercentage(purchase,markupDraft.installation)?.sellingPrice)}/>})}</tbody></table></div> : <>
+                      <ConfigureInstallation scenario={scenario}/>
+                      <div className="costing-sheet__installation-table-wrap"><table className="costing-sheet__installation-table"><thead><tr><th scope="col">Description</th><th scope="col">Include</th><th scope="col">Basis / Quantity</th><th scope="col">Purchase Cost</th><th scope="col">Markup</th><th scope="col">Selling Price</th></tr></thead><tbody>
+                        {scenario.installationProgramme ? <>
+                          <InstallationTableRow description={<><b>Installer Labour</b><small>{scenario.selectedInstallationTeam?`${scenario.selectedInstallationTeam.companyName} · ${scenario.selectedInstallationTeam.name}`:"Installation team review required"}</small></>} include={<span className="costing-sheet__required-component"><b>Included</b><small>Required by programme</small></span>} basis={`${scenario.installationProgramme.crewSize} people × ${scenario.installationProgramme.programmeDays} full day(s)`} purchase={money(scenario.installationProgramme.costs.labour)} markup={`${markupDraft.installation}%`} sale={money(applyMarkupPercentage(scenario.installationProgramme.costs.labour,markupDraft.installation)?.sellingPrice)}/>
+                          <InstallationTableRow description={installationComponentDescription("mileage","Mileage")} include={installationComponentToggle("mileage","Mileage")} basis={`${scenario.installationProgramme.travel.chargeableMiles} mi × ${scenario.installationProgramme.travel.vehicleCount} vehicle(s)`} purchase={money(scenario.installationProgramme.costs.mileage)} markup={`${markupDraft.installation}%`} sale={money(applyMarkupPercentage(scenario.installationProgramme.costs.mileage,markupDraft.installation)?.sellingPrice)}/>
+                          <InstallationTableRow description={installationComponentDescription("accommodation","Accommodation")} include={installationComponentToggle("accommodation","Accommodation")} basis={`${scenario.installationProgramme.allowances.accommodationRooms??0} room(s) × ${scenario.installationProgramme.allowances.nights} night(s)`} purchase={money(scenario.installationProgramme.costs.accommodation)} markup={`${markupDraft.installation}%`} sale={money(applyMarkupPercentage(scenario.installationProgramme.costs.accommodation,markupDraft.installation)?.sellingPrice)}/>
+                          <InstallationTableRow description={installationComponentDescription("food","Food Allowance")} include={installationComponentToggle("food","Food Allowance")} basis={`${scenario.installationProgramme.crewSize} people × ${scenario.installationProgramme.allowances.foodDays} day(s)`} purchase={money(scenario.installationProgramme.costs.food)} markup={`${markupDraft.installation}%`} sale={money(applyMarkupPercentage(scenario.installationProgramme.costs.food,markupDraft.installation)?.sellingPrice)}/>
+                          <InstallationTableRow description={installationComponentDescription("support","Installation Support")} include={installationComponentToggle("support","Installation Support")} basis={`${scenario.installationProgramme.allowances.supportDays} full day(s)`} purchase={money(scenario.installationProgramme.costs.support)} markup={`${markupDraft.installation}%`} sale={money(applyMarkupPercentage(scenario.installationProgramme.costs.support,markupDraft.installation)?.sellingPrice)}/>
+                          <InstallationTableRow description={installationComponentDescription("cillInstallation","Cill Installation")} include={installationComponentToggle("cillInstallation","Cill Installation")} basis={`${scenario.installationProgramme.allowances.cillApplicableQuantity} applicable window(s)`} purchase={money(scenario.installationProgramme.costs.cillInstallation)} markup={`${markupDraft.installation}%`} sale={money(applyMarkupPercentage(scenario.installationProgramme.costs.cillInstallation,markupDraft.installation)?.sellingPrice)}/>
+                          <InstallationTableRow description={<><b>Equipment Hire</b><small>{sourceText(liftingSelection.productName)??(liftingSelection.required===true?"Select configured equipment in Advanced Installation":"Not required")}</small></>} include={<Toggle ariaLabel="Include Equipment Hire" value={liftingSelection.required===true} disabled={saving} onChange={(value)=>void updateLiftingRequired(value)}/>} basis={liftingSelection.required===true?`${money(sourceText(liftingSelection.hireCost))} hire + ${money(String(Number(liftingSelection.deliveryCost??0)+Number(liftingSelection.collectionCost??0)))} delivery / collection`:"Configuration retained"} purchase={money(scenario.installationProgramme.costs.liftingEquipment)} markup={`${markupDraft.installation}%`} sale={liftingSelection.required===true?money(applyMarkupPercentage(scenario.installationProgramme.costs.liftingEquipment,markupDraft.installation)?.sellingPrice):"—"} retained={liftingSelection.required!==true}/>
+                          <InstallationTableRow description={<><b>Skip Hire</b><small>{sourceText(skipHireSelection.productName)??(skipHireSelection.required===true?"Select a configured skip size in Advanced Installation":"Not required")}</small></>} include={<Toggle ariaLabel="Include Skip Hire" value={skipHireSelection.required===true} disabled={saving} onChange={(value)=>void updateSkipHireRequired(value)}/>} basis={skipHireSelection.required===true?`${Number(skipHireSelection.quantity??1)} × ${money(sourceText(skipHireSelection.hireCost))}`:"Configuration retained"} purchase={money(scenario.installationProgramme.costs.skipHire)} markup={`${markupDraft.installation}%`} sale={skipHireSelection.required===true?money(applyMarkupPercentage(scenario.installationProgramme.costs.skipHire,markupDraft.installation)?.sellingPrice):"—"} retained={skipHireSelection.required!==true}/>
+                        </>:<tr className="costing-sheet__installation-empty"><td colSpan={6}>Company Installation programme requires review.</td></tr>}
+                        {equipment.map((item)=><InstallationTableRow key={item.id} description={item.label} include="Yes" basis="Configured equipment" purchase={money(item.unitCost,item.currency)} markup={`${markupDraft.equipment}%`} sale={money(applyMarkupPercentage(item.unitCost??"0",markupDraft.equipment)?.sellingPrice)}/>) }
+                      </tbody></table></div>
+                      <div className="costing-sheet__installation-disclosures"><details id={`installation-review-${scenario.id}`}><summary>Specialist Requirements {scenario.installationProgramme?.reviewRequired.length?<span className="ui-badge">{scenario.installationProgramme.reviewRequired.length} items require review</span>:null}</summary>{scenario.installationProgramme?.reviewRequired.length?<ul>{scenario.installationProgramme.reviewRequired.map(item=><li key={item}>{item}</li>)}</ul>:<p>No equipment or specialist review outstanding.</p>}</details></div>
+                    </>}
+                    {supplierInstallationSelectionConflict?<p role="alert">Multiple supplier installation options are selected. Choose one supplier basis before this section can use supplier installation.</p>:null}
+                  </>}
                 </div>
               </Section>
             ) : null}
             {materialsVisible ? (
               <Section
-                index={5}
+                index={6}
                 kind="materials"
                 title="Installation Materials"
                 summary={`${requiredInstallationMaterials.length + materials.length} required · ${installationMaterialsReviewRequired ? "cost review required" : "automatically calculated"}`}
@@ -1731,46 +1765,12 @@ export default function ScenarioCostingWorksheet({
                     <CommercialRow description="Substrate fixings" cost={scenario.installationMaterials.purchasing.substrateFixings.purchaseCost?money(scenario.installationMaterials.purchasing.substrateFixings.purchaseCost):scenario.installationMaterials.purchasing.substrateFixings.status} converted={`${scenario.installationMaterials.purchasing.substrateFixings.requiredQuantity??"—"} required / ${scenario.installationMaterials.purchasing.substrateFixings.packsRequired??"—"} packs`} rate={`${markupDraft.materials}%`} sale={scenario.installationMaterials.purchasing.substrateFixings.purchaseCost?money(applyMarkupPercentage(scenario.installationMaterials.purchasing.substrateFixings.purchaseCost,markupDraft.materials)?.sellingPrice):"—"}/>
                     {scenario.installationMaterials.packers.inScope === false ? null : <CommercialRow description="Installation packers" cost={scenario.installationMaterials.packers.purchaseCost?money(String(scenario.installationMaterials.packers.purchaseCost)):scenario.installationMaterials.packers.status==="available"?`${scenario.installationMaterials.packers.finalRequiredQuantity} required`:scenario.installationMaterials.packers.reason??"Pending product specification"} converted={scenario.installationMaterials.packers.status==="available"?`${scenario.installationMaterials.packers.allocatedQuantity} allocated`:"—"} rate={`${markupDraft.materials}%`} sale={scenario.installationMaterials.packers.purchaseCost?money(applyMarkupPercentage(String(scenario.installationMaterials.packers.purchaseCost),markupDraft.materials)?.sellingPrice):"—"}/>}</div></details>
                     <div className="costing-sheet__material-totals"><span>Total installation perimeter <b>{scenario.installationMaterials.totalPerimeterM==null?"Review required":`${scenario.installationMaterials.totalPerimeterM} m`}</b></span><span>Total brackets required <b>{scenario.installationMaterials.totals.brackets??"Review required"}</b></span><span>Total frame screws required <b>{scenario.installationMaterials.totals.frameScrews??"Review required"}</b></span><span>Total substrate fixings required <b>{scenario.installationMaterials.totals.substrateFixings??"Review required"}</b></span>{scenario.installationMaterials.packers.inScope === false ? null : <span>Total packers required <b>{scenario.installationMaterials.packers.finalRequiredQuantity??"Packer product specification required"}</b></span>}</div>
-                    <details className="costing-sheet__diagnostic"><summary>Position calculation trail · internal diagnostic</summary><div className="costing-sheet__detail-list">{scenario.installationMaterials.positionCalculations.map((item,index)=><div className="costing-sheet__facts" key={`${String(item.reference)}-${index}`}><span><b>{String(item.reference)}</b> · {String(item.widthMm)} × {String(item.heightMm)} · Qty {String(item.quantity)}</span><span>Rule <b>{String(item.fixing?.ruleSource??item.fixing?.reason??"Unavailable")}</b></span><span>Per frame <b>{String(item.fixing?.totalFixingPositionsPerFrame??"—")}</b></span><span>Total brackets <b>{String(item.bracketQuantity??"—")}</b></span></div>)}</div></details>
                   </> : <p>Installation calculation unavailable until an Estimate installation rule and frame material are selected.</p>}
                 </div>
               </Section>
             ) : null}
-            {fees.length ? (
-              <Section
-                index={7}
-                kind="duties"
-                title="Import Fees & Duties"
-                summary={`${fees.length} items`}
-                cost={originalTotals(fees)}
-                converted={money(feeGbp)}
-                markup={markupDraft.duties}
-                sale={money(feeSale)}
-                open={open === "duties"}
-                onToggle={() => toggle("duties")}
-                onMarkupChange={(value) => editMarkup("duties", value)}
-                onMarkupKeyDown={markupKeys("duties")}
-                invalid={Boolean(validateMarkupPercentage(markupDraft.duties))}
-              >
-                <div className="costing-sheet__detail-list">
-                  {fees.map((row) => (
-                    <CommercialRow
-                      key={row.id}
-                      description={row.label}
-                      cost={money(
-                        row.originalAmount,
-                        row.originalCurrency ?? scenario.currency,
-                      )}
-                      converted={money(row.gbpAmount)}
-                      rate={`${row.markupPercent}%`}
-                      sale={money(row.markedUpAmount)}
-                    />
-                  ))}
-                </div>
-              </Section>
-            ) : null}
             <section className="costing-sheet__summary">
-              <h2>Commercial Summary</h2>
+              <h2>{commercialView === "internal" ? "Commercial Summary" : "Estimate Summary"}</h2>
               {estimateMetrics ? (
                 <div className="costing-sheet__estimate-metrics" aria-label="Estimate metrics">
                   <span><small>Positions</small><b>{estimateMetrics.positions}</b></span>
@@ -1780,41 +1780,20 @@ export default function ScenarioCostingWorksheet({
                   <span><small>Customer Estimate value</small><b>{money(estimateMetrics.customerEstimateValue)}</b></span>
                 </div>
               ) : null}
-              <div className="costing-sheet__margin-control">
-                <label>
-                  Target Gross Margin %
-                  <input
-                    className="ui-input"
-                    aria-label="Target Gross Margin percentage"
-                    inputMode="decimal"
-                    value={targetDraft}
-                    onChange={(event) => {
-                      setTargetDraft(event.currentTarget.value);
-                      setError("");
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "Escape") {
-                        setTargetDraft(persistedTarget);
-                        event.currentTarget.blur();
-                      }
-                      if (event.key === "Enter") event.currentTarget.blur();
-                    }}
-                  />
-                </label>
+              {commercialView === "internal" ? <div className="costing-sheet__margin-control">
+                <span><small>Gross Margin</small><b>{margin?.grossMarginPercent??"0.00"}%</b></span>
+                <span><small>Variance to Target</small><b>{marginVarianceToTarget>=0?"+":""}{marginVarianceToTarget.toFixed(2)}%</b></span>
                 <span
                   className={`ui-status-badge costing-sheet__margin-status costing-sheet__margin-status--${marginStatus}`}
                 >
                   {marginStatus.replace(/^./, (value) => value.toUpperCase())}
                 </span>
-                <small>
-                  Company minimum {policy.minimumAcceptableGrossMarginPercent}%
-                </small>
-              </div>
+              </div> : null}
               <div className="costing-sheet__summary-categories">
-                <div className="costing-sheet__purchase-total">
+                {commercialView === "internal" ? <div className="costing-sheet__purchase-total">
                   <strong>Actual GBP Purchase Cost</strong>
                   <b>{money(supplierPurchaseGbp)}</b>
-                </div>
+                </div> : null}
                 <div>
                   <span>Products / Supply Only</span>
                   <b>{money(productSale)}</b>
@@ -1824,7 +1803,7 @@ export default function ScenarioCostingWorksheet({
                     <strong>Customer / Client Discount</strong>
                     <small>Applies only to Products selling price</small>
                   </span>
-                  <span className="costing-sheet__client-discount-controls">
+                  {commercialView === "internal" ? <span className="costing-sheet__client-discount-controls">
                     <select
                       className="ui-input"
                       aria-label="Customer discount input mode"
@@ -1866,7 +1845,7 @@ export default function ScenarioCostingWorksheet({
                     >
                       Save
                     </button>
-                  </span>
+                  </span> : null}
                   <b>
                     −{money(customerDiscountAmount)}{" "}
                     <small>{customerDiscountPercentage}%</small>
@@ -1884,7 +1863,7 @@ export default function ScenarioCostingWorksheet({
                     : []),
                   ["Installation", addDecimalAmounts([installationSale,equipmentSale])],
                   ["Installation Materials", materialsSale],
-                  ["Import Fees & Duties", feeSale],
+                  ["Import / Customs", feeSale],
                 ].map(([label, value]) => (
                   <div key={String(label)}>
                     <span>{label}</span>
@@ -1898,10 +1877,11 @@ export default function ScenarioCostingWorksheet({
                   <b>{money(sale)}</b>
                 </div>
                 <div className="costing-sheet__vat-treatment">
-                  <label>VAT Treatment<select className="ui-input" aria-label="VAT Treatment" value={vatTreatment.code} disabled={saving} onChange={event=>void saveVatTreatment(event.currentTarget.value as VatTreatmentCode)}>{Object.entries(VAT_TREATMENTS).map(([code,item])=><option key={code} value={code}>{item.label} — {item.percentage}%</option>)}</select></label>
-                  <b>{money(vatAmount)}</b><small>{vatTreatment.manuallyOverridden?"Selected for this Estimate":`${vatTreatment.source.replaceAll("_"," ")} · review eligibility`}</small>
+                  {commercialView === "internal" ? <label>VAT Treatment<select className="ui-input" aria-label="VAT Treatment" value={vatTreatment.code} disabled={saving} onChange={event=>void saveVatTreatment(event.currentTarget.value as VatTreatmentCode)}>{Object.entries(VAT_TREATMENTS).map(([code,item])=><option key={code} value={code}>{item.label} — {item.percentage}%</option>)}</select></label> : <strong>VAT ({vatTreatment.percentage}%)</strong>}
+                  <b>{money(vatAmount)}</b>{commercialView === "internal" ? <small>{vatTreatment.manuallyOverridden?"Selected for this Estimate":`${vatTreatment.source.replaceAll("_"," ")} · review eligibility`}</small> : null}
                 </div>
                 <div className="costing-sheet__summary-highlight"><strong>Total Including VAT</strong><b>{money(totalIncludingVat)}</b></div>
+                {commercialView === "internal" ? <>
                 <div>
                   <strong>Gross Profit</strong>
                   <b>{money(profit)}</b>
@@ -1940,14 +1920,11 @@ export default function ScenarioCostingWorksheet({
                   <strong>Required Overall Markup</strong>
                   <b>{margin?.requiredOverallMarkupPercent ?? "—"}%</b>
                 </div>
+                </> : null}
               </div>
             </section>
-            <p className="costing-sheet__footer">
-              All supplier conversions use their saved quotation-revision FX
-              snapshots: {rateSummary}. Supplier costs remain immutable and are
-              shown exclusive of VAT.
-            </p>
-            {sellingPriceHost
+            {commercialView === "internal" ? <p className="costing-sheet__footer">Fixed/Captured rates remain the saved costing basis until an authorised user explicitly refreshes them. Supplier costs are shown exclusive of VAT.</p> : null}
+            {commercialView === "internal" && sellingPriceHost
               ? createPortal(
                   <>
                     <span className="costing-sheet__fixed-status">
@@ -2122,7 +2099,6 @@ export default function ScenarioCostingWorksheet({
               </div>
             ) : null}
           </main>
-        </div>
       </div>
     </>
   );

@@ -159,7 +159,7 @@ function drawingModelToSvg(model) {
     ...model.annotations.handles.map((handle) => '<line x1="' + fmt(handle.x) + '" y1="' + fmt(handle.y - handle.size) + '" x2="' + fmt(handle.x) + '" y2="' + fmt(handle.y + handle.size) + '" stroke="#111" stroke-width="1.6" stroke-linecap="round" data-role="' + escapeXml(handle.role || "handle") + '"/>'),
     ...model.annotations.markers.map((marker) => markerToSvg(marker)),
   ].join("\\n  ");
-  return '<?xml version="1.0" encoding="UTF-8"?>\\n<svg xmlns="http://www.w3.org/2000/svg" width="' + fmt(model.viewBox.width) + '" height="' + fmt(model.viewBox.height) + '" viewBox="0 0 ' + fmt(model.viewBox.width) + ' ' + fmt(model.viewBox.height) + '">\\n  <title>Current QuoteSync renderer output: Internal Fixed B92-4/B92-5 + TTR</title>\\n  <desc>Generated from buildB92FixedInternalDrawingModelFromContract, not copied from DXF/SVG reference.</desc>\\n  ' + body + '\\n</svg>\\n';
+  return '<?xml version="1.0" encoding="UTF-8"?>\\n<svg xmlns="http://www.w3.org/2000/svg" width="' + fmt(model.viewBox.width) + '" height="' + fmt(model.viewBox.height) + '" viewBox="0 0 ' + fmt(model.viewBox.width) + ' ' + fmt(model.viewBox.height) + '">\\n  <title>Current QuoteSuite renderer output: Internal Fixed B92-4/B92-5 + TTR</title>\\n  <desc>Generated from buildB92FixedInternalDrawingModelFromContract, not copied from DXF/SVG reference.</desc>\\n  ' + body + '\\n</svg>\\n';
 }
 
 const model = buildB92FixedInternalDrawingModelFromContract(contract);

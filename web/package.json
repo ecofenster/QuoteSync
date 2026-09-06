@@ -7,6 +7,7 @@
     "api": "node server/index.js",
     "api:status": "node scripts/development-api-status.mjs",
     "dev": "vite",
+    "dev:quotesuite": "node scripts/run-development-workspace.mjs",
     "configure:integration-key": "node scripts/ensure-local-integration-key.mjs",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --noEmit",
@@ -18,6 +19,10 @@
     "test:integrations": "node scripts/run-admin-integrations-tests.mjs",
     "test:development-roadmap": "node scripts/run-development-roadmap-tests.mjs",
     "test:runtime-health": "node scripts/run-runtime-health-tests.mjs",
+    "test:manufacturer-commercial-isolation": "node scripts/run-manufacturer-commercial-isolation-tests.mjs",
+    "test:runtime-health-browser": "node scripts/run-runtime-health-browser.mjs",
+    "test:visual-design-v2": "node scripts/run-visual-design-v2-tests.mjs && node scripts/run-visual-design-v2-browser.mjs",
+    "test:browser-lifecycle": "node --test --test-isolation=none tests/e2e-owned-process.test.mjs tests/e2e-chrome-profile.test.mjs tests/browser-run-lifecycle.test.mjs && node scripts/run-browser-lifecycle-leak-check.mjs --deliberate-failure",
     "test:customer-quotation-mvp": "node scripts/run-customer-quotation-mvp-tests.mjs",
     "test:manufacturer-position-visuals": "node scripts/run-manufacturer-position-visual-tests.mjs",
     "lint": "eslint .",
@@ -28,6 +33,7 @@
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.3",
+    "@tesseract.js-data/eng": "^1.0.0",
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "jszip": "^3.10.1",
@@ -37,7 +43,8 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "sqlite": "^5.1.1",
-    "sqlite3": "^6.0.1"
+    "sqlite3": "^6.0.1",
+    "tesseract.js": "^6.0.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

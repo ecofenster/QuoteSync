@@ -5,11 +5,14 @@ import { readFile } from 'node:fs/promises';
 test('approved Project Costing worksheet and quotation workflow mount', async () => {
   const workspace=await readFile('src/features/projectCalculatorLab/ProjectCalculatorLabWorkspace.tsx','utf8');
   const worksheet=await readFile('src/features/projectCalculatorLab/ScenarioCostingWorksheet.tsx','utf8');
+  const headerRows=await readFile('src/features/estimateCommercial/EstimateCommercialHeaderRows.tsx','utf8');
   assert.match(workspace,/if\s*\(\s*isOpenScenario\(active\)\s*\)[\s\S]*ScenarioCostingWorksheet/);
   assert.match(workspace,/Project Costing/);
-  for(const label of ['Supplier Quotations','Quotation','Extraction Review','Project Costing','Documents','History','Session Summary'])assert.match(worksheet,new RegExp(label));
+  for(const label of ['Estimate','Next Action','Create Revision','Review Customer Quotation'])assert.match(headerRows,new RegExp(label));
+  assert.doesNotMatch(worksheet,/project-costing__breadcrumbs|project-costing__sidebar|Extraction Review|Session Summary/);
+  assert.match(worksheet,/data-project-costing-order="project-costing"/);
   for(const column of ['Description','Supplier Cost','GBP','Markup %','Selling Price'])assert.match(worksheet,new RegExp(column));
-  for(const heading of ['Products / Supply Only','Extras','Transport','Installation','Installation Materials','Import Fees & Duties','Commercial Summary'])assert.match(worksheet,new RegExp(heading));
+  for(const heading of ['Products / Supply Only','Extras','Transport','Import / Customs','Installation','Installation Materials','Commercial Summary'])assert.match(worksheet,new RegExp(heading));
   assert.match(worksheet,/equipment\.map/);
 });
 
@@ -21,9 +24,10 @@ test('worksheet sections preserve evidence, use icons and hide unused categories
   assert.match(commercial,/packageItems\.filter\(\(row\) => row\.included\)/);
   assert.match(source,/extras\.length\s*\?\s*\(\s*<Section/);
   assert.match(source,/equipment\.map\(\s*\(?(?:item)?/);
-  assert.match(source,/fees\.length\s*\?\s*\(\s*<Section/);
+  assert.match(source,/title="Import \/ Customs"/);
+  assert.match(source,/Legacy import fee evidence/);
   assert.match(source,/function Icon/);
-  assert.match(source,/Supplier costs remain immutable/i);
+  assert.match(source,/Fixed\/Captured rates remain the saved costing basis/i);
   assert.doesNotMatch(source,/sourceId|sourceRowId|raw JSON|JSON\.stringify/);
 });
 
@@ -61,7 +65,8 @@ test('commercial summary reconciles category totals and saved rate evidence', as
   assert.match(source,/Survey \/ Site Visit/);
   assert.match(source,/customerDiscountAmount/);
   assert.match(source,/providerTimestamp/);
-  assert.match(source,/revisionNumber/);
+  assert.match(source,/costing-sheet__saved/);
+  assert.doesNotMatch(source,/Saved · Revision/);
 });
 
 test('commercial sections expand without rendering the Admin catalogue', async () => {

@@ -17,6 +17,7 @@ test('legacy and loading-era API payloads normalize new collections before works
   const legacy = normalizeCalculatorScenario({ products: undefined, supplierCosts: undefined, packageItems: undefined, routeSnapshots: undefined, exchangeRates: undefined, revisions: undefined, supplierSummary: { productSubtotal: '1000', deliveryTotal: null, finalSupplierTotal: '1000', originalSnapshot: {} } } as unknown as Parameters<typeof normalizeCalculatorScenario>[0]);
   assert.deepEqual(legacy.products, []);
   assert.deepEqual(legacy.exchangeRates, []);
+  assert.equal(legacy.importCustoms, null);
   assert.deepEqual(legacy.supplierSummary?.quotations, []);
   assert.equal(legacy.supplierSummary?.finalSupplierTotalGbp, null);
 });
@@ -45,30 +46,31 @@ test('EUR, GBP and PLN revisions retain independent FX provenance and aggregate 
     const scenario = await calculator.createScenario({ estimateId: 'estimate', origin: 'manual', name: 'Mixed supplier costing', currency: 'GBP', packageCode: 'supply_only' });
     const documents: Record<string, { currency: string; total: string }> = { eur: { currency: 'EUR', total: '1000' }, gbp: { currency: 'GBP', total: '4850' }, pln: { currency: 'PLN', total: '31000' } };
     const supplier = createSupplierQuotesService(db, { attachmentRoot: root, extractDocument: async (_filename, metadata) => ({ textAvailable: true, warnings: [], documentId: metadata.id }), parseFields: (document: any, { currency }: any) => ({ rows: [extractedRow(document.documentId, currency)], warnings: [] }), parseSummary: (document: any) => ({ summary: { productSubtotal: documents[document.documentId].total, additionalItemsSubtotal: null, deliveryTotal: null, vatTotal: null, finalSupplierTotal: documents[document.documentId].total }, additionalItems: [], warnings: [] }) });
-    const selected: Array<{ quoteId: string; revisionId: string; attachmentId: string }> = [];
+    const selected: Array<{ quoteId: string; revisionId: string; attachmentId: string; supplierCode: string }> = [];
     for (const [id, data] of Object.entries(documents)) {
       await calculator.saveSupplierCommercialDefault({ supplierCode: id.toUpperCase(), supplierName: `${id.toUpperCase()} Supplier`, policy: { pricingMethod: 'factory_price', pricingBasis: 'factory_price', paidInQuotedCurrency: true, settlementCurrency: data.currency }, pricingDisplayPolicy: {} });
       const quote = await supplier.createQuote('estimate', { supplierCode: id.toUpperCase(), supplierName: `${id.toUpperCase()} Supplier` });
       const revision = await supplier.createRevision('estimate', quote.id, { supplierQuotationNumber: `Q-${id}`, supplierRevision: '1', currency: data.currency });
       await supplier.insertAttachments('estimate', quote.id, revision.id, [{ id, role: 'original_quote', documentKind: 'complete_quotation', originalFileName: `${id}.pdf`, mediaType: 'application/pdf', sizeBytes: 1, sha256: id.padEnd(64, id[0]), storageKey: id, parserEligible: true, createdAt: new Date().toISOString() }]);
-      selected.push({ quoteId: quote.id, revisionId: revision.id, attachmentId: id });
+      const selection = { quoteId: quote.id, revisionId: revision.id, attachmentId: id };
+      const imported = await supplier.extractAndLoadSupplierCosts('estimate', scenario.id, [selection], { commercialSupplierCode: id.toUpperCase() });
+      await calculator.ensureSupplierRevisionExchangeRates(scenario.id, imported.documents.map(item => item.revisionId));
+      selected.push({ ...selection, supplierCode: id.toUpperCase() });
     }
-    const imported = await supplier.extractAndLoadSupplierCosts('estimate', scenario.id, selected);
-    await calculator.ensureSupplierRevisionExchangeRates(scenario.id, imported.documents.map(item => item.revisionId));
     const loaded = await calculator.getScenario(scenario.id);
     assert.equal(loaded.products.length, 3);
     assert.equal(loaded.products.find((item: any) => item.displayReference === 'W7, W8').quantity, 2);
     assert.equal(loaded.products.find((item: any) => item.currency === 'EUR').originalAmount, '1000');
-    assert.equal(loaded.products.find((item: any) => item.currency === 'EUR').gbpAmount, '860.00');
+    assert.equal(loaded.products.find((item: any) => item.currency === 'EUR').gbpAmount, '870.00');
     assert.equal(loaded.products.find((item: any) => item.currency === 'EUR').commercialGbpAmount, '870.00');
     assert.equal(loaded.products.find((item: any) => item.currency === 'GBP').gbpAmount, '4850.00');
     assert.equal(loaded.products.find((item: any) => item.currency === 'GBP').fxSnapshot.provider, 'identity');
     assert.equal(loaded.products.find((item: any) => item.currency === 'PLN').originalAmount, '31000');
-    assert.equal(loaded.products.find((item: any) => item.currency === 'PLN').gbpAmount, '6200.00');
+    assert.equal(loaded.products.find((item: any) => item.currency === 'PLN').gbpAmount, '6510.00');
     assert.equal(loaded.products.find((item: any) => item.currency === 'PLN').commercialGbpAmount, '6510.00');
     assert.equal(loaded.exchangeRates.length, 3);
     assert.deepEqual(new Set(loaded.exchangeRates.map((item: any) => item.supplierCurrency)), new Set(['EUR', 'GBP', 'PLN']));
-    assert.equal(loaded.supplierSummary.finalSupplierTotalGbp, '11910.00');
+    assert.equal(loaded.supplierSummary.finalSupplierTotalGbp, '12230.00');
     assert.deepEqual(originalSupplierPurchaseGroups(loaded), { EUR: ['1000'], GBP: ['4850'], PLN: ['31000'] });
     assert.equal(supplierNameForProduct(loaded.products.find((item: any) => item.currency === 'GBP')), 'GBP Supplier');
     const dealerProduct = { ...loaded.products.find((item: any) => item.currency === 'GBP'), sourceSnapshot: { supplierName: 'EcoHaus', supplierQuotationNumber: '20260057', manufacturerEvidence: { manufacturerName: 'Internorm' } } };
@@ -77,10 +79,12 @@ test('EUR, GBP and PLN revisions retain independent FX provenance and aggregate 
     const directProduct = { ...dealerProduct, sourceSnapshot: { supplierName: 'Internorm', supplierQuotationNumber: 'DIRECT-1', manufacturerEvidence: { manufacturerName: 'Internorm' } } };
     assert.equal(productCommercialSourceLabel(directProduct), 'Internorm · quote DIRECT-1');
     const persistedRows = await db.all('SELECT currency,purchase_amount_gbp,selling_amount_gbp,fx_snapshot_id FROM project_calculator_estimate_product_rows WHERE scenario_id=? ORDER BY currency', scenario.id);
-    assert.deepEqual(persistedRows.map(item => [item.currency, item.purchase_amount_gbp, item.selling_amount_gbp, Boolean(item.fx_snapshot_id)]), [['EUR', '860.00', '870.00', true], ['GBP', '4850.00', '4850.00', true], ['PLN', '6200.00', '6510.00', true]]);
+    assert.deepEqual(persistedRows.map(item => [item.currency, item.purchase_amount_gbp, item.selling_amount_gbp, Boolean(item.fx_snapshot_id)]), [['EUR', '870.00', '870.00', true], ['GBP', '4850.00', '4850.00', true], ['PLN', '6510.00', '6510.00', true]]);
     assert.deepEqual((await calculator.getScenario(scenario.id)).exchangeRates, loaded.exchangeRates);
-    const duplicate = await supplier.extractAndLoadSupplierCosts('estimate', scenario.id, selected);
-    assert.equal(duplicate.documents.reduce((sum, item) => sum + item.loadedProducts + item.loadedCosts, 0), 0);
+    for (const item of selected) {
+      const duplicate = await supplier.extractAndLoadSupplierCosts('estimate', scenario.id, [item], { commercialSupplierCode: item.supplierCode });
+      assert.equal(duplicate.documents.reduce((sum, document) => sum + document.loadedProducts + document.loadedCosts, 0), 0);
+    }
   } finally { await db.close(); await fs.rm(root, { recursive: true, force: true }); }
 });
 
@@ -94,12 +98,12 @@ test('unpriced schedule converts only its total and explicit refresh preserves p
     const quote = await supplier.createQuote('estimate', { supplierCode: 'SCHED', supplierName: 'Schedule Supplier' });
     const revision = await supplier.createRevision('estimate', quote.id, { supplierQuotationNumber: 'S-1', supplierRevision: '1', currency: 'EUR' });
     await supplier.insertAttachments('estimate', quote.id, revision.id, [{ id: 'unpriced', role: 'original_quote', documentKind: 'window_schedule', originalFileName: 'schedule.pdf', mediaType: 'application/pdf', sizeBytes: 1, sha256: 'a'.repeat(64), storageKey: 'unpriced', parserEligible: true, createdAt: new Date().toISOString() }]);
-    const imported = await supplier.extractAndLoadSupplierCosts('estimate', scenario.id, [{ quoteId: quote.id, revisionId: revision.id, attachmentId: 'unpriced' }]);
+    const imported = await supplier.extractAndLoadSupplierCosts('estimate', scenario.id, [{ quoteId: quote.id, revisionId: revision.id, attachmentId: 'unpriced' }], { commercialSupplierCode: 'SCHED' });
     await calculator.ensureSupplierRevisionExchangeRates(scenario.id, [revision.id]);
     let loaded = await calculator.getScenario(scenario.id);
     assert.equal(loaded.products[0].totalPrice, null);
     assert.equal(loaded.unpricedSupplierTotals[0].originalAmount, '20000');
-    assert.equal(loaded.unpricedSupplierTotals[0].purchaseAmountGbp, '17200.00');
+    assert.equal(loaded.unpricedSupplierTotals[0].purchaseAmountGbp, '17400.00');
     assert.equal(loaded.unpricedSupplierTotals[0].sellingAmountGbp, '17400.00');
     await calculator.createRevision(scenario.id);
     const originalSnapshotId = loaded.exchangeRates[0].id;
@@ -115,7 +119,7 @@ test('unpriced schedule converts only its total and explicit refresh preserves p
   } finally { rates.EUR = '0.86'; await db.close(); await fs.rm(root, { recursive: true, force: true }); }
 });
 
-test('legacy single-snapshot costings retain their established numerical conversion', async () => {
+test('new single-snapshot costings use the fixed Estimate rate', async () => {
   const { root, db, provider } = await setup();
   try {
     const calculator = createProjectCalculatorLabService(db, { exchangeRateProvider: provider });
@@ -125,7 +129,8 @@ test('legacy single-snapshot costings retain their established numerical convers
     assert.equal(loaded.exchangeRates.length, 0);
     assert.equal(loaded.exchangeRate.supplierToGbpLiveRate, '0.86');
     assert.equal(loaded.products[0].originalAmount, '1000');
-    assert.equal(loaded.products[0].gbpAmount, '860.00');
+    assert.equal(loaded.exchangeRate.estimateFixedRate, '0.87');
+    assert.equal(loaded.products[0].gbpAmount, '870.00');
     assert.equal(loaded.products[0].commercialGbpAmount, '870.00');
   } finally { await db.close(); await fs.rm(root, { recursive: true, force: true }); }
 });

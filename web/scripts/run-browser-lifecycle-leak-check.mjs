@@ -1,11 +1,11 @@
 import { spawn, execFile } from "node:child_process";
+import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
-import { createPhase6ProfileDirectory } from "./e2e-chrome-profile.mjs";
 import { createBrowserRunController, countBrowserRunProfiles } from "./browser-run-lifecycle.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -82,18 +82,15 @@ let before = null;
 let during = null;
 let cleanup = null;
 let cleanupError = null;
+const deliberateFailure = process.argv.includes("--deliberate-failure");
+let deliberateFailureObserved = false;
 
 try {
   before = await countAllQuoteSyncHeadlessChrome();
   debugPort = await allocatePort();
-  userDataDir = await createPhase6ProfileDirectory();
-  const profileProcessCountBefore = await countBrowserRunProfiles(userDataDir, { platformName: process.platform });
-  controller.setRun({
+  userDataDir = await controller.createProfile({
     label: "browser-lifecycle-leak-check",
-    userDataDir,
     debugPort,
-    startedAt: new Date().toISOString(),
-    profileProcessCountBefore,
   });
 
   child = spawn(findChrome(), [
@@ -112,6 +109,10 @@ try {
   controller.setRun({
     profileProcessCountDuring: await countBrowserRunProfiles(userDataDir, { platformName: process.platform }),
   });
+  if (deliberateFailure) assert.fail("deliberate browser acceptance failure");
+} catch (error) {
+  if (!deliberateFailure || error?.message !== "deliberate browser acceptance failure") throw error;
+  deliberateFailureObserved = true;
 } finally {
   try {
     cleanup = await controller.stop("final");
@@ -132,10 +133,15 @@ const result = {
   exactProfileBefore: cleanup?.profileProcessCountBefore ?? null,
   exactProfileDuring: cleanup?.profileProcessCountDuring ?? null,
   exactProfileAfter: cleanup?.profileProcessCountAfter ?? null,
+  ownedBrowserProcessesRemaining: cleanup?.ownedBrowserProcessesRemaining ?? null,
+  ownedTemporaryProfilesRemaining: cleanup?.ownedTemporaryProfilesRemaining ?? null,
+  cleanupVerified: cleanup?.verified ?? false,
   profileRemoved,
+  deliberateFailureObserved,
 };
 console.log(JSON.stringify(result));
 
 if (cleanupError) throw cleanupError;
 if (after !== 0) throw new Error("QuoteSync-owned headless Chrome processes remain after focused cleanup: " + after);
 if (!profileRemoved) throw new Error("QuoteSync-owned temporary profile remains after focused cleanup: " + userDataDir);
+if (deliberateFailure && !deliberateFailureObserved) throw new Error("The deliberate browser acceptance failure was not observed");

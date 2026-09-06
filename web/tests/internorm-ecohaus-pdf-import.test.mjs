@@ -38,7 +38,7 @@ test('EcoHaus complete quotation selects the bounded Internorm variant and docum
   assert.equal(parsed.supplierIdentity.evidence[0].extractedText, 'ecoHaus SW ltd.');
   assert.equal(parsed.manufacturerIdentity.role, 'product_manufacturer');
   assert.ok(parsed.manufacturerIdentity.evidence.some((item) => /Internorm/.test(item.extractedText)));
-  assert.deepEqual(parsed.supplierManufacturerRelationship, { relationship: 'dealer_supplies_manufacturer_products', supplierDealerName: 'EcoHaus', supplierSourceLegalName: 'ecoHaus SW ltd.', manufacturerName: 'Internorm', pricingScope: 'supplier_dealer_quotation' });
+  assert.deepEqual(parsed.supplierManufacturerRelationship, { relationship: 'dealer_supplies_manufacturer_products', documentIssuerName: 'EcoHaus', documentIssuerLegalName: 'ecoHaus SW ltd.', commercialSupplierName: 'EcoHaus', manufacturerName: 'Internorm', pricingScope: 'commercial_supplier_quotation' });
   assert.equal(parsed.quotation.supplierQuotationNumber, '20260057');
   assert.deepEqual(detectPdfDocumentCurrency(document), { currency: 'GBP', evidence: { GBP: 9, EUR: 0 } });
   assert.deepEqual(parsed.systemDefaults, ['HF410', 'KF410', 'HS330']);
@@ -210,6 +210,36 @@ test('EcoHaus commercial configuration owns pricing resolution while Internorm r
   assert.equal((await db.get('SELECT COUNT(*) count FROM supplier_quote_import_runs')).count, 0);
 });
 
+test('automatic review does not infer commercial supplier from a changed quotation issuer', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'qs-internorm-zyle-review-'));
+  const db = await open({ filename: path.join(root, 'fixture.sqlite'), driver: sqlite3.Database });
+  t.after(async () => { await db.close(); await fs.rm(root, { recursive: true, force: true }); });
+  await db.exec("PRAGMA foreign_keys=ON;CREATE TABLE clients(id TEXT PRIMARY KEY,client_ref TEXT,name TEXT,created_at TEXT,updated_at TEXT);CREATE TABLE estimates(id TEXT PRIMARY KEY,estimate_ref TEXT,client_id TEXT,status TEXT,positions_json TEXT,created_at TEXT,updated_at TEXT,deleted_at TEXT);INSERT INTO clients VALUES('client','EF-CL-FIXTURE','Fixture',datetime('now'),datetime('now'));INSERT INTO estimates VALUES('estimate','EF-EST-FIXTURE','client','draft','[]',datetime('now'),datetime('now'),NULL);");
+  await initializeSupplierCommercialSchema(db);
+  await configureInternormManufacturer(db);
+  await db.run('INSERT INTO supplier_commercial_defaults(supplier_code,supplier_name,policy_json,pricing_display_policy_json,updated_at,active) VALUES(?,?,?,?,?,1)', 'ZF', 'Zyle Fenster', JSON.stringify({ pricingMethod: 'parity_1_to_1', pricingBasis: 'parity_1_to_1' }), '{}', new Date().toISOString());
+  const sourceFields = parsePdfSupplierFields(internormEcohausStructureFixture());
+  const zyleFields = structuredClone(sourceFields);
+  zyleFields.supplier = 'Zyle Fenster';
+  zyleFields.supplierIdentity = { ...zyleFields.supplierIdentity, sourceLegalName: 'Zyle Fenster', dealerName: 'Zyle Fenster', evidence: [{ ...zyleFields.supplierIdentity.evidence[0], extractedText: 'Zyle Fenster' }] };
+  zyleFields.supplierManufacturerRelationship = { ...zyleFields.supplierManufacturerRelationship, supplierDealerName: 'Zyle Fenster', supplierSourceLegalName: 'Zyle Fenster' };
+  const service = createSupplierQuotesService(db, { attachmentRoot: root, fileSupplierAttachments: false, extractDocument: async () => internormEcohausStructureFixture(), parseFields: () => structuredClone(zyleFields), derivePreviews: async () => ({ warnings: [] }) });
+  const quote = await service.createQuote('estimate', { supplierCode: 'AUTO-INTERNORM-ZYLE', supplierName: 'Automatic identification pending' });
+  const revision = await service.createRevision('estimate', quote.id, { supplierQuotationNumber: '', currency: 'XXX' });
+  await service.insertAttachments('estimate', quote.id, revision.id, [{ id: 'source', role: 'original_quote', documentKind: 'complete_quotation', originalFileName: 'internorm-zyle-fixture.pdf', mediaType: 'application/pdf', sizeBytes: 1, sha256: 'e'.repeat(64), storageKey: 'internorm-zyle-fixture.pdf', parserEligible: true, createdAt: new Date().toISOString() }]);
+  const review = await service.prepareImportReview('estimate', [{ quoteId: quote.id, revisionId: revision.id, attachmentId: 'source' }]);
+  assert.equal(review.metadata.recognizedManufacturerName, 'Internorm');
+  assert.equal(review.metadata.manufacturerId, 'manufacturer-internorm');
+  assert.equal(review.metadata.recognizedDealerName, 'Zyle Fenster');
+  assert.equal(review.metadata.recognizedCommercialSupplierName, 'EcoHaus');
+  assert.equal(review.metadata.commercialSupplierCode, null);
+  assert.equal(review.commercialSuppliers.find((item) => item.supplierCode === 'ZF').pricingMethod, 'parity_1_to_1');
+  assert.equal(review.metadata.supplierManufacturerRelationship.relationship, 'dealer_supplies_manufacturer_products');
+  assert.equal((await service.listAttachments('estimate', quote.id, revision.id)).length, 1);
+  assert.equal((await db.get('SELECT COUNT(*) count FROM supplier_quote_import_runs')).count, 0);
+  assert.equal((await db.get('SELECT COUNT(*) count FROM project_calculator_estimate_product_rows')).count, 0);
+});
+
 test('EcoHaus cannot be confirmed against the historically wrong Zyle dealer or parity policy', async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'qs-ecohaus-wrong-dealer-'));
   const db = await open({ filename: path.join(root, 'fixture.sqlite'), driver: sqlite3.Database });
@@ -227,7 +257,7 @@ test('EcoHaus cannot be confirmed against the historically wrong Zyle dealer or 
   await service.insertAttachments('estimate', quote.id, revision.id, [{ id: 'source', role: 'original_quote', documentKind: 'complete_quotation', originalFileName: 'safe-structure-fixture.pdf', mediaType: 'application/pdf', sizeBytes: 1, sha256: 'c'.repeat(64), storageKey: 'safe-structure-fixture.pdf', parserEligible: true, createdAt: new Date().toISOString() }]);
   const review = await service.prepareImportReview('estimate', selection);
   const selectedRowKeys = review.documents[0].rows.map((row) => row.rowKey);
-  await assert.rejects(service.extractAndLoadSupplierCosts('estimate', scenario.id, selection, { selectedRowKeys, supplierCode: 'ZF', manufacturerId: 'manufacturer-internorm', metadata: { quotationNumber: '20260057', currency: 'GBP' } }), (error) => error.code === 'dealer_identity_mismatch');
+  await assert.rejects(service.extractAndLoadSupplierCosts('estimate', scenario.id, selection, { selectedRowKeys, manufacturerId: 'manufacturer-internorm', metadata: { quotationNumber: '20260057', currency: 'GBP' } }), (error) => error.code === 'commercial_supplier_required');
   assert.equal((await db.get('SELECT COUNT(*) count FROM supplier_quote_positions WHERE revision_id=?', revision.id)).count, 0);
   assert.equal((await db.get('SELECT COUNT(*) count FROM supplier_quote_import_runs WHERE revision_id=?', revision.id)).count, 0);
   assert.equal((await db.get('SELECT COUNT(*) count FROM supplier_quote_import_operations WHERE revision_id=?', revision.id)).count, 0);

@@ -2,7 +2,6 @@ import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { createPhase6ProfileDirectory } from "./e2e-chrome-profile.mjs";
 import { createBrowserRunController, countBrowserRunProfiles } from "./browser-run-lifecycle.mjs";
 import { terminateOwnedProcessTrees } from "./e2e-owned-process.mjs";
 
@@ -21,9 +20,8 @@ function launchServices(){
 }
 
 async function launchChrome(){
-  const userDataDir=await createPhase6ProfileDirectory();
+  const userDataDir=await controller.createProfile({label:"email-reader-readonly",debugPort:DEBUG_PORT});
   const before=await countBrowserRunProfiles(userDataDir,{platformName:process.platform});
-  controller.setRun({label:"email-reader-readonly",userDataDir,debugPort:DEBUG_PORT,startedAt:new Date().toISOString(),profileProcessCountBefore:before});
   const child=spawn("C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",["--headless=new",`--remote-debugging-port=${DEBUG_PORT}`,`--user-data-dir=${userDataDir}`,"--no-first-run","--disable-gpu","--disable-extensions","about:blank"],{stdio:"ignore",windowsHide:true});
   controller.setRun({child});
   await waitFor(()=>reachable(`http://127.0.0.1:${DEBUG_PORT}/json/version`),"Owned Chrome did not start",15000);

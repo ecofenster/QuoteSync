@@ -1,5 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ApiRequestError } from "../../services/api/apiClient";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ApiMutationBlockedError, ApiRequestError } from "../../services/api/apiClient";
+import { useOptionalRuntimeHealth } from "../runtimeHealth/RuntimeHealthContext";
+import { runtimeAllowsMutations } from "../runtimeHealth/runtimeHealth";
 import { projectCalculatorLabApi } from "./api/projectCalculatorLabApi";
 import type {
   CalculatorPackageCode,
@@ -175,6 +177,8 @@ export default function ProjectCalculatorLabWorkspace({
   );
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const runtimeHealth = useOptionalRuntimeHealth();
+  const runtimeReady = !runtimeHealth || runtimeAllowsMutations(runtimeHealth.state);
   const creationWorkflow = useRef(
     createScenarioCreationWorkflow(projectCalculatorLabApi.createScenario),
   );
@@ -182,7 +186,7 @@ export default function ProjectCalculatorLabWorkspace({
     googleMapsApiKey: "server-managed",
     what3wordsApiKey: "server-managed",
   };
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     const [nextSources, nextScenarios] = await Promise.all([
       projectCalculatorLabApi.listImportSources(estimateId),
       projectCalculatorLabApi.listScenarios(estimateId),
@@ -190,14 +194,14 @@ export default function ProjectCalculatorLabWorkspace({
     setSources(nextSources);
     setScenarios(nextScenarios);
     setLoaded(true);
-  };
+  }, [estimateId]);
   useEffect(() => {
     void refresh().catch((error) => {
       setLoaded(true);
       setMessageKind("error");
       setMessage(visibleApiError(error));
     });
-  }, [estimateId]);
+  }, [refresh]);
   useEffect(() => {
     if (initialScenarioId)
       void projectCalculatorLabApi
@@ -209,18 +213,20 @@ export default function ProjectCalculatorLabWorkspace({
         });
   }, [initialScenarioId, estimateId]);
   useEffect(() => {
-    if (estimateId && !initialScenarioId)
+    if (estimateId && !initialScenarioId && runtimeReady)
       void ensureEstimateCosting(estimateId, estimateRef)
         .then(setActive)
         .catch((error) => {
-          console.error(
-            "Project Costing position synchronization failed",
-            error,
-          );
+          if (error instanceof ApiMutationBlockedError) {
+            setMessageKind("info");
+            setMessage("Project Costing is waiting for the QuoteSuite service to reconnect.");
+            return;
+          }
+          console.error("Project Costing position synchronization failed", error);
           setMessageKind("error");
           setMessage("Project Costing could not synchronize positions.");
         });
-  }, [estimateId, estimateRef, initialScenarioId]);
+  }, [estimateId, estimateRef, initialScenarioId, runtimeReady]);
   useEffect(() => {
     const update = (event: Event) =>
       setActive((event as CustomEvent<CalculatorScenario>).detail);
@@ -451,7 +457,6 @@ export default function ProjectCalculatorLabWorkspace({
           scenario={stage2b!}
           commercialView={commercialView}
           estimateMetrics={estimateMetrics}
-          onNew={estimateId ? undefined : () => setActive(null)}
           onUpdateProduct={async (rowId, input) =>
             setActive(
               await projectCalculatorLabApi.updateProduct(
@@ -502,23 +507,7 @@ export default function ProjectCalculatorLabWorkspace({
               setActive(updated);
               setMessageKind("success");
               setMessage(
-                `Live rate refreshed: £1 = ${updated.exchangeRate?.rawRate} ${updated.currency}; selling rate ${updated.exchangeRate?.usedRate}.`,
-              );
-            } catch (error) {
-              setMessageKind("error");
-              setMessage(visibleApiError(error));
-              throw error;
-            }
-          }}
-          onCreateRevision={async () => {
-            try {
-              const updated = await projectCalculatorLabApi.createRevision(
-                active!.id,
-              );
-              setActive(updated);
-              setMessageKind("success");
-              setMessage(
-                `Revision ${updated.revisionNumber} created with the saved markup settings.`,
+                `Rate adopted: ${updated.currency} 1 = GBP ${updated.exchangeRate?.usedRate} fixed Estimate Rate (raw market rate ${updated.exchangeRate?.rawRate}).`,
               );
             } catch (error) {
               setMessageKind("error");
@@ -1377,30 +1366,17 @@ export default function ProjectCalculatorLabWorkspace({
                     Uplift <strong>{active.exchangeRate.upliftAmount}</strong>
                   </span>
                   <span>
-                    Adjusted rate{" "}
+                    Fixed Estimate Rate{" "}
                     <strong>{active.exchangeRate.adjustedRate}</strong>
                   </span>
                 </div>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={active.exchangeRate.adjustmentEnabled}
-                    onChange={(event) =>
-                      void projectCalculatorLabApi
-                        .updateExchangeRate(active.id, {
-                          adjustmentEnabled: event.target.checked,
-                        })
-                        .then(setActive)
-                    }
-                  />{" "}
-                  Use adjusted exchange rate
-                </label>
+                <p>The protective fixed rate is the Estimate costing basis. The raw live rate is retained as evidence and does not alter costing.</p>
                 <div className="calculator-lab__form">
                   <input
                     className="ui-input"
                     value={rateOverride}
                     onChange={(event) => setRateOverride(event.target.value)}
-                    placeholder={`Override adjusted rate (${active.exchangeRate.calculatedAdjustedRate})`}
+                    placeholder={`Override fixed Estimate Rate (${active.exchangeRate.calculatedAdjustedRate})`}
                   />
                   <input
                     className="ui-input"
@@ -1468,8 +1444,8 @@ export default function ProjectCalculatorLabWorkspace({
                     <th>Line</th>
                     <th>Original amount</th>
                     <th>Currency</th>
-                    <th>Live rate</th>
-                    <th>Rate used</th>
+                    <th>Live Market Rate</th>
+                    <th>Estimate Rate</th>
                     <th>GBP converted</th>
                     <th>Markup %</th>
                     <th>Markup GBP</th>

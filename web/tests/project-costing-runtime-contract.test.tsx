@@ -14,7 +14,6 @@ const handlers = {
   onUpdateProduct: async () => {},
   onUpdateSupplierCost: async () => {},
   onUpdateManualCost: async () => {},
-  onCreateRevision: async () => {},
   onRefreshRate: async () => {},
 };
 const render = (scenario: CalculatorScenario) =>

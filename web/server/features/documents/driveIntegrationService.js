@@ -12,6 +12,8 @@ const discoveredFolderKey = (providerFolderId) => `provider:${createHash("sha256
 const normalizedName = (value) => String(value || "").normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase("en-GB");
 const normalizedSupplierIdentity = (value) => normalizedName(value).replace(/[^\p{L}\p{N}]+/gu, "");
 const exactName = (left, right) => normalizedName(left) === normalizedName(right);
+const legacyPricingMethodHolderCodes = new Set(["FACTORY PRICE", "1 TO 1 PRICING", "STAGED DISCOUNT"]);
+const isCurrentSupplierDefault = (row) => !(normalizedName(row?.supplier_name) === "any" && legacyPricingMethodHolderCodes.has(String(row?.supplier_code || "").trim().toUpperCase()));
 
 export const DRIVE_DISCOVERY_STRATEGY = Object.freeze({
   current: "full_enumeration",
@@ -92,10 +94,10 @@ export function createDriveIntegrationService(db, options = {}) {
   async function canonicalSuppliers(estimateId) {
     const [quoted, configured] = await Promise.all([
       db.all("SELECT DISTINCT supplier_code,supplier_name FROM supplier_quotes WHERE estimate_id=? AND archived_at IS NULL", estimateId).catch(() => []),
-      db.all("SELECT supplier_code,supplier_name FROM supplier_commercial_defaults WHERE active<>0").catch(() => []),
+      db.all("SELECT supplier_code,supplier_name FROM supplier_commercial_defaults").catch(() => []),
     ]);
     const suppliers = new Map();
-    for (const row of [...quoted, ...configured]) {
+    for (const row of [...quoted, ...configured.filter(isCurrentSupplierDefault)]) {
       const id = String(row.supplier_code || "").trim(), name = String(row.supplier_name || "").trim();
       if (!id || !name) continue;
       suppliers.set(id, { id, name, aliases: [name, id] });

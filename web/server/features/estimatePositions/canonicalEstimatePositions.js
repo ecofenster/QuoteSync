@@ -6,6 +6,29 @@ const positiveInteger=(value,fallback=1)=>Number.isInteger(Number(value))&&Numbe
 const signature=position=>[normalized(position.positionRef??position.displayReference),positiveInteger(position.qty??position.quantity),Number(position.widthMm)||0,Number(position.heightMm)||0].join('|');
 const stableImportedId=(estimateId,sourceKey)=>`pos_supplier_${createHash('sha256').update(`${estimateId}:${sourceKey}`).digest('hex').slice(0,32)}`;
 
+export function isSupplierImportedEstimatePosition(position){
+  return position?.origin==='supplier_imported'
+    || position?.sourceProvenance?.kind==='supplier_quote_position'
+    || (Array.isArray(position?.supplierEvidenceLinks)&&position.supplierEvidenceLinks.length>0);
+}
+
+// Estimate editing owns ordinary position composition. Supplier-imported rows
+// remain source evidence until a reviewed supplier quotation operation replaces
+// them, so a stale browser collection may neither omit nor de-provenance them.
+export function mergeSourceOwnedEstimatePositions(currentInput,incomingInput){
+  const current=resolveCanonicalAlternativeRelationships(Array.isArray(currentInput)?currentInput:[]);
+  const incoming=resolveCanonicalAlternativeRelationships(Array.isArray(incomingInput)?incomingInput:[]);
+  const currentById=new Map(current.map(position=>[String(position.id),position]));
+  const requestedIds=new Set(incoming.map(position=>String(position.id)));
+  const merged=incoming.map(position=>{
+    const authoritative=currentById.get(String(position.id));
+    if(!authoritative||!isSupplierImportedEstimatePosition(authoritative))return position;
+    return {...position,id:authoritative.id,origin:authoritative.origin,sourceProvenance:authoritative.sourceProvenance,supplierEvidenceLinks:authoritative.supplierEvidenceLinks,supplier:authoritative.supplier,product:authoritative.product,productSystem:authoritative.productSystem};
+  });
+  for(const position of current)if(isSupplierImportedEstimatePosition(position)&&!requestedIds.has(String(position.id)))merged.push(position);
+  return resolveCanonicalAlternativeRelationships(merged.map((position,index)=>({...position,sourceSequence:index})));
+}
+
 export function normalizeCanonicalEstimatePosition(position,index=0){
   const configuredContract=position?.configuredContract??null;
   const origin=position?.origin??(configuredContract?'b92_configured':'manual');
@@ -62,6 +85,28 @@ export async function saveConfiguredEstimatePosition(db,{estimateId,positionId,c
 }
 
 export async function addConfiguredEstimatePosition(db,{estimateId,position}){const row=await db.get('SELECT positions_json FROM estimates WHERE id=?',estimateId);if(!row)return null;const positions=resolveCanonicalAlternativeRelationships(parsePositions(row.positions_json)),normalized=normalizeCanonicalEstimatePosition({...position,sourceSequence:positions.length,origin:'b92_configured',configurationState:'configured'},positions.length);if(positions.some(item=>item.id===normalized.id))return positions.find(item=>item.id===normalized.id);positions.push(normalized);const resolved=resolveCanonicalAlternativeRelationships(positions);await db.run('UPDATE estimates SET positions_json=?,updated_at=? WHERE id=?',JSON.stringify(resolved),new Date().toISOString(),estimateId);return resolved.find(item=>item.id===normalized.id);}
+
+export async function replaceEditableEstimatePositions(db,{estimateId,incomingPositions}){
+  const estimate=await db.get('SELECT id,positions_json FROM estimates WHERE id=? AND deleted_at IS NULL',estimateId);
+  if(!estimate)return null;
+  const positions=mergeSourceOwnedEstimatePositions(parsePositions(estimate.positions_json),incomingPositions);
+  const ids=new Set();
+  if(positions.some(position=>!position.id||ids.has(position.id)||(ids.add(position.id),false)))throw Object.assign(new Error('Position identifiers must be unique'),{code:'invalid_position_ids'});
+  if(positions.some(position=>position.alternativeToPositionId&&!ids.has(position.alternativeToPositionId)))throw Object.assign(new Error('Alternative target must be a position in this Estimate'),{code:'invalid_alternative_target'});
+  await db.exec('BEGIN IMMEDIATE');
+  try{
+    const now=new Date().toISOString();
+    await db.run('UPDATE estimates SET positions_json=?,updated_at=? WHERE id=?',JSON.stringify(positions),now,estimateId);
+    for(const scenario of await db.all('SELECT id FROM project_calculator_lab_scenarios WHERE estimate_id=?',estimateId)){
+      if(positions.length)await db.run(`DELETE FROM project_calculator_estimate_product_rows WHERE scenario_id=? AND estimate_position_id IS NOT NULL AND estimate_position_id NOT IN (${positions.map(()=>'?').join(',')})`,scenario.id,...positions.map(position=>position.id));
+      else await db.run('DELETE FROM project_calculator_estimate_product_rows WHERE scenario_id=? AND estimate_position_id IS NOT NULL',scenario.id);
+      for(const position of positions)await db.run('UPDATE project_calculator_estimate_product_rows SET display_reference=?,quantity=?,width_mm=?,height_mm=?,classification=?,included_in_current_estimate=?,alternative_to_reference=?,alternative_to_estimate_position_id=?,updated_at=? WHERE scenario_id=? AND estimate_position_id=?',position.positionRef,position.qty,position.widthMm,position.heightMm,position.classification,position.classification==='standard'?1:0,position.alternativeTo,position.alternativeToPositionId,now,scenario.id,position.id);
+      await syncEstimatePositionProjections(db,scenario.id);
+    }
+    await db.exec('COMMIT');
+    return positions;
+  }catch(error){await db.exec('ROLLBACK');throw error;}
+}
 
 export async function syncEstimatePositionProjections(db,scenarioId){
   const scenario=await db.get('SELECT estimate_id FROM project_calculator_lab_scenarios WHERE id=?',scenarioId);if(!scenario?.estimate_id)return 0;

@@ -3,7 +3,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
-import { createPhase6ProfileDirectory, cleanupPhase6Profile, terminateOwnedChrome } from "./e2e-chrome-profile.mjs";
+import { createBrowserRunController, countBrowserRunProfiles } from "./browser-run-lifecycle.mjs";
 
 const APP_URL = process.env.E2E_APP_URL ?? "http://localhost:5173";
 const DEBUG_PORT = 9278;
@@ -11,9 +11,13 @@ const assert = (value, message) => { if (!value) throw new Error(message); };
 const waitFor = async (fn, message, timeout = 30000) => { const started = Date.now(); while (Date.now() - started < timeout) { const value = await fn().catch(() => false); if (value) return value; await delay(150); } throw new Error(message); };
 const reachable = async (url) => { try { return (await fetch(url)).ok; } catch { return false; } };
 
+const browserRunController = createBrowserRunController({ throwOnLeak: true, processOptions: { platformName: process.platform } });
+browserRunController.installInterruptHandlers();
+
 async function launchChrome() {
-  const userDataDir = await createPhase6ProfileDirectory();
+  const userDataDir = await browserRunController.createProfile({ label: "dark-theme-hover", debugPort: DEBUG_PORT });
   const child = spawn("C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", ["--headless=new", `--remote-debugging-port=${DEBUG_PORT}`, `--user-data-dir=${userDataDir}`, "--no-first-run", "--disable-gpu", "--disable-extensions", "about:blank"], { stdio: "ignore" });
+  browserRunController.setRun({ child });
   await waitFor(() => reachable(`http://127.0.0.1:${DEBUG_PORT}/json/version`), "Chrome unavailable", 10000);
   return { child, userDataDir };
 }
@@ -56,9 +60,21 @@ const luminance = (value) => rgb(value).reduce((sum, channel, index) => sum + ch
 
 async function run() {
   assert(await reachable(APP_URL), `Application unavailable at ${APP_URL}`);
-  const browser = await launchChrome(); let tab;
+  const browser = await launchChrome();
+  let tab;
+  browserRunController.setRun({
+    label: "dark-theme-hover",
+    userDataDir: browser.userDataDir,
+    child: browser.child,
+    debugPort: DEBUG_PORT,
+    startedAt: new Date().toISOString(),
+    profileProcessCountBefore: await countBrowserRunProfiles(browser.userDataDir, { platformName: process.platform }),
+  });
   try {
     tab = await connect();
+    browserRunController.setRun({
+      profileProcessCountDuring: await countBrowserRunProfiles(browser.userDataDir, { platformName: process.platform }),
+    });
     await tab.send("Emulation.setDeviceMetricsOverride", { width: 1366, height: 768, deviceScaleFactor: 1, mobile: false });
     await waitFor(() => tab.evaluate(`Boolean(document.querySelector('.theme-selector'))`), "Application shell unavailable");
     if (await tab.evaluate(`document.documentElement.dataset.qsTheme !== 'dark'`)) await tab.evaluate(`document.querySelector('.theme-selector')?.click()`);
@@ -205,7 +221,7 @@ async function run() {
     await waitFor(() => tab.evaluate(`Boolean(document.querySelector('.project-costing'))`), "Light Project Costing unavailable");
     const lightCosting = await tab.evaluate(`(() => ({page:getComputedStyle(document.querySelector('.app-shell__main')).backgroundColor, workspace:getComputedStyle(document.querySelector('.project-costing')).backgroundColor, card:getComputedStyle(document.querySelector('.costing-sheet__summary')).backgroundColor, control:getComputedStyle(document.querySelector('.project-costing .ui-button')).backgroundColor}))()`);
     assert(new Set(Object.values(lightCosting)).size >= 3, `Light Project Costing hierarchy is flat: ${JSON.stringify(lightCosting)}`);
-    const commercialSpacing = await tab.evaluate(`(() => { const metrics=document.querySelector('.costing-sheet__estimate-metrics'); const cards=[...metrics.children].map(node=>node.getBoundingClientRect()); const margin=document.querySelector('.costing-sheet__margin-control'); const actionButtons=[...document.querySelectorAll('.estimate-commercial__breadcrumb .ui-button')].map(node=>node.getBoundingClientRect()); const style=getComputedStyle(margin); return {metricWidth:metrics.getBoundingClientRect().width,summaryWidth:metrics.closest('.costing-sheet__summary').getBoundingClientRect().width,metricGap:cards.length>1?cards[1].left-cards[0].right:null,metricHeights:[...new Set(cards.map(box=>Math.round(box.height)))],marginPadding:[style.paddingTop,style.paddingRight,style.paddingBottom,style.paddingLeft],actionGaps:actionButtons.slice(1).map((box,index)=>Math.round(box.left-actionButtons[index].right)).filter(value=>value>=0)}; })()`);
+    const commercialSpacing = await tab.evaluate(`(() => { const metrics=document.querySelector('.costing-sheet__estimate-metrics'); const cards=[...metrics.children].map(node=>node.getBoundingClientRect()); const margin=document.querySelector('.costing-sheet__margin-control'); const actionButtons=[...document.querySelectorAll('.estimate-commercial__estimate-actions .ui-button')].map(node=>node.getBoundingClientRect()); const style=getComputedStyle(margin); return {metricWidth:metrics.getBoundingClientRect().width,summaryWidth:metrics.closest('.costing-sheet__summary').getBoundingClientRect().width,metricGap:cards.length>1?cards[1].left-cards[0].right:null,metricHeights:[...new Set(cards.map(box=>Math.round(box.height)))],marginPadding:[style.paddingTop,style.paddingRight,style.paddingBottom,style.paddingLeft],actionGaps:actionButtons.slice(1).map((box,index)=>Math.round(box.left-actionButtons[index].right)).filter(value=>value>=0)}; })()`);
     assert(commercialSpacing.metricWidth < commercialSpacing.summaryWidth && commercialSpacing.metricGap >= 8 && commercialSpacing.metricHeights.length === 1, `Commercial metric spacing incorrect: ${JSON.stringify(commercialSpacing)}`);
     assert(commercialSpacing.marginPadding.every(value=>parseFloat(value)>=12), `Target margin spacing incorrect: ${JSON.stringify(commercialSpacing)}`);
     assert(commercialSpacing.actionGaps.every(value=>value>=8), `Estimate action spacing incorrect: ${JSON.stringify(commercialSpacing)}`);
@@ -221,7 +237,7 @@ async function run() {
     await clickText(tab, "Supplier / Product Defaults", ".admin-nav-button-label");
     await waitFor(() => tab.evaluate(`Boolean(document.querySelector('.admin-supplier-list tbody tr'))`), "Configured suppliers unavailable");
     const supplierUx = await tab.evaluate(`(() => { const row=document.querySelector('.admin-supplier-list tbody tr'); const buttons=[...row.querySelectorAll('button')].map(node=>node.textContent.trim()); return {cursor:getComputedStyle(row).cursor,buttons}; })()`);
-    assert(supplierUx.cursor === "pointer" && supplierUx.buttons.includes("Edit") && supplierUx.buttons.some(value=>value==="Archive"||value==="Reactivate"), `Supplier management actions unavailable: ${JSON.stringify(supplierUx)}`);
+    assert(supplierUx.cursor === "pointer" && supplierUx.buttons.includes("Edit") && supplierUx.buttons.includes("Delete") && !supplierUx.buttons.some(value=>value==="Archive"||value==="Reactivate"), `Supplier management actions unavailable: ${JSON.stringify(supplierUx)}`);
     await clickText(tab, "Branding", ".admin-nav-button-label");
     await waitFor(() => tab.evaluate(`Boolean(document.querySelector('.admin-theme-panel'))`), "Branding unavailable");
     const brandingUx = await tab.evaluate(`(() => ({reset:[...document.querySelectorAll('button')].some(node=>node.textContent.trim()==='Reset to QuoteSuite Theme Defaults'),modes:[...document.querySelectorAll('.admin-theme-modes button')].map(node=>node.textContent.trim())}))()`);
@@ -233,8 +249,10 @@ async function run() {
     assert(tab.diagnostics.length === 0, `Browser diagnostics: ${tab.diagnostics.join("; ")}`);
     console.log(JSON.stringify({ dashboardPrimary, recycleDanger, projectMapLayout, estimate: { normalRow, hoverRow, normalIcon, iconOnRow, hoverIcon, normalPrimary, hoverPrimary, focus, selectedNavigation, estimateRowGeometry, metricsLayout, screenshot: estimateScreenshot }, clientRow, calendarBadge, markDone, standardsSelected, costingRow, adminInteraction, lightSurfaces, lightEstimate, lightPrimary, lightSelected, lightRowHover, lightFollowUps, lightCosting, commercialSpacing, lightAdmin, lightAdminTitle, customerViewGrid, supplierUx, brandingUx }, null, 2));
   } finally {
-    tab?.close(); await terminateOwnedChrome(browser.child); await cleanupPhase6Profile(browser.userDataDir);
+    tab?.close();
+    const summary = await browserRunController.stop("final");
+    console.log(`Dark theme browser cleanup summary: ${JSON.stringify(summary)}`);
   }
 }
 
-run().catch((error) => { console.error(error); process.exitCode = 1; });
+run().catch((error) => { console.error(error); process.exitCode = 1; }).finally(async () => { const cleanup = await browserRunController.stop("top-level"); if (!cleanup.skipped) console.log("Browser top-level cleanup: " + JSON.stringify(cleanup)); });

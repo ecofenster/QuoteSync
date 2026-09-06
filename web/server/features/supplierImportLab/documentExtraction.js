@@ -5,8 +5,9 @@ import { extractDocxManufacturerVisuals } from './manufacturerPositionVisuals.js
 import { resolveAttachmentRoot } from '../supplierQuotes/managedAttachmentStorage.js';
 import { reconstructPdfPageLayout } from './pdfLayout.js';
 import { assertPdfJsRuntimeResources, pdfJsRuntimeOptions, PDFJS_RUNTIME_VERSION } from './pdfJsRuntime.js';
+import { applyBoundedPdfOcr } from './boundedPdfOcr.js';
 
-export const EXTRACTOR_VERSION = '1.3.0';
+export const EXTRACTOR_VERSION = '1.4.0';
 const MAX_DOCX_ENTRIES = 2_000;
 const MAX_DOCX_EXPANDED_BYTES = 128 * 1024 * 1024;
 const MAX_DOCX_RATIO = 200;
@@ -132,10 +133,22 @@ async function extractPdf(filename, attachment) {
     modificationDate: clean(metadata?.info?.ModDate),
     producer: clean(metadata?.info?.Producer),
   };
-  await loadingTask.destroy();
-  const textLength = pages.reduce((sum, page) => sum + page.text.replace(/\s/g, '').length, 0);
-  const warnings = textLength < 20 ? ['No machine-readable text layer; bounded OCR fallback is required.'] : [];
-  return { attachmentId: attachment.id, sourceSha256: attachment.sha256 ?? null, sessionId: attachment.sessionId, mediaType: attachment.mediaType, extractorName: 'pdfjs-dist', extractorVersion: EXTRACTOR_VERSION, createdAt: new Date().toISOString(), pages, manufacturerVisualCandidates: [], pdfStructure: { ...structure, runtimeVersion: PDFJS_RUNTIME_VERSION, documentMetadata, encrypted: Boolean(metadata?.info?.EncryptFilterName), restricted: Array.isArray(permissions) && permissions.length > 0, permissions: Array.isArray(permissions) ? permissions : null }, warnings, textAvailable: textLength >= 20, extractionStatus: textLength >= 20 ? 'completed' : 'ocr_required' };
+  let textLength = pages.reduce((sum, page) => sum + page.text.replace(/\s/g, '').length, 0);
+  let ocr = null;
+  try {
+    if (textLength < 20) {
+      ocr = await applyBoundedPdfOcr(pdf, pages);
+      textLength = ocr.textLength;
+      structure.textRunCount = ocr.blockCount;
+      structure.emptyTextPages = pages.filter((page) => !page.blocks.length).length;
+    }
+  } finally {
+    await loadingTask.destroy();
+  }
+  const warnings = ocr
+    ? [ocr.textAvailable ? 'No machine-readable text layer; bounded local OCR evidence was extracted.' : 'No text was detected by the bounded OCR fallback; reviewed evidence is required.']
+    : [];
+  return { attachmentId: attachment.id, sourceSha256: attachment.sha256 ?? null, sessionId: attachment.sessionId, mediaType: attachment.mediaType, extractorName: ocr ? 'pdfjs-dist+tesseract.js' : 'pdfjs-dist', extractorVersion: EXTRACTOR_VERSION, createdAt: new Date().toISOString(), pages, manufacturerVisualCandidates: [], pdfStructure: { ...structure, runtimeVersion: PDFJS_RUNTIME_VERSION, documentMetadata, ocr, encrypted: Boolean(metadata?.info?.EncryptFilterName), restricted: Array.isArray(permissions) && permissions.length > 0, permissions: Array.isArray(permissions) ? permissions : null }, warnings, textAvailable: textLength >= 20, extractionStatus: textLength >= 20 ? 'completed' : 'ocr_required' };
 }
 
 export async function extractSupplierDocument(filename, attachment, options = {}) {

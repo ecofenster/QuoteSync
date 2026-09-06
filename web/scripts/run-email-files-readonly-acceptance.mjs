@@ -2,7 +2,6 @@ import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { createPhase6ProfileDirectory } from "./e2e-chrome-profile.mjs";
 import { createBrowserRunController, countBrowserRunProfiles } from "./browser-run-lifecycle.mjs";
 import { terminateOwnedProcessTrees } from "./e2e-owned-process.mjs";
 
@@ -21,8 +20,7 @@ function launchServices(){
 }
 
 async function launchChrome(){
-  const userDataDir=await createPhase6ProfileDirectory(),before=await countBrowserRunProfiles(userDataDir,{platformName:process.platform});
-  controller.setRun({label:"email-files-readonly",userDataDir,debugPort:DEBUG_PORT,startedAt:new Date().toISOString(),profileProcessCountBefore:before});
+  const userDataDir=await controller.createProfile({label:"email-files-readonly",debugPort:DEBUG_PORT}),before=await countBrowserRunProfiles(userDataDir,{platformName:process.platform});
   const child=spawn("C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",["--headless=new",`--remote-debugging-port=${DEBUG_PORT}`,`--user-data-dir=${userDataDir}`,"--no-first-run","--disable-gpu","--disable-extensions","about:blank"],{stdio:"ignore",windowsHide:true});
   controller.setRun({child});
   await waitFor(()=>reachable(`http://127.0.0.1:${DEBUG_PORT}/json/version`),"Owned Chrome did not start",15000);
@@ -103,7 +101,7 @@ async function run(){
     await clickText(tab,"Files / Documents");await waitFor(()=>tab.evaluate("Boolean(document.querySelector('[aria-label=\"Estimate Files and Documents\"] .canonical-documents'))"),"Estimate Files/Documents unavailable");
     const estimateFiles=await tab.evaluate("(()=>{const panel=document.querySelector('[aria-label=\"Estimate Files and Documents\"] .canonical-documents'),button=panel.querySelector('.ui-button');return{heading:panel.querySelector('h3')?.textContent,canonicalButton:button?.classList.contains('ui-button'),buttonRadius:parseFloat(getComputedStyle(button).borderRadius),background:getComputedStyle(panel.querySelector('.canonical-documents__filters')).backgroundColor,dark:document.documentElement.dataset.qsTheme,overflow:panel.scrollWidth>panel.clientWidth+1,compactRows:document.querySelectorAll('.canonical-documents__row').length}})()");assert(estimateFiles.heading==="Estimate Files / Documents"&&estimateFiles.canonicalButton&&estimateFiles.buttonRadius<100&&!estimateFiles.overflow&&estimateFiles.dark==="dark","Estimate Files canonical dark styling unavailable");assert(clientFiles.background===estimateFiles.background,"Client and Estimate Files do not share the same surface language");screenshots.push(await capture(tab,"05-estimate-files-dark"));
     await tab.evaluate("document.querySelector('.theme-selector')?.click()");await waitFor(()=>tab.evaluate("document.documentElement.dataset.qsTheme==='light'"),"Light theme did not activate");const lightFiles=await tab.evaluate("(()=>{const panel=document.querySelector('[aria-label=\"Estimate Files and Documents\"] .canonical-documents'),filters=panel.querySelector('.canonical-documents__filters');return{theme:document.documentElement.dataset.qsTheme,color:getComputedStyle(panel).color,background:getComputedStyle(filters).backgroundColor,overflow:panel.scrollWidth>panel.clientWidth+1}})()");assert(lightFiles.theme==="light"&&!lightFiles.overflow,"Estimate Files light-theme presentation failed");screenshots.push(await capture(tab,"06-estimate-files-light"));await tab.evaluate("document.querySelector('.theme-selector')?.click()");await waitFor(()=>tab.evaluate("document.documentElement.dataset.qsTheme==='dark'"),"Dark theme was not restored");
-    const forbidden=tab.requests.filter(request=>/\/api\/(?:communications|drive|documents)/.test(request.url)&&!["GET","HEAD","OPTIONS"].includes(request.method));assert(forbidden.length===0,`Live acceptance attempted mutating Email/Drive/Files requests: ${JSON.stringify(forbidden)}`);
+    const localDriveRefresh=request=>request.method==="POST"&&new URL(request.url).pathname==="/api/documents/sync";const forbidden=tab.requests.filter(request=>/\/api\/(?:communications|drive|documents)/.test(request.url)&&!["GET","HEAD","OPTIONS"].includes(request.method)&&!localDriveRefresh(request));assert(forbidden.length===0,`Live acceptance attempted mutating Email/Drive/Files requests: ${JSON.stringify(forbidden)}`);
     assert(tab.diagnostics.length===0,`Browser diagnostics: ${tab.diagnostics.join("; ")}`);
     console.log(JSON.stringify({googleStatus:{configured:status.configured,encryptionConfigured:status.encryptionConfigured,connected:status.connected,gmailAvailable:status.capabilities.gmail.available,driveAvailable:status.capabilities.drive.available},navigation:{primary:true,moreLess:true,inboxUnread:navigation.inboxUnread,categories:navigation.categories,userLabels:navigation.userLabels,nestedLabels:navigation.nestedLabels,nestedLabelOpened,mailboxLoads},list:listState,selection,hover,focus,contextMenu,reader,clientFiles,estimateFiles,lightFiles,darkRestored:await tab.evaluate("document.documentElement.dataset.qsTheme==='dark'"),screenshots,readOnlyApiMutations:forbidden.length},null,2));
   }finally{

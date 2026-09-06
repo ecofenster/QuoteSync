@@ -63,6 +63,31 @@ test("health probe distinguishes connected, database unavailable, runtime mismat
   });
   assert.equal(missingSupplierInstallationChoice.phase, "runtime_mismatch");
 
+  const missingInstallationComponentChoices = await requestRuntimeHealth({
+    fetchImpl: async () =>
+      healthResponse({
+        capabilities: QUOTESUITE_RUNTIME_CONTRACT.capabilities.filter(
+          (capability) =>
+            capability !== "project-costing-installation-component-choices-v1",
+        ),
+      }),
+    baseUrl: "http://fixture",
+    timeoutMs: 50,
+  });
+  assert.equal(missingInstallationComponentChoices.phase, "runtime_mismatch");
+
+  const missingLiveExchangeRate = await requestRuntimeHealth({
+    fetchImpl: async () =>
+      healthResponse({
+        capabilities: QUOTESUITE_RUNTIME_CONTRACT.capabilities.filter(
+          (capability) => capability !== "project-costing-live-exchange-rate-v1",
+        ),
+      }),
+    baseUrl: "http://fixture",
+    timeoutMs: 50,
+  });
+  assert.equal(missingLiveExchangeRate.phase, "runtime_mismatch");
+
   const incompatibleEndpoint = await requestRuntimeHealth({
     fetchImpl: async () => new Response("Not found", { status: 404 }),
     baseUrl: "http://fixture",
@@ -124,6 +149,16 @@ test("server handler reports running-process identity and bounded SQLite readine
   assert.ok(readyResponse.body?.capabilities.includes("project-costing-installation-materials-contract-v1"));
   assert.ok(readyResponse.body?.capabilities.includes("project-costing-installation-current-catalogue-v1"));
   assert.ok(readyResponse.body?.capabilities.includes("project-costing-supplier-installation-choice-v1"));
+  assert.ok(readyResponse.body?.capabilities.includes("project-costing-installation-component-choices-v1"));
+  assert.ok(readyResponse.body?.capabilities.includes("project-costing-global-import-customs-v1"));
+  assert.ok(readyResponse.body?.capabilities.includes("project-costing-live-exchange-rate-v1"));
+  assert.ok(readyResponse.body?.capabilities.includes("project-costing-fixed-estimate-rate-v1"));
+  assert.ok(readyResponse.body?.capabilities.includes("manufacturer-raw-pdf-extraction-v1"));
+  assert.ok(readyResponse.body?.capabilities.includes("manufacturer-three-role-identity-position-previews-v1"));
+  assert.ok(readyResponse.body?.capabilities.includes("manufacturer-four-role-commercial-supplier-gate-v1"));
+  assert.ok(readyResponse.body?.capabilities.includes("manufacturer-commercial-supplier-auto-proposal-v1"));
+  assert.ok(readyResponse.body?.capabilities.includes("supplier-current-availability-delete-v1"));
+  assert.ok(readyResponse.body?.capabilities.includes("quotation-package-canonical-source-pricing-v1"));
   assert.equal(readyResponse.body?.serverEntry, "server/index.js");
   assert.equal(readyResponse.headers["cache-control"], "no-store");
   const serialized = JSON.stringify(readyResponse.body).toLowerCase();
@@ -239,7 +274,26 @@ test("legacy supplier-choice responses fail visibly instead of reverting the con
   }
 });
 
-test("development copy documents both valid starts while production wording leaks neither", () => {
+test("legacy Installation profile responses fail visibly instead of reverting a component toggle", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({ id: "scenario", products: [], supplierCosts: [], packageItems: [], routeSnapshots: [], exchangeRates: [], revisions: [], options: { installationProfile: {} } }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )) as typeof fetch;
+  try {
+    setApiMutationSafety({ allowed: true, state: "unmonitored" });
+    await assert.rejects(
+      () => projectCalculatorLabApi.updateInstallationProfile("scenario", { componentInclusions: { food: false } }),
+      /did not persist the Installation component choice/i,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    setApiMutationSafety({ allowed: true, state: "unmonitored" });
+  }
+});
+
+test("development copy identifies runtime recovery while production wording leaks no local commands", () => {
   const development = runtimeHealthCopy("api_offline", true);
   assert.match(development.title, /Development API offline/);
   const production = JSON.stringify(runtimeHealthCopy("api_offline", false));
@@ -247,6 +301,16 @@ test("development copy documents both valid starts while production wording leak
   assert.match(runtimeHealthCopy("runtime_mismatch", true).title, /runtime mismatch/i);
   assert.match(runtimeHealthCopy("rechecking", true).label, /Rechecking/);
   assert.match(runtimeHealthCopy("recovered", true).title, /restored/i);
+});
+
+test("automatic Project Costing synchronization waits for runtime recovery without weakening mutation gating", async () => {
+  const workspace = await readFile("src/features/projectCalculatorLab/ProjectCalculatorLabWorkspace.tsx", "utf8");
+  assert.match(workspace, /useOptionalRuntimeHealth/);
+  assert.match(workspace, /runtimeAllowsMutations/);
+  assert.match(workspace, /estimateId && !initialScenarioId && runtimeReady/);
+  assert.match(workspace, /error instanceof ApiMutationBlockedError/);
+  assert.match(workspace, /waiting for the QuoteSuite service to reconnect/);
+  assert.match(workspace, /error instanceof ApiMutationBlockedError[\s\S]{0,260}return;[\s\S]{0,80}console\.error/);
 });
 
 test("global shell status is accessible, responsive and uses semantic typography", async () => {
@@ -260,11 +324,12 @@ test("global shell status is accessible, responsive and uses semantic typography
   assert.match(component, /role=\{alert \? "alert" : "status"\}/);
   assert.match(component, /aria-live/);
   assert.match(component, /Retry connection/);
-  assert.match(component, /web\\server: node index\.js/);
-  assert.match(component, /web: npm run api/);
+  assert.match(component, /web: npm run dev:quotesuite/);
+  assert.match(component, /reconnects here automatically/);
   assert.match(css, /var\(--qs-type-(?:badge|body|meta)\)/);
   assert.match(css, /@media \(max-width: 760px\)/);
   assert.match(css, /var\(--qs-(?:error|warning|success|info)-(?:surface|border)\)/);
   assert.match(agents, /active listening API process/i);
   assert.match(agents, /web\\server.*node index\.js/);
+  assert.match(agents, /npm run dev:quotesuite/);
 });

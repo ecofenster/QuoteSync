@@ -5,7 +5,6 @@ import { platform } from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
-import { createPhase6ProfileDirectory } from "./e2e-chrome-profile.mjs";
 import { createBrowserRunController, countBrowserRunProfiles } from "./browser-run-lifecycle.mjs";
 import { terminateOwnedProcessTrees } from "./e2e-owned-process.mjs";
 
@@ -112,8 +111,7 @@ function chromeCandidates() {
 }
 
 async function launchChrome() {
-  const userDataDir = await createPhase6ProfileDirectory();
-  browserRunController.setRun({ label: "phase6-e2e", userDataDir, debugPort: DEBUG_PORT, startedAt: new Date().toISOString(), profileProcessCountBefore: await countBrowserRunProfiles(userDataDir, { platformName: process.platform }) });
+  const userDataDir = await browserRunController.createProfile({ label: "phase6-e2e", debugPort: DEBUG_PORT });
   console.log(`Phase 6 Chrome profile: ${userDataDir}`);
 
   let lastError = null;

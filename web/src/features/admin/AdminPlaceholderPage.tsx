@@ -5,17 +5,18 @@ import { apiFetch } from "../../services/api/apiClient";
 import type { GroupedSystemSettings, SystemSettingRecord } from "../../types/systemSettings";
 import { H3, Small } from "../estimatePicker/tabs/shared";
 import AdminConfiguratorCatalogWorkspace from "./AdminConfiguratorCatalogWorkspace";
-import AdminSupplierQuoteImportBeta from "./AdminSupplierQuoteImportBeta";
+import AdminFeatureControls from "./AdminFeatureControls";
 import AdminIntegrationsPanel from "./AdminIntegrationsPanel";
 import AdminThemeColoursPanel from "./AdminThemeColoursPanel";
 import AdminSupplierCommercialDefaults from "./AdminSupplierCommercialDefaults";
 import AdminCommercialMarginPanel from "./AdminCommercialMarginPanel";
 import AdminSiteVisitTravelDefaults from "./AdminSiteVisitTravelDefaults";
 import AdminProjectCostingMarkupDefaults from "./AdminProjectCostingMarkupDefaults";
+import AdminImportCustomsDefaults from "./AdminImportCustomsDefaults";
 import AdminCustomerViewControls from "./AdminCustomerViewControls";
+import AdminSectionTabs from "./AdminSectionTabs";
 import DevelopmentRoadmapWorkspace from "../developmentRoadmap/DevelopmentRoadmapWorkspace";
 import CalculatorAdminCatalogue from "../projectCalculatorLab/CalculatorAdminCatalogue";
-import { QUOTESYNC_THEME_CONFIGURATION_KEY } from "../../theme/themes";
 import "./AdminPlaceholderPage.css";
 
 type AdminSectionKey =
@@ -54,12 +55,22 @@ const sectionList: Array<{ key: AdminSectionKey; label: string; description: str
 ];
 
 const editableKeys = new Set<string>([
-  "configurator.defaultDimensions",
-  "configurator.showDimensions",
-  "feature.configurator.enabled",
-  "feature.clientPortal.enabled",
-  "feature.projectCalculator.enabled",
+  "system.loadDefaults",
+  "system.loadDemoClients",
+  "system.loadDemoEstimates",
+  "system.loadDemoForecast",
+  "references.clientPrefix",
+  "references.estimatePrefix",
 ]);
+
+const settingLabels: Record<string, string> = {
+  "system.loadDefaults": "Load defaults for new Estimates",
+  "system.loadDemoClients": "Load demo Clients",
+  "system.loadDemoEstimates": "Load demo Estimates",
+  "system.loadDemoForecast": "Load demo Forecast",
+  "references.clientPrefix": "Client reference prefix",
+  "references.estimatePrefix": "Estimate reference prefix",
+};
 
 function formatGroupTitle(groupName: string) {
   return groupName
@@ -150,6 +161,7 @@ function SettingRow({
   const [heightInput, setHeightInput] = useState<string>(
     isDimensionsValue(setting.value) ? toNumberInputValue(setting.value.height) : ""
   );
+  const [textInput, setTextInput] = useState(typeof setting.value === "string" ? setting.value : "");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
 
@@ -157,6 +169,7 @@ function SettingRow({
     setLocalValue(setting.value);
     setWidthInput(isDimensionsValue(setting.value) ? toNumberInputValue(setting.value.width) : "");
     setHeightInput(isDimensionsValue(setting.value) ? toNumberInputValue(setting.value.height) : "");
+    setTextInput(typeof setting.value === "string" ? setting.value : "");
     setSaveError("");
   }, [setting.key, setting.updated_at, setting.value]);
 
@@ -190,7 +203,7 @@ function SettingRow({
   return (
     <div className="admin-setting-row">
       <div className="qs-migrated-17">
-        <div className="admin-setting-key">{setting.key}</div>
+        <div className="admin-setting-key">{settingLabels[setting.key] ?? formatGroupTitle(setting.key)}</div>
         <div className="admin-setting-updated">
           Updated: {setting.updated_at || "Unknown"}
         </div>
@@ -206,7 +219,7 @@ function SettingRow({
           <Toggle
             value={!!normalizedBoolean.enabled}
             onChange={(value) => {
-              const nextValue = { enabled: value };
+              const nextValue = typeof localValue === "object" && localValue !== null ? { enabled: value } : value;
               setLocalValue(nextValue);
               void save(nextValue);
             }}
@@ -214,7 +227,14 @@ function SettingRow({
         </div>
       ) : null}
 
-      {editable && !normalizedBoolean && setting.key !== "configurator.defaultDimensions" ? (
+      {editable && typeof localValue === "string" ? (
+        <div className="admin-flex-row">
+          <input className="admin-input ui-input" aria-label={settingLabels[setting.key] ?? setting.key} value={textInput} onChange={(event) => setTextInput(event.currentTarget.value)} />
+          <button type="button" className="ui-button ui-button--primary" disabled={isSaving || !textInput.trim()} onClick={() => void save(textInput.trim())}>{isSaving ? "Saving…" : "Save"}</button>
+        </div>
+      ) : null}
+
+      {editable && !normalizedBoolean && typeof localValue !== "string" && setting.key !== "configurator.defaultDimensions" ? (
         <div className="admin-warning-box">
           <div>This setting has an invalid boolean value shape in storage.</div>
           <div className="admin-flex-row">
@@ -303,6 +323,8 @@ export default function AdminPlaceholderPage(props: {
   const [settingsByGroup, setSettingsByGroup] = useState<GroupedSystemSettings>({});
   const [activeSection, setActiveSection] = useState<AdminSectionKey>(props.initialSection ?? "settings");
   const [configuratorRenderWorkspaceActive, setConfiguratorRenderWorkspaceActive] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<"data" | "references">("data");
+  const [projectPreferencesTab, setProjectPreferencesTab] = useState<"commercial" | "import_customs" | "customer" | "survey">("commercial");
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -338,13 +360,7 @@ export default function AdminPlaceholderPage(props: {
     };
   }, [activeSection]);
 
-  const orderedGroups = useMemo(
-    () => Object.entries(settingsByGroup)
-      .map(([groupName, settings]) => [groupName, settings.filter((setting) => setting.key !== QUOTESYNC_THEME_CONFIGURATION_KEY && setting.key !== "commercial.marginPolicy")] as const)
-      .filter(([, settings]) => settings.length > 0)
-      .sort(([a], [b]) => a.localeCompare(b)),
-    [settingsByGroup]
-  );
+  const coreSettings = useMemo(() => Object.values(settingsByGroup).flat().filter((setting) => settingsTab === "data" ? setting.key.startsWith("system.") : setting.key.startsWith("references.")), [settingsByGroup, settingsTab]);
 
   function handleSavedSetting(saved: SystemSettingRecord) {
     setSettingsByGroup((prev) => {
@@ -387,34 +403,16 @@ export default function AdminPlaceholderPage(props: {
           </div>
         ) : null}
 
-        {!isLoading && !errorMessage && orderedGroups.length === 0 ? (
+        {!isLoading && !errorMessage && coreSettings.length === 0 ? (
           <div className="admin-card admin-status-card ui-card">No settings found.</div>
         ) : null}
 
-        {!isLoading && !errorMessage && orderedGroups.length > 0 ? (
-          <div className="admin-page-stack">
-            {orderedGroups.map(([groupName, settings]) => (
-              <div
-                key={groupName}
-                className="admin-card admin-card--section ui-card"
-              >
-                <div>
-                  <div className="admin-group-title">
-                    {formatGroupTitle(groupName)}
-                  </div>
-                  <div className="admin-setting-updated">
-                    {settings.length} setting{settings.length === 1 ? "" : "s"}
-                  </div>
-                </div>
-
-                <div className="admin-page-stack">
-                  {settings.map((setting) => (
-                    <SettingRow key={setting.key} setting={setting} onSaved={handleSavedSetting} />
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
+        {!isLoading && !errorMessage ? <AdminSectionTabs tabs={[{id:"data",label:"Data & Demo"},{id:"references",label:"Reference Numbering"}]} activeTab={settingsTab} onChange={setSettingsTab} label="Settings sections" /> : null}
+        {!isLoading && !errorMessage && coreSettings.length > 0 ? (
+          <section className="admin-card admin-card--section ui-card" role="tabpanel">
+            <div className="admin-group-title">{settingsTab === "data" ? "Data & Demo" : "Reference Numbering"}</div>
+            <div className="admin-page-stack">{coreSettings.map((setting) => <SettingRow key={setting.key} setting={setting} onSaved={handleSavedSetting} />)}</div>
+          </section>
         ) : null}
       </div>
     ) : activeSection === "project_preferences" ? (
@@ -426,39 +424,16 @@ export default function AdminPlaceholderPage(props: {
           </div>
         </div>
 
-        <div className="admin-card admin-card--section admin-copy-width ui-card">
-          <div className="admin-project-pref-row">
-            <div>
-              <div className="admin-group-title">Load Defaults</div>
-              <div className="admin-body-copy admin-copy-width--narrow">
-                When enabled, new estimates start with the default supplier, product and technical settings. When disabled, new estimates start blank.
-              </div>
-            </div>
-            <div className="admin-project-pref-value">No</div>
-          </div>
-
-          <div className="admin-project-pref-row">
-            <div className="admin-group-title">Load Demo Clients</div>
-            <div className="admin-project-pref-value">No</div>
-          </div>
-
-          <div className="admin-project-pref-row">
-            <div className="admin-group-title">Load Demo Estimates</div>
-            <div className="admin-project-pref-value">No</div>
-          </div>
-
-          <div className="admin-project-pref-row">
-            <div className="admin-group-title">Load Demo Forecast</div>
-            <div className="admin-project-pref-value">No</div>
-          </div>
+        <AdminSectionTabs tabs={[{id:"commercial",label:"Commercial"},{id:"import_customs",label:"Import / Customs"},{id:"customer",label:"Customer View"},{id:"survey",label:"Survey / Site Visit"}]} activeTab={projectPreferencesTab} onChange={setProjectPreferencesTab} label="Project Preferences sections" />
+        <div role="tabpanel">
+          {projectPreferencesTab === "commercial" ? <><AdminCommercialMarginPanel /><AdminProjectCostingMarkupDefaults /></> : null}
+          {projectPreferencesTab === "import_customs" ? <AdminImportCustomsDefaults /> : null}
+          {projectPreferencesTab === "customer" ? <AdminCustomerViewControls /> : null}
+          {projectPreferencesTab === "survey" ? <AdminSiteVisitTravelDefaults /> : null}
         </div>
-        <AdminCommercialMarginPanel />
-        <AdminProjectCostingMarkupDefaults />
-        <AdminCustomerViewControls />
-        <AdminSiteVisitTravelDefaults />
       </div>
     ) : activeSection === "feature_controls" ? (
-      <AdminSupplierQuoteImportBeta />
+      <AdminFeatureControls />
     ) : activeSection === "installation" ? (
       <CalculatorAdminCatalogue />
     ) : activeSection === "configurator_controls" ? (

@@ -63,10 +63,10 @@ test('Aspect technical selection remains independent from commercial confirmatio
   assert.match(serviceSource, /technical positions require commercial price review/);
   assert.match(reviewSource, /selectedReviewRows\.some\(row=>!row\.commerciallyReady\)/);
   assert.match(reviewSource, /Commercial price review required/);
-  assert.match(reviewSource, /technical positions remain selectable/);
+  assert.match(reviewSource, /Selected positions require commercial evidence review/);
 });
 
 test('Review terminology stays explicit for dealer/manufacturer documents', async () => {
   const source = await fs.readFile(new URL('../src/features/estimateCommercial/EstimateSupplierCostImportControl.tsx', import.meta.url), 'utf8');
-  for (const label of ['Manufacturer:', 'Canonical manufacturer:', 'Source supplier / dealer:', 'Configured supplier / dealer:', 'Quotation / reference:', 'Currency:']) assert.match(source, new RegExp(label.replaceAll('/', '\\/')));
+  for (const label of ['Document issuer / branded dealer:', 'Manufacturer / fabricator:', 'Canonical manufacturer:', 'Commercial Supplier:', 'Pricing Method:', 'Quotation / reference:', 'Currency:']) assert.match(source, new RegExp(label.replaceAll('/', '\\/')));
 });

@@ -80,9 +80,10 @@ test('22-position confirmation detects source currency, rejects mismatch before 
   assert.equal(savedVisual.status, 'available');
   assert.match(savedVisual.url, /fixtures\/W1\.png$/);
   assert.equal(savedSnapshot.canonicalManufacturer.manufacturerName, 'Zyle Fenster');
-  assert.equal(savedSnapshot.supplierDealer.supplierName, 'Zyle Fenster');
+  assert.equal(savedSnapshot.documentIssuer.name, null);
+  assert.equal(savedSnapshot.commercialSupplier.supplierName, 'Zyle Fenster');
   assert.equal(savedSnapshot.supplierManufacturerRelationship.relationship, 'direct_manufacturer_supplier');
-  assert.equal(savedSnapshot.supplierManufacturerRelationship.pricingScope, 'supplier_dealer_quotation');
+  assert.equal(savedSnapshot.supplierManufacturerRelationship.pricingScope, 'commercial_supplier_quotation');
 
   const retry = await context.supplier.extractAndLoadSupplierCosts('estimate', context.scenario.id, context.selection, { selectedRowKeys, supplierCode: 'ZF', metadata: { quotationNumber: '343117', revision: '5', currency: 'GBP' } });
   assert.equal(retry.documents[0].loadedProducts, 0);
@@ -104,27 +105,29 @@ test('material pre-discount Products / Supply variance blocks confirmation befor
   assert.equal((await context.db.get('SELECT COUNT(*) count FROM project_calculator_estimate_product_rows WHERE source_revision_id=?', context.revision.id)).count, 0);
 });
 
-test('review UI has deterministic loading and bounded responsive table contracts', async () => {
+test('automatic-first review UI has deterministic loading and bounded responsive table contracts', async () => {
   const [component, styles, api] = await Promise.all([
     fs.readFile('src/features/estimateCommercial/EstimateSupplierCostImportControl.tsx', 'utf8'),
     fs.readFile('src/features/estimateCommercial/estimateCommercialWorkspace.css', 'utf8'),
     fs.readFile('src/features/supplierQuotes/api/supplierQuotesApi.ts', 'utf8'),
   ]);
   assert.match(component, /aria-busy=\{busy\}/);
-  assert.match(component, /busy\?"Confirming…":productReconciliationBlocked\?"Product price reconciliation required":commercialEvidenceBlocked\?"Commercial price review required":confirmationBlocked\?"Select manufacturer and supplier \/ dealer to confirm":"Confirm & Load to Project Costing"/);
-  assert.match(component, /<strong>Source supplier \/ dealer:<\/strong>/);
-  assert.match(component, /<strong>Manufacturer:<\/strong>/);
+  assert.match(component, /Upload & Analyse/);
+  assert.match(component, /Confirm Manufacturer Quote/);
+  assert.match(component, /Confirm &amp; Extract Quote|Confirm & Extract Quote/);
+  assert.match(component, /Extraction \/ Commercial Review/);
+  assert.match(component, /Import to Project Costing/);
+  assert.match(component, /<strong>Document issuer \/ branded dealer:<\/strong>/);
+  assert.match(component, /<strong>Manufacturer \/ fabricator:<\/strong>/);
   assert.match(component, /Canonical manufacturer/);
-  assert.match(component, /Configured supplier \/ dealer/);
-  assert.match(component, /<strong>Configured supplier \/ dealer:<\/strong>/);
+  assert.match(component, /Commercial Supplier/);
+  assert.match(component, /<strong>Commercial Supplier:<\/strong>/);
   assert.match(component, /<strong>Quotation \/ reference:<\/strong>/);
   assert.doesNotMatch(component, /Canonical quotation supplier/);
   assert.doesNotMatch(component, /Source supplier recognised/);
   assert.doesNotMatch(component, /busy\?"Loading…":"Confirm & Load to Project Costing"/);
   assert.match(component, /data-label="Customer reference"/);
-  assert.match(component, /confirmationStatus==="confirmed"/);
-  assert.match(component, /canonical import complete/);
-  assert.match(component, /data-confirmation-status/);
+  assert.match(component, /No costing rows change until import/);
   assert.match(styles, /table-layout:fixed/);
   assert.match(styles, /manufacturer-import-operation-status/);
   assert.match(styles, /position:sticky/);

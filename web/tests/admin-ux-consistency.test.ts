@@ -27,20 +27,35 @@ test("Administration and Estimate use shared compact form and summary spacing", 
   assert.match(admin, /\.admin-customer-view-controls[^}]*repeat\(5/);
   assert.match(costing, /\.costing-sheet__estimate-metrics[^}]*width:min\(100%,48rem\)/);
   assert.match(costing, /\.costing-sheet__margin-control[^}]*padding:[^;]*var\(--space-4\)/);
-  assert.match(estimate, /\.estimate-commercial__breadcrumb > \.ui-button[^}]*min-height:38px/);
+  assert.match(estimate, /\.estimate-commercial__estimate-row,\.estimate-commercial__next-action\{display:flex/);
 });
 
-test("configured suppliers provide explicit non-destructive archival", async () => {
-  const [component, schema, service, supplierQuotes] = await Promise.all([
+test("current suppliers use visible row presence while historical snapshots retain legacy status compatibility", async () => {
+  const [component, schema, service, supplierQuotes, drive, communications] = await Promise.all([
     read("src/features/admin/AdminSupplierCommercialDefaults.tsx"),
     read("server/schema/supplierCommercialSchema.js"),
     read("server/features/projectCalculatorLab/projectCalculatorLabService.js"),
     read("server/features/supplierQuotes/supplierQuotesService.js"),
+    read("server/features/documents/driveIntegrationService.js"),
+    read("server/features/communications/communicationsService.js"),
   ]);
   assert.match(component, />Edit<\/button>/);
-  assert.match(component, /"Archive":"Reactivate"/);
+  assert.match(component, />Delete<\/button>/);
+  assert.doesNotMatch(component, /"Archive":"Reactivate"/);
   assert.match(component, /Historical quotation and Estimate snapshots are unchanged/);
   assert.match(schema, /active INTEGER NOT NULL DEFAULT 1/);
-  assert.match(service, /active:row\.active!==0/);
-  assert.match(supplierQuotes, /supplier_commercial_defaults WHERE active<>0/);
+  assert.match(service, /active:true/);
+  assert.match(service, /DELETE FROM supplier_commercial_defaults/);
+  assert.match(supplierQuotes, /active: true/);
+  assert.doesNotMatch(supplierQuotes, /supplier_commercial_defaults WHERE active<>0/);
+  assert.doesNotMatch(drive, /supplier_commercial_defaults WHERE active<>0/);
+  assert.doesNotMatch(communications, /supplier_commercial_defaults[^"`]*active<>0/);
+});
+
+test("Administration does not maintain fixed supplier package prices", async () => {
+  const component = await read("src/features/admin/AdminSupplierCommercialDefaults.tsx");
+  assert.doesNotMatch(component, /Package Pricing|PackageEditor|Package label|Save Package Pricing/);
+  assert.match(component, /Pricing Methods/);
+  assert.match(component, /Suppliers/);
+  assert.match(component, /Customer Presentation/);
 });

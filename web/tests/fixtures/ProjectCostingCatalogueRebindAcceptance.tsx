@@ -22,7 +22,7 @@ function Acceptance() {
   }, []);
   if (error) return <p role="alert">{error}</p>;
   if (!scenario) return <p role="status">Loading Project Costing…</p>;
-  return <main className="app-main-workspace"><ScenarioCostingWorksheet scenario={scenario} onNew={async()=>{}} onSaveMarkups={async()=>{}} onUpdateProduct={async()=>{}} onUpdateSupplierCost={async(rowId,input)=>setScenario(await projectCalculatorLabApi.updateSupplierCost(scenario.id,rowId,input))} onUpdateManualCost={async()=>{}} onCreateRevision={async()=>{}} onRefreshRate={async()=>{}} /></main>;
+  return <main className="app-main-workspace"><ScenarioCostingWorksheet scenario={scenario} onSaveMarkups={async()=>{}} onUpdateProduct={async()=>{}} onUpdateSupplierCost={async(rowId,input)=>setScenario(await projectCalculatorLabApi.updateSupplierCost(scenario.id,rowId,input))} onUpdateManualCost={async()=>{}} onRefreshRate={async()=>{}} /></main>;
 }
 
 document.documentElement.dataset.theme = "dark";

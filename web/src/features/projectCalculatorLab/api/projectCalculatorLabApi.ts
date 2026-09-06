@@ -1,5 +1,5 @@
 import { apiFetch } from "../../../services/api/apiClient";
-import type { CalculatorAdminConfiguration, CalculatorCatalogueRemoval, CalculatorScenario, ImportSource, InstallationWorkforce, ProductClass } from "../domain/projectCalculatorLab.types";
+import type { CalculatorAdminConfiguration, CalculatorCatalogueRemoval, CalculatorScenario, ImportSource, InstallationRecommendations, InstallationWorkforce, LiveExchangeRateResult, ProductClass } from "../domain/projectCalculatorLab.types";
 import type { ScenarioCreationInput } from "../domain/scenarioCreation";
 import { normalizeCalculatorScenario } from "../domain/normalizeCalculatorScenario";
 const base="/api/admin/project-calculator-lab";
@@ -12,6 +12,14 @@ const supplierCostResponse=async(scenarioId:string,rowId:string,input:Record<str
     if(!persisted||persisted.includedInCurrentEstimate!==expected){
       throw new Error("The active QuoteSuite API did not persist the supplier commercial choice. Restart the API to load the current Project Costing contract, then try again.");
     }
+  }
+  return scenario;
+};
+const installationProfileResponse=async(scenarioId:string,input:Record<string,unknown>)=>{
+  const scenario=await scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/installation-profile`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)}));
+  if(input.componentInclusions&&typeof input.componentInclusions==="object"){
+    const persisted=((scenario.options?.installationProfile as Record<string,unknown>|undefined)?.componentInclusions??{}) as Record<string,unknown>;
+    for(const [key,value] of Object.entries(input.componentInclusions as Record<string,unknown>))if(persisted[key]!==value)throw new Error("The active QuoteSuite API did not persist the Installation component choice. Restart the API to load the current Project Costing contract, then try again.");
   }
   return scenario;
 };
@@ -28,6 +36,8 @@ export const projectCalculatorLabApi={
   saveInstallationTeam:(id:string|undefined,input:Record<string,unknown>)=>apiFetch(`${base}/installation-workforce/teams/${encodeURIComponent(id??"new")}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)}) as Promise<InstallationWorkforce>,
   listScenarios:(estimateId?:string)=>apiFetch(`${base}/scenarios${estimateId?`?estimate_id=${encodeURIComponent(estimateId)}`:""}`) as Promise<CalculatorScenario[]>,
   getScenario:(id:string,estimateId?:string)=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(id)}${estimateId?`?estimate_id=${encodeURIComponent(estimateId)}`:""}`)),
+  getLiveExchangeRate:(id:string,signal?:AbortSignal)=>apiFetch(`${base}/scenarios/${encodeURIComponent(id)}/exchange-rate/live`,{signal}) as Promise<LiveExchangeRateResult>,
+  getInstallationRecommendations:(id:string,routesByTeamId:Record<string,unknown>)=>apiFetch(`${base}/scenarios/${encodeURIComponent(id)}/installation-recommendations`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({routesByTeamId})}) as Promise<InstallationRecommendations>,
   syncEstimatePositions:(id:string)=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(id)}/sync-estimate-positions`,{method:"POST"})),
   createScenario:(input:ScenarioCreationInput)=>scenarioResponse(apiFetch(`${base}/scenarios`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
   updateScenario:(id:string,input:Partial<Pick<CalculatorScenario,"name"|"packageCode"|"installationOpeningCount">>)=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(id)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
@@ -45,7 +55,9 @@ export const projectCalculatorLabApi={
   updateMarkups:(scenarioId:string,input:CalculatorScenario["markups"]&{productOverrides?:Array<{rowId:string;markupOverridePercent:string|null}>;targetGrossMarginPercent?:string})=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/markups`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
   createRevision:(scenarioId:string)=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/revisions`,{method:"POST"})),
   updateOptions:(scenarioId:string,input:Record<string,unknown>)=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/options`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
-  updateInstallationProfile:(scenarioId:string,input:Record<string,unknown>)=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/installation-profile`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
+  updateImportCustoms:(scenarioId:string,input:Record<string,unknown>)=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/import-customs`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
+  useCurrentImportCustomsDefaults:(scenarioId:string)=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/import-customs/use-current-defaults`,{method:"POST"})),
+  updateInstallationProfile:installationProfileResponse,
   updateInstallationMaterials:(scenarioId:string,input:Record<string,unknown>)=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/installation-materials`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
   useCurrentInstallationCatalogue:(scenarioId:string,input:{useCurrentDefaults?:boolean}={})=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/installation-materials/use-current-catalogue`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
   updatePackageItem:(scenarioId:string,itemId:string,input:{included:boolean;unitCost:string})=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/package-items/${encodeURIComponent(itemId)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
