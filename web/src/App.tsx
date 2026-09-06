@@ -110,7 +110,6 @@ import AdminPlaceholderPage from "./features/admin/AdminPlaceholderPage";
 import EmailWorkspace from "./features/communications/EmailWorkspace";
 import { EnquiryWorkspace } from "./features/commercialIdentity/EnquiryWorkspace";
 import { commercialIdentityApi, type ProjectRecord } from "./services/commercialIdentity/commercialIdentityApi";
-import ClientPortalPlaceholderPage from "./features/clientPortal/ClientPortalPlaceholderPage";
 import { buildClientLocationLabel, convertCoordinatesToWhat3Words, resolveClientLocation, resolveEstimateLocation, type ResolvedClientLocation } from "./services/locationService";
 import { rankInstallersByDistance } from "./services/distance";
 import { getInstallers } from "./data/installers";

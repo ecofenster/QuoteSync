@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { apiFetch } from "../../services/api/apiClient";
 
 const KEY = "projectCalculator.markupDefaults";
-const EMPTY = { product: "0", extras: "0", transport: "0", installation: "0", materials: "0" };
+const EMPTY = { product: "0", extras: "0", transport: "0", installation: "10", materials: "15" };
 const LABELS = { product: "Products / Supply Only", extras: "Extras", transport: "Transport", installation: "Installation", materials: "Installation Materials" } as const;
 
 export default function AdminProjectCostingMarkupDefaults() {

@@ -53,7 +53,7 @@ export type ProductType =
   | "Aluminium"
   | "Steel";
 export type EstimateOutcome = "Open" | "Lost" | "Order";
-export type EstimatePickerTab = "client_info" | "estimates" | "orders" | "lost" | "client_notes" | "files";
+export type EstimatePickerTab = "client_info" | "estimates" | "orders" | "lost" | "compare_quotes" | "client_notes" | "files" | "portal_preview";
 
 export type View = "customers" | "estimate_picker" | "estimate_defaults" | "estimate_workspace";
 

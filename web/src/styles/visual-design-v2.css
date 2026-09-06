@@ -210,7 +210,8 @@
 }
 
 :root[data-qs-design="v2"] .app-shell__inner {
-  max-width: 1760px;
+  width: 100%;
+  max-width: none;
   gap: var(--qs-v2-space-group);
   padding: var(--qs-v2-space-row) var(--qs-v2-space-card);
 }
@@ -483,7 +484,7 @@
 }
 
 :root[data-qs-design="v2"] .app-shell:has(.estimate-commercial) .app-shell__inner {
-  max-width: 1780px;
+  max-width: none;
   min-height: 4.85rem;
   padding: 0.85rem 1.35rem;
   gap: 1.5rem;

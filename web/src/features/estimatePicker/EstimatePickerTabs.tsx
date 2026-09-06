@@ -24,6 +24,8 @@ import ClientInfoTab from './tabs/ClientInfoTab';
 import NotesTab from './tabs/NotesTab';
 import FilesTab from './tabs/FilesTab';
 import EstimateSectionTab from './tabs/EstimateSectionTab';
+import CompareQuotesWorkspace from "../quoteComparisons/CompareQuotesWorkspace";
+import ClientPortalPreview from "../clientPortal/ClientPortalPreview";
 import type { EstimateCollectionViewMode } from "../estimateCollection/EstimateCollectionView";
 import './tabs/shared.css';
 
@@ -754,11 +756,17 @@ export default function EstimatePickerTabs(props: Props) {
           <Button variant={estimatePickerTab === "lost" ? "selected" : "secondary"} onClick={() => setEstimatePickerTab("lost")}>
             Client Lost
           </Button>
+          <Button variant={estimatePickerTab === "compare_quotes" ? "selected" : "secondary"} onClick={() => setEstimatePickerTab("compare_quotes")}>
+            Compare Quotes
+          </Button>
           <Button variant={estimatePickerTab === "client_notes" ? "selected" : "secondary"} onClick={() => setEstimatePickerTab("client_notes")}>
             Client Notes
           </Button>
           <Button variant={estimatePickerTab === "files" ? "selected" : "secondary"} onClick={() => setEstimatePickerTab("files")}>
             Files
+          </Button>
+          <Button variant={estimatePickerTab === "portal_preview" ? "selected" : "secondary"} onClick={() => setEstimatePickerTab("portal_preview")}>
+            Portal Preview
           </Button>
         </div>
 
@@ -853,6 +861,7 @@ export default function EstimatePickerTabs(props: Props) {
       {estimatePickerTab === "estimates" && renderEstimateSection("Open", "Client Estimates", "No open estimates yet.", "estimates")}
       {estimatePickerTab === "orders" && renderEstimateSection("Order", "Client Orders", "No orders yet. Mark an estimate as \"Order\" in the Client Estimates tab.", "orders")}
       {estimatePickerTab === "lost" && renderEstimateSection("Lost", "Client Lost", "No lost estimates yet. Mark an estimate as \"Lost\" in the Client Estimates tab.", "lost")}
+      {estimatePickerTab === "compare_quotes" && <CompareQuotesWorkspace client={pickerClient} />}
 
       {estimatePickerTab === "client_notes" && (
         <NotesTab
@@ -888,6 +897,7 @@ export default function EstimatePickerTabs(props: Props) {
           clientId={String(pickerClient.id)}
         />
       )}
+      {estimatePickerTab === "portal_preview" && <ClientPortalPreview client={pickerClient} />}
 
       {sendModalOpen && sendModalEstimateId && (
         <div className="qs-migrated-245"

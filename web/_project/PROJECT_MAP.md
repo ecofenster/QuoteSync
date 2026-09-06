@@ -1,6 +1,6 @@
 # PROJECT_MAP
 
-Last updated: 2026-04-21 14:35:00
+Last updated: 2026-09-04
 
 ## Working rules
 - Design is handled by the user + ChatGPT.
@@ -10,6 +10,14 @@ Last updated: 2026-04-21 14:35:00
 - Backups must exclude `C:\Github\QuoteSync\web\_backups` from the backup source.
 - Stop backend/dev before backup so `quotesync.db` is not locked.
 - Any database entries required for new or existing features/functions must be added to `quotesync.db` going forward.
+
+## Product architecture boundary
+
+- QuoteSuite's long-term product architecture is **QuoteSuite Core + optional modules, add-ins and industry verticals**.
+- Ecofenster and Window & Door remain the first end-to-end proving workflow. Genuinely generic business capability belongs in Core; specialist configuration, manufacturer intelligence and Window & Door domain rules remain within that vertical boundary.
+- Do not prematurely generalise or weaken the current proven workflow. A genuine second vertical should later validate Core neutrality.
+- Commercial packaging may combine a core subscription, users/seats, optional paid capabilities and justified usage-based services without hard-coded product prices.
+- Canonical policy is maintained in `AGENTS.md`; programme scope, candidate modules and growth context are maintained in Administration → Development → QuoteSuite Roadmap.
 
 ## Current completed architecture work
 - Shared estimate collection system is now the live behaviour model across:

@@ -1,7 +1,7 @@
 import { apiFetch, apiUrl } from "../api/apiClient";
 
 export type CanonicalDocumentRecord = {
-  id:string;provider:string;providerAccountId:string|null;providerFileId:string|null;providerFolderId:string|null;
+  id:string;canonicalRecordId?:string|null;provider:string;providerAccountId:string|null;providerFileId:string|null;providerFolderId:string|null;
   enquiryId?:string|null;clientId:string|null;projectId:string|null;estimateId:string|null;orderId:string|null;supplierId:string|null;supplierQuotationId?:string|null;supplierName:string|null;
   documentType:string;revision:string;reference:string;fileName:string;mediaType:string;sizeBytes:number;sha256:string|null;
   estimateRef:string;projectName:string;folder:string;status:string;createdAt:string;modifiedAt:string;providerVersion?:string|null;removedAt?:string|null;downloadUrl:string|null;openUrl?:string|null;

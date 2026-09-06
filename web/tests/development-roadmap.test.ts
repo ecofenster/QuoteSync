@@ -34,10 +34,28 @@ test("status rendering uses accessible text as well as colour", async () => {
 });
 
 test("chronology remains ordered and displays the current checkpoint", () => {
-  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 95 }, (_, index) => index + 1));
-  assert.equal(ROADMAP_CHRONOLOGY.find((entry) => entry.title === "Checkpoint stabilization")?.checkpointSha, ROADMAP_CHECKPOINT_SHA);
+  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 98 }, (_, index) => index + 1));
+  assert.equal([...ROADMAP_CHRONOLOGY].reverse().find((entry) => entry.checkpointSha)?.checkpointSha, ROADMAP_CHECKPOINT_SHA);
   assert.equal(ROADMAP_CHRONOLOGY.find((entry) => entry.title === "Browser automation process-lifecycle hardening")?.sequence, 75);
-  assert.equal(ROADMAP_CHECKPOINT_SHA, "ed6537b99f0930357e19ea1f505958e088385ce0");
+  assert.equal(ROADMAP_CHECKPOINT_SHA, "41fd3aa74039b9472e79262936aab7a177d7285d");
+});
+
+test("comparison, manufacturer documents and portal foundations retain their authority boundaries", async () => {
+  const agents = await read("AGENTS.md"), comparison = all.find((item) => item.id === "compare-quotes"), documents = all.find((item) => item.id === "manufacturer-system-document-library"), portal = all.find((item) => item.id === "customer-portal");
+  assert.equal(comparison?.status,"in_progress");assert.match(comparison?.summary ?? "",/frozen QuoteSuite Estimate revision.*canonical Position identities/);
+  assert.match((documents?.notes ?? []).join(" "),/customer-approved records relevant to products\/systems actually supplied/);
+  assert.match((portal?.notes ?? []).join(" "),/internal Client-owned Portal Preview.*not a public route/);
+  assert.match(agents,/Client Database → Client → Compare Quotes/);assert.match(agents,/supplier item numbers.*never replace canonical Estimate Position identity/i);
+});
+
+test("governed commercial lifecycle keeps automation and approval boundaries explicit", async () => {
+  const agents = await read("AGENTS.md");
+  const lifecycle = all.find((item) => item.id === "end-to-end-commercial-lifecycle");
+  assert.equal(lifecycle?.status, "in_progress");
+  assert.match(lifecycle?.summary ?? "", /Enquiry → RFQ → Supplier Quote → Estimate → Client Review → Revision → Acceptance → Supplier Order → Supplier Confirmation → Customer Final Confirmation → Payment → Delivery \/ Installation/);
+  assert.match((lifecycle?.notes ?? []).join(" "), /immutable issued Estimate revision aggregate.*position-level client comments\/acceptance.*secure portal.*supplier-order aggregate.*invoices\/payments/i);
+  assert.match(agents, /Enquiry → RFQ → Supplier Quote → Estimate → Client Review → Revision → Acceptance → Supplier Order → Supplier Confirmation → Customer Final Confirmation → Payment → Delivery \/ Installation/);
+  assert.match(agents, /commercial decisions, issued-document changes, customer acceptance and supplier-confirmation differences remain explicit governed approval points/);
 });
 
 test("source-owned positions, captured FX and watched development are governed together", async () => {

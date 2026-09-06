@@ -2,13 +2,13 @@ import { useEffect, useState } from "react";
 import { apiFetch } from "../../services/api/apiClient";
 
 const SETTING_KEY = "projectCalculator.siteVisitTravelDefaults";
-const defaults = { officePostcode: "", mileageRate: "0.55", travelLabourRate: "0", defaultPeople: 1, mealPerPerson: "0", siteVisitMarkup: "0", allocation: "separate", allocationBasis: "equal_per_position" };
+const defaults = { officePostcode: "", mileageRate: "0.55", travelLabourRate: "0", defaultPeople: 1, mealPerPerson: "0", siteVisitMarkup: "10", allocation: "separate", allocationBasis: "equal_per_position" };
 type Defaults = typeof defaults;
 type Setting = { key: string; value: unknown };
 
 function normalize(value: unknown): Defaults {
   const source = value && typeof value === "object" ? value as Partial<Defaults> : {};
-  return { ...defaults, ...source, officePostcode: String(source.officePostcode ?? ""), mileageRate: String(source.mileageRate ?? "0.55"), travelLabourRate: String(source.travelLabourRate ?? "0"), defaultPeople: Math.max(1, Number(source.defaultPeople) || 1), mealPerPerson: String(source.mealPerPerson ?? "0"), siteVisitMarkup: String(source.siteVisitMarkup ?? "0") };
+  return { ...defaults, ...source, officePostcode: String(source.officePostcode ?? ""), mileageRate: String(source.mileageRate ?? "0.55"), travelLabourRate: String(source.travelLabourRate ?? "0"), defaultPeople: Math.max(1, Number(source.defaultPeople) || 1), mealPerPerson: String(source.mealPerPerson ?? "0"), siteVisitMarkup: String(source.siteVisitMarkup ?? "10") };
 }
 
 export default function AdminSiteVisitTravelDefaults() {

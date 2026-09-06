@@ -4,7 +4,7 @@ const DEFAULTS = Object.freeze({
   travelLabourRate: '0',
   defaultPeople: 1,
   mealPerPerson: '0',
-  siteVisitMarkup: '0',
+  siteVisitMarkup: '10',
   allocation: 'separate',
   allocationBasis: 'equal_per_position',
 });
@@ -56,6 +56,7 @@ export function normalizeSiteVisitCosting(value, defaults = DEFAULTS) {
   return {
     officePostcode: String(source.officePostcode ?? normalizedDefaults.officePostcode).trim(),
     sitePostcode: String(source.sitePostcode ?? '').trim(),
+    sitePostcodeSource: source.sitePostcodeSource == null ? null : String(source.sitePostcodeSource),
     calculatedOneWayMiles: source.calculatedOneWayMiles == null ? null : String(source.calculatedOneWayMiles),
     reviewedOneWayMiles: source.reviewedOneWayMiles == null ? null : String(source.reviewedOneWayMiles),
     calculatedDurationMinutes: source.calculatedDurationMinutes == null ? null : Number(source.calculatedDurationMinutes),
@@ -96,10 +97,14 @@ export function calculateSiteVisitCosting(value) {
   const travelHours = multiply(totalDrivingHours, input.people);
   const travelLabour = multiply(travelHours, input.travelLabourRate);
   const accommodation = input.accommodationFixed ?? multiply(input.accommodationNights, input.accommodationRooms, input.accommodationRate);
-  const meals = input.mealsMode === 'fixed' ? input.mealsFixed : multiply(input.mealPerPerson, input.people, input.visits);
+  // Each visit contributes its day away; every overnight adds the following
+  // day. One same-day visit therefore remains one allowance day.
+  const daysAway = input.visits + input.accommodationNights;
+  const mealAllowanceUnits = input.people * daysAway;
+  const meals = input.mealsMode === 'fixed' ? input.mealsFixed : multiply(input.mealPerPerson, mealAllowanceUnits);
   const other = add(input.otherCosts.map((item) => item.amount));
   const total = add([mileageCost, travelLabour, accommodation, meals, input.parking, input.tolls, input.ferries, other]);
-  return { input, oneWayMiles, returnMilesPerVisit: multiply(oneWayMiles, journeyFactor), chargeableMiles, oneWayDrivingHours: routeHours, totalDrivingHours, travelHours, mileageCost, travelLabour, accommodation, meals, parking: input.parking, tolls: input.tolls, ferries: input.ferries, other, total };
+  return { input, oneWayMiles, returnMilesPerVisit: multiply(oneWayMiles, journeyFactor), chargeableMiles, oneWayDrivingHours: routeHours, totalDrivingHours, travelHours, daysAway, mealAllowanceUnits, mileageCost, travelLabour, accommodation, meals, parking: input.parking, tolls: input.tolls, ferries: input.ferries, other, total };
 }
 
 export function allocateSiteVisitCost(total, products, basis = 'equal_per_position') {

@@ -1,7 +1,7 @@
 export const QUOTESUITE_RUNTIME_CONTRACT = Object.freeze({
   family: 'quotesuite-api',
-  version: 'runtime-health-v5',
-  identity: 'quotesuite-runtime-health-2026-09-05-v5',
+  version: 'runtime-health-v6',
+  identity: 'quotesuite-runtime-health-2026-09-06-v6',
   capabilities: Object.freeze([
     'api-readiness',
     'sqlite-readiness',
@@ -27,6 +27,8 @@ export const QUOTESUITE_RUNTIME_CONTRACT = Object.freeze({
     'manufacturer-commercial-supplier-auto-proposal-v1',
     'supplier-current-availability-delete-v1',
     'quotation-package-canonical-source-pricing-v1',
-    'manufacturer-position-source-ownership-v1'
+    'manufacturer-position-source-ownership-v1',
+    'client-quote-comparison-foundation-v1',
+    'manufacturer-system-document-library-v1'
   ])
 });

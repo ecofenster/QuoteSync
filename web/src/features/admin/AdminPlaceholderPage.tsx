@@ -17,6 +17,7 @@ import AdminCustomerViewControls from "./AdminCustomerViewControls";
 import AdminSectionTabs from "./AdminSectionTabs";
 import DevelopmentRoadmapWorkspace from "../developmentRoadmap/DevelopmentRoadmapWorkspace";
 import CalculatorAdminCatalogue from "../projectCalculatorLab/CalculatorAdminCatalogue";
+import AdminManufacturerDocuments from "./AdminManufacturerDocuments";
 import "./AdminPlaceholderPage.css";
 
 type AdminSectionKey =
@@ -28,6 +29,7 @@ type AdminSectionKey =
   | "branding"
   | "integrations"
   | "supplier_defaults"
+  | "manufacturer_documents"
   | "development";
 
 type AdminConfiguratorInitialTab = "manufacturers" | "windowTypes" | "configuratorRender" | "b92Configurator";
@@ -51,6 +53,7 @@ const sectionList: Array<{ key: AdminSectionKey; label: string; description: str
   { key: "branding", label: "Branding", description: "Brand identity, logo, colours, and document identity." },
   { key: "integrations", label: "Integrations", description: "Maps, what3words, and future third-party services." },
   { key: "supplier_defaults", label: "Supplier / Product Defaults", description: "Supplier products, pricing, settlement, discounts and packages." },
+  { key: "manufacturer_documents", label: "Manufacturer / System Documents", description: "Canonical certificates and technical drawing records." },
   { key: "development", label: "Development", description: "QuoteSuite Roadmap and future internal development tools." },
 ];
 
@@ -448,6 +451,8 @@ export default function AdminPlaceholderPage(props: {
       <AdminIntegrationsPanel />
     ) : activeSection === "development" ? (
       <DevelopmentRoadmapWorkspace />
+    ) : activeSection === "manufacturer_documents" ? (
+      <AdminManufacturerDocuments />
     ) : (
       <AdminSupplierCommercialDefaults />
     );

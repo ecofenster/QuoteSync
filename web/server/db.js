@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import { initializeSupplierCommercialSchema } from './schema/supplierCommercialSchema.js';
 import { initializeWorkflowSchema } from './features/workflow/workflowSchema.js';
 import { initializeCommercialIdentitySchema } from './features/commercialIdentity/commercialIdentitySchema.js';
+import { initializeQuoteComparisonSchema } from './features/quoteComparisons/quoteComparisonSchema.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1467,6 +1468,7 @@ export const dbPromise = openDatabaseWithRecovery(dbPath).then(async (db) => {
 
   await initializeWorkflowSchema(db);
   await initializeCommercialIdentitySchema(db);
+  await initializeQuoteComparisonSchema(db);
 
   await ensureTable(
     db,

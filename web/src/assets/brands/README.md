@@ -2,13 +2,14 @@
 
 These repository-local assets support the approved shared V2 brand profiles:
 
-- `quotesuite/quotesuite-titlecase-black.png` and `quotesuite-titlecase-white.png`
-  — approved 7.5.5 Arc Wordmark with `CONFIGURE | QUOTE | DELIVER`, copied from
-  `G:\My Drive\QuoteSync CRM\Logo\QuoteSuite\Final`. The black-background mark
-  is used on Dark / Night and the white-background mark on Light / Day.
-- `quotesuite/quotesuite-icon-circle-black.png` and
-  `quotesuite/quotesuite-icon-circle-white.png` — approved compact marks for
-  genuinely constrained layouts, from the same canonical source.
+- `quotesuite/quotesuite-titlecase-light-transparent.png` and
+  `quotesuite/quotesuite-titlecase-dark-transparent.png` — tightly cropped,
+  transparent application exports of the approved 7.5.5 Arc Wordmark with
+  `CONFIGURE | QUOTE | DELIVER`, derived from the canonical
+  `quotesuite_titlecase_transparent` source. Light uses the approved dark-neutral
+  Quote text; Dark changes only that dark-neutral word/tagline artwork to white.
+- `quotesuite/quotesuite-icon-circle-transparent.png` — tightly cropped approved
+  compact mark used at genuinely constrained widths.
 
 - `zyle-fenster-logo.svg` — Zyle Fenster's current navigation logo from
   `https://zylefenster.co.uk/wp-content/uploads/2026/03/logo.svg`.

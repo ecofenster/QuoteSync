@@ -1078,8 +1078,10 @@ export default function ProjectCalculatorLabWorkspace({
                     }
                   >
                     <option value="new_build">New Build</option>
-                    <option value="refurbishment">Refurbishment</option>
-                    <option value="other">Other</option>
+                    <option value="refurbishment_rip_out_replace">Refurbishment — Rip Out &amp; Replace</option>
+                    <option value="refurbishment_straight_install">Refurbishment — Straight Install / No Removal</option>
+                    {active.options?.projectType === "refurbishment" ? <option value="refurbishment">Refurbishment (legacy snapshot)</option> : null}
+                    {active.options?.projectType === "other" ? <option value="other">Other (legacy snapshot)</option> : null}
                   </select>
                 </label>
                 <label>

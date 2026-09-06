@@ -1028,6 +1028,41 @@ export async function initializeSupplierCommercialSchema(db) {
       await db.exec('RELEASE SAVEPOINT installation_catalogue_known_costs');
     }catch(error){await db.exec('ROLLBACK TO SAVEPOINT installation_catalogue_known_costs');await db.exec('RELEASE SAVEPOINT installation_catalogue_known_costs');throw error;}
   }
+  const me902EvidenceMigrationKey='installation_me902_manufacturer_evidence_v1';
+  if(!await db.get('SELECT migration_key FROM project_calculator_admin_catalogue_migrations WHERE migration_key=?',me902EvidenceMigrationKey)){
+    await db.exec('SAVEPOINT installation_me902_evidence');
+    try{
+      const current=CALCULATOR_CATALOGUE_DEFAULTS.find(item=>item[0]==='me902_500'),existing=await db.get('SELECT variant_json FROM project_calculator_admin_catalogue_items WHERE id=?','me902_500');
+      if(current&&existing){const existingVariant=JSON.parse(existing.variant_json||'{}'),evidence=current[5]||{},variant={...existingVariant,coverageMetresPerUnit:evidence.coverageMetresPerUnit,coverageBasis:evidence.coverageBasis,appliesTo:evidence.appliesTo,sourceStatus:evidence.sourceStatus,sourceUrl:evidence.sourceUrl};await db.run('UPDATE project_calculator_admin_catalogue_items SET variant_json=?,version=version+1,updated_at=? WHERE id=?',JSON.stringify(variant),now,'me902_500');}
+      await db.run('INSERT INTO project_calculator_admin_catalogue_migrations(migration_key,applied_at) VALUES(?,?)',me902EvidenceMigrationKey,now);
+      await db.exec('RELEASE SAVEPOINT installation_me902_evidence');
+    }catch(error){await db.exec('ROLLBACK TO SAVEPOINT installation_me902_evidence');await db.exec('RELEASE SAVEPOINT installation_me902_evidence');throw error;}
+  }
+  const installationTypeRulesMigrationKey='installation_project_type_rules_v1';
+  if(!await db.get('SELECT migration_key FROM project_calculator_admin_catalogue_migrations WHERE migration_key=?',installationTypeRulesMigrationKey)){
+    await db.exec('SAVEPOINT installation_project_type_rules');
+    try{
+      const row=await db.get('SELECT rule_value_json FROM project_calculator_admin_rules WHERE rule_key=?','installation_programme_v1');
+      if(row){const current=JSON.parse(row.rule_value_json||'{}'),defaults=CALCULATION_RULE_DEFAULTS.installation_programme_v1,next={...current,version:Math.max(Number(current.version)||1,Number(defaults.version)||1),installationTypeRules:current.installationTypeRules??defaults.installationTypeRules};await db.run('UPDATE project_calculator_admin_rules SET rule_value_json=?,version=version+1,updated_at=? WHERE rule_key=?',JSON.stringify(next),now,'installation_programme_v1');}
+      await db.run('INSERT INTO project_calculator_admin_catalogue_migrations(migration_key,applied_at) VALUES(?,?)',installationTypeRulesMigrationKey,now);
+      await db.exec('RELEASE SAVEPOINT installation_project_type_rules');
+    }catch(error){await db.exec('ROLLBACK TO SAVEPOINT installation_project_type_rules');await db.exec('RELEASE SAVEPOINT installation_project_type_rules');throw error;}
+  }
+  const commercialDefaultsMigrationKey='project_costing_commercial_defaults_2026_09_v1';
+  const settingsTable=await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='settings'");
+  if(settingsTable&&!await db.get('SELECT migration_key FROM project_calculator_admin_catalogue_migrations WHERE migration_key=?',commercialDefaultsMigrationKey)){
+    await db.exec('SAVEPOINT project_costing_commercial_defaults');
+    try{
+      const updates=[
+        ['projectCalculator.importCustomsDefaults',{contingencyPercent:'0',markupPercent:'20'}],
+        ['projectCalculator.siteVisitTravelDefaults',{siteVisitMarkup:'10'}],
+        ['projectCalculator.markupDefaults',{installation:'10',materials:'15'}],
+      ];
+      for(const [key,patch] of updates){const row=await db.get('SELECT value FROM settings WHERE key=?',key);if(row){const current=JSON.parse(row.value||'{}');await db.run('UPDATE settings SET value=?,updated_at=? WHERE key=?',JSON.stringify({...current,...patch}),now,key);}}
+      await db.run('INSERT INTO project_calculator_admin_catalogue_migrations(migration_key,applied_at) VALUES(?,?)',commercialDefaultsMigrationKey,now);
+      await db.exec('RELEASE SAVEPOINT project_costing_commercial_defaults');
+    }catch(error){await db.exec('ROLLBACK TO SAVEPOINT project_costing_commercial_defaults');await db.exec('RELEASE SAVEPOINT project_costing_commercial_defaults');throw error;}
+  }
   const installationAdminCleanupKey='installation_admin_legacy_catalogue_cleanup_v1';
   if(!await db.get('SELECT migration_key FROM project_calculator_admin_catalogue_migrations WHERE migration_key=?',installationAdminCleanupKey)){
     await db.exec('SAVEPOINT installation_admin_legacy_cleanup');

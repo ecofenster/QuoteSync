@@ -21,15 +21,15 @@ const percentagePence = (amountPence, percentage) => {
   return (amountPence * rate.integer + divisor / 2n) / divisor;
 };
 
-export const IMPORT_CUSTOMS_RULE_VERSION = "global-import-customs-allowance-v1";
+export const IMPORT_CUSTOMS_RULE_VERSION = "global-import-customs-allowance-v2";
 export const GLOBAL_IMPORT_CUSTOMS_DEFAULTS = Object.freeze({
   includedByDefault: true,
   baseImportCost: "237.17",
-  contingencyPercent: "20",
+  contingencyPercent: "0",
   defaultImports: 1,
   dutyPercent: "0",
   dutyBasisAmount: "0",
-  markupPercent: "0",
+  markupPercent: "20",
   provenance: {
     method: "observed_import_customs_average",
     observedAverage: "237.17",

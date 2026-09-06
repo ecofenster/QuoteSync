@@ -43,9 +43,10 @@ export function calculateApplicableCillQuantity(positions = []) {
     }, 0);
 }
 
-function taskList(positions, profile, rules, crewSize) {
+function taskList(positions, profile, rules, crewSize, installationTypeRule = {}) {
   const overrides = profile.positionRequirements ?? {};
-  const capacity = number(rules.standardUnitsPerDayByCrew?.[String(crewSize)], crewSize >= 4 ? rules.standardUnitsPerDayByCrew?.['4'] : rules.standardUnitsPerDayByCrew?.['2']);
+  const capacityRules = installationTypeRule.standardUnitsPerDayByCrew ?? rules.standardUnitsPerDayByCrew;
+  const capacity = number(capacityRules?.[String(crewSize)], crewSize >= 4 ? capacityRules?.['4'] : capacityRules?.['2']);
   const tasks = [], reviewRequired = [];
   let standardUnits = 0;
   for (const position of positions.filter(item => item.includedInCurrentEstimate !== false && item.classification !== 'alternative')) {
@@ -97,27 +98,45 @@ function scheduleTasks(tasks, crewSize, firstDayHours, hoursPerDay) {
 
 export function calculateInstallationProgramme({ positions = [], rules = {}, profile = {}, selectedTeam = null }) {
   const productiveHoursPerDay = number(rules.productiveHoursPerDay, 8);
-  const crewSize = clampInt(profile.crewSize ?? selectedTeam?.normalCrewSize, 2);
+  const legacyCrewSize = profile.crewSize ?? selectedTeam?.normalCrewSize;
+  const productivityCrewSize = clampInt(profile.productivityCrewSize ?? legacyCrewSize, 2);
+  const costedCrewSize = clampInt(profile.costedCrewSize ?? legacyCrewSize, productivityCrewSize);
+  const projectType = String(profile.projectType ?? 'legacy');
+  const installationTypeRule = rules.installationTypeRules?.[projectType] ?? {};
   const routeMinutes = Math.max(0, number(profile.route?.oneWayDurationMinutes));
   const routeHours = routeMinutes / 60;
   const setOutHours = profile.mobilisationSetOutHours == null ? 0 : Math.max(0, number(profile.mobilisationSetOutHours));
   const firstDayHours = Math.max(0, productiveHoursPerDay - routeHours - setOutHours);
-  const derived = taskList(positions, profile, rules, crewSize);
+  const derived = taskList(positions, profile, rules, productivityCrewSize, installationTypeRule);
   const reviewRequired = [...derived.reviewRequired];
-  if (profile.mobilisationSetOutHours == null) reviewRequired.push('Mobilisation/offload/set-out duration requires review. No duration has been deducted.');
+  const deliveryOffloadSetOutDays = Math.max(0, number(profile.deliveryOffloadSetOutDays ?? installationTypeRule.deliveryOffloadSetOutDays));
+  const snaggingDays = Math.max(0, number(profile.snaggingDays ?? installationTypeRule.snaggingDays));
+  if (profile.mobilisationSetOutHours == null && deliveryOffloadSetOutDays === 0) reviewRequired.push('Mobilisation/offload/set-out duration requires review. No duration has been deducted.');
   if (!profile.selectedTeamId) reviewRequired.push('Installation Team must be selected by the estimator.');
-  const schedulableTasks = derived.tasks.filter(task => task.minimumCrew <= crewSize);
-  const days = schedulableTasks.length ? scheduleTasks(schedulableTasks, crewSize, firstDayHours, productiveHoursPerDay) : [];
-  const programmeDays = days.length;
+  if (costedCrewSize < productivityCrewSize) reviewRequired.push('Costed crew cannot be smaller than the productivity crew.');
+  const schedulableTasks = derived.tasks.filter(task => task.minimumCrew <= productivityCrewSize);
+  const days = schedulableTasks.length ? scheduleTasks(schedulableTasks, productivityCrewSize, firstDayHours, productiveHoursPerDay) : [];
+  const installationDays = days.length;
+  const programmeDays = deliveryOffloadSetOutDays + installationDays + snaggingDays;
   const travelMode = profile.travelMode === 'daily_travel' || profile.travelMode === 'stay_away' || profile.travelMode === 'manual' ? profile.travelMode : routeMinutes > number(rules.stayAwayThresholdMinutes, 90) ? 'stay_away' : 'daily_travel';
   const vehicleCount = clampInt(profile.vehicleCount, 1);
   const oneWayMiles = Math.max(0, number(profile.route?.oneWayMiles));
   const chargeableMiles = travelMode === 'daily_travel' ? oneWayMiles * 2 * programmeDays : oneWayMiles * 2;
-  const mileageCost = chargeableMiles * vehicleCount * number(profile.mileageRate ?? rules.mileageRate, 0.55);
+  const baseMileageCost = chargeableMiles * vehicleCount * number(profile.mileageRate ?? rules.mileageRate, 0.55);
+  const additionalAttendanceTravelCost = Math.max(0, number(profile.additionalAttendanceTravelCost));
+  const mileageCost = baseMileageCost + additionalAttendanceTravelCost;
   const nights = travelMode === 'stay_away' ? Math.max(0, programmeDays - 1) : 0;
-  const labourCost = programmeDays * crewSize * number(profile.installerDayRate ?? selectedTeam?.installerDayRate ?? rules.installerDayRate, 350);
-  const foodCost = programmeDays * crewSize * number(profile.foodPerPersonDay ?? rules.foodPerPersonDay, 30);
-  const accommodationCost = nights * crewSize * number(profile.accommodationPerPersonNight ?? rules.accommodationPerPersonNight, 125);
+  const additionalCostedPeople = Math.max(0, costedCrewSize - productivityCrewSize);
+  const additionalAttendanceTravelDays = Math.max(0, number(profile.additionalAttendanceTravelDays));
+  const baseProgrammePersonDays = programmeDays * productivityCrewSize;
+  const additionalInstallationPersonDays = additionalCostedPeople * installationDays;
+  const additionalTravelPersonDays = additionalCostedPeople * additionalAttendanceTravelDays;
+  const costedPersonDays = baseProgrammePersonDays + additionalInstallationPersonDays + additionalTravelPersonDays;
+  const labourCost = costedPersonDays * number(profile.installerDayRate ?? selectedTeam?.installerDayRate ?? rules.installerDayRate, 350);
+  const foodCost = costedPersonDays * number(profile.foodPerPersonDay ?? rules.foodPerPersonDay, 30);
+  const additionalAttendanceNights = Math.min(nights, installationDays) * additionalCostedPeople;
+  const accommodationPersonNights = nights * productivityCrewSize + additionalAttendanceNights;
+  const accommodationCost = accommodationPersonNights * number(profile.accommodationPerPersonNight ?? rules.accommodationPerPersonNight, 125);
   const supportDays = Math.max(0, number(profile.supportDays));
   const supportCost = supportDays * number(profile.supportDayRate ?? rules.supportDayRate, 350);
   const surveyDays = Math.max(0, number(profile.surveyDays));
@@ -154,19 +173,19 @@ export function calculateInstallationProgramme({ positions = [], rules = {}, pro
   const purchaseCost = Object.values(activeCosts).reduce((total, value) => total + number(value), 0);
   const returnByMinutes = 17 * 60 + routeMinutes;
   if (returnByMinutes > number(rules.latestReturnHomeMinutes, 23 * 60)) reviewRequired.push('Final return is forecast after 23:00 and requires programme review.');
-  if (profile.projectType === 'refurbishment' && !profile.skipDecision) reviewRequired.push('Skip Hire is recommended for retrofit and requires selection/pricing review.');
+  if (['refurbishment','refurbishment_rip_out_replace'].includes(profile.projectType) && !profile.skipDecision) reviewRequired.push('Skip Hire is recommended for retrofit and requires selection/pricing review.');
   if (liftingRequired && (!lifting.productId || !lifting.productName)) reviewRequired.push('Lifting equipment product selection is required.');
   if (liftingRequired && (lifting.hireCost == null || lifting.hireCost === '' || !Number.isFinite(Number(lifting.hireCost)))) reviewRequired.push('Lifting equipment hire cost is required.');
   if(skipRequired&&(!skip.productId||!skip.productName))reviewRequired.push('Skip Hire size selection is required.');
   const requiredCapabilities = [...new Set(derived.tasks.flatMap(task => task.family === 'standard' ? ['standard_windows'] : [task.family === 'sliding_door' ? 'sliding_doors' : task.family === 'bifold' ? 'bifolds' : task.family, ...(task.kitFormat ? ['kit_assembly'] : [])]))];
   return {
-    status: reviewRequired.length ? 'review_required' : 'available', crewSize, productiveHoursPerDay, programmeDays,
+    status: reviewRequired.length ? 'review_required' : 'available', crewSize: productivityCrewSize, productivityCrewSize, costedCrewSize, productiveHoursPerDay, installationDays, programmeDays,
     workingPattern: { days: ['monday','tuesday','wednesday','thursday','friday'], start: '08:00', finish: '17:00' },
     standardUnits: derived.standardUnits, standardUnitsPerDay: derived.capacity, recommendFourPersonTeam: derived.standardUnits > number(rules.fourPersonRecommendationThresholdUnits, 28),
     tasks: derived.tasks, days: days.map((day, index) => ({ day: index + 1, capacityHours: day.capacityHours, tasks: day.tasks })), requiredCapabilities,
-    travel: { mode: travelMode, recommendation: routeMinutes > number(rules.stayAwayThresholdMinutes, 90) ? 'stay_away' : 'daily_travel', oneWayMiles: money(oneWayMiles), oneWayDurationMinutes: routeMinutes, vehicleCount, chargeableMiles: money(chargeableMiles), mileageRate: money(profile.mileageRate ?? rules.mileageRate ?? 0.55), cost: money(mileageCost), finalReturnBy: `${String(Math.floor(returnByMinutes / 60)).padStart(2,'0')}:${String(returnByMinutes % 60).padStart(2,'0')}`, returnsBy2300: returnByMinutes <= number(rules.latestReturnHomeMinutes, 23 * 60) },
+    travel: { mode: travelMode, recommendation: routeMinutes > number(rules.stayAwayThresholdMinutes, 90) ? 'stay_away' : 'daily_travel', oneWayMiles: money(oneWayMiles), oneWayDurationMinutes: routeMinutes, vehicleCount, chargeableMiles: money(chargeableMiles), mileageRate: money(profile.mileageRate ?? rules.mileageRate ?? 0.55), baseMileageCost: money(baseMileageCost), additionalAttendanceTravelCost: money(additionalAttendanceTravelCost), cost: money(mileageCost), finalReturnBy: `${String(Math.floor(returnByMinutes / 60)).padStart(2,'0')}:${String(returnByMinutes % 60).padStart(2,'0')}`, returnsBy2300: returnByMinutes <= number(rules.latestReturnHomeMinutes, 23 * 60) },
     componentInclusions, calculatedCosts, costs: { ...activeCosts, purchaseCost: money(purchaseCost) },
-    allowances: { nights, accommodationRooms: travelMode === 'stay_away' ? crewSize : 0, accommodationRate: money(profile.accommodationPerPersonNight ?? rules.accommodationPerPersonNight ?? 125), foodDays: programmeDays, supportDays, surveyDays, cillApplicableQuantity: cillQuantity, cillInstallationRate: money(cillInstallationRate), liftingEquipment: liftingRequired?{...lifting,hireCost:money(liftingHire),deliveryCost:money(liftingDelivery),collectionCost:money(liftingCollection),totalCost:money(liftingCost)}:{required:false},skipHire:skipRequired?{...skip,quantity:skipQuantity,hireCost:money(skipUnitHire),deliveryCost:money(skipDelivery),collectionCost:money(skipCollection),totalCost:money(skipCost)}:{required:false,quantity:Number(skip.quantity??1)||1} },
+    allowances: { nights, accommodationRooms: travelMode === 'stay_away' ? costedCrewSize : 0, accommodationPersonNights, accommodationRate: money(profile.accommodationPerPersonNight ?? rules.accommodationPerPersonNight ?? 125), foodDays: programmeDays, costedPersonDays, baseProgrammePersonDays, additionalInstallationPersonDays, additionalAttendanceTravelDays, additionalTravelPersonDays, deliveryOffloadSetOutDays, installationDays, snaggingDays, supportDays, surveyDays, cillApplicableQuantity: cillQuantity, cillInstallationRate: money(cillInstallationRate), liftingEquipment: liftingRequired?{...lifting,hireCost:money(liftingHire),deliveryCost:money(liftingDelivery),collectionCost:money(liftingCollection),totalCost:money(liftingCost)}:{required:false},skipHire:skipRequired?{...skip,quantity:skipQuantity,hireCost:money(skipUnitHire),deliveryCost:money(skipDelivery),collectionCost:money(skipCollection),totalCost:money(skipCost)}:{required:false,quantity:Number(skip.quantity??1)||1} },
     selectedTeamId: profile.selectedTeamId ?? null, ruleVersion: profile.capturedRuleVersion ?? null, reviewRequired,
     provenance: { productivity: 'administration_snapshot', positionOverrides: 'estimate_snapshot', route: profile.route?.snapshotId ? 'google_route_snapshot' : profile.route?.manuallyOverridden ? 'estimate_override' : 'missing' },
   };

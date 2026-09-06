@@ -40,76 +40,50 @@
 .quotesync-logo {
   display: inline-flex;
   align-items: center;
+  gap: 0.75rem;
   min-width: 0;
   max-width: 100%;
 }
 
 .quotesync-logo__platform,
-.quotesync-logo__company,
-.quotesync-logo__legacy {
-  display: inline-grid;
+.quotesync-logo__company {
+  display: inline-flex;
   align-items: center;
+  justify-content: flex-start;
   min-width: 0;
-}
-
-.quotesync-logo__platform,
-.quotesync-logo__company,
-.quotesync-logo__divider {
-  display: none;
 }
 
 .quotesync-logo__asset {
-  grid-area: 1 / 1;
-  display: none;
+  display: block;
   width: auto;
   max-width: 100%;
-  height: 32px;
+  height: auto;
   object-fit: contain;
   object-position: left center;
 }
 
-.quotesync-logo__legacy {
-  width: 164px;
-}
-
-:root:not([data-qs-theme="dark"]) .quotesync-logo__legacy .quotesync-logo__asset--appearance-light,
-:root[data-qs-theme="dark"] .quotesync-logo__legacy .quotesync-logo__asset--appearance-dark {
-  display: block;
-}
-
-:root[data-qs-design="v2"] .quotesync-logo { gap: 0.75rem; }
-:root[data-qs-design="v2"] .quotesync-logo__legacy,
-:root[data-qs-design="v2"] .quotesync-logo__platform-icon { display: none; }
-:root[data-qs-design="v2"] .quotesync-logo__platform { display: inline-grid; width: 158px; }
-:root[data-qs-design="v2"] .quotesync-logo__platform-wordmark { height: 39px; }
-:root[data-qs-design="v2"][data-qs-v2-appearance="light"] .quotesync-logo__platform-wordmark.quotesync-logo__asset--appearance-light,
-:root[data-qs-design="v2"][data-qs-v2-appearance="dark"] .quotesync-logo__platform-wordmark.quotesync-logo__asset--appearance-dark { display: block; }
-:root[data-qs-design="v2"] .quotesync-logo__divider { width: 1px; height: 27px; flex: 0 0 1px; background: var(--qs-border-standard); }
-:root[data-qs-design="v2"] .quotesync-logo__company { width: 132px; }
-:root[data-qs-design="v2"] .quotesync-logo__company .quotesync-logo__asset { max-height: 32px; }
-:root[data-qs-design="v2"]:not([data-qs-v2-brand="quotesuite"]) .quotesync-logo__divider,
-:root[data-qs-design="v2"]:not([data-qs-v2-brand="quotesuite"]) .quotesync-logo__company { display: inline-grid; }
-:root[data-qs-design="v2"][data-qs-v2-brand="ecofenster"][data-qs-v2-appearance="light"] .quotesync-logo__asset--ecofenster.quotesync-logo__asset--appearance-light,
-:root[data-qs-design="v2"][data-qs-v2-brand="ecofenster"][data-qs-v2-appearance="dark"] .quotesync-logo__asset--ecofenster.quotesync-logo__asset--appearance-dark,
-:root[data-qs-design="v2"][data-qs-v2-brand="zyle-fenster"] .quotesync-logo__asset--zyle,
-:root[data-qs-design="v2"][data-qs-v2-brand="glassworx"] .quotesync-logo__asset--glassworx { display: block; }
-:root[data-qs-design="v2"][data-qs-v2-brand="zyle-fenster"] .quotesync-logo__asset--zyle { width: 126px; }
-:root[data-qs-design="v2"][data-qs-v2-brand="zyle-fenster"][data-qs-v2-appearance="dark"] .quotesync-logo__asset--zyle { filter: invert(1); }
-:root[data-qs-design="v2"][data-qs-v2-brand="glassworx"] .quotesync-logo__asset--glassworx { width: 128px; transform: scale(1.35); transform-origin: left center; }
-:root[data-qs-design="v2"][data-qs-v2-brand="glassworx"][data-qs-v2-appearance="light"] .quotesync-logo__company {
+.quotesync-logo__platform { flex: 0 1 158px; width: 158px; }
+.quotesync-logo__platform picture { display: flex; width: 100%; }
+.quotesync-logo__platform-asset { width: 158px; }
+.quotesync-logo__divider { width: 1px; height: 27px; flex: 0 0 1px; background: var(--qs-border-standard); }
+.quotesync-logo__company { flex: 0 1 132px; width: 132px; }
+.quotesync-logo__company-asset { max-width: 132px; max-height: 32px; }
+.quotesync-logo__company-asset--zyle-fenster { width: 126px; }
+:root[data-qs-v2-brand="zyle-fenster"][data-qs-v2-appearance="dark"] .quotesync-logo__company-asset--zyle-fenster { filter: invert(1); }
+.quotesync-logo__company-asset--glassworx { width: 128px; }
+:root[data-qs-v2-brand="glassworx"][data-qs-v2-appearance="light"] .quotesync-logo__company {
   padding: 0.22rem 0.45rem;
   border-radius: 0.5rem;
   background: var(--qs-v2-company-logo-surface);
 }
+.quotesync-logo__legacy { width: 164px; max-height: 32px; }
 
 @media (max-width: 520px) {
   :root[data-qs-design="v2"] .quotesync-logo { gap: 0.5rem; }
-  :root[data-qs-design="v2"] .quotesync-logo__platform { width: 38px; }
-  :root[data-qs-design="v2"] .quotesync-logo__platform-wordmark { display: none !important; }
-  :root[data-qs-design="v2"] .quotesync-logo__platform-icon { width: 34px; height: 34px; }
-  :root[data-qs-design="v2"][data-qs-v2-appearance="light"] .quotesync-logo__platform-icon.quotesync-logo__asset--appearance-light,
-  :root[data-qs-design="v2"][data-qs-v2-appearance="dark"] .quotesync-logo__platform-icon.quotesync-logo__asset--appearance-dark { display: block; }
-  :root[data-qs-design="v2"] .quotesync-logo__company { width: 104px; }
+  :root[data-qs-design="v2"] .quotesync-logo__platform { flex-basis: 34px; width: 34px; }
+  :root[data-qs-design="v2"] .quotesync-logo__platform-asset { width: 34px; height: 34px; }
+  :root[data-qs-design="v2"] .quotesync-logo__company { flex-basis: 96px; width: 96px; }
+  :root[data-qs-design="v2"] .quotesync-logo__company-asset { max-width: 96px; max-height: 27px; }
   :root[data-qs-design="v2"] .quotesync-logo__divider { height: 24px; }
 }
 

@@ -54,24 +54,30 @@ test("platform and company branding use a structural, appearance-aware lockup", 
   const [logo, css, assets] = await Promise.all([read("src/components/QuoteSyncLogo.tsx"), read("src/layout/AppShell.css"), read("src/assets/brands/README.md")]);
   assert.match(logo, /data-logo-role="platform"/);
   assert.match(logo, /data-logo-role="company"/);
-  assert.match(logo, /quotesuite-titlecase-black\.png/);
-  assert.match(logo, /quotesuite-titlecase-white\.png/);
-  assert.match(logo, /quotesuite-icon-circle-black\.png/);
-  assert.match(logo, /quotesuite-icon-circle-white\.png/);
+  assert.match(logo, /quotesuite-titlecase-light-transparent\.png/);
+  assert.match(logo, /quotesuite-titlecase-dark-transparent\.png/);
+  assert.match(logo, /quotesuite-icon-circle-transparent\.png/);
   assert.match(logo, /zyle-fenster-logo\.svg/);
   assert.match(logo, /glassworx-logo\.png/);
   assert.match(css, /\.quotesync-logo \{[\s\S]*display: inline-flex/);
-  assert.match(css, /not\(\[data-qs-v2-brand="quotesuite"\]\)/);
-  assert.doesNotMatch(css, /\.quotesync-logo__image[\s\S]*grid-area: 1 \/ 1/);
+  assert.match(logo, /company && companySource/);
+  assert.match(logo, /data-company-brand=\{theme\.brand\}/);
+  assert.doesNotMatch(css, /grid-area: 1 \/ 1/);
   assert.match(assets, /7\.5\.5 Arc Wordmark/);
   assert.match(assets, /CONFIGURE \| QUOTE \| DELIVER/);
 });
 
-test("browser contract covers eight V2 combinations, legacy fallback, real components, and exact cleanup", async () => {
-  const [script, fixture] = await Promise.all([read("scripts/run-visual-design-v2-browser.mjs"), read("tests/fixtures/VisualDesignV2Acceptance.tsx")]);
+test("browser contract covers eight V2 combinations, legacy fallback, real and foundation components, and exact cleanup", async () => {
+  const [script, fixture, foundationScript, foundationFixture] = await Promise.all([
+    read("scripts/run-visual-design-v2-browser.mjs"),
+    read("tests/fixtures/VisualDesignV2Acceptance.tsx"),
+    read("scripts/run-compare-documents-portal-browser.mjs"),
+    read("tests/fixtures/CompareDocumentsPortalAcceptance.tsx"),
+  ]);
   for (const theme of QUOTESUITE_VISUAL_THEMES) assert.match(script, new RegExp(theme.id));
   for (const viewport of ["1920, 1080", "1440, 900", "390, 844"]) assert.match(script, new RegExp(viewport));
-  for (const component of ["AppShell", "EstimateCommercialHeaderRows", "ScenarioCostingWorksheet", "AdminSupplierCommercialDefaults"]) assert.match(fixture, new RegExp(component));
+  for (const component of ["AppShell", "MainDashboard", "EstimateCommercialHeaderRows", "ScenarioCostingWorksheet", "AdminSupplierCommercialDefaults"]) assert.match(fixture, new RegExp(component));
+  assert.match(script, /main-dashboard/);
   for (const proof of ["expanded-products", "expanded-installation", "commercial-summary", "advanced-installation"]) assert.match(script, new RegExp(proof));
   assert.match(script, /approvedV2Themes/);
   assert.match(script, /platformLogoCount === 1/);
@@ -86,6 +92,13 @@ test("browser contract covers eight V2 combinations, legacy fallback, real compo
   assert.match(script, /destructiveHover/);
   assert.match(script, /ownedBrowserProcesses/);
   assert.match(script, /ownedTemporaryProfiles/);
+  for (const theme of QUOTESUITE_VISUAL_THEMES.filter(({ design }) => design === "v2")) assert.match(foundationScript, new RegExp(theme.id));
+  for (const screen of ["compare", "documents", "portal"]) assert.match(foundationScript, new RegExp(`"${screen}"`));
+  for (const component of ["CompareQuotesWorkspace", "AdminManufacturerDocuments", "ClientPortalPreview"]) assert.match(foundationFixture, new RegExp(component));
+  assert.match(foundationScript, /expectedCompanyBrand/);
+  assert.match(foundationScript, /logoOverlap/);
+  assert.match(foundationScript, /ownedBrowserProcessesRemaining/);
+  assert.match(foundationScript, /ownedTemporaryProfilesRemaining/);
 });
 
 test("V2 preserves the approved Project Costing hierarchy and interaction contract", async () => {
