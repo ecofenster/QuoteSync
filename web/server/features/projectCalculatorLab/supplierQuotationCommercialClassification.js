@@ -47,6 +47,7 @@ export function buildSupplierQuotationCommercialClassification({ positionRows = 
     },
     defaultImportedCost,
     supplierQuotedTotal: amount(summary?.finalSupplierTotal),
+    scopeEvidence: summary?.comparisonScope ?? null,
     sourceReconciliation: summary?.reconciliation ?? null,
     productSupplyReconciliation,
     productEvidence,

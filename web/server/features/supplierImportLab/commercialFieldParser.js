@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { cleanMetadataValue, parsePdfSupplierFields } from './pdfSupplierAdapters.js';
 import { mapManufacturerVisualsToRows } from './manufacturerPositionVisuals.js';
 
-export const FIELD_PARSER_VERSION = '1.2.0';
+export const FIELD_PARSER_VERSION = '1.3.0';
 const decimalPattern = /^[-+]?\d+(?:[.,]\d+)?$/;
 const dimensionPattern = /^(\d+)\s*[x×]\s*(\d+)\s*mm$/i;
 const priceHeaderPattern = /^Price\s*,?\s*([A-Z]{3})?$/i;
@@ -24,6 +24,41 @@ export function parseQuotationReference(text) {
   if (!match) return { supplierQuotationNumber: null, supplierRevision: null, fullQuotationReference: null, warnings: [] };
   const revision=match[1].match(/^(.+)-(\d+)$/); if(match[1].includes('-')&&!revision)return { supplierQuotationNumber: null, supplierRevision: null, fullQuotationReference: null, warnings: [] };
   return { supplierQuotationNumber: revision?.[1]||match[1], supplierRevision: revision?.[2]||null, fullQuotationReference: match[1], warnings: [] };
+}
+
+export function normalizeQuotationDate(raw) {
+  const value = cleanMetadataValue(raw);
+  if (!value) return null;
+  let match = value.match(/^(\d{4})[\s./-]+(\d{1,2})[\s./-]+(\d{1,2})$/);
+  if (match) return validIsoDate(match[1], match[2], match[3]);
+  match = value.match(/^(\d{1,2})[\s./-]+(\d{1,2})[\s./-]+(\d{4})$/);
+  if (match) return validIsoDate(match[3], match[2], match[1]);
+  return null;
+}
+
+function validIsoDate(year, month, day) {
+  const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  const date = new Date(`${iso}T00:00:00.000Z`);
+  return Number.isFinite(date.valueOf()) && date.toISOString().slice(0, 10) === iso ? iso : null;
+}
+
+function enrichGenericDocumentFamily(blocks, parsed) {
+  const joined = blocks.map((item) => item.text).join('\n');
+  const zyleDomainBlocks = blocks.filter((item) => /@zylefenster\.(?:com|co\.uk)\b/i.test(item.text));
+  const priceOfferBlocks = blocks.filter((item) => /\bPRICE\s+OFFER\s*(?:No\.?|NUMBER)?\s*[:#]?\s*[A-Z0-9/-]+/i.test(item.text));
+  if (!zyleDomainBlocks.length || !priceOfferBlocks.length) return parsed;
+  const evidence = [...zyleDomainBlocks, ...priceOfferBlocks].map((item) => ({ attachmentId: item.attachmentId, pageNumber: item.pageNumber, blockId: item.id, extractedText: item.text }));
+  return {
+    ...parsed,
+    adapter: 'zyle_fenster_price_offer_v1',
+    supplier: 'Zyle Fenster',
+    manufacturer: 'Zyle Fenster',
+    documentType: 'complete_quotation',
+    supplierIdentity: { role: 'quotation_issuer', authority: 'explicit_document_issuer', sourceLegalName: 'Zyle Fenster', dealerName: 'Zyle Fenster', evidence },
+    commercialSupplierIdentity: { role: 'commercial_supplier', authority: 'recognized_document_family', proposedName: 'Zyle Fenster', evidence },
+    manufacturerIdentity: { role: 'product_manufacturer', authority: 'recognized_document_family', proposedName: 'Zyle Fenster', evidence },
+    supplierManufacturerRelationship: { relationship: 'direct_manufacturer_supplier', documentIssuerName: 'Zyle Fenster', commercialSupplierName: 'Zyle Fenster', manufacturerName: 'Zyle Fenster', pricingScope: 'commercial_supplier_quotation' },
+  };
 }
 
 function flatten(document) {
@@ -112,6 +147,7 @@ export function parseCommercialFields(document, { currency: sessionCurrency }) {
     rows.push({ id: randomUUID(), ordinal: rows.length, ...original, ...manufacturerEvidence, sourcePages, sourceTrace: source.map((item) => ({ attachmentId: document.attachmentId, pageNumber: item.pageNumber, blockId: item.id, boundingBox: item.boundingBox, coordinateSpace: item.boundingBox ? 'pdf_points' : null, extractedText: item.text })), confidence: warnings.length ? '0.75' : '0.98', warnings, status: warnings.length ? 'needs_review' : 'extracted', originalExtractedSnapshot: original });
     start = blocks.indexOf(totalRaw) + 1;
   }
+  metadata.quotationDate = normalizeQuotationDate(metadata.quotationDate);
   mapManufacturerVisualsToRows(rows, document.manufacturerVisualCandidates, quotation);
-  return { quotation, metadata, rows, warnings: rows.length ? [] : ['No commercial position blocks were detected.'] };
+  return enrichGenericDocumentFamily(blocks, { quotation, metadata, rows, warnings: rows.length ? [] : ['No commercial position blocks were detected.'] });
 }

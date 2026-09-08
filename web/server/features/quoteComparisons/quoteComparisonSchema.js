@@ -1,3 +1,44 @@
+async function removeLegacySupplierItemReferenceUniqueness(db) {
+  const table=await db.get("SELECT sql FROM sqlite_master WHERE type='table' AND name='quote_comparison_position_mappings'");
+  if(!/UNIQUE\s*\(\s*proposal_id\s*,\s*supplier_item_reference\s*\)/i.test(String(table?.sql||"")))return;
+  const foreignKeys=Number((await db.get("PRAGMA foreign_keys"))?.foreign_keys)===1;
+  if(foreignKeys)await db.exec("PRAGMA foreign_keys=OFF");
+  try{
+    await db.exec(`
+      BEGIN IMMEDIATE;
+      ALTER TABLE quote_comparison_position_mappings RENAME TO quote_comparison_position_mappings_legacy_unique;
+      CREATE TABLE quote_comparison_position_mappings (
+        id TEXT PRIMARY KEY,
+        proposal_id TEXT NOT NULL,
+        supplier_item_reference TEXT NOT NULL,
+        supplier_item_snapshot_json TEXT NOT NULL DEFAULT '{}',
+        canonical_estimate_position_id TEXT,
+        relationship_kind TEXT NOT NULL DEFAULT 'unmapped'
+          CHECK(relationship_kind IN ('exact','grouped','split','missing','additional','alternative','unmapped')),
+        difference_status TEXT NOT NULL DEFAULT 'review_required'
+          CHECK(difference_status IN ('exact_match','close_acceptable_alternative','minor_difference','material_mismatch','dimension_mismatch','quantity_mismatch','configuration_mismatch','product_system_substitution','missing','additional','alternative','unmapped','information_not_supplied','review_required','not_applicable')),
+        differences_json TEXT NOT NULL DEFAULT '[]',
+        provenance_json TEXT NOT NULL DEFAULT '{}',
+        corrected_by TEXT,
+        corrected_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY(proposal_id) REFERENCES quote_comparison_proposals(id) ON DELETE CASCADE
+      );
+      INSERT INTO quote_comparison_position_mappings SELECT * FROM quote_comparison_position_mappings_legacy_unique;
+      DROP TABLE quote_comparison_position_mappings_legacy_unique;
+      COMMIT;
+    `);
+  }catch(error){try{await db.exec("ROLLBACK")}catch{}throw error}
+  finally{if(foreignKeys)await db.exec("PRAGMA foreign_keys=ON")}
+  await db.exec("CREATE INDEX IF NOT EXISTS idx_quote_comparison_mappings ON quote_comparison_position_mappings(proposal_id, canonical_estimate_position_id)");
+}
+
+async function ensureColumn(db, table, name, definition) {
+  const columns = await db.all(`PRAGMA table_info("${table}")`);
+  if (!columns.some((column) => column.name === name)) await db.exec(`ALTER TABLE "${table}" ADD COLUMN "${name}" ${definition}`);
+}
+
 export async function initializeQuoteComparisonSchema(db) {
   await db.exec(`
     CREATE TABLE IF NOT EXISTS quote_comparisons (
@@ -57,6 +98,27 @@ export async function initializeQuoteComparisonSchema(db) {
       FOREIGN KEY(canonical_document_id) REFERENCES canonical_documents(id) ON DELETE RESTRICT
     );
 
+    CREATE TABLE IF NOT EXISTS quote_comparison_proposal_sources (
+      id TEXT PRIMARY KEY,
+      proposal_id TEXT NOT NULL,
+      source_kind TEXT NOT NULL CHECK(source_kind IN ('supplier_quote_attachment')),
+      source_id TEXT NOT NULL,
+      supplier_quote_id TEXT NOT NULL,
+      supplier_revision_id TEXT NOT NULL,
+      document_role TEXT NOT NULL DEFAULT 'commercial'
+        CHECK(document_role IN ('commercial','technical','supporting')),
+      file_name TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      source_snapshot_json TEXT NOT NULL DEFAULT '{}',
+      linked_at TEXT NOT NULL,
+      linked_by TEXT NOT NULL,
+      UNIQUE(proposal_id, source_kind, source_id),
+      FOREIGN KEY(proposal_id) REFERENCES quote_comparison_proposals(id) ON DELETE CASCADE,
+      FOREIGN KEY(source_id) REFERENCES supplier_quote_attachments(id) ON DELETE RESTRICT,
+      FOREIGN KEY(supplier_revision_id) REFERENCES supplier_quote_revisions(id) ON DELETE RESTRICT,
+      FOREIGN KEY(supplier_quote_id) REFERENCES supplier_quotes(id) ON DELETE RESTRICT
+    );
+
     CREATE TABLE IF NOT EXISTS quote_comparison_position_mappings (
       id TEXT PRIMARY KEY,
       proposal_id TEXT NOT NULL,
@@ -73,7 +135,6 @@ export async function initializeQuoteComparisonSchema(db) {
       corrected_at TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
-      UNIQUE(proposal_id, supplier_item_reference),
       FOREIGN KEY(proposal_id) REFERENCES quote_comparison_proposals(id) ON DELETE CASCADE
     );
 
@@ -131,8 +192,16 @@ export async function initializeQuoteComparisonSchema(db) {
 
     CREATE INDEX IF NOT EXISTS idx_quote_comparisons_client ON quote_comparisons(client_id, updated_at DESC);
     CREATE INDEX IF NOT EXISTS idx_quote_comparison_proposals ON quote_comparison_proposals(comparison_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_quote_comparison_sources ON quote_comparison_proposal_sources(proposal_id, source_kind, source_id);
     CREATE INDEX IF NOT EXISTS idx_quote_comparison_mappings ON quote_comparison_position_mappings(proposal_id, canonical_estimate_position_id);
     CREATE INDEX IF NOT EXISTS idx_manufacturer_system_documents_hierarchy ON manufacturer_system_documents(owner_name, product_system_name, category, subcategory, status);
     CREATE INDEX IF NOT EXISTS idx_project_manufacturer_documents ON project_manufacturer_document_links(project_id, portal_visibility);
   `);
+  await ensureColumn(db, "quote_comparisons", "name", "TEXT");
+  await ensureColumn(db, "quote_comparisons", "description", "TEXT");
+  await ensureColumn(db, "quote_comparisons", "archived_at", "TEXT");
+  await ensureColumn(db, "quote_comparisons", "archived_by", "TEXT");
+  await ensureColumn(db, "quote_comparisons", "deleted_at", "TEXT");
+  await ensureColumn(db, "quote_comparisons", "deleted_by", "TEXT");
+  await removeLegacySupplierItemReferenceUniqueness(db);
 }

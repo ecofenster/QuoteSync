@@ -42,7 +42,7 @@ test("chronology remains ordered and displays the current checkpoint", () => {
 
 test("comparison, manufacturer documents and portal foundations retain their authority boundaries", async () => {
   const agents = await read("AGENTS.md"), comparison = all.find((item) => item.id === "compare-quotes"), documents = all.find((item) => item.id === "manufacturer-system-document-library"), portal = all.find((item) => item.id === "customer-portal");
-  assert.equal(comparison?.status,"in_progress");assert.match(comparison?.summary ?? "",/frozen QuoteSuite Estimate revision.*canonical Position identities/);
+  assert.equal(comparison?.status,"in_progress");assert.match(comparison?.summary ?? "",/extraction-first.*automatically selected canonical Estimate revision.*Position identities/);
   assert.match((documents?.notes ?? []).join(" "),/customer-approved records relevant to products\/systems actually supplied/);
   assert.match((portal?.notes ?? []).join(" "),/internal Client-owned Portal Preview.*not a public route/);
   assert.match(agents,/Client Database → Client → Compare Quotes/);assert.match(agents,/supplier item numbers.*never replace canonical Estimate Position identity/i);

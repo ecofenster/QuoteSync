@@ -32,7 +32,7 @@ test('PDF layout reconstruction preserves runs and creates deterministic geometr
 test('supplier profiles consume one canonical evidence contract across structurally different PDF layouts', () => {
   const fixtures = [
     { recognition: ['Idealcombi', 'Quotation no.', 'Q-1', 'GBP/ Unit'], lines: ['1 2 Kitchen 1200 X 900 500,00 1.000,00'], adapter: 'idealcombi_position_table_v1', count: 1 },
-    { recognition: ['Item Location No. Type Width Height Glazing', 'Price ea.', 'Price Total'], lines: ['1 Option Type A - [1] alu-clad fixed window 1200 900 Triple 0.8 £ [500.00] £ [500.00]'], adapter: 'norrsken_item_table_v1', count: 1, alternative: true },
+    { recognition: ['Item Location No. Type Width Height Glazing', 'Price ea.', 'Price Total'], lines: ['1 Option Type A - [1] alu-clad fixed window 1200 900 Triple 0.8 £ [500.00] £ [500.00]'], adapter: 'norrsken_item_table_v2', count: 1, alternative: true },
     { recognition: ['VELFAC', 'Frame No: 4 Qty: 1'], lines: ['Frame No: 4 Qty: 1 VELFAC V200E Fixed Frame Location: W4 £725.00', '1200 x 900', 'U-Value 0.8'], adapter: 'frame_schedule_geometry_v1', count: 1 },
     { recognition: ['Westcoast Windows AB', 'Powered by CalWin'], lines: ['W-UFF (1200x900) 40 W4 Kitchen 1 no'], adapter: 'westcoast_position_schedule_v1', count: 1 },
     { recognition: ['21 Degrees', 'GB Quote Reference GB1', 'Price after discount'], lines: ['ITEM 1 - Kitchen Price after discount: £500.00', 'Supply & Deliver a complete new casement window (GBS78A Casement range) in Alu-clad', 'U-Value 0.8'], adapter: 'twenty_one_degrees_detail_v1', count: 1, incomplete: true },
@@ -79,12 +79,12 @@ test('canonical supplier evidence persists into Products / Supply and Project Co
   const revision = await supplier.createRevision('estimate', quote.id, { supplierQuotationNumber: 'Q-1', currency: 'GBP' });
   await supplier.insertAttachments('estimate', quote.id, revision.id, [{ id: 'source', role: 'original_quote', documentKind: 'complete_quotation', originalFileName: 'fixture.pdf', mediaType: 'application/pdf', sizeBytes: 1, sha256: 'a'.repeat(64), storageKey: 'fixture.pdf', parserEligible: true, createdAt: new Date().toISOString() }]);
   const selected = [{ quoteId: quote.id, revisionId: revision.id, attachmentId: 'source' }];
-  const first = await supplier.extractAndLoadSupplierCosts('estimate', scenario.id, selected);
+  const first = await supplier.extractAndLoadSupplierCosts('estimate', scenario.id, selected, { commercialSupplierCode: 'FIXTURE' });
   assert.equal(first.documents[0].diagnostics.counts.productsSupplyRows, 1);
   assert.equal((await calculator.getScenario(scenario.id)).products[0].productClass, 'System A');
   assert.deepEqual(await db.get('SELECT product,product_system,original_specification_text FROM supplier_quote_positions'), { product: 'Window', product_system: 'System A', original_specification_text: 'system: System A\nproduct: Window' });
   system = 'System B';
-  const repeated = await supplier.extractAndLoadSupplierCosts('estimate', scenario.id, selected);
+  const repeated = await supplier.extractAndLoadSupplierCosts('estimate', scenario.id, selected, { commercialSupplierCode: 'FIXTURE' });
   assert.equal(repeated.documents[0].loadedProducts, 0);
   assert.equal((await calculator.getScenario(scenario.id)).products[0].productClass, 'System B');
   assert.equal((await db.get('SELECT product_system FROM supplier_quote_positions')).product_system, 'System B');

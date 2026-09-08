@@ -61,6 +61,8 @@ export type ManufacturerImportReviewRow = {
   currency: string | null;
   unitPrice: string | null;
   totalPrice: string | null;
+  classification: string | null;
+  alternativeTo: string | null;
   manufacturerQuotedUg: string | null;
   manufacturerQuotedUw: string | null;
   sourceSpecification: ManufacturerSourceSpecification | null;
@@ -77,7 +79,7 @@ export type SupplierQuotationCommercialEvidence = {
   version: string;
   currency: string | null;
   categories: {
-    productsSupply: { amount: string; automaticImport: true };
+    productsSupply: { amount: string; grossPositionAmount?: string; supplementalAmount?: string; automaticImport: true };
     extras: { amount: string; automaticImport: true };
     transport: { amount: string; automaticImport: true };
     installation: { amount: string; automaticImport: false; decision: string };
@@ -86,6 +88,9 @@ export type SupplierQuotationCommercialEvidence = {
   };
   defaultImportedCost: string;
   supplierQuotedTotal: string | null;
+  scopeEvidence: Record<string, unknown> | null;
+  productEvidence: Record<string, unknown> | null;
+  items: Array<Record<string, unknown>>;
   sourceReconciliation: Record<string, unknown> | null;
   productSupplyReconciliation: {
     version: string;
@@ -142,13 +147,14 @@ export type ManufacturerImportReview = {
     currency: string;
     quotationDate: string | null;
     documentType: string | null;
+    commercialScope: "supply_only" | "supply_install_support" | "supply_and_install" | null;
     supplierQuotedSubtotal: string | null;
     supplierQuotedTotal: string | null;
   };
   canonicalManufacturers: CanonicalManufacturerOption[];
   commercialSuppliers: CommercialSupplierOption[];
   canonicalSuppliers: CommercialSupplierOption[];
-  documents: Array<{ quoteId: string; revisionId: string; attachmentId: string; adapter: string | null; diagnostics: SupplierImportDiagnostics; commercialEvidence: SupplierQuotationCommercialEvidence | null; rows: ManufacturerImportReviewRow[] }>;
+  documents: Array<{ quoteId: string; revisionId: string; attachmentId: string; adapter: string | null; diagnostics: SupplierImportDiagnostics; commercialEvidence: SupplierQuotationCommercialEvidence | null; sourceComponents: Array<{ rowKey: string; customerReference: string | null; componentForReference: string | null; componentRole: string; product: string | null; quantity: number | null; currency: string | null; unitPrice: string | null; totalPrice: string | null; classification: string; warnings: string[] }>; rows: ManufacturerImportReviewRow[] }>;
 };
 
 const objectValue = (value: unknown): Record<string, unknown> | null => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
@@ -184,7 +190,7 @@ function normalizeCommercialEvidence(value: unknown): SupplierQuotationCommercia
   const rawReconciliation = objectValue(item.productSupplyReconciliation);
   const category = (key: string, automaticImport: boolean, decision?: string) => {
     const source = objectValue(categories[key]);
-    return { amount: stringValue(source?.amount) ?? "0.00", automaticImport, ...(decision ? { decision: stringValue(source?.decision) ?? decision } : {}) };
+    return { ...source, amount: stringValue(source?.amount) ?? "0.00", automaticImport, ...(decision ? { decision: stringValue(source?.decision) ?? decision } : {}) };
   };
   const rawDiscount = objectValue(categories.discount);
   return {
@@ -200,6 +206,9 @@ function normalizeCommercialEvidence(value: unknown): SupplierQuotationCommercia
     },
     defaultImportedCost: stringValue(item.defaultImportedCost) ?? "0.00",
     supplierQuotedTotal: stringValue(item.supplierQuotedTotal),
+    scopeEvidence: objectValue(item.scopeEvidence),
+    productEvidence: objectValue(item.productEvidence),
+    items: arrayValue(item.items).flatMap((entry) => objectValue(entry) ? [objectValue(entry)!] : []),
     sourceReconciliation: objectValue(item.sourceReconciliation),
     productSupplyReconciliation: {
       version: stringValue(rawReconciliation?.version) ?? "unknown",
@@ -276,6 +285,8 @@ function normalizeRows(value: unknown): ManufacturerImportReviewRow[] {
       currency: stringValue(item.currency),
       unitPrice: stringValue(item.unitPrice),
       totalPrice: stringValue(item.totalPrice),
+      classification: stringValue(item.classification),
+      alternativeTo: stringValue(item.alternativeTo),
       manufacturerQuotedUg: stringValue(item.manufacturerQuotedUg),
       manufacturerQuotedUw: stringValue(item.manufacturerQuotedUw),
       sourceSpecification: objectValue(item.sourceSpecification) as ManufacturerSourceSpecification | null,
@@ -305,6 +316,11 @@ function normalizeDocuments(value: unknown): ManufacturerImportReview["documents
         counts: defaultCounts(rows, diagnostics?.counts),
       },
       commercialEvidence,
+      sourceComponents: arrayValue(item.sourceComponents).flatMap((candidate, index) => {
+        const component = objectValue(candidate);
+        if (!component) return [];
+        return [{ rowKey: stringValue(component.rowKey) ?? `source-component-${index}`, customerReference: stringValue(component.customerReference), componentForReference: stringValue(component.componentForReference), componentRole: stringValue(component.componentRole) ?? "related_component", product: stringValue(component.product), quantity: typeof component.quantity === "number" ? component.quantity : null, currency: stringValue(component.currency), unitPrice: stringValue(component.unitPrice), totalPrice: stringValue(component.totalPrice), classification: stringValue(component.classification) ?? "component", warnings: arrayValue(component.warnings).filter((warning): warning is string => typeof warning === "string") }];
+      }),
       rows,
     }];
   });
@@ -368,6 +384,7 @@ export function normalizeManufacturerImportReview(value: unknown): ManufacturerI
       currency: stringValue(metadata.currency)?.toUpperCase() ?? "XXX",
       quotationDate: stringValue(metadata.quotationDate),
       documentType: stringValue(metadata.documentType),
+      commercialScope: metadata.commercialScope === "supply_only" || metadata.commercialScope === "supply_install_support" || metadata.commercialScope === "supply_and_install" ? metadata.commercialScope : null,
       supplierQuotedSubtotal: stringValue(metadata.supplierQuotedSubtotal),
       supplierQuotedTotal: stringValue(metadata.supplierQuotedTotal),
     },

@@ -185,6 +185,9 @@ export function extractInternormEcohausPositionSpecification(document, blocks, p
   if (!system) return null;
   const lines = positionLines(blocks);
   const joined = clean(lines.join(' '));
+  const documentText = clean(document.pages.flatMap((page) => page.blocks.map((block) => block.text)).join(' '));
+  const thermalStandard = /EN ISO 12567\s*(?:\/|or)\s*(?:EN ISO )?10077/i.test(documentText) ? 'EN ISO 12567 / EN ISO 10077' : null;
+  const pas24Claim = documentText.match(/products are tested to PAS24 Certification[\s\S]{0,240}?(?:required|quote)/i)?.[0] ?? null;
   const fields = [];
   const add = (section, label, rawValue, sourceBlocks, extra = {}) => {
     if (!clean(rawValue)) return null;
@@ -263,8 +266,9 @@ export function extractInternormEcohausPositionSpecification(document, blocks, p
       spacer: canonicalValue(system.values.Spacer, systemFields.Spacer?.id),
       coating: canonicalValue(system.values.Coating, systemFields.Coating?.id),
       sashes,
-      thermalUw: canonicalValue(uwValue, uwField?.id),
-      systemThermalPerformance: canonicalValue(decimal(system.values['Heat insulation*']?.match(/[\d,.]+/)?.[0]), systemFields['Heat insulation*']?.id, { basis: 'system standard test window' }),
+      thermalUw: canonicalValue(uwValue, uwField?.id, { basis: uwValue ? 'actual_position_size' : null, standard: uwValue ? thermalStandard : null, evidenceStatus: uwValue ? (thermalStandard ? 'value_and_standard_stated' : 'value_stated') : 'not_stated' }),
+      systemThermalPerformance: canonicalValue(decimal(system.values['Heat insulation*']?.match(/[\d,.]+/)?.[0]), systemFields['Heat insulation*']?.id, { basis: 'system standard test window', standard: thermalStandard }),
+      securityEvidence: pas24Claim ? { status: 'specified_not_certified', claim: clean(pas24Claim), certification: 'PAS24', qualification: 'The quotation contains a product-family claim but no attached position-level certificate is represented by this evidence.' } : null,
       accessories: accessoryFields.filter(Boolean).map((item) => ({ description: item.rawValue, customerFacing: /^Hardware accessory$/i.test(item.label), sourceFieldId: item.id })),
       messages: messageFields.filter(Boolean).map((item) => ({ label: item.label, value: item.rawValue, sourceFieldId: item.id })),
       sourcePrice: canonicalValue(position.totalPrice, productField?.id, { currency }),

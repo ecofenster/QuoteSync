@@ -111,11 +111,90 @@ function parseIdealcombi(document){
   return{adapter:'idealcombi_position_table_v1',supplier:'Idealcombi',documentType:'complete_quotation',quotation:{supplierQuotationNumber:cleanMetadataValue(quotation),supplierRevision:null,fullQuotationReference:cleanMetadataValue(quotation),warnings:[]},metadata:{supplierCustomer:null,projectReference:null,quotationDate:null},rows,warnings:rows.length?[]:['Idealcombi position table was not detected.']};
 }
 
+const sourceField = (value, sourceFieldId) => value == null || value === '' ? null : ({ value, manufacturerSourceValue: value, sourceFieldId });
+
+function compactSourceSpecification({ family, material, aluminiumCladding, internalFinish, externalFinish, glazing, ug, uw, configuration, hardware, division, sill, notes = [], thermalEvidence = null, securityEvidence = null }) {
+  return {
+    version: `${family}-position-specification-v1`,
+    canonical: {
+      material: sourceField(material, `${family}:material`),
+      aluminiumCladding: sourceField(aluminiumCladding, `${family}:aluminium-cladding`),
+      internalFinish: sourceField(internalFinish, `${family}:internal-finish`),
+      externalFinish: sourceField(externalFinish, `${family}:external-finish`),
+      glazing: sourceField(glazing, `${family}:glazing`),
+      glazingUnits: glazing || ug ? [{ sourceElementReference: 'position', glassBuildUp: glazing, ug, solarGainPercent: null, lightTransmissionPercent: null, sourceFieldIds: [`${family}:glazing`] }] : [],
+      thermalUw: uw ? { ...sourceField(uw, `${family}:uw`), ...(thermalEvidence ?? {}) } : null,
+      securityEvidence,
+      sashes: configuration || hardware ? [{ sourceElementReference: 'position', fitting: configuration, hardware, sourceFieldIds: [`${family}:configuration`, `${family}:hardware`] }] : [],
+      division: sourceField(division, `${family}:division`),
+      sill: sourceField(sill, `${family}:sill`),
+      accessories: sill ? [{ description: sill, sourceFieldId: `${family}:sill` }] : [],
+      messages: notes.filter(Boolean).map((value, index) => ({ label: 'Supplier note', value, sourceFieldId: `${family}:note:${index}` })),
+    },
+  };
+}
+
+function parseNordvest(document) {
+  const rows = [], segments = pageSegments(document, /^Style\s+[A-Z]+(?:\s|$)/i), all = flatten(document), documentText = textOf(document);
+  const thermalEvidence = /EN ISO 10077-1[\s\S]*EN ISO 10077-2/i.test(documentText)
+    ? { basis: 'whole_product_supplier_calculation', standard: 'EN ISO 10077-1 / EN ISO 10077-2', evidenceStatus: 'value_and_standard_stated' }
+    : { basis: 'whole_product_supplier_value', standard: null, evidenceStatus: 'value_stated' };
+  const securityEvidence = /Safety glass and safety hardware[\s\S]{0,180}not mentioned[\s\S]{0,80}not/i.test(documentText)
+    ? { status: 'not_confirmed', claim: 'Safety glass and security hardware are included only where expressly stated in the position specification.', certification: null }
+    : null;
+  for (const blocks of segments) {
+    const joined = blocks.map((block) => block.text).join(' ');
+    const header = joined.match(/^Style\s+([A-Z]+)\s+(?:Drawing Description Qty\. Price Sum\s+)?(VUTA|FKA|HSDA|YIA)\s*\((\d{3,5})x(\d{3,5})\)\s+(\d+[.,]\d+)\s+([\d,.]+)\s+([\d,.]+)/i);
+    if (!header) continue;
+    const reference = header[1].toUpperCase(), productCode = header[2].toUpperCase(), quantity = integerQuantity(header[5]);
+    const product = cleanMetadataValue(joined.match(/\b(NORDVEST\s+(?:WINDOW|SLIDING DOOR|MAIN DOOR[^()]*)?)\s*\(U=/i)?.[1]);
+    const uw = decimal(joined.match(/\(U=([\d.,]+)\)/i)?.[1]);
+    const glazingIndex = blocks.findIndex((block) => /^(?:2L|3L)\(/i.test(block.text));
+    const glazing = glazingIndex >= 0 ? [blocks[glazingIndex]?.text, /^\([^)]*\)$/.test(blocks[glazingIndex + 1]?.text ?? '') ? blocks[glazingIndex + 1].text : null].filter(Boolean).join(' ') : null;
+    const material = /Laminated finger jointed pine with\s+two outer laminates in hartwood/i.test(joined) ? 'Laminated finger-jointed pine with two outer heartwood laminates' : null;
+    const aluminiumCladding = cleanMetadataValue(joined.match(/\+15 mm Powder coated colored aluminium\s+cladding/i)?.[0]);
+    const externalFinish = cleanMetadataValue(joined.match(/Outside\s+(.+?)\s+Clear lacquer inside/i)?.[1]);
+    const internalFinish = /Clear lacquer inside\s*\(Klar Matt\)/i.test(joined) ? 'Clear lacquer (Klar Matt)' : null;
+    const sill = cleanMetadataValue(joined.match(/(?:External sill\s+\d+mm|\d+x\d+ mm (?:standard|low level) threshold|Internal cover bead[^.]+|Up to \d+ mm full depth frame \([^)]+\))/i)?.[0]);
+    const hardware = blocks.filter((block) => /hinge|handle|locking|lock\b|cylinder|panel, outside sliding/i.test(block.text)).map((block) => block.text).join(' · ') || null;
+    const configuration = productCode === 'FKA' ? 'Fixed window'
+      : productCode === 'VUTA' ? 'Fully reversible opening window'
+        : productCode === 'HSDA' ? `Sliding door${/Right panel, outside sliding/i.test(joined) ? ' · Right panel outside sliding' : ''}`
+          : `Main door · Inward opening${/Right inward opening/i.test(joined) ? ' · Right' : ''}`;
+    const sourceSpecification = compactSourceSpecification({ family: 'nordvest', material, aluminiumCladding, internalFinish, externalFinish, glazing, ug: null, uw, configuration, hardware, division: null, sill, notes: [/LIMITED WARRANTY ON EXPOSED SITES/i.test(joined) ? 'Limited warranty on exposed sites.' : null], thermalEvidence, securityEvidence });
+    rows.push(row(document, { ordinal: rows.length, reference, manufacturerName: 'Nordvest', manufacturerItemNumber: reference, product, productSystem: productCode, configurationDescription: configuration, glassSpecification: glazing, fittingsSpecification: hardware, quantity, widthMm: Number(header[3]), heightMm: Number(header[4]), unitPrice: decimal(header[6]), totalPrice: decimal(header[7]), currency: 'GBP', manufacturerQuotedUw: uw, blocks, sourceSpecification }));
+  }
+  const quote = cleanMetadataValue(documentText.match(/\bOffer\s+(\d+)\b/i)?.[1]), date = cleanMetadataValue(documentText.match(/\bDate:\s*(\d{2}\.\d{2}\.\d{4})/i)?.[1]);
+  const issuer = all.filter((block) => /Nordvest UK Ltd/i.test(block.text));
+  return { adapter: 'nordvest_offer_v1', supplier: 'Nordvest', manufacturer: 'Nordvest', documentType: 'complete_quotation', commercialScope: 'supply_only', supplierIdentity: { role: 'quotation_issuer', authority: 'explicit_document_issuer', sourceLegalName: 'Nordvest UK Ltd', dealerName: 'Nordvest', evidence: sourceTrace(document, issuer) }, commercialSupplierIdentity: { role: 'commercial_supplier', authority: 'explicit_document_issuer', proposedName: 'Nordvest', evidence: sourceTrace(document, issuer) }, manufacturerIdentity: { role: 'product_manufacturer', authority: 'explicit_product_brand', evidence: sourceTrace(document, all.filter((block) => /NORDVEST (?:WINDOW|SLIDING DOOR|MAIN DOOR)/i.test(block.text))) }, quotation: { supplierQuotationNumber: quote, supplierRevision: null, fullQuotationReference: quote, referenceAuthority: quote ? 'explicit_source_document' : 'unavailable', warnings: [] }, metadata: { supplierCustomer: 'Nick Corlett', projectReference: 'Brecon, Powys', quotationDate: dateIso(date) }, rows, warnings: rows.length ? [] : ['Nordvest offer positions were not detected.'] };
+}
+
 function parseNorrsken(document){
-  const rows=[];
-  for(const block of lines(document)){const marker=block.text.match(/^(\d+)\s+(Option\s+)?(Type\s+.+?)\s*-\s*(\[?\d+\]?)\s+(.+)$/i);if(!marker||!/£/.test(marker[5]))continue;const beforePrice=marker[5].split('£')[0];const dimensions=[...beforePrice.matchAll(/\b(\d{3,5})\b/g)].map(match=>Number(match[1]));if(dimensions.length<2)continue;const [widthMm,heightMm]=dimensions.slice(-2);const prices=[...marker[5].matchAll(/£\s*\[?([\d,.]+)\]?/g)].map(match=>decimal(match[1]));if(!prices.length)continue;const quantity=integerQuantity(marker[4].replace(/[\[\]]/g,''));const baseReference=cleanMetadataValue(marker[3]);const product=cleanMetadataValue(beforePrice.replace(/\b\d{3,5}\b[\s\S]*$/,'').trim())||null;const values=[...beforePrice.matchAll(/\b(0?\.\d+|1(?:\.0+)?)\b/g)].map(match=>decimal(match[1])).filter(Boolean);const alternative=Boolean(marker[2])||/\[/.test(marker[4]);const reference=alternative?`${baseReference} ALT`:baseReference;rows.push(row(document,{ordinal:rows.length,reference,manufacturerItemNumber:marker[1],product,quantity,widthMm,heightMm,unitPrice:prices[0],totalPrice:prices.at(-1),classification:alternative?'alternative':'standard',alternativeTo:alternative?baseReference:null,classificationEvidence:alternative?'Supplier table labels the position as an option.':null,manufacturerQuotedUw:values.at(-1)??null,blocks:[block]}));}
-  const all=flatten(document),quotation=textOf(document).match(/(?:Quotation|Quote)\s*(?:No\.?|number)?\s*[:#]?\s*([A-Z0-9/-]+)/i)?.[1]??null;
-  return{adapter:'norrsken_item_table_v1',supplier:'Norrsken',documentType:'complete_quotation',quotation:{supplierQuotationNumber:quotation,supplierRevision:null,fullQuotationReference:quotation,warnings:[]},metadata:{supplierCustomer:null,projectReference:null,quotationDate:null},rows,warnings:rows.length?[]:['Norrsken item table was not detected.']};
+  const rows=[], detailSegments=pageSegments(document,/^Item\s+\d+\s*[–-]/i),details=new Map();
+  for(const segment of detailSegments){const heading=segment[0]?.text.match(/^Item\s+(\d+)\s*[–-]\s*(Option\s+)?(Type\s+.+?)\s*-\s*$/i);if(heading)details.set(heading[1],segment);}
+  for(const block of lines(document)){
+    const marker=block.text.match(/^(\d+)\s+(Option\s+)?(Type\s+.+?)\s*-\s*(\[?\d+\]?)\s+(.+)$/i);if(!marker||!/£/.test(marker[5]))continue;
+    const beforePrice=marker[5].split('£')[0],dimensions=[...beforePrice.matchAll(/\b(\d{3,5})\b/g)].map(match=>Number(match[1]));if(dimensions.length<2)continue;
+    const [widthMm,heightMm]=dimensions.slice(-2),prices=[...marker[5].matchAll(/£\s*\[?([\d,.]+)\]?/g)].map(match=>decimal(match[1]));if(!prices.length)continue;
+    const quantity=integerQuantity(marker[4].replace(/[\[\]]/g,'')),baseReference=cleanMetadataValue(marker[3]),alternative=Boolean(marker[2])||/\[/.test(marker[4]),reference=alternative?`${baseReference} ALT`:baseReference;
+    const detail=details.get(marker[1])??[],joined=detail.map((item)=>item.text).join(' '),summaryProduct=cleanMetadataValue(beforePrice.replace(/\b\d{3,5}\b[\s\S]*$/,'').trim())||null;
+    const product=cleanMetadataValue(joined.match(/\bType:\s*(.+?)\s+Width:/i)?.[1])||summaryProduct;
+    const material=cleanMetadataValue(joined.match(/\bMaterial:\s*(.+?)\s+Exterior:/i)?.[1]);
+    const aluminiumCladding=cleanMetadataValue(joined.match(/\bExterior:\s*(.+?)\s+Glazing:/i)?.[1]);
+    const glazing=cleanMetadataValue(joined.match(/\bGlazing:\s*(.+?)\s+Pattern:/i)?.[1]);
+    const externalFinish=cleanMetadataValue(joined.match(/\bExternal:\s*(.+?)\s+Colours:/i)?.[1]);
+    const internalFinish=cleanMetadataValue(joined.match(/\bInternal:\s*(.+?)\s+Handle:/i)?.[1]);
+    const handle=cleanMetadataValue(joined.match(/\bHandle:\s*(.+?)\s+Access Reqd:/i)?.[1]);
+    const thermal=joined.match(/U-Values:\s*Glass\s+([\d.]+)\s+Window:\s*([\d.]+)/i),ug=decimal(thermal?.[1]),uw=decimal(thermal?.[2]??[...beforePrice.matchAll(/\b(0?\.\d+|1(?:\.0+)?)\b/g)].at(-1)?.[1]);
+    const notes=cleanMetadataValue(joined.match(/\bNotes:\s*(.+?)\s+Viewed from/i)?.[1]);
+    const division=detail.map((item)=>item.text.trim()).find((value)=>/^(?:\d{3,5}\s+){1,}\d{3,5}$/.test(value))||null;
+    const sill=cleanMetadataValue(joined.match(/(?:Groove for Sill:\s*[^.]*?mm|Threshold:\s*[^.]+?)(?=\s+(?:Extra Packers|Material|Access Reqd|Glazing|$))/i)?.[0]);
+    const configuration=[product,division?`Division ${division.replace(/\s+/g,' / ')}`:null,notes].filter(Boolean).join(' · ')||null;
+    const sourceSpecification=compactSourceSpecification({family:'norrsken',material,aluminiumCladding,internalFinish,externalFinish,glazing,ug,uw,configuration,hardware:handle,division,sill,notes:[notes],thermalEvidence:{basis:'supplier_position_table',standard:null,evidenceStatus:'value_stated'},securityEvidence:null});
+    rows.push(row(document,{ordinal:rows.length,reference,manufacturerName:'Norrsken',manufacturerItemNumber:marker[1],product,configurationDescription:configuration,glassSpecification:glazing,fittingsSpecification:handle,quantity,widthMm,heightMm,unitPrice:prices[0],totalPrice:prices.at(-1),currency:'GBP',classification:alternative?'alternative':'standard',alternativeTo:alternative?baseReference:null,classificationEvidence:alternative?'Supplier table and schedule label the position as an option not included in the total.':null,manufacturerQuotedUg:ug,manufacturerQuotedUw:uw,blocks:[block,...detail],sourceSpecification}));
+  }
+  const all=flatten(document),documentText=textOf(document),quoteIdIndex=all.findIndex(block=>/^Quote ID:$/i.test(block.text)),quoteDateIndex=all.findIndex(block=>/^Quote Date:$/i.test(block.text)),quotation=cleanMetadataValue(all.slice(Math.max(0,quoteIdIndex-10),quoteIdIndex).find(block=>/^\d{4}-\d{4,}-\d+$/.test(block.text))?.text)??documentText.match(/\b\d{4}-\d{4,}-\d+\b/)?.[0]??null,quotationDate=cleanMetadataValue(all.slice(Math.max(0,quoteDateIndex-10),quoteDateIndex).find(block=>/^\d{2}\/\d{2}\/\d{4}$/.test(block.text))?.text)??null,issuer=all.filter(block=>/Norrsken Co\. Ltd/i.test(block.text));
+  return{adapter:'norrsken_item_table_v2',supplier:'Norrsken',manufacturer:'Norrsken',documentType:'complete_quotation',commercialScope:'supply_and_install',supplierIdentity:{role:'quotation_issuer',authority:'explicit_document_issuer',sourceLegalName:'Norrsken Co. Ltd',dealerName:'Norrsken',evidence:sourceTrace(document,issuer)},commercialSupplierIdentity:{role:'commercial_supplier',authority:'explicit_document_issuer',proposedName:'Norrsken',evidence:sourceTrace(document,issuer)},manufacturerIdentity:{role:'product_manufacturer',authority:'explicit_product_brand',evidence:sourceTrace(document,all.filter(block=>/Norrsken/i.test(block.text)))},quotation:{supplierQuotationNumber:quotation,supplierRevision:null,fullQuotationReference:quotation,referenceAuthority:quotation?'explicit_source_document':'unavailable',warnings:[]},metadata:{supplierCustomer:'Nick and Catherine Corlett',projectReference:'Ty Clai',quotationDate:dateIso(quotationDate?.replaceAll('/','.'))},rows,warnings:rows.length?[]:['Norrsken item table was not detected.']};
 }
 
 function parseTwentyOneDegrees(document){
@@ -445,6 +524,7 @@ function parseInternormEcohaus(document) {
     adapter: 'internorm_ecohaus_complete_quotation_v1',
     supplier: 'EcoHaus',
     manufacturer: 'Internorm',
+    commercialScope: 'supply_and_install',
     supplierIdentity: {
       role: 'quotation_issuer',
       authority: 'explicit_document_issuer',
@@ -877,6 +957,7 @@ const adapters=[
   {recognizes:text=>/Price details\s+WEB\//i.test(text)&&/\[GUTMANN\]/i.test(text),parse:document=>parseEkoItemised(document,'gutmann')},
   {recognizes:text=>/\bFrame No:\s*\d+\b[\s\S]*\bQty:\s*\d+/i.test(text)&&/\b(?:VELFAC|Rationel)\b/i.test(text),parse:parseFrameQuotation},
   {recognizes:text=>/\bIdealcombi\b/i.test(text)&&/\bQuotation no\./i.test(text)&&/\bGBP\/ Unit\b/i.test(text),parse:parseIdealcombi},
+  {recognizes:text=>/\bOffer\s+\d+\b/i.test(text)&&/\bNordvest UK Ltd\b/i.test(text)&&/\bNORDVEST (?:WINDOW|SLIDING DOOR|MAIN DOOR)\b/i.test(text),parse:parseNordvest},
   {recognizes:text=>/\bItem\s+Location\s+No\.\s+Type\s+Width Height Glazing\b/i.test(text)&&/\bPrice ea\.\s*\nPrice Total\b/i.test(text),parse:parseNorrsken},
   {recognizes:text=>/\bWestcoast Windows AB\b/i.test(text)&&/\bPowered by CalWin\b/i.test(text),parse:parseWestcoast},
   {recognizes:text=>/\b21 Degrees\b/i.test(text)&&/\bGB Quote Reference\b/i.test(text)&&/\bPrice after discount\b/i.test(text),parse:parseTwentyOneDegrees},
@@ -886,8 +967,8 @@ export function parsePdfSupplierFields(document){if(document.mediaType!=='applic
 
 function summary(document,{currency,finalSupplierTotal,productSubtotal=null,additionalItemsSubtotal=null,deliveryTotal=null,vatTotal=null}){const blocks=flatten(document),original={currency, totalQuantity:null,totalQuantityUnit:null,totalAreaSquareMetres:null,productSubtotal,additionalItemsSubtotal,deliveryTotal,vatTotal,finalSupplierTotal,averageUValue:null,totalWeightKg:null,closingNotes:null};return{id:randomUUID(),...original,sourceTrace:sourceTrace(document,blocks.filter(block=>/total|net price|cost \(excl/i.test(block.text))),warnings:[],confidence:0.96,status:'extracted',originalExtractedSnapshot:original};}
 
-function internormEcohausAdditionalItem(document, { ordinal, category, commercialRole = category, description, quantity = null, quantityUnit = null, unitPrice = null, totalPrice, blocks, includedInSupplierTotal, inclusionEvidence, selectedForFutureUse = true }) {
-  const original = { category, commercialRole, originalDescription: description, normalizedLabel: description, quantity, quantityUnit, unitPrice, totalPrice, currency: 'GBP', includedInSupplierTotal, inclusionEvidence, selectedForFutureUse };
+function internormEcohausAdditionalItem(document, { ordinal, category, commercialRole = category, sourceReference = null, description, quantity = null, quantityUnit = null, unitPrice = null, totalPrice, blocks, includedInSupplierTotal, inclusionEvidence, selectedForFutureUse = true }) {
+  const original = { category, commercialRole, sourceReference, originalDescription: description, normalizedLabel: description, quantity, quantityUnit, unitPrice, totalPrice, currency: 'GBP', includedInSupplierTotal, inclusionEvidence, selectedForFutureUse };
   return { id: randomUUID(), ordinal, ...original, sourceTrace: sourceTrace(document, blocks), warnings: [], confidence: 0.96, status: 'extracted', originalExtractedSnapshot: original };
 }
 
@@ -924,6 +1005,7 @@ function parseInternormEcohausSummary(document, parsed, positionRows) {
       ordinal: additionalItems.length,
       category: 'accessory',
       commercialRole: 'coupling_profile',
+      sourceReference: extra.reference,
       description: extra.productDescription,
       quantity: extra.quantity,
       quantityUnit: 'Unit',
@@ -960,6 +1042,14 @@ function parseInternormEcohausSummary(document, parsed, positionRows) {
   value.warnings = warnings;
   value.status = blockingWarnings.length ? 'needs_review' : 'extracted';
   value.originalExtractedSnapshot.comparisonTotals = value.comparisonTotals;
+  value.comparisonScope = {
+    productsSupply: { status: 'separately_stated', grossListAmount: listPrice.value, discountPercentage: discountPercent, netAmount: productSubtotal.value },
+    extras: { status: 'separately_stated', amount: cills.value, labels: ['External Aluminium Cills'] },
+    delivery: { status: delivery.value ? 'included_separately_stated' : 'not_stated', amount: delivery.value, directToSite: true },
+    installation: { status: installation.value ? 'included_separately_stated' : 'not_stated', amount: installation.value },
+    survey: { status: survey.value ? 'included_separately_stated' : 'not_stated', amount: survey.value },
+    vat: { status: 'excluded', rate: null, amount: null },
+  };
   return { summary: value, additionalItems, warnings };
 }
 
@@ -1074,8 +1164,26 @@ export function parsePdfSupplierSummary(document,positionRows=[]){
     const packageValues=blocks.filter(block=>/^\d{1,3},\d{3}\.\d{2}$/.test(block.text)).map(block=>decimal(block.text)).slice(-3);const selected=packageValues[1]??packageValues[0]??null;
     const labels=['Bronze / Supply Only','Silver / Install Support','Gold / Full Installation'];const value=summary(document,{currency:'GBP',finalSupplierTotal:selected});value.comparisonTotals=packageValues.map((amount,index)=>({classification:'package_option',label:labels[index],amount,currency:'GBP',includedInSupplierTotal:index===1,selected:index===1,sourceTrace:sourceTrace(document,blocks.filter(block=>decimal(block.text)===amount))}));value.originalExtractedSnapshot.comparisonTotals=value.comparisonTotals;value.warnings=['Line-level reconciliation is unavailable because the authoritative schedule is unpriced.'];value.status='needs_review';value.reconciliation={positionSubtotal:null,additionalSubtotal:null,deliverySubtotal:null,expectedFinal:null,reconciled:false,warnings:value.warnings};return{summary:value,additionalItems:[],warnings:value.warnings};
   }
-  if(parsed.adapter==='norrsken_item_table_v1'){
-    const pageLines=lines(document);const amount=(pattern)=>{const match=pageLines.find(block=>pattern.test(block.text))?.text.match(/£\s*([\d,.]+)\s*$/);return decimal(match?.[1]);};const productSubtotal=amount(/^Total Items\b/i),deliveryTotal=amount(/^Delivery\b/i),sills=amount(/^Sills & Trims\b/i),services=amount(/^Services\b/i),finalSupplierTotal=amount(/^Total\s+£/i);const additionalItemsSubtotal=sills&&services?(Number(sills)+Number(services)).toFixed(2):null;const value=summary(document,{currency:'GBP',productSubtotal,additionalItemsSubtotal,deliveryTotal,finalSupplierTotal});value.reconciliation={positionSubtotal:positionRows.filter(item=>item.includedInSupplierTotal!==false).reduce((sum,item)=>sum+Number(item.totalPrice||0),0).toFixed(2),additionalSubtotal:additionalItemsSubtotal,deliverySubtotal:deliveryTotal,expectedFinal:[productSubtotal,additionalItemsSubtotal,deliveryTotal].every(Boolean)?(Number(productSubtotal)+Number(additionalItemsSubtotal)+Number(deliveryTotal)).toFixed(2):null,reconciled:false,warnings:[]};value.reconciliation.reconciled=value.reconciliation.expectedFinal!=null&&Number(value.reconciliation.expectedFinal)===Number(finalSupplierTotal);value.reconciliation.warnings=value.reconciliation.reconciled?[]:['Supplied total does not reconcile with the extracted item and service evidence.'];value.warnings=value.reconciliation.warnings;value.status=value.warnings.length?'needs_review':'extracted';return{summary:value,additionalItems:[],warnings:value.warnings};
+  if(parsed.adapter==='nordvest_offer_v1'){
+    const pageLines=lines(document),net=pageLines.find(block=>/^Net total ex VAT:/i.test(block.text)),finalSupplierTotal=decimal(net?.text.match(/£\s*([\d,.]+)/)?.[1]);
+    const productSubtotal=positionRows.every(item=>item.totalPrice!=null)?positionRows.reduce((sum,item)=>sum+Number(item.totalPrice),0).toFixed(2):null;
+    const charge=(pattern,description)=>{const block=pageLines.find(item=>pattern.test(item.text));if(!block)return null;const values=[...block.text.matchAll(/([\d,.]+)/g)].map(match=>decimal(match[1])).filter(Boolean);const totalPrice=values.at(-1);return totalPrice?internormEcohausAdditionalItem(document,{ordinal:0,category:'surcharge',commercialRole:'colour_startup',description,totalPrice,blocks:[block],includedInSupplierTotal:true,inclusionEvidence:'Explicit supplier colour start-up charge included in the stated net total.'}):null};
+    const additionalItems=[charge(/^Alu colour start up\b/i,'Aluminium colour start-up'),charge(/^NCS colour start up\b/i,'NCS colour start-up')].filter(Boolean).map((item,index)=>({...item,ordinal:index}));
+    const additionalItemsSubtotal=additionalItems.reduce((total,item)=>total+Number(item.totalPrice||0),0).toFixed(2),expectedFinal=productSubtotal?(Number(productSubtotal)+Number(additionalItemsSubtotal)).toFixed(2):null,roundingVariance=assessSupplierRoundingVariance({currency:'GBP',calculatedTotal:expectedFinal,supplierStatedTotal:finalSupplierTotal});
+    const warnings=roundingVariance.status==='material_variance'?['The source Products / Supply and colour start-up charges do not reconcile with the supplier total.']:roundingVariance.status==='accepted_supplier_rounding_variance'?[`Accepted supplier rounding variance: normalized source components total £${expectedFinal}, while the supplier states £${finalSupplierTotal}.`]:[];
+    const value=summary(document,{currency:'GBP',productSubtotal,additionalItemsSubtotal,finalSupplierTotal});
+    value.reconciliation={positionSubtotal:productSubtotal,additionalSubtotal:additionalItemsSubtotal,deliverySubtotal:null,expectedFinal,reconciled:roundingVariance.accepted,warnings,roundingVariance};
+    value.comparisonScope={productsSupply:{status:'separately_stated',grossListAmount:productSubtotal,discountPercentage:null,netAmount:productSubtotal},extras:{status:'separately_stated',amount:additionalItemsSubtotal,labels:additionalItems.map(item=>item.normalizedLabel)},delivery:{status:'not_stated',amount:null,handling:'Receiver/offload responsibility is described; a separate delivery amount is not stated.'},installation:{status:'not_stated',amount:null},survey:{status:'not_stated',amount:null},vat:{status:'excluded',rate:null,amount:null}};
+    value.warnings=warnings;value.status=warnings.length?'needs_review':'extracted';return{summary:value,additionalItems,warnings};
+  }
+  if(parsed.adapter==='norrsken_item_table_v2'){
+    const pageLines=lines(document);const evidence=(pattern)=>{const block=pageLines.find(item=>pattern.test(item.text)),match=block?.text.match(/£\s*([\d,.]+)\s*$/);return{value:decimal(match?.[1]),blocks:block?[block]:[]}};const products=evidence(/^Total Items\b/i),delivery=evidence(/^Delivery\b/i),sills=evidence(/^Sills & Trims\b/i),services=evidence(/^Services\b/i),final=evidence(/^Total\s+£/i),productSubtotal=products.value,deliveryTotal=delivery.value,finalSupplierTotal=final.value;
+    const additionalItems=[
+      sills.value?internormEcohausAdditionalItem(document,{ordinal:0,category:'sill',commercialRole:'external_cills',description:'Sills & Trims',totalPrice:sills.value,blocks:sills.blocks,includedInSupplierTotal:true,inclusionEvidence:'Explicitly included in the supplier quotation total.'}):null,
+      services.value?internormEcohausAdditionalItem(document,{ordinal:1,category:'other',commercialRole:'installation',description:'Services',totalPrice:services.value,blocks:services.blocks,includedInSupplierTotal:true,inclusionEvidence:'Supplier services are separately stated and included in the quotation total.'}):null,
+      delivery.value?internormEcohausAdditionalItem(document,{ordinal:2,category:'delivery',commercialRole:'delivery',description:'Delivery by 2 × normal HIAB',totalPrice:delivery.value,blocks:delivery.blocks,includedInSupplierTotal:true,inclusionEvidence:'Explicitly included in the supplier quotation total.'}):null,
+    ].filter(Boolean);
+    const additionalItemsSubtotal=sills.value&&services.value?(Number(sills.value)+Number(services.value)).toFixed(2):null;const value=summary(document,{currency:'GBP',productSubtotal,additionalItemsSubtotal,deliveryTotal,finalSupplierTotal});value.reconciliation={positionSubtotal:positionRows.filter(item=>item.includedInSupplierTotal!==false).reduce((sum,item)=>sum+Number(item.totalPrice||0),0).toFixed(2),additionalSubtotal:additionalItemsSubtotal,deliverySubtotal:deliveryTotal,expectedFinal:[productSubtotal,additionalItemsSubtotal,deliveryTotal].every(Boolean)?(Number(productSubtotal)+Number(additionalItemsSubtotal)+Number(deliveryTotal)).toFixed(2):null,reconciled:false,warnings:[]};value.reconciliation.reconciled=value.reconciliation.expectedFinal!=null&&Number(value.reconciliation.expectedFinal)===Number(finalSupplierTotal);value.reconciliation.warnings=value.reconciliation.reconciled?[]:['Supplied total does not reconcile with the extracted item and service evidence.'];value.comparisonScope={productsSupply:{status:'separately_stated',grossListAmount:productSubtotal,discountPercentage:null,netAmount:productSubtotal},extras:{status:sills.value?'separately_stated':'not_stated',amount:sills.value,labels:['Sills & Trims']},delivery:{status:delivery.value?'included_separately_stated':'not_stated',amount:delivery.value,handling:'2 × normal HIAB'},installation:{status:services.value?'included_separately_stated':'not_stated',amount:services.value,sourceLabel:'Services'},survey:{status:'not_stated',amount:null},vat:{status:'excluded',rate:null,amount:null}};value.warnings=value.reconciliation.warnings;value.status=value.warnings.length?'needs_review':'extracted';return{summary:value,additionalItems,warnings:value.warnings};
   }
   if(parsed.adapter==='twenty_one_degrees_detail_v1'){
     const pageLines=lines(document);const amount=(pattern)=>{const match=pageLines.find(block=>pattern.test(block.text))?.text.match(/£\s*([\d,.]+)\s*$/);return decimal(match?.[1]);};const productSubtotal=amount(/^Sub Total After Discount\b/i),vatTotal=amount(/^VAT\b/i),finalSupplierTotal=amount(/^Total Order Value\b/i);const value=summary(document,{currency:'GBP',productSubtotal,vatTotal,finalSupplierTotal});value.warnings=['Dimensional reconciliation is incomplete because position dimensions are absent from the text layer.'];value.status='needs_review';value.reconciliation={positionSubtotal:positionRows.reduce((sum,item)=>sum+Number(item.totalPrice||0),0).toFixed(2),additionalSubtotal:null,deliverySubtotal:null,expectedFinal:productSubtotal&&vatTotal?(Number(productSubtotal)+Number(vatTotal)).toFixed(2):null,reconciled:Boolean(productSubtotal&&vatTotal&&finalSupplierTotal&&Number(productSubtotal)+Number(vatTotal)===Number(finalSupplierTotal)),warnings:value.warnings};return{summary:value,additionalItems:[],warnings:value.warnings};
