@@ -99,6 +99,11 @@ export function createCommercialIdentityService(db, { now = () => new Date(), id
     const client = await db.get("SELECT id FROM clients WHERE id=? AND deleted_at IS NULL", clientId);
     if (!client) throw problem("The selected Client is unavailable.", 404, "client_not_found");
     const projectId = input.id || id(), createdAt = timestamp(now);
+    const existing = input.id ? await db.get("SELECT p.*,0 estimate_count,0 order_count FROM projects p WHERE p.id=? AND p.deleted_at IS NULL", projectId) : null;
+    if (existing) {
+      if (existing.client_id !== clientId || clean(existing.name) !== name) throw problem("This Project retry identity belongs to different reviewed details.", 409, "project_retry_conflict");
+      return { ...mapProject(existing), driveProvisioning: await provisionProjectOutcome(projectId) };
+    }
     await db.run(`INSERT INTO projects(id,client_id,source_enquiry_id,name,status,context_year,site_address,site_address_json,postcode,what3words,latitude,longitude,created_at,updated_at)
       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, projectId, clientId, clean(input.sourceEnquiryId) || null, name, clean(input.status) || "active", Number(input.contextYear) || now().getUTCFullYear(), clean(input.siteAddress), json(input.siteAddressJson), clean(input.postcode), clean(input.what3words), Number.isFinite(Number(input.latitude)) ? Number(input.latitude) : null, Number.isFinite(Number(input.longitude)) ? Number(input.longitude) : null, createdAt, createdAt);
     const project = mapProject(await db.get("SELECT p.*,0 estimate_count,0 order_count FROM projects p WHERE p.id=?", projectId));

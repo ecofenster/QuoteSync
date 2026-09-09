@@ -205,6 +205,16 @@ router.post('/', async (req, res) => {
     if (normalizedClientRef && !/^EF-CL-\d{3}$/.test(normalizedClientRef)) return res.status(422).json({ error: 'Client references use EF-CL-###' });
     if (normalizedClientRef) return res.status(422).json({ error: 'Client references are allocated automatically. Protected reassignment is available only through controlled reconciliation.' });
 
+    if (requestedId) {
+      const existing = await db.get('SELECT id,client_ref,name,email,project_name,commercial_lifecycle,reference_namespace,deleted_at FROM clients WHERE id=?', id);
+      if (existing) {
+        if (existing.deleted_at || String(existing.name || '').trim() !== String(name || '').trim() || String(existing.email || '').trim() !== String(email || '').trim() || String(existing.project_name || '').trim() !== String(project_name || '').trim()) {
+          return res.status(409).json({ error: 'This Client retry identity belongs to different details.' });
+        }
+        return res.status(200).json({ ...existing, idempotent_replay: true });
+      }
+    }
+
     await db.exec('BEGIN IMMEDIATE');
     try {
       if (!normalizedClientRef) normalizedClientRef = await allocateCanonicalReference(db, { kind: 'client', entityId: id });

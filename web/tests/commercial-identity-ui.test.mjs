@@ -18,6 +18,11 @@ test("Enquiry and Project UX foundation exposes explicit qualification and Estim
   assert.match(projects, /New Project/);
   assert.match(projects, /One permanent Client may own multiple named Projects/);
   assert.match(app, /createEstimateProjectId/);
+  assert.match(app, /Create Client \+ Project/);
+  assert.match(app, /add Client Files or open Drawings \(Client\)/i);
+  assert.match(app, /Retry Project \/ Folders/);
+  assert.match(app, /commercialIdentityApi\.createProject/);
+  assert.doesNotMatch(app, /Client save creates the Client identity only/);
   assert.match(app, /Every new EF-EST belongs to one immutable Project/);
   assert.match(estimateRow, /Project: \{item\.projectName\}/);
   assert.match(types, /ProjectId/);

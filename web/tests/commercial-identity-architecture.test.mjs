@@ -109,6 +109,22 @@ test("Project creation reports a safe Drive provisioning outcome without rolling
   assert.equal((await db.get("SELECT COUNT(*) count FROM projects WHERE client_id='client'")).count, 2);
 });
 
+test("new Client Project retries reuse the stable Project identity and folder provisioning", async (t) => {
+  const db = await fixture(t, [{ id: "client", name: "Disposable Client", ref: "TEST-CL-001" }]);
+  let provisions = 0;
+  const service = createCommercialIdentityService(db, {
+    now,
+    driveTransitions: { provisionProject: async () => { provisions += 1; return { status: "provisioned" }; } },
+  });
+  const first = await service.createProject({ id: "stable-project", clientId: "client", name: "Reviewed Project", contextYear: 2026, siteAddress: "1 Test Road" });
+  const retried = await service.createProject({ id: "stable-project", clientId: "client", name: "Reviewed Project", contextYear: 2026, siteAddress: "1 Test Road" });
+  assert.equal(first.id, "stable-project");
+  assert.equal(retried.id, first.id);
+  assert.equal(provisions, 2);
+  assert.equal((await db.get("SELECT COUNT(*) count FROM projects WHERE id='stable-project'")).count, 1);
+  await assert.rejects(() => service.createProject({ id: "stable-project", clientId: "client", name: "Different Project", contextYear: 2026 }), /different reviewed details/i);
+});
+
 test("one Client owns multiple Projects and one Project owns separate Estimates plus revisions", async (t) => {
   const db = await fixture(t, [{ id: "benjamin", name: "Benjamin Henry", ref: "EF-CL-004" }]);
   const service = createCommercialIdentityService(db, { now });

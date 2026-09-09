@@ -33,8 +33,10 @@ try {
   console.log(`[QuoteSuite dev] Vite and watched API started. API watch PID ${started.apiWatcherPid}; Vite PID ${started.frontendPid}.`);
   console.log("[QuoteSuite dev] Server/shared dependency changes restart the owned API; Vite handles frontend HMR.");
   const ended = await supervisor.waitForUnexpectedExit();
-  console.error(`[QuoteSuite dev] ${ended.role} exited unexpectedly (code ${ended.code ?? "none"}, signal ${ended.signal ?? "none"}).`);
-  await finish(`${ended.role}_exit`, 1);
+  if (!ended.intentional) {
+    console.error(`[QuoteSuite dev] ${ended.role} exited unexpectedly (code ${ended.code ?? "none"}, signal ${ended.signal ?? "none"}).`);
+    await finish(`${ended.role}_exit`, 1);
+  }
 } catch (error) {
   console.error(`[QuoteSuite dev] ${error instanceof Error ? error.message : String(error)}`);
   await finish("startup_failure", 1);

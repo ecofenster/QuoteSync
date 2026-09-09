@@ -31,7 +31,15 @@ export type RelationshipSuggestion = {
   autoLinkAllowed: false;
 };
 
-const stripMarkup = (value: string) => value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+const decodeHtmlEntities = (value: string) => value.replace(/&(#x?[0-9a-f]+|amp|lt|gt|quot|apos|nbsp);/gi, (match, entity: string) => {
+  const normalized = entity.toLowerCase();
+  if (normalized.startsWith("#")) {
+    const hex = normalized.startsWith("#x"), codePoint = Number.parseInt(normalized.slice(hex ? 2 : 1), hex ? 16 : 10);
+    return Number.isFinite(codePoint) && codePoint > 0 && codePoint <= 0x10ffff ? String.fromCodePoint(codePoint) : match;
+  }
+  return ({ amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " } as Record<string, string>)[normalized] ?? match;
+});
+const readableMailText = (value: string, stripMarkup = false) => decodeHtmlEntities(stripMarkup ? value.replace(/<[^>]*>/g, " ") : value).replace(/\s+/g, " ").trim();
 const escapeAttribute = (value: string) => value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 
 export function formatMailboxDateTime(value: string | null, locale = "en-GB") {
@@ -44,11 +52,11 @@ export function formatMailboxDateTime(value: string | null, locale = "en-GB") {
 }
 
 export function projectMailboxRow(message: CommunicationMessageView, folder: string): MailboxRowProjection {
-  const sender = (folder === "sent" || folder === "drafts" ? message.to : message.from).join(", ") || "Unknown sender";
+  const sender = readableMailText((folder === "sent" || folder === "drafts" ? message.to : message.from).join(", ") || "Unknown sender");
   return {
     sender,
-    subject: message.subject || "(No subject)",
-    snippet: stripMarkup(message.snippet || message.bodyText || message.bodyHtml || "No preview available"),
+    subject: readableMailText(message.subject || "(No subject)"),
+    snippet: readableMailText(message.snippet || message.bodyText || message.bodyHtml || "No preview available", true),
     dateTime: formatMailboxDateTime(message.sentAt),
     unread: message.unread,
     starred: message.starred,

@@ -37,9 +37,15 @@ export function createDevelopmentWorkspaceSupervisor({
   let frontend;
   let stopping = false;
   let resolveUnexpectedExit;
+  let unexpectedExitResolved = false;
   const unexpectedExit = new Promise((resolve) => { resolveUnexpectedExit = resolve; });
+  const settleUnexpectedExit = (result) => {
+    if (unexpectedExitResolved) return;
+    unexpectedExitResolved = true;
+    resolveUnexpectedExit(result);
+  };
   const monitor = (child, role) => child.once?.("exit", (code, signal) => {
-    if (!stopping) resolveUnexpectedExit({ role, code, signal });
+    if (!stopping) settleUnexpectedExit({ role, code, signal, intentional: false });
   });
 
   const probeOptions = { host, port: apiPort };
@@ -96,6 +102,7 @@ export function createDevelopmentWorkspaceSupervisor({
     async stop(reason = "shutdown") {
       if (stopping) return null;
       stopping = true;
+      settleUnexpectedExit({ role: "shutdown", code: 0, signal: reason, intentional: true });
       const owned = [];
       if (frontend) owned.push({ role: "vite", pid: frontend.pid, result: await terminateImpl(frontend, { platformName: process.platform }) });
       if (apiWatcher) owned.push({ role: "api-watch", pid: apiWatcher.pid, result: await terminateImpl(apiWatcher, { platformName: process.platform }) });

@@ -52,7 +52,9 @@ http.createServer((request,response)=>{if(request.url==="/api/health"){response.
   assert.notEqual(restarted.health.startedAt, started.api.health.startedAt);
   assert.equal(supervisor.ownedPids().apiWatcherPid, ownerPid);
 
+  const intentionalExit = supervisor.waitForUnexpectedExit();
   const cleanup = await supervisor.stop("test_complete");
+  assert.deepEqual(await intentionalExit, { role: "shutdown", code: 0, signal: "test_complete", intentional: true });
   assert.equal(cleanup.baseline.listening, false);
   assert.equal(cleanup.current.listening, false);
   assert.deepEqual(cleanup.owned.map((item) => item.role), ["api-watch"]);

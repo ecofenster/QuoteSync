@@ -42,6 +42,13 @@ test("message row projection keeps date and time, unread, labels, attachment and
   assert.match(formatMailboxDateTime(message.sentAt),/26 Aug 2026 ·/);
 });
 
+test("mailbox preview decodes escaped sender, subject and snippet characters",()=>{
+  const row=projectMailboxRow({...message,from:["Smith &amp; Co &lt;mail@example.com&gt;"],subject:"Windows &amp; doors &#x2014; update",snippet:"Price &#163;1,250 &quot;net&quot;"},"inbox");
+  assert.equal(row.sender,"Smith & Co <mail@example.com>");
+  assert.equal(row.subject,"Windows & doors — update");
+  assert.equal(row.snippet,'Price £1,250 "net"');
+});
+
 test("HTML presentation prefers safe markup, resolves CID images and blocks active/remote content",()=>{
   const safe=sanitizeEmailHtml(message.bodyHtml,{resolveCid:id=>id==="logo-1"?"/controlled/inline/logo":null});
   assert.match(safe,/Quotation/);assert.match(safe,/\/controlled\/inline\/logo/);assert.doesNotMatch(safe,/<script|onclick|javascript:/i);assert.doesNotMatch(safe,/tracker\.example/);assert.match(safe,/data-qs-remote-image="blocked"/);assert.match(safe,/Content-Security-Policy/);assert.match(safe,/connect-src 'none'/);assert.match(safe,/sandbox|noopener|referrerpolicy/i);
@@ -90,6 +97,7 @@ test("Email UI exposes dense accessible state, threads, pagination, menus, selec
   for(const phrase of ["Mailbox navigation","Starred","Drafts","Categories","QuoteSuite","aria-multiselectable","onContextMenu","preventDefault","ArrowDown","Escape","Reply all","Save Draft","BCC","nextPageToken","pageHistory","sandbox=\"\"","Remote images are blocked","Unlinked — review","Confirm relationship","More conversation actions","configuration is retained","recover automatically when the server encryption service is restored"])assert.match(ui,new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),"i"));
   for(const state of ["border-bottom:1px solid var(--qs-border-standard)",".email-message-row.is-unread",".email-message-row.is-selected",".email-message-row.is-selected.is-unread",".email-message-row:hover",".email-message-row:focus-visible","@media(max-width:560px)"])assert.ok(css.includes(state));
   assert.match(api,/page_token/);assert.match(api,/\/threads\//);assert.match(api,/\/commands/);assert.match(api,/\/links/);assert.match(ui,/communicationsApi\.link/);assert.doesNotMatch(ui,/gmail\.googleapis\.com|access_token|refresh_token/);
+  assert.match(ui,/unreadOnly\?"is:unread"/);assert.match(ui,/aria-pressed=\{unreadOnly\}/);assert.match(ui,/Unread · Show All/);
 });
 
 test("Administration exposes explicit Google Workspace re-consent without credential re-entry",async()=>{
@@ -143,6 +151,6 @@ test("Email reuses one conversation reader across List, Right and Bottom preview
 
 test("Email and Files use QuoteSuite typography tokens and normal control hit targets",async()=>{
   const [emailCss,filesCss]=await Promise.all([readFile("src/features/communications/emailWorkspace.css","utf8"),readFile("src/features/documents/canonicalDocuments.css","utf8")]);
-  assert.match(emailCss,/email-message-row__sender[^}]*var\(--qs-type-body\)/);assert.match(emailCss,/email-message-row__content small[^}]*var\(--qs-type-meta\)/);assert.match(emailCss,/email-toolbar__button\{width:var\(--qs-control-height\);min-width:var\(--qs-control-height\);min-height:var\(--qs-control-height\);font-size:var\(--qs-icon-size\)/);assert.match(emailCss,/email-mailnav__group>button[^}]*min-height:var\(--qs-control-height\)/);
+  assert.match(emailCss,/email-message-row__sender[^}]*var\(--qs-type-body\)/);assert.match(emailCss,/email-message-row__content small[^}]*var\(--qs-type-label\)/);assert.match(emailCss,/email-toolbar__button\{width:var\(--qs-control-height\);min-width:var\(--qs-control-height\);min-height:var\(--qs-control-height\);font-size:var\(--qs-icon-size\)/);assert.match(emailCss,/email-mailnav__group>button[^}]*min-height:var\(--qs-control-height\)/);
   assert.match(filesCss,/file-explorer__primary strong\{font-size:var\(--qs-type-body\)/);assert.match(filesCss,/file-explorer__primary small\{font-size:var\(--qs-type-meta\)/);assert.match(filesCss,/file-explorer__navigation \.ui-button\{min-width:var\(--qs-control-height\);min-height:var\(--qs-control-height\)/);assert.match(filesCss,/file-explorer__breadcrumbs[^}]*font-size:var\(--qs-type-body\)/);
 });

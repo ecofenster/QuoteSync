@@ -1545,6 +1545,8 @@ export default function App() {
   // Add client UI
   const [showAddClient, setShowAddClient] = useState(false);
   const [clientSaving, setClientSaving] = useState(false);
+  const [clientCreateMessage, setClientCreateMessage] = useState("");
+  const clientCreateRetryRef = useRef<{ clientId: Models.ClientId; projectId: string; clientPersisted: boolean } | null>(null);
   const [showAddEstimateModal, setShowAddEstimateModal] = useState(false);
   const [createEstimateClientId, setCreateEstimateClientId] = useState<string>("");
   const [createEstimateProjectId, setCreateEstimateProjectId] = useState<string>("");
@@ -2668,6 +2670,7 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
   }
 
   function resetClientDraftForm() {
+    clientCreateRetryRef.current = null;
     setEditingClientId(null);
     setDraftClientType("Individual");
     setDraftClientName("");
@@ -2723,6 +2726,11 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
 
   async function createClient(type: ClientType) {
     if (clientSaving) return null;
+    const reviewedProjectName = draftProjectName.trim();
+    if (!reviewedProjectName) {
+      setClientCreateMessage("Enter a reviewed Project name before creating the Client and Project folders.");
+      return null;
+    }
 
     const customerAddressStructured: Address = {
       line1: draftCustAddress1.trim(),
@@ -2753,15 +2761,17 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
 
     const invoiceAddress = buildAddressString(invoiceAddressStructured) || customerAddress;
 
-    const projectAddress = "";
-    const projectAddressStructured = resolveStructuredAddress(undefined, projectAddress);
+    const projectAddress = customerAddress;
+    const projectAddressStructured = { ...customerAddressStructured };
 
     const businessName = draftBusinessName.trim();
     const contactPerson = draftContactName.trim();
     const clientName = type === "Business" ? businessName || "Business" : draftClientName.trim() || "Client";
 
+    const retry = clientCreateRetryRef.current ?? { clientId: Models.asClientId(uid()), projectId: uid(), clientPersisted: false };
+    clientCreateRetryRef.current = retry;
     const newClient: Client = {
-      id: Models.asClientId(uid()),
+      id: retry.clientId,
       type,
       clientRef: "",
       clientName,
@@ -2783,6 +2793,7 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
     };
 
     setClientSaving(true);
+    setClientCreateMessage("");
     try {
       const createdClient = await apiFetch("/api/clients", {
         method: "POST",
@@ -2790,11 +2801,23 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
         body: JSON.stringify(buildDbClientPayload(newClient)),
       });
       const persistedClient = { ...newClient, clientRef: String(createdClient?.client_ref || "") };
-
-      setClients((prev) => [persistedClient, ...prev]);
-      setClientCounter((n) => n + 1);
+      retry.clientPersisted = true;
+      setClients((prev) => prev.some((client) => client.id === persistedClient.id) ? prev.map((client) => client.id === persistedClient.id ? persistedClient : client) : [persistedClient, ...prev]);
+      setClientCounter((n) => Number(createdClient?.idempotent_replay) ? n : n + 1);
       setClientDbSearch("");
       setClientsLoaded(true);
+
+      const project = await commercialIdentityApi.createProject({
+        id: retry.projectId,
+        clientId: persistedClient.id,
+        name: reviewedProjectName,
+        contextYear: new Date().getFullYear(),
+        siteAddress: projectAddress,
+        siteAddressJson: customerAddressStructured as unknown as Record<string, string>,
+        postcode: customerAddressStructured.postcode,
+      });
+      const folderMessage = project.driveProvisioning?.message || "Project saved. Folder creation status was not returned.";
+      setClientCreateMessage(`${persistedClient.clientRef || "Client"} and ${project.name} created. ${folderMessage} Next: add Client Files or open Drawings (Client), then review the Project requirements.`);
       setShowAddClient(false);
       resetClientDraftForm();
 
@@ -2806,6 +2829,8 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
 
       return persistedClient;
     } catch (error) {
+      const prefix = retry.clientPersisted ? "The Client was saved, but the Project or folders are not complete. Your entries are preserved; retry safely. " : "";
+      setClientCreateMessage(`${prefix}${error instanceof Error ? error.message : "Client and Project could not be created."}`);
       if (error instanceof ApiRequestError) {
         console.error("Failed to create client", {
           status: error.status,
@@ -2826,6 +2851,7 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
 
   function openAddClientPanel() {
     resetClientDraftForm();
+    setClientCreateMessage("");
     setShowAddClient(true);
   }
 
@@ -4481,7 +4507,7 @@ return (
               </div>
             )}
             {topShellPage === "tools" && <ToolsHubPage initialTool={initialToolsTab} />}
-            {topShellPage !== "tools" && menu !== "dashboard" && view !== "estimate_workspace" && (
+            {topShellPage !== "tools" && menu !== "dashboard" && menu !== "email" && view !== "estimate_workspace" && (
               <Card className="qs-migrated-87">
                 <div className="app-cluster app-cluster--between app-cluster--start">
                   <div>
@@ -4630,7 +4656,7 @@ return (
       <div>
         <div className="qs-migrated-12">Project name</div>
         <Input value={draftProjectName} onChange={setDraftProjectName} placeholder="Project name" />
-        <Small>Client save creates the Client identity only. Create the reviewed canonical Project in Client Info to provision its Files workspace.</Small>
+        <Small>Required. Creates the canonical Project and missing connected-storage folders; existing folders are reused.</Small>
       </div>
 
       <div className="legacy-section-divider qs-migrated-14">
@@ -4768,7 +4794,7 @@ return (
         </Button>
         <Button
           variant="primary"
-          disabled={clientSaving}
+          disabled={clientSaving || (!editingClientId && !draftProjectName.trim())}
           onClick={() => {
             if (editingClientId) {
               updateClient(draftClientType);
@@ -4777,7 +4803,7 @@ return (
             void createClient(draftClientType);
           }}
         >
-          {clientSaving ? "Saving..." : editingClientId ? "Save Changes" : "Create Client"}
+          {clientSaving ? "Saving..." : editingClientId ? "Save Changes" : clientCreateRetryRef.current?.clientPersisted ? "Retry Project / Folders" : "Create Client + Project"}
         </Button>
       </div>
     </div>
@@ -4878,6 +4904,7 @@ return (
             {/* CUSTOMERS LIST */}
             {menu === "client_database" && view === "customers" && (
   <Card className="qs-migrated-92">
+    {clientCreateMessage ? <div className="demo-mode-banner" role="status">{clientCreateMessage}</div> : null}
     <div className="clients-surface-header">
       <div className="qs-migrated-36">
         <div>
