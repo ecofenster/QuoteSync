@@ -26,7 +26,11 @@ export function createCommunicationRepository(db) {
   }) : null;
 
   async function listSummaries({ provider = "google_workspace", query = "", limit = 1000 } = {}) {
-    const normalizedQuery = String(query || "").trim().toLowerCase(), clauses = ["m.provider=?"], params = [provider];
+    const rawQuery = String(query || "").trim().toLowerCase();
+    const unreadOnly = /(?:^|\s)is:unread(?:\s|$)/.test(rawQuery);
+    const normalizedQuery = rawQuery.replace(/(?:^|\s)is:unread(?=\s|$)/g, " ").replace(/\s+/g, " ").trim();
+    const clauses = ["m.provider=?"], params = [provider];
+    if (unreadOnly) clauses.push("json_extract(m.provider_state_json,'$.unread')=1");
     if (normalizedQuery.startsWith("from:")) {
       clauses.push("lower(m.from_json) LIKE ?");
       params.push(`%${normalizedQuery.slice(5).replaceAll('"', "").trim()}%`);

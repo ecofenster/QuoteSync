@@ -138,7 +138,7 @@ test("Email is cache-first, refreshes in the background and retains cached mail 
 test("Email QuoteSuite views and reader relationships include canonical Project without pretending Gmail folders",async()=>{
   const [ui,api,service]=await Promise.all([readFile("src/features/communications/EmailWorkspace.tsx","utf8"),readFile("src/services/communications/communicationsApi.ts","utf8"),readFile("server/features/communications/communicationsService.js","utf8")]);
   for(const label of ["Clients","Projects","Estimates","Orders","Suppliers","Unlinked","Follow Up"])assert.match(ui,new RegExp(`label:"${label}"`));
-  assert.doesNotMatch(ui,/label:"Linked to Clients"|label:"Linked to Estimates"/);assert.match(service,/projects: "project"/);assert.match(ui,/Add relationship/);assert.match(ui,/Confirm relationship/);assert.match(api,/unlink:/);assert.match(api,/method:"DELETE"/);
+  assert.doesNotMatch(ui,/label:"Linked to Clients"|label:"Linked to Estimates"/);assert.match(service,/projects: "project"/);assert.match(ui,/Add Enquiry/);assert.match(ui,/Link existing/);assert.match(ui,/Confirm relationship/);assert.match(api,/unlink:/);assert.match(api,/method:"DELETE"/);
 });
 
 test("Email reuses one conversation reader across List, Right and Bottom preview layouts",async()=>{

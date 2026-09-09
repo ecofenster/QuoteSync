@@ -2,9 +2,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolveManagedPath, resolveAttachmentRoot } from "../supplierQuotes/managedAttachmentStorage.js";
 import { createCommunicationRepository } from "./communicationRepository.js";
+import { createCommercialIdentityService } from "../commercialIdentity/commercialIdentityService.js";
+import { createCommercialDriveService } from "../documents/commercialDriveService.js";
 import { createGmailProvider } from "./gmailProvider.js";
 import { createGoogleWorkspaceService, GMAIL_MODIFY_SCOPE } from "../integrations/googleWorkspaceService.js";
 import { classifyNotification, decodeGmailNotification, resolveNotificationConfiguration, resolveWatchLifecycle } from "./communicationLiveSync.js";
+import { createTestDeliveryPolicy } from "../lifecycle/testDeliveryPolicy.js";
 
 const MUTATING_MAILBOX_CAPABILITIES = Object.freeze(["archive", "trash", "read_state", "star", "move", "labels"]);
 const COMMAND_CAPABILITIES = Object.freeze({ archive: "archive", trash: "trash", mark_read: "read_state", mark_unread: "read_state", star: "star", unstar: "star", move: "move", label: "labels" });
@@ -97,7 +100,8 @@ export async function resolveCanonicalRelationship(db, kind, id) {
 }
 
 export function createCommunicationsService(db, options = {}) {
-  const repository = createCommunicationRepository(db), workspace = options.workspace || createGoogleWorkspaceService(db, options), gmail = options.gmail || createGmailProvider(workspace, options.gmailOptions), attachmentRoot = options.attachmentRoot ?? resolveAttachmentRoot(options.environment), notificationConfig = options.notificationConfig || resolveNotificationConfiguration(options.environment);
+  const repository = createCommunicationRepository(db), workspace = options.workspace || createGoogleWorkspaceService(db, options), gmail = options.gmail || createGmailProvider(workspace, options.gmailOptions), attachmentRoot = options.attachmentRoot ?? resolveAttachmentRoot(options.environment), notificationConfig = options.notificationConfig || resolveNotificationConfiguration(options.environment), deliveryPolicy = options.deliveryPolicy || createTestDeliveryPolicy(options.environment);
+  const guardTestRecipients = (input) => deliveryPolicy.assertAllRecipients?.([...(input.to || []), ...(input.cc || []), ...(input.bcc || [])]);
   async function requireGmailCapability() {
     const status = await workspace.status();
     if (status.state === "reconnect_required") throw Object.assign(new Error("Reconnect Google Workspace to grant the required Gmail permissions."), { status: 409, code: "gmail_scope_required" });
@@ -315,6 +319,7 @@ export function createCommunicationsService(db, options = {}) {
   }
 
   async function createDraft(input) {
+    guardTestRecipients(input);
     const status = await requireGmailCapability();
     const attachments = await Promise.all((input.attachments || []).map((item) => decodeAttachment(item, attachmentRoot)));
     const localId = String(input.id || randomUUID()), provider = await gmail.createDraft({ ...input, attachments });
@@ -324,6 +329,7 @@ export function createCommunicationsService(db, options = {}) {
   }
 
   async function sendMessage(input) {
+    guardTestRecipients(input);
     const status = await requireGmailCapability();
     const attachments = await Promise.all((input.attachments || []).map((item) => decodeAttachment(item, attachmentRoot))), id = String(input.id || randomUUID());
     await repository.save({ ...input, id, provider: "google_workspace", mailboxId: "me", direction: "outbound", folder: "sent", status: "sending", attachments: attachments.map(({ bytes, ...item }) => ({ ...item, sizeBytes: item.sizeBytes ?? bytes.length })) });
@@ -350,5 +356,33 @@ export function createCommunicationsService(db, options = {}) {
   }
 
   async function readAttachment(providerMessageId, attachmentId) { await requireGmailCapability(); return gmail.attachment(providerMessageId, attachmentId); }
-  return { status: workspace.status, mailbox, listMailbox, syncMailbox, readMessage, readThread, relationshipContext, linkRelationship, unlinkRelationship, changeState, maintainWatch, stopWatch, receiveNotification, command, createDraft, sendMessage, reply, forward, readAttachment, repository };
+
+  async function enquiryIntake(providerMessageId) {
+    const message = await repository.findByProviderId("google_workspace", providerMessageId) || await readMessage(providerMessageId);
+    if (!message) throw Object.assign(new Error("The selected message is unavailable."), { status: 404, code: "communication_message_not_found" });
+    const existing = await db.get("SELECT i.*,e.enquiry_ref FROM enquiry_email_intakes i JOIN enquiries e ON e.id=i.enquiry_id WHERE i.communication_message_id=?", message.id).catch(() => null);
+    const sender = String(message.from?.[0] || ""), email = /<([^>]+)>/.exec(sender)?.[1] || (sender.includes("@") ? sender : ""), displayName = sender.replace(/<[^>]+>/g, "").replace(/^['\"]|['\"]$/g, "").trim();
+    return { existing: existing ? { enquiryId: existing.enquiry_id, enquiryRef: existing.enquiry_ref } : null, communicationMessageId: message.id, providerMessageId, displayName, email: email.trim(), projectName: String(message.subject || "").replace(/^(?:re|fwd?):\s*/i, "").trim(), brief: String(message.bodyText || message.snippet || "").replace(/\s+/g, " ").trim().slice(0, 2400), attachments: (message.attachments || []).filter(item => !item.inline).map(item => ({ id: item.id, fileName: item.fileName, mediaType: item.mediaType, sizeBytes: item.sizeBytes })) };
+  }
+
+  async function createEnquiryFromMessage(providerMessageId, input = {}) {
+    const draft = await enquiryIntake(providerMessageId);
+    if (draft.existing) return { ...draft.existing, idempotentReplay: true, storageStatus: "retained" };
+    const selectedIds = new Set((input.selectedAttachmentIds || []).map(String)), attachments = draft.attachments.filter(item => selectedIds.has(item.id));
+    if (selectedIds.size !== attachments.length) throw Object.assign(new Error("Every selected attachment must belong to the reviewed message."), { status: 422, code: "enquiry_attachment_invalid" });
+    const drive = createCommercialDriveService(db, options.driveServiceOptions);
+    const identities = createCommercialIdentityService(db, { driveTransitions: drive });
+    const enquiry = await identities.createEnquiry({ source: "gmail", leadSource: "email", displayName: input.displayName || draft.displayName, companyName: input.companyName, email: input.email || draft.email, telephone: input.telephone, projectName: input.projectName || draft.projectName, siteAddress: input.siteAddress, notes: input.brief || draft.brief });
+    const intakeId = randomUUID(), at = new Date().toISOString();
+    await db.exec("BEGIN IMMEDIATE");
+    try {
+      await db.run("INSERT INTO enquiry_email_intakes(id,enquiry_id,communication_message_id,provider_message_id,reviewed_brief,created_by,created_at) VALUES(?,?,?,?,?,?,?)", intakeId, enquiry.id, draft.communicationMessageId, providerMessageId, String(input.brief || draft.brief), String(input.createdBy || "user-1"), at);
+      for (const attachment of attachments) await db.run("INSERT INTO enquiry_intake_attachments(id,enquiry_email_intake_id,communication_attachment_id,file_name,storage_status) VALUES(?,?,?,?, 'pending')", randomUUID(), intakeId, attachment.id, attachment.fileName);
+      await repository.addLink(draft.communicationMessageId, { kind: "enquiry", id: enquiry.id });
+      await db.exec("COMMIT");
+    } catch (error) { await db.exec("ROLLBACK").catch(() => {}); throw error; }
+    return { enquiryId: enquiry.id, enquiryRef: enquiry.enquiryRef, idempotentReplay: false, selectedAttachmentCount: attachments.length, storageStatus: attachments.length ? "pending_reviewed_storage" : "no_attachments_selected", driveStatus: enquiry.driveTransitionStatus };
+  }
+
+  return { status: workspace.status, mailbox, listMailbox, syncMailbox, readMessage, readThread, relationshipContext, linkRelationship, unlinkRelationship, changeState, maintainWatch, stopWatch, receiveNotification, command, createDraft, sendMessage, reply, forward, readAttachment, enquiryIntake, createEnquiryFromMessage, repository };
 }

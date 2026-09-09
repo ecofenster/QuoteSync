@@ -151,6 +151,9 @@ export function createCommercialIdentityService(db, { now = () => new Date(), id
       return { enquiry: mapEnquiry(await db.get("SELECT * FROM enquiries WHERE id=?", enquiry.id)), client: { id: client.id, clientRef: client.client_ref, name: client.name }, project: mapProject(await db.get("SELECT p.*,0 estimate_count,0 order_count FROM projects p WHERE id=?", projectId)) };
     });
     const driveProvisioning = await provisionProjectOutcome(result.project.id);
+    const attachmentStorage = driveProvisioning.status === "provisioned" && driveTransitions?.storeReviewedEnquiryAttachments
+      ? await driveTransitions.storeReviewedEnquiryAttachments(result.enquiry.id, result.project.id).catch((cause) => ({ status: "failed", stored: 0, failed: 0, files: [], code: clean(cause?.code) || "attachment_storage_failed", message: "The Client and Project were saved, but reviewed email attachments could not be filed. Retry folder creation after checking the provider connection." }))
+      : { status: driveProvisioning.status === "provisioned" ? "no_reviewed_attachments" : "pending_folder_provisioning", stored: 0, failed: 0, files: [] };
     const driveTransitionStatus = driveProvisioning.status === "provisioned"
       ? "linked"
       : driveProvisioning.status === "not_configured"
@@ -163,6 +166,7 @@ export function createCommercialIdentityService(db, { now = () => new Date(), id
       ...result,
       enquiry: mapEnquiry(await db.get("SELECT * FROM enquiries WHERE id=?", result.enquiry.id)),
       driveProvisioning,
+      attachmentStorage,
     };
   }
 

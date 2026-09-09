@@ -12,7 +12,7 @@ function fail(res, error) {
   return res.status(status).json({ error: error instanceof Error ? error.message : "Portal operation failed.", code: String(error?.code || "portal_operation_failed") });
 }
 
-export function createClientPortalRouter({ databasePromise, externalAccessEnabled = false, serviceOptions = {} } = {}) {
+export function createClientPortalRouter({ databasePromise, externalAccessEnabled = false, serviceOptions = {}, cookieSecure = true, testAdapter = false } = {}) {
   if (!databasePromise) throw new Error("Client Portal router requires an explicit databasePromise.");
   const router = express.Router();
   const service = async () => createPortalSecurityService(await databasePromise, serviceOptions);
@@ -25,10 +25,14 @@ export function createClientPortalRouter({ databasePromise, externalAccessEnable
     next();
   });
 
-  router.get("/status", (_req, res) => res.json({ externalAccessEnabled: Boolean(externalAccessEnabled), authenticationMode: externalAccessEnabled ? "provider_required" : "blocked", sessionStorage: "secure_http_only_cookie", customerCommandsEnabled: Boolean(externalAccessEnabled) }));
+  router.get("/status", (_req, res) => res.json({ externalAccessEnabled: Boolean(externalAccessEnabled), authenticationMode: testAdapter ? "development_test_adapter" : externalAccessEnabled ? "provider_required" : "blocked", sessionStorage: "http_only_cookie", customerCommandsEnabled: Boolean(externalAccessEnabled), testAdapter: Boolean(testAdapter) }));
   router.get("/internal/clients/:clientId/status", async (req, res) => { try { return res.json(await (await service()).internalClientSummary(req.params.clientId)); } catch (error) { return fail(res, error); } });
   router.get("/internal/features", async (_req, res) => { try { return res.json(await (await service()).listFeatureControls()); } catch (error) { return fail(res, error); } });
   router.put("/internal/features/:featureKey", async (req, res) => { try { return res.json(await (await service()).setFeatureControl(req.params.featureKey, req.body?.enabled === true, CURRENT_APP_USER.id)); } catch (error) { return fail(res, error); } });
+  router.get("/internal/commitment-policy",async(_req,res)=>{try{return res.json(await(await service()).getCommitmentPolicy());}catch(error){return fail(res,error);}});
+  router.put("/internal/commitment-policy",async(req,res)=>{try{return res.json(await(await service()).setCommitmentPolicy({...req.body,updatedBy:CURRENT_APP_USER.id}));}catch(error){return fail(res,error);}});
+  router.post("/internal/invitations", async (req,res)=>{try{return res.status(201).json(await(await service()).createInvitation({...req.body,createdBy:CURRENT_APP_USER.id}));}catch(error){return fail(res,error);}});
+  router.post("/internal/invitations/:invitationId/revoke", async (req,res)=>{try{return res.json(await(await service()).revokeInvitation(req.params.invitationId,CURRENT_APP_USER.id));}catch(error){return fail(res,error);}});
   router.get("/internal/directory", async (req, res) => { try { return res.json(await (await service()).internalPortalDirectory(req.query.search)); } catch (error) { return fail(res, error); } });
   router.get("/internal/clients/:clientId/projects/:projectId/preview", async (req, res) => { try { return res.json(await (await service()).internalProjectPreview(req.params.clientId, req.params.projectId)); } catch (error) { return fail(res, error); } });
 
@@ -40,7 +44,7 @@ export function createClientPortalRouter({ databasePromise, externalAccessEnable
   router.post("/external/invitations/accept", async (req, res) => {
     try {
       const result = await (await service()).acceptInvitation({ token: req.body?.token, identityAssertion: req.body?.identityAssertion });
-      res.cookie(PORTAL_SESSION_COOKIE, result.sessionToken, { secure: true, httpOnly: true, sameSite: "strict", path: "/api/client-portal/external", maxAge: Math.max(0, new Date(result.session.absoluteExpiresAt).getTime() - Date.now()) });
+      res.cookie(PORTAL_SESSION_COOKIE, result.sessionToken, { secure: cookieSecure, httpOnly: true, sameSite: "strict", path: "/api/client-portal/external", maxAge: Math.max(0, new Date(result.session.absoluteExpiresAt).getTime() - Date.now()) });
       return res.json({ session: result.session, csrfToken: result.csrfToken });
     } catch (error) { return fail(res, error); }
   });
@@ -57,7 +61,7 @@ export function createClientPortalRouter({ databasePromise, externalAccessEnable
     try {
       const rawToken = cookieValue(req.headers.cookie, PORTAL_SESSION_COOKIE);
       await (await service()).revokeSession(rawToken, "logout");
-      res.clearCookie(PORTAL_SESSION_COOKIE, { secure: true, httpOnly: true, sameSite: "strict", path: "/api/client-portal/external" });
+      res.clearCookie(PORTAL_SESSION_COOKIE, { secure: cookieSecure, httpOnly: true, sameSite: "strict", path: "/api/client-portal/external" });
       return res.json({ success: true });
     } catch (error) { return fail(res, error); }
   });
@@ -68,6 +72,8 @@ export function createClientPortalRouter({ databasePromise, externalAccessEnable
   router.post("/external/projects/:projectId/estimates/:releaseId/review", async (req, res) => { try { return res.status(201).json(await (await service()).submitReview(req.portalSession, { ...req.body, projectId: req.params.projectId, estimateReleaseId: req.params.releaseId, idempotencyKey: req.get("Idempotency-Key") })); } catch (error) { return fail(res, error); } });
   router.post("/external/projects/:projectId/estimates/:releaseId/decline", async (req, res) => { try { return res.status(201).json(await (await service()).declineEstimate(req.portalSession, { ...req.body, projectId: req.params.projectId, estimateReleaseId: req.params.releaseId, idempotencyKey: req.get("Idempotency-Key") })); } catch (error) { return fail(res, error); } });
   router.post("/external/projects/:projectId/estimates/:releaseId/intent-to-proceed", async (req, res) => { try { return res.status(202).json(await (await service()).indicateIntentToProceed(req.portalSession, { ...req.body, projectId: req.params.projectId, estimateReleaseId: req.params.releaseId, idempotencyKey: req.get("Idempotency-Key") })); } catch (error) { return fail(res, error); } });
+  router.post("/external/projects/:projectId/estimates/:releaseId/accept", async (req, res) => { try { return res.status(201).json(await (await service()).acceptEstimate(req.portalSession, { ...req.body, projectId: req.params.projectId, estimateReleaseId: req.params.releaseId, idempotencyKey: req.get("Idempotency-Key") })); } catch (error) { return fail(res, error); } });
+  router.post("/external/projects/:projectId/factory-confirmations/:releaseId/sign-off", async (req,res)=>{try{return res.status(201).json(await(await service()).signOffFactoryConfirmation(req.portalSession,{...req.body,projectId:req.params.projectId,factoryConfirmationReleaseId:req.params.releaseId,idempotencyKey:req.get("Idempotency-Key")}));}catch(error){return fail(res,error);}});
 
   return router;
 }

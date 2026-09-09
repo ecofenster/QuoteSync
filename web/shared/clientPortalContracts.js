@@ -24,4 +24,5 @@ export const CLIENT_PORTAL_FEATURES = Object.freeze([
   'dashboard', 'estimates', 'orders', 'rejected', 'documents', 'certificates',
   'system_drawings', 'compare_options', 'review_estimate', 'request_amendments',
   'decline_estimate', 'intent_to_proceed', 'payments', 'delivery_installation'
+  , 'accept_estimate', 'final_confirmation'
 ]);

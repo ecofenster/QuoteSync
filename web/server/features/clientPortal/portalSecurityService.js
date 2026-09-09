@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { CLIENT_PORTAL_FEATURES, PORTAL_DECLINE_REASONS, PORTAL_REVIEW_POSITION_RESPONSES } from "../../../shared/clientPortalContracts.js";
+import { allocateCanonicalReference } from "../commercialIdentity/referenceAllocator.js";
 
 export const DEFAULT_PORTAL_TENANT_ID = "quotesuite-default";
 export const PORTAL_SESSION_COOKIE = "qs_portal_session";
@@ -50,6 +51,18 @@ export function createPortalSecurityService(db, options = {}) {
     return Boolean(row?.enabled);
   }
 
+  async function getCommitmentPolicy() {
+    const row=await db.get('SELECT * FROM portal_commitment_policies WHERE tenant_id=?',tenantId);
+    return row?{enabled:Boolean(row.enabled),promptAfterIssuedRevisions:Number(row.prompt_after_issued_revisions),suggestedPercentage:String(row.suggested_percentage),message:String(row.message||'') }:{enabled:false,promptAfterIssuedRevisions:3,suggestedPercentage:'10',message:''};
+  }
+
+  async function setCommitmentPolicy(input={}) {
+    const actor=required(input.updatedBy,'Staff identity'),after=Math.max(3,Number(input.promptAfterIssuedRevisions)||3),percentage=String(input.suggestedPercentage||'10');
+    if(!/^\d+(?:\.\d{1,2})?$/.test(percentage)||Number(percentage)<=0||Number(percentage)>100)throw portalError(422,'portal_commitment_percentage_invalid','Suggested commitment percentage must be greater than zero and no more than 100.');
+    const at=nowIso(clock);await db.run(`INSERT INTO portal_commitment_policies(tenant_id,enabled,prompt_after_issued_revisions,suggested_percentage,message,updated_by,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(tenant_id) DO UPDATE SET enabled=excluded.enabled,prompt_after_issued_revisions=excluded.prompt_after_issued_revisions,suggested_percentage=excluded.suggested_percentage,message=excluded.message,updated_by=excluded.updated_by,updated_at=excluded.updated_at`,tenantId,input.enabled===true?1:0,after,percentage,String(input.message||''),actor,at);
+    await audit({eventType:'portal.commitment_policy.changed',actorType:'staff',actorId:actor,resourceType:'portal_policy',resourceId:'estimate_revision_commitment',metadata:{enabled:input.enabled===true,promptAfterIssuedRevisions:after,suggestedPercentage:percentage}});return getCommitmentPolicy();
+  }
+
   async function requireFeature(session, projectId, featureKey) {
     if (await featureEnabled(featureKey)) return;
     await deny(session, projectId, "portal_feature", featureKey, "portal_feature_disabled");
@@ -78,6 +91,7 @@ export function createPortalSecurityService(db, options = {}) {
   async function createInvitation(input) {
     const clientId = required(input.clientId, "Client ID"), projectId = required(input.projectId, "Project ID");
     const email = normalizeEmail(required(input.email, "Contact email")), createdBy = required(input.createdBy, "Inviting staff identity");
+    if (typeof options.validateInvitationEmail === "function") options.validateInvitationEmail(email);
     const scope = await validateClientProject(clientId, projectId), createdAt = nowIso(clock);
     const expiresAt = input.expiresAt ? new Date(input.expiresAt).toISOString() : plusMilliseconds(createdAt, Number(input.lifetimeMs || 24 * 60 * 60 * 1000));
     if (new Date(expiresAt).getTime() <= new Date(createdAt).getTime()) throw portalError(422, "portal_invitation_expiry_invalid", "Invitation expiry must be in the future.");
@@ -139,7 +153,7 @@ export function createPortalSecurityService(db, options = {}) {
       await audit({ eventType: "portal.invitation.accepted", actorType: "external_contact", actorId: invitation.portal_contact_id, clientId: invitation.client_id, projectId: invitation.project_id, resourceType: "portal_invitation", resourceId: invitation.id, metadata: { provider } });
       await audit({ eventType: "portal.session.established", actorType: "external_contact", actorId: invitation.portal_contact_id, clientId: invitation.client_id, projectId: invitation.project_id, resourceType: "portal_session", resourceId: sessionId, metadata: { provider, idleExpiresAt: plusMilliseconds(acceptedAt, idleLifetimeMs), absoluteExpiresAt: plusMilliseconds(acceptedAt, absoluteLifetimeMs) } });
       await db.exec("COMMIT");
-      return { sessionToken, csrfToken, session: { id: sessionId, portalContactId: invitation.portal_contact_id, idleExpiresAt: plusMilliseconds(acceptedAt, idleLifetimeMs), absoluteExpiresAt: plusMilliseconds(acceptedAt, absoluteLifetimeMs) } };
+      return { sessionToken, csrfToken, session: { id: sessionId, portalContactId: invitation.portal_contact_id, clientId: invitation.client_id, projectId: invitation.project_id, idleExpiresAt: plusMilliseconds(acceptedAt, idleLifetimeMs), absoluteExpiresAt: plusMilliseconds(acceptedAt, absoluteLifetimeMs) } };
     } catch (error) { await db.exec("ROLLBACK").catch(() => {}); throw error; }
   }
 
@@ -262,7 +276,16 @@ export function createPortalSecurityService(db, options = {}) {
     const documentRows = enabled.has("documents") ? await db.all("SELECT * FROM portal_resource_releases WHERE tenant_id=? AND client_id=? AND project_id=? AND resource_type='document' AND status='released' ORDER BY released_at DESC", tenantId, clientId, projectId) : [];
     const decisions = enabled.has("rejected") || enabled.has("orders") ? await db.all("SELECT estimate_release_id,decision_type,decline_reason,optional_supplier_name,detail,decided_at FROM portal_estimate_decisions WHERE tenant_id=? AND client_id=? AND project_id=? ORDER BY decided_at DESC", tenantId, clientId, projectId) : [];
     const reviews = enabled.has("review_estimate") ? await db.all("SELECT estimate_release_id,status,submitted_at FROM portal_review_submissions WHERE tenant_id=? AND client_id=? AND project_id=? ORDER BY submitted_at DESC", tenantId, clientId, projectId) : [];
-    return { access: { tenantId, clientId, projectId, portalContactId: session?.portalContactId || null, displayName: session?.displayName || "Authorised QuoteSuite staff", mode: internalPreview ? "internal_preview" : "external_contact" }, features, client: { id: project.client_id, reference: project.client_ref, displayName: project.company_name || project.client_name }, project: { id: project.id, name: project.name, status: project.status }, estimates: releases.map(safeEstimateRelease), documents: documentRows.map((row) => { const metadata = parseJson(row.metadata_json, {}); return { id: row.resource_id, revision: row.resource_revision, documentType: String(metadata.documentType || "approved_customer_document"), fileName: String(metadata.fileName || "Released document"), releasedAt: row.released_at }; }), reviews, decisions };
+    const orders = enabled.has("orders") ? await db.all(`SELECT o.id,o.order_ref,o.status,o.source_estimate_id,o.source_estimate_revision,o.created_at,o.updated_at
+      FROM orders o JOIN portal_resource_releases r ON r.resource_type='order' AND r.resource_id=o.id AND r.status='released'
+      WHERE r.tenant_id=? AND r.client_id=? AND r.project_id=? ORDER BY o.created_at DESC`, tenantId, clientId, projectId) : [];
+    const confirmationRows = enabled.has("final_confirmation") ? await db.all(`SELECT r.id release_id,r.released_at,fc.id confirmation_id,fc.order_id,fc.revision,fc.canonical_document_id,o.order_ref,
+      (SELECT json_group_array(json_object('estimatePositionId',pa.estimate_position_id,'positionReference',pa.position_reference)) FROM portal_position_acceptances pa JOIN portal_estimate_acceptances a ON a.id=pa.estimate_acceptance_id WHERE a.order_id=o.id AND pa.accepted=1) positions_json,
+      (SELECT COUNT(*) FROM factory_confirmation_signoffs s WHERE s.factory_confirmation_release_id=r.id) signed_off
+      FROM factory_confirmation_releases r JOIN factory_confirmations fc ON fc.id=r.factory_confirmation_id JOIN orders o ON o.id=fc.order_id
+      WHERE r.project_id=? AND o.client_id=? ORDER BY r.released_at DESC`, projectId, clientId) : [];
+    const commitmentPolicy=await getCommitmentPolicy(),commitmentPrompt=commitmentPolicy.enabled&&releases.length>=commitmentPolicy.promptAfterIssuedRevisions?{informational:true,issuedRevisionCount:releases.length,suggestedPercentage:commitmentPolicy.suggestedPercentage,message:commitmentPolicy.message||`After ${releases.length} issued revisions, you may be asked to discuss a ${commitmentPolicy.suggestedPercentage}% commitment before further estimating. No charge or acceptance gate has been applied.`}:null;
+    return { access: { tenantId, clientId, projectId, portalContactId: session?.portalContactId || null, displayName: session?.displayName || "Authorised QuoteSuite staff", mode: internalPreview ? "internal_preview" : "external_contact" }, features, client: { id: project.client_id, reference: project.client_ref, displayName: project.company_name || project.client_name }, project: { id: project.id, name: project.name, status: project.status }, estimates: releases.map(safeEstimateRelease), orders: orders.map((row)=>({ id:row.id,orderRef:row.order_ref,status:row.status,sourceEstimateId:row.source_estimate_id,sourceEstimateRevision:Number(row.source_estimate_revision),createdAt:row.created_at,updatedAt:row.updated_at })), factoryConfirmations: confirmationRows.map((row)=>({ releaseId:row.release_id,confirmationId:row.confirmation_id,orderId:row.order_id,orderRef:row.order_ref,revision:row.revision,documentId:row.canonical_document_id,releasedAt:row.released_at,signedOff:Boolean(row.signed_off),positions:parseJson(row.positions_json,[]) })), commitmentPrompt, documents: documentRows.map((row) => { const metadata = parseJson(row.metadata_json, {}); return { id: row.resource_id, revision: row.resource_revision, documentType: String(metadata.documentType || "approved_customer_document"), fileName: String(metadata.fileName || "Released document"), releasedAt: row.released_at }; }), reviews, decisions };
   }
 
   async function getProjectPortal(session, projectId) {
@@ -364,6 +387,7 @@ export function createPortalSecurityService(db, options = {}) {
     const releaseResource = await authorizeReleasedResource(session, { projectId, resourceType: "estimate", resourceId: releaseId });
     const release = await db.get("SELECT id FROM estimate_revision_releases WHERE id=? AND project_id=? AND client_id=?", releaseId, projectId, session.clientId);
     if (!release) await deny(session, projectId, "estimate", releaseId);
+    if (await db.get("SELECT id FROM portal_estimate_acceptances WHERE estimate_release_id=? AND portal_contact_id=?", releaseId, session.portalContactId)) throw portalError(409, "portal_estimate_already_accepted", "This issued Estimate has already been accepted.");
     const reason = decisionType === "declined" ? String(input.reason || "") : null;
     if (decisionType === "declined" && !PORTAL_DECLINE_REASONS.includes(reason)) throw portalError(422, "portal_decline_reason_invalid", "Choose a valid decline reason.");
     const commandType = decisionType === "declined" ? "decline_estimate" : "intent_to_proceed";
@@ -386,6 +410,63 @@ export function createPortalSecurityService(db, options = {}) {
 
   const declineEstimate = (session, input) => recordDecision(session, input, "declined");
   const indicateIntentToProceed = (session, input) => recordDecision(session, input, "intent_to_proceed");
+
+  async function acceptEstimate(session, input) {
+    const projectId = required(input.projectId, "Project ID"), releaseId = required(input.estimateReleaseId, "Estimate release ID"), idempotencyKey = required(input.idempotencyKey, "Idempotency key");
+    await authorizeProjectCommand(session, projectId);
+    await requireFeature(session, projectId, "accept_estimate");
+    await authorizeReleasedResource(session, { projectId, resourceType: "estimate", resourceId: releaseId });
+    const release = await db.get("SELECT * FROM estimate_revision_releases WHERE id=? AND project_id=? AND client_id=?", releaseId, projectId, session.clientId);
+    if (!release) await deny(session, projectId, "estimate", releaseId);
+    const conflictingDecision = await db.get("SELECT decision_type FROM portal_estimate_decisions WHERE estimate_release_id=? AND portal_contact_id=? AND decision_type='declined'", releaseId, session.portalContactId);
+    if (conflictingDecision) throw portalError(409, "portal_estimate_decision_conflict", "A declined Estimate cannot be accepted without a new issued revision.");
+    const amendmentReview = await db.get(`SELECT r.id FROM portal_review_submissions r WHERE r.estimate_release_id=? AND r.portal_contact_id=? AND EXISTS(SELECT 1 FROM portal_review_position_entries p WHERE p.review_submission_id=r.id AND p.response='amendment_requested')`, releaseId, session.portalContactId);
+    if (amendmentReview) throw portalError(409, "portal_estimate_revision_required", "Requested changes must be reviewed and issued as a new revision before acceptance.");
+    const positions = safeEstimateRelease(release).positions, responses = Array.isArray(input.positions) ? input.positions : [];
+    const issuedIds = new Set(positions.map((position) => position.id)), responseIds = new Set(responses.map((position) => String(position.estimatePositionId || "")));
+    if (!input.overallAccepted || !positions.length || responses.length !== positions.length || responses.some((position) => !position.accepted || !issuedIds.has(String(position.estimatePositionId || ""))) || responseIds.size !== issuedIds.size) {
+      throw portalError(422, "portal_acceptance_incomplete", "Every issued Position and the overall Estimate must be explicitly accepted before an Order can be created.");
+    }
+    const requiredConfirmations = ["item_reference", "configuration", "dimensions", "specification"];
+    if (responses.some((position) => !requiredConfirmations.every((key) => position.confirmations?.[key] === true))) throw portalError(422, "portal_position_confirmation_incomplete", "Every applicable Position confirmation must be accepted.");
+    const keyHash = sha256(idempotencyKey), request = { projectId, releaseId, overallAccepted: true, positions: responses }, requestHash = jsonHash(request);
+    const replay = await db.get("SELECT * FROM portal_estimate_acceptances WHERE portal_contact_id=? AND idempotency_key_hash=?", session.portalContactId, keyHash);
+    if (replay) {
+      if (replay.request_sha256 !== requestHash) throw portalError(409, "portal_idempotency_conflict", "Idempotency key was already used for different acceptance evidence.");
+      return { acceptanceId: replay.id, orderId: replay.order_id, acceptedAt: replay.accepted_at, idempotentReplay: true };
+    }
+    const prior = await db.get("SELECT id,order_id,accepted_at FROM portal_estimate_acceptances WHERE estimate_release_id=?", releaseId);
+    if (prior) return { acceptanceId: prior.id, orderId: prior.order_id, acceptedAt: prior.accepted_at, idempotentReplay: true };
+    const source = await db.get("SELECT * FROM estimates WHERE id=?", release.estimate_id);
+    if (!source) throw portalError(404, "estimate_not_found", "The released Estimate source is unavailable.");
+    const acceptedAt = nowIso(clock), acceptanceId = randomUUID(), orderId = randomUUID(), year = new Date(acceptedAt).getUTCFullYear();
+    await db.exec("BEGIN IMMEDIATE");
+    try {
+      const orderRef = await allocateCanonicalReference(db, { kind: "order", year, entityId: orderId, reason: `customer_acceptance:${releaseId}`, now: acceptedAt });
+      await db.run(`INSERT INTO orders(id,order_ref,client_id,project_id,source_estimate_id,source_estimate_revision,accepted_commercial_snapshot_json,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,'customer_accepted_pending_staff_approval',?,?)`, orderId, orderRef, session.clientId, projectId, source.id, Number(release.estimate_revision), release.commercial_snapshot_json, acceptedAt, acceptedAt);
+      await db.run(`INSERT INTO portal_estimate_acceptances(id,estimate_release_id,tenant_id,client_id,project_id,portal_contact_id,idempotency_key_hash,request_sha256,overall_accepted,accepted_at,order_id) VALUES(?,?,?,?,?,?,?,?,1,?,?)`, acceptanceId, releaseId, session.tenantId, session.clientId, projectId, session.portalContactId, keyHash, requestHash, acceptedAt, orderId);
+      for (const response of responses) await db.run(`INSERT INTO portal_position_acceptances(id,estimate_acceptance_id,estimate_position_id,position_reference,accepted,confirmations_json,created_at) VALUES(?,?,?,?,1,?,?)`, randomUUID(), acceptanceId, String(response.estimatePositionId), String(response.positionReference || positions.find((position) => position.id === String(response.estimatePositionId))?.reference || ""), JSON.stringify(response.confirmations), acceptedAt);
+      await db.run(`INSERT INTO portal_resource_releases(id,tenant_id,client_id,project_id,resource_type,resource_id,resource_revision,status,released_by,released_at,metadata_json) VALUES(?,?,?,?,?,?,'1','released',?,?,?)`, randomUUID(), session.tenantId, session.clientId, projectId, "order", orderId, session.portalContactId, acceptedAt, JSON.stringify({ orderRef, sourceEstimateReleaseId: releaseId }));
+      await audit({ eventType: "estimate.customer_accepted", actorType: "external_contact", actorId: session.portalContactId, clientId: session.clientId, projectId, resourceType: "order", resourceId: orderId, metadata: { estimateReleaseId: releaseId, positionCount: responses.length, orderRef } });
+      await workflowEvent({ eventName: "order.customer_accepted", evidenceId: acceptanceId, occurredAt: acceptedAt, links: [{ kind: "client", id: session.clientId }, { kind: "project", id: projectId }, { kind: "estimate_release", id: releaseId }, { kind: "order", id: orderId }] });
+      await db.exec("COMMIT");
+      return { acceptanceId, orderId, orderRef, acceptedAt, status: "customer_accepted_pending_staff_approval", idempotentReplay: false };
+    } catch (error) { await db.exec("ROLLBACK").catch(() => {}); throw error; }
+  }
+
+  async function signOffFactoryConfirmation(session, input) {
+    const projectId=required(input.projectId,"Project ID"),releaseId=required(input.factoryConfirmationReleaseId,"Factory confirmation release ID"),key=required(input.idempotencyKey,"Idempotency key");
+    await authorizeProjectCommand(session,projectId);await requireFeature(session,projectId,"final_confirmation");
+    const release=await db.get(`SELECT r.*,fc.order_id,fc.canonical_document_id,o.client_id FROM factory_confirmation_releases r JOIN factory_confirmations fc ON fc.id=r.factory_confirmation_id JOIN orders o ON o.id=fc.order_id WHERE r.id=? AND r.project_id=?`,releaseId,projectId);
+    if(!release||release.client_id!==session.clientId)await deny(session,projectId,"factory_confirmation",releaseId);
+    await authorizeReleasedResource(session,{projectId,resourceType:"document",resourceId:release.canonical_document_id});
+    const expected=await db.all(`SELECT pa.estimate_position_id FROM portal_position_acceptances pa JOIN portal_estimate_acceptances a ON a.id=pa.estimate_acceptance_id WHERE a.order_id=? AND pa.accepted=1`,release.order_id),submitted=new Set((input.positions||[]).filter(item=>item.approved===true).map(item=>String(item.estimatePositionId)));
+    if(input.overallApproved!==true||!expected.length||expected.some(row=>!submitted.has(row.estimate_position_id)))throw portalError(422,"final_confirmation_incomplete","Approve every Position and the overall factory confirmation.");
+    const existing=await db.get('SELECT * FROM factory_confirmation_signoffs WHERE factory_confirmation_release_id=?',releaseId);if(existing)return{signoffId:existing.id,orderId:release.order_id,approvedAt:existing.approved_at,idempotentReplay:true};
+    const requestHash=jsonHash({releaseId,overallApproved:true,positions:[...submitted].sort()}),keyHash=sha256(key),at=nowIso(clock),id=randomUUID();
+    const replay=await db.get("SELECT safe_metadata_json FROM portal_audit_events WHERE event_type='factory.confirmation.customer_approved' AND actor_id=? AND resource_id=?",session.portalContactId,releaseId);if(replay){const meta=parseJson(replay.safe_metadata_json,{});if(meta.requestHash!==requestHash||meta.keyHash!==keyHash)throw portalError(409,"portal_idempotency_conflict","Final confirmation was already submitted with different evidence.");return{signoffId:meta.signoffId,orderId:release.order_id,approvedAt:meta.approvedAt,idempotentReplay:true};}
+    await db.exec('BEGIN IMMEDIATE');try{await db.run(`INSERT INTO factory_confirmation_signoffs(id,factory_confirmation_release_id,portal_contact_id,overall_approved,approved_at) VALUES(?,?,?,1,?)`,id,releaseId,session.portalContactId,at);for(const row of expected)await db.run('INSERT INTO factory_confirmation_position_approvals(id,signoff_id,estimate_position_id,approved,created_at) VALUES(?,?,?,1,?)',randomUUID(),id,row.estimate_position_id,at);await db.run("UPDATE orders SET status='customer_final_confirmation_approved',updated_at=? WHERE id=?",at,release.order_id);await audit({eventType:'factory.confirmation.customer_approved',actorType:'external_contact',actorId:session.portalContactId,clientId:session.clientId,projectId,resourceType:'factory_confirmation',resourceId:releaseId,metadata:{signoffId:id,orderId:release.order_id,requestHash,keyHash,approvedAt:at}});await workflowEvent({eventName:'factory.confirmation.customer_approved',evidenceId:id,occurredAt:at,links:[{kind:'order',id:release.order_id},{kind:'factory_confirmation_release',id:releaseId}]});await db.exec('COMMIT');return{signoffId:id,orderId:release.order_id,status:'customer_final_confirmation_approved',approvedAt:at,idempotentReplay:false};}catch(error){await db.exec('ROLLBACK').catch(()=>{});throw error;}
+  }
 
   async function createNextEstimateRevision(input) {
     const releaseId = required(input.estimateReleaseId, "Estimate release ID"), createdBy = required(input.createdBy, "Staff identity");
@@ -420,5 +501,5 @@ export function createPortalSecurityService(db, options = {}) {
     return { tenantId, clientId, externalAccessEnabled: false, contacts: contacts.map((row) => ({ id: row.id, displayName: row.display_name, email: row.email_normalized, status: row.status, activeProjectGrants: Number(row.active_project_grants), lastActivityAt: row.last_activity_at || null })), invitations: invitations.map((row) => ({ id: row.id, contactId: row.portal_contact_id, projectId: row.project_id, status: row.status, createdAt: row.created_at, expiresAt: row.expires_at, acceptedAt: row.accepted_at, revokedAt: row.revoked_at })), releases: releases.map((row) => ({ releaseId: row.id, projectId: row.project_id, estimateId: row.estimate_id, revisionNo: Number(row.estimate_revision), releasedAt: row.released_at })), reviews, decisions };
   }
 
-  return { listFeatureControls, setFeatureControl, createInvitation, revokeInvitation, acceptInvitation, authenticateSession, revokeSession, authorizeProject, authorizeReleasedResource, releaseIssuedEstimate, releaseDocument, getReleasedEstimate, getReleasedDocument, getProjectPortal, internalPortalDirectory, internalProjectPreview, startReview, submitReview, declineEstimate, indicateIntentToProceed, createNextEstimateRevision, internalClientSummary, audit };
+  return { listFeatureControls, setFeatureControl, getCommitmentPolicy, setCommitmentPolicy, createInvitation, revokeInvitation, acceptInvitation, authenticateSession, revokeSession, authorizeProject, authorizeReleasedResource, releaseIssuedEstimate, releaseDocument, getReleasedEstimate, getReleasedDocument, getProjectPortal, internalPortalDirectory, internalProjectPreview, startReview, submitReview, declineEstimate, indicateIntentToProceed, acceptEstimate, signOffFactoryConfirmation, createNextEstimateRevision, internalClientSummary, audit };
 }

@@ -57,6 +57,17 @@ test("mailbox pages project bounded summaries while message detail retains bodie
   assert.equal(detail.attachments.length,120);
 });
 
+test("Unread filters the complete cached mailbox projection and composes with search",async t=>{
+  const db=await fixture(t),repository=createCommunicationRepository(db);
+  await repository.save({...message({providerMessageId:"unread-1",threadId:"unread-thread",subject:"Ty Clai enquiry",unread:true}),id:"unread-local",mailboxId:"me"});
+  await repository.save({...message({providerMessageId:"read-1",threadId:"read-thread",subject:"Ty Clai follow-up",unread:false}),id:"read-local",mailboxId:"me"});
+  await repository.save({...message({providerMessageId:"other-1",threadId:"other-thread",subject:"Other enquiry",unread:true}),id:"other-local",mailboxId:"me"});
+  const unread=await repository.listMailbox({folder:"inbox",query:"is:unread",limit:30});
+  assert.deepEqual(unread.messages.map(item=>item.id).sort(),["other-local","unread-local"]);
+  const searched=await repository.listMailbox({folder:"inbox",query:"Ty Clai is:unread",limit:30});
+  assert.deepEqual(searched.messages.map(item=>item.id),["unread-local"]);
+});
+
 test("provider attachment refresh replaces rotating provider IDs without accumulating stale cache rows",async t=>{
   const db=await fixture(t),workspace={async status(){return{connected:true,state:"connected",account:{id:"account-1"},scopes:[],capabilities:{gmail:{available:true}}}}};
   let version=0;

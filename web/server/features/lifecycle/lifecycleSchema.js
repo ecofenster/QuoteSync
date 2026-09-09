@@ -1,0 +1,94 @@
+const statements = [
+  `CREATE TABLE IF NOT EXISTS enquiry_email_intakes (
+    id TEXT PRIMARY KEY,enquiry_id TEXT NOT NULL UNIQUE,communication_message_id TEXT NOT NULL UNIQUE,provider_message_id TEXT,
+    reviewed_brief TEXT NOT NULL,created_by TEXT NOT NULL,created_at TEXT NOT NULL,
+    FOREIGN KEY(enquiry_id) REFERENCES enquiries(id) ON DELETE RESTRICT,
+    FOREIGN KEY(communication_message_id) REFERENCES communication_messages(id) ON DELETE RESTRICT
+  )`,
+  `CREATE TABLE IF NOT EXISTS enquiry_intake_attachments (
+    id TEXT PRIMARY KEY,enquiry_email_intake_id TEXT NOT NULL,communication_attachment_id TEXT NOT NULL,file_name TEXT NOT NULL,
+    storage_status TEXT NOT NULL DEFAULT 'pending' CHECK(storage_status IN ('pending','stored','failed','not_selected')),canonical_document_id TEXT,error_code TEXT,
+    UNIQUE(enquiry_email_intake_id,communication_attachment_id),
+    FOREIGN KEY(enquiry_email_intake_id) REFERENCES enquiry_email_intakes(id) ON DELETE RESTRICT,
+    FOREIGN KEY(communication_attachment_id) REFERENCES communication_attachments(id) ON DELETE RESTRICT
+  )`,
+  `CREATE TABLE IF NOT EXISTS supplier_revision_requests (
+    id TEXT PRIMARY KEY,review_submission_id TEXT NOT NULL UNIQUE,source_release_id TEXT NOT NULL,successor_estimate_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','approved','sent','cancelled')),recipient TEXT NOT NULL DEFAULT '',
+    subject TEXT NOT NULL,summary_json TEXT NOT NULL,document_ids_json TEXT NOT NULL DEFAULT '[]',communication_message_id TEXT,
+    created_by TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,
+    FOREIGN KEY(review_submission_id) REFERENCES portal_review_submissions(id) ON DELETE RESTRICT,
+    FOREIGN KEY(source_release_id) REFERENCES estimate_revision_releases(id) ON DELETE RESTRICT,
+    FOREIGN KEY(successor_estimate_id) REFERENCES estimates(id) ON DELETE RESTRICT
+  )`,
+  `CREATE TABLE IF NOT EXISTS supplier_enquiry_drafts (
+    id TEXT PRIMARY KEY,project_id TEXT NOT NULL,estimate_id TEXT,supplier_id TEXT,recipient TEXT NOT NULL,subject TEXT NOT NULL,body_text TEXT NOT NULL,
+    document_ids_json TEXT NOT NULL DEFAULT '[]',communication_message_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','approved','sent','cancelled')),
+    created_by TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,
+    FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE RESTRICT,
+    FOREIGN KEY(estimate_id) REFERENCES estimates(id) ON DELETE RESTRICT,
+    FOREIGN KEY(communication_message_id) REFERENCES communication_messages(id) ON DELETE RESTRICT
+  )`,
+  `CREATE TABLE IF NOT EXISTS manufacturer_response_links (
+    id TEXT PRIMARY KEY,project_id TEXT NOT NULL,estimate_id TEXT,supplier_enquiry_id TEXT,communication_message_id TEXT NOT NULL,canonical_document_id TEXT,
+    status TEXT NOT NULL DEFAULT 'ready_for_import' CHECK(status IN ('ready_for_import','imported','review_required')),created_by TEXT NOT NULL,created_at TEXT NOT NULL,
+    UNIQUE(project_id,communication_message_id,canonical_document_id),
+    FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE RESTRICT,
+    FOREIGN KEY(estimate_id) REFERENCES estimates(id) ON DELETE RESTRICT,
+    FOREIGN KEY(supplier_enquiry_id) REFERENCES supplier_enquiry_drafts(id) ON DELETE RESTRICT,
+    FOREIGN KEY(communication_message_id) REFERENCES communication_messages(id) ON DELETE RESTRICT,
+    FOREIGN KEY(canonical_document_id) REFERENCES canonical_documents(id) ON DELETE RESTRICT
+  )`,
+  `CREATE TABLE IF NOT EXISTS revision_change_checks (
+    id TEXT PRIMARY KEY,supplier_revision_request_id TEXT NOT NULL,estimate_position_id TEXT,field_key TEXT NOT NULL,
+    requested_change TEXT NOT NULL,before_value TEXT,expected_value TEXT,after_value TEXT,
+    status TEXT NOT NULL CHECK(status IN ('implemented','not_implemented','needs_review','approved_difference')),
+    before_source_reference TEXT,after_source_reference TEXT,resolution_note TEXT NOT NULL DEFAULT '',resolved_by TEXT,resolved_at TEXT,
+    created_at TEXT NOT NULL,UNIQUE(supplier_revision_request_id,estimate_position_id,field_key),
+    FOREIGN KEY(supplier_revision_request_id) REFERENCES supplier_revision_requests(id) ON DELETE RESTRICT
+  )`,
+  `CREATE TABLE IF NOT EXISTS order_staff_approvals (
+    id TEXT PRIMARY KEY,order_id TEXT NOT NULL UNIQUE,approved_by TEXT NOT NULL,approved_at TEXT NOT NULL,note TEXT NOT NULL DEFAULT '',
+    FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE RESTRICT
+  )`,
+  `CREATE TABLE IF NOT EXISTS factory_order_requests (
+    id TEXT PRIMARY KEY,order_id TEXT NOT NULL UNIQUE,status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','approved','sent','cancelled')),
+    recipient TEXT NOT NULL,subject TEXT NOT NULL,body_text TEXT NOT NULL,document_ids_json TEXT NOT NULL DEFAULT '[]',
+    communication_message_id TEXT,created_by TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,
+    FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE RESTRICT
+  )`,
+  `CREATE TABLE IF NOT EXISTS factory_confirmations (
+    id TEXT PRIMARY KEY,order_id TEXT NOT NULL,canonical_document_id TEXT NOT NULL,revision TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'staff_review' CHECK(status IN ('staff_review','review_resolved','released','superseded')),
+    source_sha256 TEXT,created_by TEXT NOT NULL,created_at TEXT NOT NULL,UNIQUE(order_id,canonical_document_id,revision),
+    FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE RESTRICT,
+    FOREIGN KEY(canonical_document_id) REFERENCES canonical_documents(id) ON DELETE RESTRICT
+  )`,
+  `CREATE TABLE IF NOT EXISTS factory_confirmation_checks (
+    id TEXT PRIMARY KEY,factory_confirmation_id TEXT NOT NULL,estimate_position_id TEXT NOT NULL,field_key TEXT NOT NULL,
+    approved_value TEXT,confirmed_value TEXT,status TEXT NOT NULL CHECK(status IN ('no_change','change_detected','needs_review','approved_difference')),
+    approved_source_reference TEXT,confirmation_source_reference TEXT,resolution_note TEXT NOT NULL DEFAULT '',resolved_by TEXT,resolved_at TEXT,
+    UNIQUE(factory_confirmation_id,estimate_position_id,field_key),FOREIGN KEY(factory_confirmation_id) REFERENCES factory_confirmations(id) ON DELETE RESTRICT
+  )`,
+  `CREATE TABLE IF NOT EXISTS factory_confirmation_releases (
+    id TEXT PRIMARY KEY,factory_confirmation_id TEXT NOT NULL UNIQUE,project_id TEXT NOT NULL,released_by TEXT NOT NULL,released_at TEXT NOT NULL,
+    FOREIGN KEY(factory_confirmation_id) REFERENCES factory_confirmations(id) ON DELETE RESTRICT
+  )`,
+  `CREATE TABLE IF NOT EXISTS factory_confirmation_signoffs (
+    id TEXT PRIMARY KEY,factory_confirmation_release_id TEXT NOT NULL UNIQUE,portal_contact_id TEXT,overall_approved INTEGER NOT NULL CHECK(overall_approved IN (0,1)),
+    signed_pdf_document_id TEXT,signed_pdf_reviewed_by TEXT,signed_pdf_reviewed_at TEXT,approved_at TEXT NOT NULL,
+    FOREIGN KEY(factory_confirmation_release_id) REFERENCES factory_confirmation_releases(id) ON DELETE RESTRICT
+  )`,
+  `CREATE TABLE IF NOT EXISTS factory_confirmation_position_approvals (
+    id TEXT PRIMARY KEY,signoff_id TEXT NOT NULL,estimate_position_id TEXT NOT NULL,approved INTEGER NOT NULL CHECK(approved IN (0,1)),created_at TEXT NOT NULL,
+    UNIQUE(signoff_id,estimate_position_id),FOREIGN KEY(signoff_id) REFERENCES factory_confirmation_signoffs(id) ON DELETE RESTRICT
+  )`,
+];
+
+const immutable = [
+  'enquiry_email_intakes','supplier_enquiry_drafts','manufacturer_response_links','supplier_revision_requests','revision_change_checks','order_staff_approvals','factory_order_requests','factory_confirmations','factory_confirmation_checks','factory_confirmation_releases','factory_confirmation_signoffs','factory_confirmation_position_approvals',
+];
+
+export async function initializeLifecycleSchema(db) {
+  for (const statement of statements) await db.exec(statement);
+  for (const table of immutable) await db.exec(`CREATE TRIGGER IF NOT EXISTS trg_${table}_delete_evidence BEFORE DELETE ON ${table} BEGIN SELECT RAISE(ABORT,'Lifecycle evidence must be superseded, not deleted'); END`);
+}

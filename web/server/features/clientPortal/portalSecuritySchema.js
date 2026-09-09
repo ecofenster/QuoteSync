@@ -7,6 +7,10 @@ const statements = [
     updated_at TEXT NOT NULL,
     PRIMARY KEY(tenant_id, feature_key)
   )`,
+  `CREATE TABLE IF NOT EXISTS portal_commitment_policies (
+    tenant_id TEXT PRIMARY KEY,enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)),prompt_after_issued_revisions INTEGER NOT NULL DEFAULT 3,
+    suggested_percentage TEXT NOT NULL DEFAULT '10',message TEXT NOT NULL DEFAULT '',updated_by TEXT NOT NULL,updated_at TEXT NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS portal_contacts (
     id TEXT PRIMARY KEY,
     tenant_id TEXT NOT NULL,
@@ -201,6 +205,37 @@ const statements = [
     FOREIGN KEY(estimate_release_id) REFERENCES estimate_revision_releases(id) ON DELETE RESTRICT,
     FOREIGN KEY(portal_contact_id) REFERENCES portal_contacts(id) ON DELETE RESTRICT
   )`,
+  `CREATE TABLE IF NOT EXISTS portal_estimate_acceptances (
+    id TEXT PRIMARY KEY,
+    estimate_release_id TEXT NOT NULL,
+    tenant_id TEXT NOT NULL,
+    client_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    portal_contact_id TEXT NOT NULL,
+    idempotency_key_hash TEXT NOT NULL,
+    request_sha256 TEXT NOT NULL,
+    overall_accepted INTEGER NOT NULL CHECK(overall_accepted IN (0,1)),
+    accepted_at TEXT NOT NULL,
+    order_id TEXT NOT NULL UNIQUE,
+    UNIQUE(estimate_release_id,portal_contact_id),
+    UNIQUE(portal_contact_id,idempotency_key_hash),
+    FOREIGN KEY(estimate_release_id) REFERENCES estimate_revision_releases(id) ON DELETE RESTRICT,
+    FOREIGN KEY(portal_contact_id) REFERENCES portal_contacts(id) ON DELETE RESTRICT,
+    FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE RESTRICT
+  )`,
+  `CREATE TABLE IF NOT EXISTS portal_position_acceptances (
+    id TEXT PRIMARY KEY,
+    estimate_acceptance_id TEXT NOT NULL,
+    estimate_position_id TEXT NOT NULL,
+    position_reference TEXT NOT NULL,
+    accepted INTEGER NOT NULL CHECK(accepted IN (0,1)),
+    confirmations_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(estimate_acceptance_id,estimate_position_id),
+    FOREIGN KEY(estimate_acceptance_id) REFERENCES portal_estimate_acceptances(id) ON DELETE RESTRICT
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_portal_estimate_acceptance_release
+    ON portal_estimate_acceptances(estimate_release_id)`,
   `CREATE TABLE IF NOT EXISTS portal_audit_events (
     id TEXT PRIMARY KEY,
     event_type TEXT NOT NULL,
@@ -238,6 +273,10 @@ const immutableTriggers = [
   `CREATE TRIGGER IF NOT EXISTS trg_portal_review_position_immutable_delete BEFORE DELETE ON portal_review_position_entries BEGIN SELECT RAISE(ABORT,'Submitted customer review evidence is immutable'); END`,
   `CREATE TRIGGER IF NOT EXISTS trg_portal_estimate_decision_immutable_update BEFORE UPDATE ON portal_estimate_decisions BEGIN SELECT RAISE(ABORT,'Customer Estimate decision evidence is immutable'); END`,
   `CREATE TRIGGER IF NOT EXISTS trg_portal_estimate_decision_immutable_delete BEFORE DELETE ON portal_estimate_decisions BEGIN SELECT RAISE(ABORT,'Customer Estimate decision evidence is immutable'); END`,
+  `CREATE TRIGGER IF NOT EXISTS trg_portal_estimate_acceptance_immutable_update BEFORE UPDATE ON portal_estimate_acceptances BEGIN SELECT RAISE(ABORT,'Customer Estimate acceptance evidence is immutable'); END`,
+  `CREATE TRIGGER IF NOT EXISTS trg_portal_estimate_acceptance_immutable_delete BEFORE DELETE ON portal_estimate_acceptances BEGIN SELECT RAISE(ABORT,'Customer Estimate acceptance evidence is immutable'); END`,
+  `CREATE TRIGGER IF NOT EXISTS trg_portal_position_acceptance_immutable_update BEFORE UPDATE ON portal_position_acceptances BEGIN SELECT RAISE(ABORT,'Customer Position acceptance evidence is immutable'); END`,
+  `CREATE TRIGGER IF NOT EXISTS trg_portal_position_acceptance_immutable_delete BEFORE DELETE ON portal_position_acceptances BEGIN SELECT RAISE(ABORT,'Customer Position acceptance evidence is immutable'); END`,
   `CREATE TRIGGER IF NOT EXISTS trg_released_estimate_immutable_update BEFORE UPDATE ON estimates
     WHEN EXISTS(SELECT 1 FROM estimate_revision_releases r WHERE r.estimate_id=OLD.id AND r.estimate_revision=OLD.revision_no)
     BEGIN SELECT RAISE(ABORT,'Issued Estimate revision is immutable'); END`,

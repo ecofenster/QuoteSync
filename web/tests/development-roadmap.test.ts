@@ -34,7 +34,7 @@ test("status rendering uses accessible text as well as colour", async () => {
 });
 
 test("chronology remains ordered and displays the current checkpoint", () => {
-  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 122 }, (_, index) => index + 1));
+  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 127 }, (_, index) => index + 1));
   assert.equal([...ROADMAP_CHRONOLOGY].reverse().find((entry) => entry.checkpointSha)?.checkpointSha, ROADMAP_CHECKPOINT_SHA);
   assert.equal(ROADMAP_CHRONOLOGY.find((entry) => entry.title === "Browser automation process-lifecycle hardening")?.sequence, 75);
   assert.equal(ROADMAP_CHECKPOINT_SHA, "5dc75f996a52a213e6bb10121b730a401f4f2df8");
@@ -73,7 +73,7 @@ test("comparison, manufacturer documents and portal foundations retain their aut
   const agents = await read("AGENTS.md"), comparison = all.find((item) => item.id === "compare-quotes"), documents = all.find((item) => item.id === "manufacturer-system-document-library"), portal = all.find((item) => item.id === "customer-portal");
   assert.equal(comparison?.status,"in_progress");assert.match(comparison?.summary ?? "",/extraction-first.*automatically selected canonical Estimate revision.*Position identities/);
   assert.match((documents?.notes ?? []).join(" "),/customer-approved records relevant to products\/systems actually supplied/);
-  assert.match((portal?.notes ?? []).join(" "),/internal Client-owned Portal Preview.*non-public/);
+  assert.match((portal?.notes ?? []).join(" "),/internal Client-owned Portal Preview.*development-only external application.*without enabling production access/);
   assert.match(agents,/Client Database → Client → Compare Quotes/);assert.match(agents,/supplier item numbers.*never replace canonical Estimate Position identity/i);
   assert.match(agents,/upload\/select once → analyse → review exceptions → compare/);
   assert.match((comparison?.notes ?? []).join(" "), /qualifies specification and dimensional\/configuration compliance before value/);
@@ -101,7 +101,7 @@ test("governed commercial lifecycle keeps automation and approval boundaries exp
   const lifecycle = all.find((item) => item.id === "end-to-end-commercial-lifecycle");
   assert.equal(lifecycle?.status, "in_progress");
   assert.match(lifecycle?.summary ?? "", /Enquiry → RFQ → Supplier Quote → Estimate → Client Review → Revision → Acceptance → Supplier Order → Supplier Confirmation → Customer Final Confirmation → Payment → Delivery \/ Installation/);
-  assert.match((lifecycle?.notes ?? []).join(" "), /immutable issued Estimate release snapshots.*complete position-level acceptance\/signature.*secure production portal deployment.*supplier-order aggregate.*invoices\/payments/i);
+  assert.match((lifecycle?.notes ?? []).join(" "), /immutable customer Estimate issue\/release.*Position acceptance creating one staff-gated Order.*secure production Portal deployment.*production e-signature evidence.*invoices\/payments/i);
   assert.match(agents, /Enquiry → RFQ → Supplier Quote → Estimate → Client Review → Revision → Acceptance → Supplier Order → Supplier Confirmation → Customer Final Confirmation → Payment → Delivery \/ Installation/);
   assert.match(agents, /commercial decisions, issued-document changes, customer acceptance and supplier-confirmation differences remain explicit governed approval points/);
 });
@@ -121,7 +121,7 @@ test("Email intake, Enquiry qualification and Portal review form one phased Esti
   assert.match((portal?.notes ?? []).join(" "), /Project under review → Estimate in progress → Estimate ready to review → Changes sent → Estimate being updated → Updated Estimate ready to review/);
   assert.match((portal?.notes ?? []).join(" "), /Accept, Request Changes or Reject.*Position-level comments and general comments/);
   assert.match((portal?.notes ?? []).join(" "), /third distinct issued Estimate revision.*10%/);
-  assert.match((lifecycle?.notes ?? []).join(" "), /Small implementation phases: \(1\) Gmail intake.*\(8\) commitment prompt/);
+  assert.match((lifecycle?.notes ?? []).join(" "), /Delivered foundations: Gmail intake\/review.*configurable informational commitment prompt/);
   assert.equal(comparisonPdf?.status, "in_progress");
   assert.equal(estimateOutput?.status, "not_started");
 });
@@ -257,7 +257,7 @@ test("roadmap is static and has no database or production Client mutation depend
 
 test("end-to-end quotation programme is linked without duplicate canonical systems", () => {
   const serialized = JSON.stringify(all);
-  for (const phrase of ["Alternative position customer offers", "Installation Materials Included", "Installation Included", "Enquiry → Client → Project → Estimate → Order", "Gmail / Google Workspace", "Microsoft 365 / Outlook", "Google Drive API", "Contextual Next Action", "Automatic 3-day issued quotation Follow Up", "Customer Portal", "electronic acceptance", "Supplier Order Sent", "milestone", "canonical project/site pins"]) assert.match(serialized, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+  for (const phrase of ["Alternative position customer offers", "Installation Materials Included", "Installation Included", "Enquiry → Client → Project → Estimate → Order", "Gmail / Google Workspace", "Microsoft 365 / Outlook", "Google Drive API", "Contextual Next Action", "Automatic 3-day issued quotation Follow Up", "Customer Portal", "electronic acceptance", "Supplier Order Prepared/Sent", "milestone", "canonical project/site pins"]) assert.match(serialized, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
   assert.equal(all.filter((item) => item.id === "workflow-orchestration").length, 1);
   assert.equal(all.filter((item) => item.id === "customer-portal").length, 1);
   assert.match(serialized, /leadSource/);

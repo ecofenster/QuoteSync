@@ -9,6 +9,7 @@ import { initializeCommercialIdentitySchema } from './features/commercialIdentit
 import { initializeQuoteComparisonSchema } from './features/quoteComparisons/quoteComparisonSchema.js';
 import { initializePortalSecuritySchema } from './features/clientPortal/portalSecuritySchema.js';
 import { initializeEstimateProcurementActionSchema } from './features/estimates/estimateProcurementActionSchema.js';
+import { initializeLifecycleSchema } from './features/lifecycle/lifecycleSchema.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1473,6 +1474,7 @@ export const dbPromise = openDatabaseWithRecovery(dbPath).then(async (db) => {
   await initializeQuoteComparisonSchema(db);
   await initializePortalSecuritySchema(db);
   await initializeEstimateProcurementActionSchema(db);
+  await initializeLifecycleSchema(db);
 
   await ensureTable(
     db,

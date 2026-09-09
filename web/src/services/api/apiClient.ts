@@ -1,4 +1,5 @@
-export const API_BASE_URL = String(import.meta.env?.VITE_API_BASE_URL || "http://localhost:3001").replace(/\/$/, "");
+const runtimeHost = typeof window === "undefined" ? "localhost" : window.location.hostname || "localhost";
+export const API_BASE_URL = String(import.meta.env?.VITE_API_BASE_URL || `http://${runtimeHost}:3001`).replace(/\/$/, "");
 
 export type ApiMutationSafety = {
   allowed: boolean;
@@ -89,7 +90,7 @@ export async function apiFetch(path: string, options?: RequestInit) {
     throw new ApiMutationBlockedError(path, mutationSafety.state);
   }
 
-  const res = await fetch(apiUrl(path), options);
+  const res = await fetch(apiUrl(path), { credentials: "include", ...options });
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");

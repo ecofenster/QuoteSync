@@ -11,6 +11,8 @@ import { initializeWorkflowSchema } from "../server/features/workflow/workflowSc
 import { initializeCommercialIdentitySchema } from "../server/features/commercialIdentity/commercialIdentitySchema.js";
 import { initializePortalSecuritySchema } from "../server/features/clientPortal/portalSecuritySchema.js";
 import { createPortalSecurityService } from "../server/features/clientPortal/portalSecurityService.js";
+import { initializeLifecycleSchema } from "../server/features/lifecycle/lifecycleSchema.js";
+import { createLifecycleService, deriveConfirmationCheck, deriveRevisionCheck } from "../server/features/lifecycle/lifecycleService.js";
 import { createClientPortalRouter } from "../server/routes/clientPortal.js";
 import { CLIENT_PORTAL_FEATURES, PORTAL_POSITION_ACCEPTANCE_CONFIRMATIONS, PORTAL_REVIEW_POSITION_RESPONSES } from "../shared/clientPortalContracts.js";
 
@@ -39,6 +41,7 @@ async function fixture(t,{clockStart=Date.parse("2026-09-06T10:00:00.000Z")}={})
   await initializeWorkflowSchema(db);
   await initializeCommercialIdentitySchema(db);
   await initializePortalSecuritySchema(db);
+  await initializeLifecycleSchema(db);
   const now="2026-09-06T09:00:00.000Z";
   for(const row of [["client-a","Client A","a@example.test","TEST-CL-A"],["client-b","Client B","b@example.test","TEST-CL-B"]])await db.run("INSERT INTO clients(id,name,email,contact_name,company_name,client_ref,project_name,created_at,deleted_at,commercial_lifecycle,reference_namespace,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",row[0],row[1],row[2],row[1],"",row[3],`${row[1]} Project`,now,null,"prospect","test",now);
   for(const row of [["project-a1","client-a","Disposable Project A1"],["project-a2","client-a","Disposable Project A2"],["project-b1","client-b","Disposable Project B1"]])await db.run("INSERT INTO projects(id,client_id,name,status,created_at,updated_at) VALUES(?,?,?,'active',?,?)",...row,now,now);
@@ -159,6 +162,48 @@ test("intent to proceed records one workflow decision and never creates a suppli
   assert.equal((await source.db.get("SELECT COUNT(*) count FROM portal_estimate_decisions WHERE decision_type='intent_to_proceed'")).count,1);
   assert.equal((await source.db.get("SELECT COUNT(*) count FROM workflow_events WHERE event_name='estimate.intent_to_proceed'")).count,1);
   assert.equal((await source.db.get("SELECT COUNT(*) count FROM orders")).count,0);
+});
+
+test("customer acceptance creates one canonical Order and factory commitment remains staff-gated",async t=>{
+  const source=await fixture(t),auth=await authenticated(t,source),acceptance={projectId:"project-a1",estimateReleaseId:source.release.id,idempotencyKey:"accept-estimate-1",overallAccepted:true,positions:[{estimatePositionId:"position-a",positionReference:"W1",accepted:true,confirmations:{item_reference:true,configuration:true,dimensions:true,specification:true}}]};
+  const accepted=await source.service.acceptEstimate(auth.session,acceptance),replay=await source.service.acceptEstimate(auth.session,acceptance);
+  assert.match(accepted.orderRef,/^EF-ORD-2026-\d{3}$/);assert.equal(accepted.status,"customer_accepted_pending_staff_approval");assert.equal(replay.orderId,accepted.orderId);assert.equal(replay.idempotentReplay,true);
+  assert.equal((await source.db.get("SELECT COUNT(*) count FROM orders WHERE id=?",accepted.orderId)).count,1);assert.equal((await source.db.get("SELECT COUNT(*) count FROM portal_position_acceptances WHERE estimate_acceptance_id=?",accepted.acceptanceId)).count,1);
+  const lifecycle=createLifecycleService(source.db,{portal:source.service,deliveryPolicy:{publicStatus:()=>({deliveryMode:"preview_only"}),assertRecipient(){throw new Error("delivery must not occur")}}});
+  await assert.rejects(()=>lifecycle.prepareFactoryOrder(accepted.orderId,{recipient:"factory@example.test",createdBy:"staff-1"}),error=>error.code==="factory_order_staff_approval_required");
+  const approval=await lifecycle.approveOrder(accepted.orderId,{approvedBy:"staff-1",note:"Reviewed exact issued revision"});assert.equal(approval.status,"staff_approved");
+  const draft=await lifecycle.prepareFactoryOrder(accepted.orderId,{recipient:"factory@example.test",createdBy:"staff-1",documentIds:["document-issued"]});assert.equal(draft.status,"draft");assert.equal((await source.db.get("SELECT status FROM orders WHERE id=?",accepted.orderId)).status,"staff_approved");
+});
+
+test("an issued revision can create only one canonical Order across delegated contacts",async t=>{
+  const source=await fixture(t),first=await authenticated(t,source),payload={projectId:"project-a1",estimateReleaseId:source.release.id,overallAccepted:true,positions:[{estimatePositionId:"position-a",positionReference:"W1",accepted:true,confirmations:{item_reference:true,configuration:true,dimensions:true,specification:true}}]};
+  const accepted=await source.service.acceptEstimate(first.session,{...payload,idempotencyKey:"contact-a-acceptance"});
+  const invitation=await source.service.createInvitation({clientId:"client-a",projectId:"project-a1",email:"delegate@example.test",displayName:"Delegate",createdBy:"staff-1"});
+  const secondAccepted=await source.service.acceptInvitation({token:invitation.token,identityAssertion:{subject:"subject-delegate",email:"delegate@example.test"}}),secondSession=await source.service.authenticateSession(secondAccepted.sessionToken);
+  const replay=await source.service.acceptEstimate(secondSession,{...payload,idempotencyKey:"contact-delegate-acceptance"});
+  assert.equal(replay.orderId,accepted.orderId);assert.equal(replay.idempotentReplay,true);
+  assert.equal((await source.db.get("SELECT COUNT(*) count FROM portal_estimate_acceptances WHERE estimate_release_id=?",source.release.id)).count,1);
+  assert.equal((await source.db.get("SELECT COUNT(*) count FROM orders WHERE source_estimate_id='estimate-a1'")).count,1);
+});
+
+test("supplier revision and factory confirmation checks require exact source-backed evidence",()=>{
+  assert.equal(deriveRevisionCheck({beforeValue:"White",expectedValue:"Black",afterValue:"Black",afterSourceReference:"Revision 2 p4"}),"implemented");
+  assert.equal(deriveRevisionCheck({beforeValue:"White",expectedValue:"Black",afterValue:"White",afterSourceReference:"Revision 2 p4"}),"not_implemented");
+  assert.equal(deriveRevisionCheck({beforeValue:"White",expectedValue:"Black",afterValue:"Anthracite",afterSourceReference:"Revision 2 p4"}),"needs_review");
+  assert.equal(deriveRevisionCheck({beforeValue:"White",expectedValue:"Black",afterValue:"Black"}),"needs_review");
+  assert.equal(deriveConfirmationCheck({approvedValue:"1000 mm",confirmedValue:"1000 mm",confirmationSourceReference:"Confirmation p2"}),"no_change");
+  assert.equal(deriveConfirmationCheck({approvedValue:"1000 mm",confirmedValue:"990 mm",confirmationSourceReference:"Confirmation p2"}),"change_detected");
+  assert.equal(deriveConfirmationCheck({approvedValue:"1000 mm",confirmedValue:"1000 mm"}),"needs_review");
+});
+
+test("supplier enquiry preview and returned evidence stay linked to one canonical Project and working Estimate",async t=>{
+  const source=await fixture(t),lifecycle=createLifecycleService(source.db,{portal:source.service,deliveryPolicy:{publicStatus:()=>({deliveryMode:"preview_only"}),assertRecipient(){throw new Error("no send")}}});
+  const enquiry=await lifecycle.prepareSupplierEnquiry("project-a1",{estimateId:"estimate-a1",recipient:"factory@example.test",subject:"TEST supplier enquiry",bodyText:"Please review the selected Project drawing.",documentIds:["document-safe"],createdBy:"staff-1"});
+  assert.equal(enquiry.status,"draft");assert.deepEqual(enquiry.documents.map(item=>item.id),["document-safe"]);assert.equal((await source.db.get("SELECT COUNT(*) count FROM supplier_enquiry_drafts WHERE project_id='project-a1'")).count,1);
+  const linked=await lifecycle.linkManufacturerResponse("project-a1",{estimateId:"estimate-a1",supplierEnquiryId:enquiry.id,communicationMessageId:enquiry.communicationMessageId,canonicalDocumentId:"document-safe",createdBy:"staff-1"});
+  assert.equal(linked.status,"ready_for_import");assert.equal(linked.nextAction,"Review with Manufacturer Import");
+  const replay=await lifecycle.linkManufacturerResponse("project-a1",{estimateId:"estimate-a1",supplierEnquiryId:enquiry.id,communicationMessageId:enquiry.communicationMessageId,canonicalDocumentId:"document-safe",createdBy:"staff-1"});assert.equal(replay.idempotentReplay,true);
+  await assert.rejects(()=>lifecycle.prepareSupplierEnquiry("project-a2",{recipient:"factory@example.test",subject:"Wrong Project",bodyText:"No",documentIds:["document-safe"],createdBy:"staff-1"}),error=>error.code==="supplier_enquiry_document_invalid");
 });
 
 test("HTTP boundary is fail-closed by default and requires authentication plus CSRF when explicitly test-enabled",async t=>{

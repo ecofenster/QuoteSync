@@ -11,6 +11,8 @@ import { createCommercialIdentityService } from "../server/features/commercialId
 import { buildClientReferencePlan, createClientReferenceReconciliationService } from "../server/features/commercialIdentity/clientReferenceReconciliationService.js";
 import { createCommercialDriveService } from "../server/features/documents/commercialDriveService.js";
 import { GOOGLE_DRIVE_FOLDER_MIME_TYPE } from "../server/features/documents/googleDriveProvider.js";
+import { initializeLifecycleSchema } from "../server/features/lifecycle/lifecycleSchema.js";
+import { createCommunicationRepository } from "../server/features/communications/communicationRepository.js";
 
 const now = () => new Date("2026-08-27T10:00:00.000Z");
 const backup = { verified: true, backupId: "fixture-backup", sha256: "a".repeat(64) };
@@ -208,6 +210,24 @@ test("Enquiry Drive identity uses the configured Enquiries root without a year f
   children.get(first.folder.provider_folder_id).push({ id: "enquiry-file", name: "Requirements.pdf", mimeType: "application/pdf", size: "12", version: "1", modifiedTime: now().toISOString() });
   assert.equal((await drive.discoverEnquiry(enquiry.id)).filesDiscovered, 1);
   assert.equal((await db.get("SELECT enquiry_id FROM canonical_documents WHERE provider_file_id='enquiry-file'")).enquiry_id, enquiry.id);
+});
+
+test("reviewed Gmail attachments file once into the qualified Project Drawings (Client) folder", async (t) => {
+  const db=await fixture(t);await initializeLifecycleSchema(db);
+  const identity=createCommercialIdentityService(db,{now}),enquiry=await identity.createEnquiry({displayName:"Test Contact",email:"customer@example.test",projectName:"Garden Studio"});
+  const repository=createCommunicationRepository(db),message=await repository.save({id:"message-local",provider:"google_workspace",providerMessageId:"gmail-message",threadId:"gmail-thread",direction:"inbound",folder:"inbox",status:"received",from:["Test Contact <customer@example.test>"],to:["sales@example.test"],cc:[],bcc:[],subject:"Garden Studio",bodyHtml:"",bodyText:"Please quote",links:[{kind:"enquiry",id:enquiry.id}],attachments:[{id:"attachment-local",fileName:"site drawing.pdf",mediaType:"application/pdf",sizeBytes:7,providerAttachmentId:"gmail-attachment"}]});
+  await db.run("INSERT INTO enquiry_email_intakes(id,enquiry_id,communication_message_id,provider_message_id,reviewed_brief,created_by,created_at) VALUES('intake',?,?,?,?,?,?)",enquiry.id,message.id,"gmail-message","Reviewed requirements","staff",now().toISOString());
+  await db.run("INSERT INTO enquiry_intake_attachments(id,enquiry_email_intake_id,communication_attachment_id,file_name,storage_status) VALUES('intake-file','intake','attachment-local','site drawing.pdf','pending')");
+  const qualifiedIdentity=createCommercialIdentityService(db,{now,driveTransitions:{provisionProject:async()=>({status:"provisioned"}),storeReviewedEnquiryAttachments:async()=>({status:"deferred"})}});
+  const qualified=await qualifiedIdentity.qualifyEnquiry(enquiry.id,{mode:"new_client",client:{name:"Test Contact"},project:{id:"project",name:"Garden Studio",contextYear:2026}});
+  const children=new Map([["root",[]]]);let folderIndex=0,uploads=0;
+  const provider={async listChildren({parentId}){return structuredClone(children.get(parentId)||[])},async findFolderByName({parentId,name}){return(children.get(parentId)||[]).find(item=>item.name===name)||null},async createFolder({parentId,name,appProperties}){const item={id:`folder-${++folderIndex}`,name,mimeType:GOOGLE_DRIVE_FOLDER_MIME_TYPE,appProperties};children.set(parentId,[...(children.get(parentId)||[]),item]);children.set(item.id,[]);return item},async uploadFile({parentId,fileName,mediaType,bytes,appProperties}){uploads+=1;assert.equal(Buffer.from(bytes).toString(),"drawing");const item={id:"drive-file",name:fileName,mimeType:mediaType,size:String(bytes.length),version:"1",md5Checksum:"hash",webViewLink:"https://drive.invalid/file",appProperties};children.set(parentId,[...(children.get(parentId)||[]),item]);return item}};
+  const workspace={async status(){return{connected:true,estimatesRootFolderId:"root",capabilities:{drive:{available:true}},account:{id:"account"}}},async resolvedConfig(){return{stored:{folder_template_json:"{}"}}}};
+  const drive=createCommercialDriveService(db,{provider,workspace,sourceMailProvider:{async attachment(messageId,attachmentId){assert.equal(messageId,"gmail-message");assert.equal(attachmentId,"gmail-attachment");return Buffer.from("drawing")}},now});
+  const first=await drive.storeReviewedEnquiryAttachments(enquiry.id,qualified.project.id),second=await drive.storeReviewedEnquiryAttachments(enquiry.id,qualified.project.id);
+  assert.equal(first.status,"stored",JSON.stringify(first));assert.equal(first.stored,1);assert.equal(second.stored,1);assert.equal(uploads,1);
+  const stored=await db.get("SELECT d.document_type,d.enquiry_id,d.client_id,d.project_id,d.folder_path,a.storage_status,a.canonical_document_id FROM canonical_documents d JOIN enquiry_intake_attachments a ON a.canonical_document_id=d.id WHERE d.provider_file_id='drive-file'");
+  assert.equal(stored.document_type,"client_drawing");assert.equal(stored.enquiry_id,enquiry.id);assert.equal(stored.project_id,qualified.project.id);assert.equal(stored.storage_status,"stored");assert.match(stored.folder_path,/Drawings \(Client\)$/);
 });
 
 test("canonical Drive discovery understands nested Project/Estimate folders and reconciles files idempotently by provider ID", async (t) => {

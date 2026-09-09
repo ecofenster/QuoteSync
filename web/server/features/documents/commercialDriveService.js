@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createGoogleWorkspaceService } from "../integrations/googleWorkspaceService.js";
 import { createGoogleDriveProvider, GOOGLE_DRIVE_FOLDER_MIME_TYPE } from "./googleDriveProvider.js";
+import { createGmailProvider } from "../communications/gmailProvider.js";
 
 // Keep the canonical hierarchy independent from the legacy Estimate-first
 // integration service. The legacy service composes this one, so importing it
@@ -38,6 +39,7 @@ export function buildCanonicalEstimateFolderName(estimateRef, descriptor = "") {
 export function createCommercialDriveService(db, options = {}) {
   const workspace = options.workspace ?? createGoogleWorkspaceService(db, options);
   const provider = options.provider ?? createGoogleDriveProvider(workspace);
+  const sourceMail = options.sourceMailProvider ?? createGmailProvider(workspace);
   const now = options.now ?? (() => new Date());
 
   async function mapping(entityKind, entityId, logicalKey) {
@@ -210,6 +212,46 @@ export function createCommercialDriveService(db, options = {}) {
     return { status: "provisioned", projectId, folders };
   }
 
+  async function storeReviewedEnquiryAttachments(enquiryId, projectId) {
+    const projectResult = await provisionProject(projectId);
+    if (projectResult.status !== "provisioned") return { status: projectResult.status, projectId, stored: 0, failed: 0, pending: 0, files: [] };
+    const project = await projectContext(projectId), target = await mapping("project", projectId, "drawings_client");
+    if (!project || !target) throw error("The reviewed Project or Drawings (Client) folder is unavailable.", 409, "drawings_client_folder_unavailable");
+    const rows = await db.all(`SELECT a.id intake_attachment_id,a.canonical_document_id,a.storage_status,a.file_name,
+      ca.media_type,ca.size_bytes,ca.provider_attachment_id,m.provider,m.provider_message_id
+      FROM enquiry_intake_attachments a JOIN enquiry_email_intakes i ON i.id=a.enquiry_email_intake_id
+      JOIN communication_attachments ca ON ca.id=a.communication_attachment_id
+      JOIN communication_messages m ON m.id=i.communication_message_id
+      WHERE i.enquiry_id=? AND a.storage_status<>'not_selected' ORDER BY a.id`, enquiryId);
+    const existingFiles = await provider.listChildren({ parentId: target.provider_folder_id });
+    const outcomes = [];
+    for (const row of rows) {
+      if (row.canonical_document_id) { outcomes.push({ attachmentId: row.intake_attachment_id, fileName: row.file_name, status: "reused", documentId: row.canonical_document_id }); continue; }
+      try {
+        if (row.provider !== "google_workspace" || !row.provider_message_id || !row.provider_attachment_id) throw error("The selected email attachment no longer has provider evidence.", 409, "source_attachment_unavailable");
+        const sourceKey = row.intake_attachment_id;
+        let uploaded = existingFiles.find((file) => file.appProperties?.quotesuiteEnquiryIntakeAttachmentId === sourceKey);
+        if (!uploaded) {
+          const bytes = await sourceMail.attachment(row.provider_message_id, row.provider_attachment_id);
+          uploaded = await provider.uploadFile({ parentId: target.provider_folder_id, fileName: row.file_name, mediaType: row.media_type || "application/octet-stream", bytes, appProperties: { quotesuiteEnquiryId: enquiryId, quotesuiteProjectId: projectId, quotesuiteEnquiryIntakeAttachmentId: sourceKey } });
+        }
+        const at = now().toISOString(), documentId = randomUUID(), checksum = uploaded.md5Checksum || null;
+        await db.run(`INSERT INTO canonical_documents(id,provider,provider_account_id,provider_file_id,provider_folder_id,enquiry_id,client_id,project_id,document_type,file_name,mime_type,size_bytes,provider_created_at,provider_modified_at,provider_version,provider_revision,checksum,web_view_link,folder_path,trashed,removed_at,discovered_at,last_seen_at,updated_at)
+          VALUES(?,'google_drive',?,?,?,?,?,?,'client_drawing',?,?,?,?,?,?,?,?,?,?,0,NULL,?,?,?)
+          ON CONFLICT(provider,provider_account_id,provider_file_id) DO UPDATE SET enquiry_id=COALESCE(canonical_documents.enquiry_id,excluded.enquiry_id),client_id=excluded.client_id,project_id=excluded.project_id,provider_folder_id=excluded.provider_folder_id,document_type='client_drawing',file_name=excluded.file_name,mime_type=excluded.mime_type,size_bytes=excluded.size_bytes,provider_modified_at=excluded.provider_modified_at,provider_version=excluded.provider_version,provider_revision=excluded.provider_revision,checksum=excluded.checksum,web_view_link=excluded.web_view_link,folder_path=excluded.folder_path,trashed=0,removed_at=NULL,last_seen_at=excluded.last_seen_at,updated_at=excluded.updated_at`,
+          documentId,target.provider_account_id || "",uploaded.id,target.provider_folder_id,enquiryId,project.client_id,projectId,uploaded.name || row.file_name,uploaded.mimeType || row.media_type || "application/octet-stream",Number(uploaded.size || row.size_bytes || 0),uploaded.createdTime || at,uploaded.modifiedTime || at,uploaded.version == null ? null : String(uploaded.version),uploaded.version == null ? null : String(uploaded.version),checksum,uploaded.webViewLink || null,target.folder_path,at,at,at);
+        const canonical = await db.get("SELECT id FROM canonical_documents WHERE provider='google_drive' AND provider_account_id=? AND provider_file_id=?", target.provider_account_id || "", uploaded.id);
+        await db.run("UPDATE enquiry_intake_attachments SET storage_status='stored',canonical_document_id=?,error_code=NULL WHERE id=?", canonical.id, row.intake_attachment_id);
+        outcomes.push({ attachmentId: row.intake_attachment_id, fileName: row.file_name, status: "stored", documentId: canonical.id });
+      } catch (cause) {
+        const code = String(cause?.code || "attachment_storage_failed");
+        await db.run("UPDATE enquiry_intake_attachments SET storage_status='failed',error_code=? WHERE id=?", code, row.intake_attachment_id);
+        outcomes.push({ attachmentId: row.intake_attachment_id, fileName: row.file_name, status: "failed", errorCode: code });
+      }
+    }
+    return { status: outcomes.some((item) => item.status === "failed") ? "partial_failure" : "stored", projectId, stored: outcomes.filter((item) => ["stored","reused"].includes(item.status)).length, failed: outcomes.filter((item) => item.status === "failed").length, pending: 0, files: outcomes };
+  }
+
   async function provisionEstimate(estimateId) {
     const estimate = await db.get("SELECT id,project_id,estimate_ref,created_at FROM estimates WHERE id=? AND deleted_at IS NULL", estimateId);
     if (!estimate) throw error("Estimate not found.", 404, "estimate_not_found");
@@ -311,7 +353,7 @@ export function createCommercialDriveService(db, options = {}) {
     return { status: "synced", projectId, provenance: located.provenance, foldersVisited: seen.size, filesDiscovered };
   }
 
-  return { provisionEnquiry, discoverEnquiry, discoverClient, provisionProject, provisionEstimate, discoverProject, buildCanonicalClientFolderName, buildCanonicalEstimateFolderName };
+  return { provisionEnquiry, discoverEnquiry, discoverClient, provisionProject, storeReviewedEnquiryAttachments, provisionEstimate, discoverProject, buildCanonicalClientFolderName, buildCanonicalEstimateFolderName };
 }
 
 const clean = (value) => String(value || "").trim();

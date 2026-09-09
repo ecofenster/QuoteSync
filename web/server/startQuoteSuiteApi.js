@@ -23,14 +23,17 @@ import { createQuoteComparisonsRouter } from './routes/quoteComparisons.js';
 import { createManufacturerDocumentsRouter } from './routes/manufacturerDocuments.js';
 import { createClientPortalRouter } from './routes/clientPortal.js';
 import { createEstimateProcurementActionsRouter } from './routes/estimateProcurementActions.js';
+import { createLifecycleRouter } from './routes/lifecycle.js';
 import { fetchCentralExchangeRate } from './features/projectCalculatorLab/exchangeRateProvider.js';
 import { dbPromise } from './db.js';
 import { startApiServer } from './apiServerStartup.js';
 import { createRuntimeHealthHandler } from './features/runtimeHealth/runtimeHealth.js';
+import { createPortalTestAdapter } from './features/clientPortal/portalTestAdapter.js';
 
 const app = express();
-
-app.use(cors());
+const configuredOrigins = new Set(String(process.env.QUOTESUITE_APP_ORIGINS || '').split(',').map(value => value.trim()).filter(Boolean));
+const developmentOrigin = (origin) => String(process.env.NODE_ENV || '').toLowerCase() !== 'production' && /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/i.test(String(origin || ''));
+app.use(cors({ credentials: true, origin(origin, callback) { if (!origin || configuredOrigins.has(origin) || developmentOrigin(origin)) return callback(null, true); return callback(Object.assign(new Error('Origin is not allowed.'), { status: 403 })); } }));
 app.use(express.json({ limit: '25mb' }));
 
 // Registered before business routes so a running API can still report a failed
@@ -55,8 +58,10 @@ app.use('/api/documents', createDocumentsRouter());
 app.use('/api/quotation-workflow', createQuotationWorkflowRouter());
 app.use('/api/quote-comparisons', createQuoteComparisonsRouter());
 app.use('/api/admin/manufacturer-documents', createManufacturerDocumentsRouter());
-app.use('/api/client-portal', createClientPortalRouter({ databasePromise: dbPromise }));
+const portalTestAdapter = createPortalTestAdapter(process.env);
+app.use('/api/client-portal', createClientPortalRouter({ databasePromise: dbPromise, externalAccessEnabled: portalTestAdapter.enabled, cookieSecure: portalTestAdapter.enabled ? portalTestAdapter.cookieSecure : true, testAdapter: portalTestAdapter.enabled, serviceOptions: portalTestAdapter.enabled ? { identityVerifier: portalTestAdapter.verify, validateInvitationEmail: portalTestAdapter.validateInvitationEmail } : {} }));
 app.use('/api/estimates', createEstimateProcurementActionsRouter({ databasePromise: dbPromise }));
+app.use('/api/lifecycle', createLifecycleRouter({ databasePromise: dbPromise }));
 app.use('/api/estimates', await createSupplierQuotesRouter({ dbPromise }));
 app.use('/api/admin/supplier-import-lab', await createSupplierImportLabRouter({ dbPromise }));
 app.use('/api/admin/project-calculator-lab', await createProjectCalculatorLabRouter({ dbPromise }));
