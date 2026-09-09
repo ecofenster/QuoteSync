@@ -23,12 +23,13 @@ export type ComparisonProposal = {
 export type CustomerCommercialSource =
   | {kind:"issued_customer_quotation";issuedQuotationId:string;documentId:string;fileName:string;quotationRevision:number;commercialSnapshot:{subtotalExVatGbp?:string;vatGbp?:string;totalIncVatGbp?:string};capturedAt:string}
   | {kind:"current_project_costing";scenarioId:string;scenarioRevision:number;capturedAt:string};
-export type AutomaticComparisonBaseline = {status:"canonical_baseline_detected"|"baseline_upload_required";clientId:string;projectId:string|null;baseline:null|{estimateId:string;estimateRef:string;baseEstimateRef:string;revisionNo:number;status:string;outcome:string;positionCount:number;positions:Array<Record<string,unknown>>;customerCommercialSources:CustomerCommercialSource[];technicalSourceEvidence:Array<{attachmentId:string;fileName:string;supplierName:string;revisionId:string}>;preferredCustomerCommercialSource:"issued_customer_quotation"|"current_project_costing"|"customer_baseline_required"}};
+type TechnicalSourceEvidence = {attachmentId:string;fileName:string;supplierName:string;revisionId:string;quotationNumber?:string|null;quotationRevision?:string|null;quotationDate?:string|null};
+export type AutomaticComparisonBaseline = {status:"canonical_baseline_detected"|"baseline_upload_required";clientId:string;projectId:string|null;baseline:null|{estimateId:string;estimateRef:string;baseEstimateRef:string;revisionNo:number;status:string;outcome:string;positionCount:number;positions:Array<Record<string,unknown>>;customerCommercialSources:CustomerCommercialSource[];technicalSourceEvidence:TechnicalSourceEvidence[];preferredCustomerCommercialSource:"issued_customer_quotation"|"current_project_costing"|"customer_baseline_required"}};
 
 export type QuoteComparison = {
-  id:string;clientId:string;projectId:string|null;baselineEstimateId:string;baselineEstimateRevision:number;
+  id:string;clientId:string;projectId:string|null;projectName:string|null;baselineEstimateId:string;baselineEstimateRevision:number;
   name:string|null;description:string|null;archivedAt:string|null;archivedBy:string|null;
-  baselineSnapshot:{estimateId:string;estimateRef:string;baseEstimateRef:string;revisionNo:number;status:string;capturedAt:string;customerCommercial?:Record<string,unknown>;technicalEvidenceRole?:string;positions:Array<{id:string;positionRef?:string;roomName?:string;qty?:number;widthMm?:number;heightMm?:number}>};
+  baselineSnapshot:{estimateId:string;estimateRef:string;baseEstimateRef:string;revisionNo:number;status:string;capturedAt:string;customerCommercial?:Record<string,unknown>;technicalEvidenceRole?:string;technicalSourceEvidence?:TechnicalSourceEvidence[];positions:Array<{id:string;positionRef?:string;roomName?:string;qty?:number;widthMm?:number;heightMm?:number}>};
   status:"draft_review_required"|"approved"|"superseded";recordRevision:number;createdBy:string;approvedBy:string|null;approvedAt:string|null;updatedAt:string;
   proposals:ComparisonProposal[];
 };

@@ -22,7 +22,13 @@ test("Client workspace owns extraction-first Compare Quotes and governed Portal 
   assert.match(tabs,/ClientPortalPreview client=\{pickerClient\}/);
   assert.match(workspace,/Baseline \/ source of truth/);assert.match(workspace,/Add competitor quotation/);assert.match(workspace,/Upload & Analyse/);assert.match(workspace,/Advanced \/ manual correction/);
   const results=await readFile(new URL("../src/features/quoteComparisons/ComparisonResults.tsx",import.meta.url),"utf8");
-  assert.match(results,/Comparison Report/);assert.match(results,/Review Exceptions/);assert.match(results,/Advanced Mapping/);assert.match(results,/Overall Recommendations/);
+  assert.match(results,/Comparison Report/);assert.match(results,/Review Exceptions/);assert.match(results,/Advanced Mapping/);assert.match(results,/Project overview/);
+  assert.match(results,/Drawing/);assert.match(results,/What is offered/);assert.match(results,/Position conclusion/);assert.match(results,/Image unavailable/);assert.doesNotMatch(results,/Overall Recommendations|Best value/);
+  const print=await readFile(new URL("../src/features/quoteComparisons/ComparisonPrintDocument.tsx",import.meta.url),"utf8");
+  assert.match(results,/Print \/ Save PDF/);assert.match(results,/comparison\.status === "draft_review_required".*Approve comparison/);
+  assert.match(print,/approval is not required to print/);assert.match(print,/report\.sourceReferences/);assert.match(print,/packPositions\(report\.positions\)/);assert.match(print,/supplier\.commercial\.netSupply/);assert.match(print,/Image unavailable/);assert.match(print,/data-print-overview="3"/);assert.doesNotMatch(print,/Overall recommendations|Top 3|Best value|buildQuoteComparisonReport|rankingTuple|deriveProjectCosting/);
+  assert.match(results,/resolveManufacturerVisualAssetUrl\(drawing\.url\)/);assert.match(print,/resolveManufacturerVisualAssetUrl\(drawing\.url\)/);
+  assert.match(workspace,/sourceVisuals:row\.sourceVisuals/);assert.match(workspace,/sourceAttachmentId:document\.attachmentId/);
   assert.doesNotMatch(workspace,/Create Draft Comparison/);
 });
 
@@ -69,7 +75,7 @@ test("comparison freezes the selected Estimate revision and supports multi-docum
   assert.equal(comparison.status,"draft_review_required");assert.equal(comparison.proposals.length,2);assert.equal(supplierA.documents.length,2);
   assert.equal(comparison.baselineSnapshot.positions[0].id,"position-a");assert.equal(supplierA.positionMappings.some(mapping=>mapping.supplierItemReference==="A01"),true);
   await db.run("UPDATE estimates SET positions_json='[]',revision_no=3 WHERE id='estimate-r2'");
-  const retained=await service.get(comparison.id);assert.equal(retained.baselineEstimateRevision,2);assert.equal(retained.baselineSnapshot.positions.length,2);
+  const retained=await service.get(comparison.id);assert.equal(retained.baselineEstimateRevision,2);assert.equal(retained.baselineSnapshot.positions.length,2);assert.equal(retained.projectName,"Extension");
 });
 
 test("comparison rejects supplier purchase evidence as a customer commercial baseline",async t=>{

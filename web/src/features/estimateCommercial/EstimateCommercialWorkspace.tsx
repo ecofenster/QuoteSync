@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type ComponentType } from "react";
+import { createPortal } from "react-dom";
 import ProjectCalculatorLabWorkspace, {
   ensureEstimateCosting,
 } from "../projectCalculatorLab/ProjectCalculatorLabWorkspace";
@@ -63,6 +64,7 @@ export default function EstimateCommercialWorkspace({
   useEffect(()=>{void apiFetch(`/api/admin/project-calculator-lab/scenarios?estimate_id=${encodeURIComponent(estimateId)}`).then(async rows=>{const first=Array.isArray(rows)?rows[0]:null;if(!first)return;const scenario=await apiFetch(`/api/admin/project-calculator-lab/scenarios/${encodeURIComponent(first.id)}?estimate_id=${encodeURIComponent(estimateId)}`) as CalculatorScenario;setCurrentScenario(scenario);setCustomerValue(deriveProjectCostingCommercialResult(scenario).actualSale)}).catch(()=>{})},[estimateId,positionRevision]);
   useEffect(()=>{const update=(event:Event)=>{const scenario=(event as CustomEvent<CalculatorScenario>).detail;if(!scenario)return;setCurrentScenario(scenario);setCustomerValue(deriveProjectCostingCommercialResult(scenario).actualSale)};window.addEventListener("quotesuite:costing-updated",update);return()=>window.removeEventListener("quotesuite:costing-updated",update)},[]);
   useEffect(()=>{void refreshWorkflow()},[refreshWorkflow,positionRevision]);
+  useEffect(()=>{if(tab!=="import"&&!documentsOpen)return;document.body.classList.add("qs-modal-open");return()=>document.body.classList.remove("qs-modal-open")},[documentsOpen,tab]);
   const totals=estimate?estimateTotals(estimate):{totalSquareMetres:0,totalLinearMetres:0,totalQty:0};
   const nextAction=deriveNextAction({manufacturerQuoteImported:workflowState?.manufacturerQuoteImported??Boolean(currentScenario&&currentScenario.origin==="supplier_import"&&currentScenario.products.length),costingReady:workflowState?.costingReady??Boolean(currentScenario?.products.length),quotationReviewed:workflowState?.quotationReviewed??quotationReviewed,quotationPrepared:workflowState?.quotationPrepared,quotationIssued:workflowState?.quotationIssued??false,followUpDue:workflowState?.followUpDue??false,followUpDueDate:workflowState?.followUpDueDate,followUpCompleted:workflowState?.followUpCompleted??false,customerAccepted:workflowState?.customerAccepted??false,orderCreated:workflowState?.orderCreated??false});
   const openImport = useCallback(() => {
@@ -106,12 +108,16 @@ export default function EstimateCommercialWorkspace({
         scenarioId={currentScenario?.id ?? ""}
         supplierPolicies={supplierPolicies}
         nextActionMessage={nextAction?.reason ?? "Review the current commercial worksheet."}
+        nextActionLabel={nextAction?.label}
         revisionStatus={revisionStatus}
         creatingRevision={creatingRevision}
         onCreateRevision={() => void createRevision()}
         onOpenDocuments={() => setDocumentsOpen(true)}
         canReviewCustomerQuotation={Boolean(client && estimate)}
         onReviewCustomerQuotation={reviewCustomerQuotation}
+        estimateId={estimateId}
+        clientId={client?String(client.id):undefined}
+        projectId={estimate?.projectId?String(estimate.projectId):null}
       />
       <div
         className="estimate-commercial__content"
@@ -156,7 +162,7 @@ export default function EstimateCommercialWorkspace({
           </p>
         ) : null}
       </div>
-      {tab === "import" ? (
+      {tab === "import" ? createPortal((
         <div
           className="estimate-commercial__modal-scrim"
           role="presentation"
@@ -197,7 +203,7 @@ export default function EstimateCommercialWorkspace({
             ) : null}
           </section>
         </div>
-      ) : null}
+      ),document.body) : null}
       {quotationOpen && client && estimate ? (
         <CustomerQuotationPreview
           client={client}
@@ -207,7 +213,7 @@ export default function EstimateCommercialWorkspace({
           onWorkflowChanged={()=>void refreshWorkflow()}
         />
       ) : null}
-      {documentsOpen ? <div className="estimate-commercial__modal-scrim" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)setDocumentsOpen(false)}}><section className="estimate-commercial__modal ui-card" role="dialog" aria-modal="true" aria-label="Estimate Files and Documents"><header><div><h2>Files / Documents</h2><p>Canonical documents and retained supplier quotation evidence linked to {estimateRef}.</p></div><button className="ui-button" onClick={()=>setDocumentsOpen(false)}>Close</button></header><CanonicalDocumentsPanel estimateId={estimateId}/><details><summary>Supplier quotation evidence</summary><EstimateSupplierDocuments estimateId={estimateId} estimateRef={estimateRef}/></details></section></div> : null}
+      {documentsOpen ? createPortal(<div className="estimate-commercial__modal-scrim" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)setDocumentsOpen(false)}}><section className="estimate-commercial__modal ui-card" role="dialog" aria-modal="true" aria-label="Estimate Files and Documents"><header><div><h2>Files / Documents</h2><p>Canonical documents and retained supplier quotation evidence linked to {estimateRef}.</p></div><button className="ui-button" onClick={()=>setDocumentsOpen(false)}>Close</button></header><CanonicalDocumentsPanel estimateId={estimateId}/><details><summary>Supplier quotation evidence</summary><EstimateSupplierDocuments estimateId={estimateId} estimateRef={estimateRef}/></details></section></div>,document.body) : null}
     </section>
   );
 }

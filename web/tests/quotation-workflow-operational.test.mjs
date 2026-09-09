@@ -8,6 +8,7 @@ import { open } from "sqlite";
 import { initializeWorkflowSchema } from "../server/features/workflow/workflowSchema.js";
 import { createGoogleWorkspaceService, GOOGLE_WORKSPACE_SCOPES } from "../server/features/integrations/googleWorkspaceService.js";
 import { createIssuedQuotationService } from "../server/features/customerQuotations/issuedQuotationService.js";
+import { initializePortalSecuritySchema } from "../server/features/clientPortal/portalSecuritySchema.js";
 
 const encryptionKey=Buffer.alloc(32,7);
 const jsonResponse=(body,{ok=true,status=200}={})=>({ok,status,json:async()=>body});
@@ -17,14 +18,17 @@ async function fixture(t,{gmailFailure=false}={}){
   const root=await mkdtemp(path.join(os.tmpdir(),"qs-issued-")),db=await open({filename:path.join(root,"test.db"),driver:sqlite3.Database});
   await db.exec(`
     CREATE TABLE clients(id TEXT PRIMARY KEY,name TEXT,email TEXT,project_name TEXT,deleted_at TEXT);
-    CREATE TABLE estimates(id TEXT PRIMARY KEY,client_id TEXT,estimate_ref TEXT,revision_no INTEGER,created_at TEXT,deleted_at TEXT);
+    CREATE TABLE projects(id TEXT PRIMARY KEY,client_id TEXT,name TEXT,deleted_at TEXT);
+    CREATE TABLE estimates(id TEXT PRIMARY KEY,client_id TEXT,project_id TEXT,estimate_ref TEXT,base_estimate_ref TEXT,revision_no INTEGER,status TEXT,positions_json TEXT,project_address TEXT,project_address_json TEXT,postcode TEXT,what3words TEXT,latitude REAL,longitude REAL,created_at TEXT,deleted_at TEXT);
     CREATE TABLE followups(id TEXT PRIMARY KEY,client_id TEXT,estimate_id TEXT,title TEXT,notes TEXT,due_at TEXT,status TEXT,created_at TEXT,updated_at TEXT);
     CREATE TABLE project_calculator_lab_scenarios(id TEXT PRIMARY KEY,estimate_id TEXT);
     CREATE TABLE project_calculator_estimate_product_rows(id TEXT PRIMARY KEY,scenario_id TEXT);
   `);
   await initializeWorkflowSchema(db);
+  await initializePortalSecuritySchema(db);
   await db.run("INSERT INTO clients VALUES(?,?,?,?,NULL)","client-1","Ada Client","ada@example.com","Garden Room");
-  await db.run("INSERT INTO estimates VALUES(?,?,?,?,?,NULL)","estimate-1","client-1","EST-100",2,"2026-08-26T09:00:00.000Z");
+  await db.run("INSERT INTO projects VALUES('project-1','client-1','Garden Room',NULL)");
+  await db.run("INSERT INTO estimates VALUES(?,?,?,?,?,?,'Draft',?,'1 Test Street','{}','AA1 1AA','',NULL,NULL,?,NULL)","estimate-1","client-1","project-1","EST-100","EST-100",2,JSON.stringify([{id:"p1",positionRef:"W1",qty:1}]),"2026-08-26T09:00:00.000Z");
   await db.run("INSERT INTO project_calculator_lab_scenarios VALUES(?,?)","scenario-1","estimate-1");
   await db.run("INSERT INTO project_calculator_estimate_product_rows VALUES(?,?)","product-1","scenario-1");
   let gmailSendCount=0;
@@ -74,6 +78,8 @@ test("provider-confirmed send issues once and creates exactly one linked three-d
   assert.equal(retried.status,"issued");assert.equal(gmailSendCount(),1);assert.equal((await db.get("SELECT COUNT(*) count FROM followups WHERE issued_quotation_id=?",issued.id)).count,1);
   await assert.rejects(()=>db.run("UPDATE issued_quotations SET recipient='mutated@example.com' WHERE id=?",issued.id),/immutable/);
   await assert.rejects(()=>db.run("UPDATE customer_quotation_documents SET file_name='mutated.pdf' WHERE id=?",issued.document.id),/immutable/);
+  await assert.rejects(()=>db.run("UPDATE estimates SET status='Changed' WHERE id='estimate-1'"),/immutable/);
+  const release=await db.get("SELECT * FROM estimate_revision_releases WHERE issued_quotation_id=?",issued.id);assert.equal(release.estimate_revision,2);assert.equal(release.project_id,"project-1");
   const state=await service.estimateState("estimate-1");assert.equal(state.quotationIssued,true);assert.equal(state.followUpDue,true);assert.equal(state.followUpDueDate,followUps[0].due_at);
 });
 

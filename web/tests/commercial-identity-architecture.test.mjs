@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import os from "node:os";
 import path from "node:path";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import sqlite3 from "sqlite3";
 import { open } from "sqlite";
 import { initializeWorkflowSchema } from "../server/features/workflow/workflowSchema.js";
@@ -14,6 +14,14 @@ import { GOOGLE_DRIVE_FOLDER_MIME_TYPE } from "../server/features/documents/goog
 
 const now = () => new Date("2026-08-27T10:00:00.000Z");
 const backup = { verified: true, backupId: "fixture-backup", sha256: "a".repeat(64) };
+
+test("Project folder action uses plain-language creation and reuse wording", async () => {
+  const source = await readFile(new URL("../src/features/commercialIdentity/ClientProjectsPanel.tsx", import.meta.url), "utf8");
+  assert.match(source, /Create Client \/ Project Folders/);
+  assert.match(source, /Creates missing folders in your connected storage\. Existing folders are reused\./);
+  assert.match(source, /Creating folders…/);
+  assert.doesNotMatch(source, />Provision Files</);
+});
 
 async function fixture(t, seed = []) {
   const root = await mkdtemp(path.join(os.tmpdir(), "qs-commercial-identity-"));
@@ -44,14 +52,61 @@ test("EF-ENQ is permanent global sequence and qualification explicitly reuses or
   assert.equal(reused.client.id, "existing-client");
   assert.equal(reused.client.clientRef, "EF-CL-001");
   assert.equal(reused.enquiry.enquiryRef, "EF-ENQ-001");
+  assert.equal(reused.enquiry.driveTransitionStatus, "linked");
+  assert.equal(reused.driveProvisioning.status, "provisioned");
   const created = await service.qualifyEnquiry(second.id, { mode: "new_client", client: { name: "New Person" }, project: { name: "New Build", contextYear: 2027 } });
   assert.match(created.client.clientRef, /^EF-CL-\d{3}$/);
   assert.notEqual(created.client.id, "existing-client");
   assert.equal(created.project.contextYear, 2027);
+  assert.equal(created.enquiry.driveTransitionStatus, "linked");
+  assert.equal(created.driveProvisioning.status, "provisioned");
   assert.equal((await db.get("SELECT COUNT(*) count FROM enquiries WHERE converted_client_id IS NOT NULL")).count, 2);
   assert.equal((await db.get("SELECT COUNT(*) count FROM projects WHERE client_id='existing-client'")).count, 1);
-  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(driveCalls.filter(([kind]) => kind === "project").length, 2);
+});
+
+test("Project creation reports a safe Drive provisioning outcome without rolling back the saved Project", async (t) => {
+  const db = await fixture(t, [{ id: "client", name: "Disposable Client", ref: "TEST-CL-001" }]);
+  let connected = false;
+  const pending = createCommercialIdentityService(db, {
+    now,
+    driveTransitions: {
+      async provisionProject() {
+        if (connected) return { status: "provisioned" };
+        return {
+          status: "pending_provider_connection",
+          workspaceStatus: { account: { email: "must-not-leak@example.test" }, encryptedRefreshToken: "must-not-leak" },
+        };
+      },
+    },
+  });
+  const first = await pending.createProject({ id: "pending-project", clientId: "client", name: "Pending Site", contextYear: 2026 });
+  assert.deepEqual(first.driveProvisioning, {
+    status: "pending_provider_connection",
+    code: null,
+    message: "Reconnect your connected storage before creating Client / Project folders.",
+  });
+  assert.doesNotMatch(JSON.stringify(first), /must-not-leak/);
+  connected = true;
+  assert.deepEqual(await pending.provisionProjectDrive("pending-project"), {
+    status: "provisioned",
+    code: null,
+    message: "Client / Project folders are ready. Existing folders were reused where present.",
+  });
+
+  const failing = createCommercialIdentityService(db, {
+    now,
+    driveTransitions: {
+      async provisionProject() {
+        throw Object.assign(new Error("provider detail must not be returned"), { code: "provider_create_failed" });
+      },
+    },
+  });
+  const second = await failing.createProject({ id: "failed-project", clientId: "client", name: "Failed Site", contextYear: 2026 });
+  assert.equal(second.driveProvisioning.status, "failed");
+  assert.equal(second.driveProvisioning.code, "provider_create_failed");
+  assert.doesNotMatch(second.driveProvisioning.message, /provider detail/);
+  assert.equal((await db.get("SELECT COUNT(*) count FROM projects WHERE client_id='client'")).count, 2);
 });
 
 test("one Client owns multiple Projects and one Project owns separate Estimates plus revisions", async (t) => {
@@ -100,9 +155,17 @@ test("canonical Drive provisioning is Year → Client → Project → Estimates 
   };
   const workspace = { async status() { return { connected: true, estimatesRootFolderId: "estimates-root", capabilities: { drive: { available: true } }, account: { id: "account" } }; }, async resolvedConfig() { return { stored: { folder_template_json: "{}" } }; } };
   const drive = createCommercialDriveService(db, { provider, workspace, now });
+  const projectFirst = await drive.provisionProject("project");
+  const createsAfterProject = next;
+  const projectSecond = await drive.provisionProject("project");
+  assert.equal(projectFirst.folders.find((item) => item.logical_key === "client")?.provider_folder_id, projectSecond.folders.find((item) => item.logical_key === "client")?.provider_folder_id);
+  assert.equal(projectFirst.folders.find((item) => item.logical_key === "project")?.provider_folder_id, projectSecond.folders.find((item) => item.logical_key === "project")?.provider_folder_id);
+  assert.equal(next, createsAfterProject);
   const first = await drive.provisionEstimate("estimate");
+  const createsAfterEstimate = next;
   const second = await drive.provisionEstimate("estimate");
   assert.equal(first.folder.provider_folder_id, second.folder.provider_folder_id);
+  assert.equal(next, createsAfterEstimate);
   const paths = (await db.all("SELECT folder_path FROM canonical_drive_folders ORDER BY created_at")).map((row) => row.folder_path);
   assert.ok(paths.includes("2026/EF-CL-025 - John Wingfield/Cairnpark/Estimates/EF-EST-2026-001"));
   assert.equal((await db.get("SELECT COUNT(*) count FROM canonical_drive_folders")).count, 9);

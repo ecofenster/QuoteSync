@@ -30,7 +30,7 @@ export function createDocumentsRouter({ databasePromise = dbPromise, driveServic
         estimateId: String(req.body?.estimate_id || "").trim() || null,
       }));
     } catch (error) {
-      res.status(Number(error?.status) || 500).json({ error: error instanceof Error ? error.message : "Google Drive sync failed." });
+      res.status(Number(error?.status) || 500).json({ error: error instanceof Error ? error.message : "Google Drive sync failed.", code:error?.code || "document_sync_failed", integrationState:error?.code === "reconnect_required" ? "reconnect_required" : "error" });
     }
   });
   const upload = multer({ storage:multer.memoryStorage(), limits:{ files:1, fileSize:MAX_DOCUMENT_UPLOAD_BYTES } });

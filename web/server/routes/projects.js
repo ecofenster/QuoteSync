@@ -10,6 +10,7 @@ export function createProjectsRouter({ databasePromise = dbPromise, driveService
   const service = async () => { const db = await databasePromise; return createCommercialIdentityService(db, { driveTransitions: createCommercialDriveService(db, driveServiceOptions) }); };
   router.get("/", async (req, res) => { try { res.json(await (await service()).listProjects({ clientId: String(req.query.client_id || "").trim() || null, projectId: String(req.query.project_id || "").trim() || null })); } catch (error) { fail(res, error); } });
   router.post("/", async (req, res) => { try { res.status(201).json(await (await service()).createProject(req.body)); } catch (error) { fail(res, error); } });
+  router.post("/:projectId/provision-drive", async (req, res) => { try { res.json(await (await service()).provisionProjectDrive(req.params.projectId)); } catch (error) { fail(res, error); } });
   return router;
 }
 

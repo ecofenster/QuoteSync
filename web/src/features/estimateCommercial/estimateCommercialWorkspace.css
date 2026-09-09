@@ -6,6 +6,7 @@
 .estimate-commercial__identity{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2) var(--space-3)}
 .estimate-commercial__identity strong{font-size:var(--qs-type-important)}
 .estimate-commercial__estimate-actions,.estimate-commercial__next-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:var(--space-2)}
+.estimate-procurement-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:var(--space-2)}.estimate-procurement-actions>small{flex:1 0 100%;max-width:36rem;text-align:right;color:var(--qs-theme-text-muted)}
 .estimate-commercial__next-action{border-color:var(--qs-semantic-commercial-border)}
 .estimate-commercial__content { display: grid; align-content:start; min-width:0; gap: 15px; }
 .estimate-commercial__content .costing-sheet__detail-table { max-height: calc(100vh - 360px); overflow: auto; }
@@ -24,6 +25,7 @@
 .estimate-commercial__source-options span,.estimate-commercial__empty p { color: var(--qs-theme-text-muted); }
 .estimate-commercial__empty { padding: 22px; }
 .estimate-commercial__modal-scrim{position:fixed;inset:0;z-index:var(--qs-z-modal,1000);display:grid;place-items:center;padding:var(--space-5);background:color-mix(in srgb,var(--qs-theme-page) 42%,transparent);backdrop-filter:blur(3px)}
+body.qs-modal-open{overflow:hidden}
 .estimate-commercial__modal{display:grid;gap:var(--space-4);width:min(1120px,96vw);max-height:92vh;overflow:auto;padding:var(--space-5);background:var(--qs-bg-card)}
 .estimate-commercial__modal>header{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-4);position:sticky;top:0;z-index:1;padding-bottom:var(--space-3);background:var(--qs-bg-card);border-bottom:1px solid var(--qs-border-standard)}
 .estimate-commercial__modal h2,.estimate-commercial__modal p{margin:0}.estimate-commercial__modal p{color:var(--qs-theme-text-muted)}

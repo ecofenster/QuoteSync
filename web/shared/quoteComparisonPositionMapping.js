@@ -27,7 +27,7 @@ function itemReference(item) {
 function configurationKind(value) {
   const source = text(value).toLowerCase();
   if (!source) return null;
-  if (/lift[ -]?slide|sliding door|hsda|hs330|s319a|s315a/.test(source)) return "sliding_door";
+  if (/lift\s*(?:&|and|[-–—])?\s*slide|sliding door|hsda|hs330|s319a|s315a/.test(source)) return "sliding_door";
   if (/entrance door|main door|panel door|inward opening door|\bdoor\b|multi[ -]?point|yia|s305a/.test(source)) return "entrance_door";
   if (/tilt|turn|reversible|friction hinge|opening outside|vuta/.test(source)) return "opening_window";
   if (/fixed|fka|fix\b/.test(source)) return "fixed_window";

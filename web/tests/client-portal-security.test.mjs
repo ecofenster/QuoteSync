@@ -1,0 +1,178 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { createServer } from "node:http";
+import express from "express";
+import sqlite3 from "sqlite3";
+import { open } from "sqlite";
+import { initializeWorkflowSchema } from "../server/features/workflow/workflowSchema.js";
+import { initializeCommercialIdentitySchema } from "../server/features/commercialIdentity/commercialIdentitySchema.js";
+import { initializePortalSecuritySchema } from "../server/features/clientPortal/portalSecuritySchema.js";
+import { createPortalSecurityService } from "../server/features/clientPortal/portalSecurityService.js";
+import { createClientPortalRouter } from "../server/routes/clientPortal.js";
+import { CLIENT_PORTAL_FEATURES, PORTAL_POSITION_ACCEPTANCE_CONFIRMATIONS, PORTAL_REVIEW_POSITION_RESPONSES } from "../shared/clientPortalContracts.js";
+
+const issuedProjection = {
+  estimateReference:"TEST-EST-PORTAL-01",projectName:"Disposable Project A1",projectAddress:"1 Test Street",commercialRevision:1,
+  positions:[{id:"position-a",reference:"W1",customerReference:"W1",quantity:1,widthMm:1000,heightMm:1200,productSystem:"Test 92",description:"Window",classification:"included",supplierPurchaseCost:9999,internalNotes:"never expose"}],
+  charges:[{id:"products",label:"Products / Supply Only",amountGbp:"1000.00"},{id:"installation",label:"Installation",amountGbp:"250.00"}],subtotalExVatGbp:"1250.00",vatRatePercent:"20",vatGbp:"250.00",totalIncVatGbp:"1500.00",
+  margin:"secret",estimateRate:"0.87",liveRate:"0.85898",
+};
+
+test("review evidence and future signed Position acceptance remain distinct contracts",()=>{
+  assert.deepEqual([...PORTAL_REVIEW_POSITION_RESPONSES],["accepted_as_shown","amendment_requested","question_comment"]);
+  assert.deepEqual([...PORTAL_POSITION_ACCEPTANCE_CONFIRMATIONS],["item_reference","configuration","dimensions","specification"]);
+});
+
+async function fixture(t,{clockStart=Date.parse("2026-09-06T10:00:00.000Z")}={}) {
+  const root=await mkdtemp(path.join(tmpdir(),"qs-portal-security-")),db=await open({filename:path.join(root,"test.db"),driver:sqlite3.Database});
+  let clock=clockStart,tokenIndex=0;
+  await db.exec(`PRAGMA foreign_keys=ON;
+    CREATE TABLE clients(id TEXT PRIMARY KEY,name TEXT NOT NULL,email TEXT NOT NULL DEFAULT '',contact_name TEXT NOT NULL DEFAULT '',company_name TEXT NOT NULL DEFAULT '',client_ref TEXT NOT NULL DEFAULT '',project_name TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,deleted_at TEXT);
+    CREATE TABLE estimates(id TEXT PRIMARY KEY,client_id TEXT NOT NULL,project_id TEXT,estimate_ref TEXT NOT NULL,base_estimate_ref TEXT NOT NULL,revision_no INTEGER NOT NULL,status TEXT NOT NULL,estimated_order_month TEXT,estimated_order_year INTEGER,defaults_json TEXT NOT NULL DEFAULT '{}',positions_json TEXT NOT NULL DEFAULT '[]',order_meta_json TEXT NOT NULL DEFAULT '{}',outcome TEXT NOT NULL DEFAULT 'Open',project_address TEXT NOT NULL DEFAULT '',project_address_json TEXT NOT NULL DEFAULT '{}',postcode TEXT NOT NULL DEFAULT '',what3words TEXT NOT NULL DEFAULT '',latitude REAL,longitude REAL,created_by_user_id TEXT,created_by_name TEXT,created_by_role TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,deleted_at TEXT,FOREIGN KEY(client_id) REFERENCES clients(id));
+    CREATE TABLE followups(id TEXT PRIMARY KEY,client_id TEXT,estimate_id TEXT,title TEXT,notes TEXT,due_at TEXT,status TEXT,created_at TEXT,updated_at TEXT);
+    CREATE TABLE project_calculator_lab_scenarios(id TEXT PRIMARY KEY,estimate_id TEXT,revision_number INTEGER NOT NULL DEFAULT 1,updated_at TEXT);
+    CREATE TABLE project_calculator_lab_manual_cost_lines(id TEXT PRIMARY KEY,scenario_id TEXT NOT NULL,label TEXT);
+  `);
+  await initializeWorkflowSchema(db);
+  await initializeCommercialIdentitySchema(db);
+  await initializePortalSecuritySchema(db);
+  const now="2026-09-06T09:00:00.000Z";
+  for(const row of [["client-a","Client A","a@example.test","TEST-CL-A"],["client-b","Client B","b@example.test","TEST-CL-B"]])await db.run("INSERT INTO clients(id,name,email,contact_name,company_name,client_ref,project_name,created_at,deleted_at,commercial_lifecycle,reference_namespace,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",row[0],row[1],row[2],row[1],"",row[3],`${row[1]} Project`,now,null,"prospect","test",now);
+  for(const row of [["project-a1","client-a","Disposable Project A1"],["project-a2","client-a","Disposable Project A2"],["project-b1","client-b","Disposable Project B1"]])await db.run("INSERT INTO projects(id,client_id,name,status,created_at,updated_at) VALUES(?,?,?,'active',?,?)",...row,now,now);
+  const positions=JSON.stringify([{id:"position-a",positionRef:"W1",qty:1,widthMm:1000,heightMm:1200,roomName:"Kitchen"}]);
+  for(const row of [["estimate-a1","client-a","project-a1","TEST-EST-PORTAL-01"],["estimate-a2","client-a","project-a2","TEST-EST-PORTAL-02"],["estimate-b1","client-b","project-b1","TEST-EST-PORTAL-03"]])await db.run(`INSERT INTO estimates(id,client_id,project_id,estimate_ref,base_estimate_ref,revision_no,status,estimated_order_month,estimated_order_year,defaults_json,positions_json,order_meta_json,outcome,project_address,project_address_json,postcode,what3words,created_by_user_id,created_by_name,created_by_role,created_at,updated_at) VALUES(?,?,?,?,?,1,'Issued','',2026,'{}',?,'{}','Open','1 Test Street','{}','AA1 1AA','','staff','Staff','estimator',?,?)`,row[0],row[1],row[2],row[3],row[3],positions,now,now);
+  await db.run("INSERT INTO customer_quotation_documents(id,estimate_id,quotation_revision,file_name,media_type,storage_key,size_bytes,sha256,projection_sha256,projection_json,created_at) VALUES('document-issued','estimate-a1',1,'TEST-EST-PORTAL-01.pdf','application/pdf','test/issued.pdf',100,'document-hash','projection-hash',?,?)",JSON.stringify(issuedProjection),now);
+  await db.run(`INSERT INTO issued_quotations(id,idempotency_key,client_id,estimate_id,estimate_revision,quotation_revision,document_id,status,recipient,subject,provider,provider_message_id,prepared_at,issued_at,commercial_snapshot_json,created_at,updated_at) VALUES('issued-a1','issue-key','client-a','estimate-a1',1,1,'document-issued','issued','a@example.test','Estimate','test','message',?,?,?, ?,?)`,now,now,JSON.stringify({subtotalExVatGbp:"1250.00",vatRatePercent:"20",vatGbp:"250.00",totalIncVatGbp:"1500.00"}),now,now);
+  await db.run("INSERT INTO canonical_documents(id,provider,provider_account_id,provider_file_id,client_id,project_id,document_type,file_name,discovered_at,last_seen_at,updated_at) VALUES('document-safe','fixture','account','safe','client-a','project-a1','project_drawing','Approved drawing.pdf',?,?,?)",now,now,now);
+  await db.run("INSERT INTO canonical_documents(id,provider,provider_account_id,provider_file_id,client_id,project_id,document_type,file_name,discovered_at,last_seen_at,updated_at) VALUES('document-unreleased','fixture','account','private','client-a','project-a1','supplier_quotation','Supplier cost.pdf',?,?,?)",now,now,now);
+  await db.run("INSERT INTO project_calculator_lab_scenarios(id,estimate_id,revision_number,updated_at) VALUES('scenario-a1','estimate-a1',1,?)",now);
+  await db.run("INSERT INTO project_calculator_lab_manual_cost_lines(id,scenario_id,label) VALUES('cost-before','scenario-a1','Before release')");
+  const options={clock:()=>clock,tokenFactory:()=>Buffer.from(`portal-test-token-${++tokenIndex}`.padEnd(32,"x")).toString("base64url"),identityVerifier:async(assertion)=>({provider:"test-oidc-adapter",subject:String(assertion?.subject||"subject-a"),email:String(assertion?.email||"a@example.test")})};
+  const service=createPortalSecurityService(db,options);
+  for(const featureKey of CLIENT_PORTAL_FEATURES)await service.setFeatureControl(featureKey,true,"fixture");
+  const release=await service.releaseIssuedEstimate({issuedQuotationId:"issued-a1",releasedBy:"staff-1"});
+  await service.releaseDocument({clientId:"client-a",projectId:"project-a1",documentId:"document-safe",releasedBy:"staff-1"});
+  t.after(async()=>{await db.close();await rm(root,{recursive:true,force:true})});
+  return {db,service,options,release,setClock:(value)=>{clock=value}};
+}
+
+test("portal disclosure requires both an enabled feature and an explicit resource release",async t=>{
+  const source=await fixture(t),auth=await authenticated(t,source);
+  await source.service.setFeatureControl("estimates",false,"staff-1");
+  await assert.rejects(()=>source.service.getReleasedEstimate(auth.session,"project-a1",source.release.id),error=>error.code==="portal_feature_disabled");
+  await source.service.setFeatureControl("estimates",true,"staff-1");
+  assert.equal((await source.service.getReleasedEstimate(auth.session,"project-a1",source.release.id)).estimateRef,"TEST-EST-PORTAL-01");
+  await assert.rejects(()=>source.service.getReleasedDocument(auth.session,"project-a1","document-unreleased"),error=>error.code==="portal_resource_unreleased");
+});
+
+async function authenticated(t,source) {
+  const invitation=await source.service.createInvitation({clientId:"client-a",projectId:"project-a1",email:"a@example.test",displayName:"Contact A",createdBy:"staff-1"});
+  const accepted=await source.service.acceptInvitation({token:invitation.token,identityAssertion:{subject:"subject-a",email:"a@example.test"}});
+  const session=await source.service.authenticateSession(accepted.sessionToken);
+  return {...accepted,session,invitation};
+}
+
+test("invitation secrets are hashed, expiring, single-use and revocable",async t=>{
+  const source=await fixture(t),first=await source.service.createInvitation({clientId:"client-a",projectId:"project-a1",email:"a@example.test",createdBy:"staff-1"});
+  const persisted=await source.db.get("SELECT * FROM portal_invitations WHERE id=?",first.invitation.id);
+  assert.notEqual(persisted.token_hash,first.token);assert.equal(JSON.stringify(persisted).includes(first.token),false);assert.equal(persisted.token_hash.length,64);assert.equal((await source.db.get("SELECT COUNT(*) count FROM portal_project_grants")).count,0);
+  const accepted=await source.service.acceptInvitation({token:first.token,identityAssertion:{subject:"subject-a",email:"a@example.test"}});
+  assert.equal((await source.db.get("SELECT COUNT(*) count FROM portal_project_grants WHERE project_id='project-a1' AND status='active'")).count,1);
+  const persistedSession=await source.db.get("SELECT session_token_hash,csrf_token_hash FROM portal_sessions WHERE id=?",accepted.session.id);
+  assert.notEqual(persistedSession.session_token_hash,accepted.sessionToken);assert.notEqual(persistedSession.csrf_token_hash,accepted.csrfToken);assert.equal(JSON.stringify(persistedSession).includes(accepted.sessionToken),false);assert.equal(JSON.stringify(persistedSession).includes(accepted.csrfToken),false);
+  await assert.rejects(()=>source.service.acceptInvitation({token:first.token,identityAssertion:{subject:"subject-a",email:"a@example.test"}}),error=>error.code==="portal_invitation_used");
+  const revoked=await source.service.createInvitation({clientId:"client-a",projectId:"project-a1",email:"a@example.test",createdBy:"staff-1"});await source.service.revokeInvitation(revoked.invitation.id,"staff-1");
+  await assert.rejects(()=>source.service.acceptInvitation({token:revoked.token,identityAssertion:{subject:"subject-a",email:"a@example.test"}}),error=>error.code==="portal_invitation_revoked");
+  const expired=await source.service.createInvitation({clientId:"client-a",projectId:"project-a1",email:"a@example.test",createdBy:"staff-1",lifetimeMs:1000});source.setClock(Date.parse("2026-09-06T10:00:02.000Z"));
+  await assert.rejects(()=>source.service.acceptInvitation({token:expired.token,identityAssertion:{subject:"subject-a",email:"a@example.test"}}),error=>error.code==="portal_invitation_expired");
+  const dump=JSON.stringify(await source.db.all("SELECT * FROM portal_audit_events"));assert.equal(dump.includes(first.token),false);assert.equal(dump.includes(revoked.token),false);
+});
+
+test("session and exact Project authorization prevent cross-Client and sibling-Project access",async t=>{
+  const source=await fixture(t),auth=await authenticated(t,source);
+  const reviewStarted=await source.service.startReview(auth.session,{projectId:"project-a1",estimateReleaseId:source.release.id}),reviewStartedReplay=await source.service.startReview(auth.session,{projectId:"project-a1",estimateReleaseId:source.release.id});assert.equal(reviewStarted.idempotentReplay,false);assert.equal(reviewStartedReplay.idempotentReplay,true);
+  assert.equal((await source.service.getReleasedEstimate(auth.session,"project-a1",source.release.id)).estimateRef,"TEST-EST-PORTAL-01");
+  await assert.rejects(()=>source.service.authorizeProject(auth.session,"project-a2"),error=>error.code==="portal_project_forbidden");
+  await assert.rejects(()=>source.service.authorizeProject(auth.session,"project-b1"),error=>error.code==="portal_project_forbidden");
+  await assert.rejects(()=>source.service.submitReview(auth.session,{projectId:"project-a2",estimateReleaseId:source.release.id,idempotencyKey:"unauthorised-project-command",positions:[]}),error=>error.code==="portal_project_forbidden");
+  await assert.rejects(()=>source.service.getReleasedEstimate(auth.session,"project-a1","estimate-a2"),error=>error.code==="portal_resource_unreleased");
+  await assert.rejects(()=>source.service.getReleasedDocument(auth.session,"project-a1","document-unreleased"),error=>error.code==="portal_resource_unreleased");
+  await source.db.run("UPDATE portal_project_grants SET access_role='viewer' WHERE portal_contact_id=? AND project_id='project-a1'",auth.session.portalContactId);
+  await assert.rejects(()=>source.service.startReview(auth.session,{projectId:"project-a1",estimateReleaseId:source.release.id}),error=>error.code==="portal_command_forbidden");
+  await source.db.run("UPDATE portal_project_grants SET access_role='reviewer' WHERE portal_contact_id=? AND project_id='project-a1'",auth.session.portalContactId);
+  await assert.rejects(()=>source.service.authenticateSession(null),error=>error.code==="portal_authentication_required");
+  assert.ok((await source.db.get("SELECT COUNT(*) count FROM portal_audit_events WHERE event_type='portal.authorization.denied'")).count>=4);
+});
+
+test("portal sessions expire and can be explicitly revoked",async t=>{
+  const expiring=await fixture(t),expiringAuth=await authenticated(t,expiring);
+  expiring.setClock(Date.parse(expiringAuth.session.absoluteExpiresAt)+1);
+  await assert.rejects(()=>expiring.service.authenticateSession(expiringAuth.sessionToken),error=>error.code==="portal_session_expired");
+  const revocable=await fixture(t),revocableAuth=await authenticated(t,revocable);
+  await revocable.service.revokeSession(revocableAuth.sessionToken,"logout");
+  await assert.rejects(()=>revocable.service.authenticateSession(revocableAuth.sessionToken),error=>error.code==="portal_session_invalid");
+  assert.equal((await revocable.db.get("SELECT COUNT(*) count FROM portal_audit_events WHERE event_type='portal.session.revoked'")).count,1);
+});
+
+test("server portal projection is allowlisted and never returns internal commercial evidence",async t=>{
+  const source=await fixture(t),auth=await authenticated(t,source),projection=await source.service.getProjectPortal(auth.session,"project-a1"),json=JSON.stringify(projection);
+  assert.equal(projection.estimates.length,1);assert.equal(projection.documents.some((item)=>item.id==="document-safe"),true);assert.equal(projection.documents.some((item)=>item.id==="document-unreleased"),false);
+  for(const forbidden of ["supplierPurchaseCost","internalNotes","margin","markup","estimateRate","liveRate","supplierDiscount","extractionConfidence","9999","0.85898"])assert.equal(json.includes(forbidden),false,`${forbidden} crossed the server portal boundary`);
+  assert.equal(projection.estimates[0].commercial.totalIncVatGbp,"1500.00");assert.equal(projection.estimates[0].immutable,true);
+});
+
+test("issued Estimate, Position and costing state are immutable while an explicit next revision remains editable",async t=>{
+  const source=await fixture(t);
+  await assert.rejects(()=>source.db.run("UPDATE estimates SET status='Changed' WHERE id='estimate-a1'"),/immutable/i);
+  await assert.rejects(()=>source.db.run("UPDATE project_calculator_lab_manual_cost_lines SET label='Changed' WHERE id='cost-before'"),/immutable/i);
+  await assert.rejects(()=>source.db.run("INSERT INTO project_calculator_lab_manual_cost_lines(id,scenario_id,label) VALUES('cost-after','scenario-a1','After')"),/immutable/i);
+  const successor=await source.service.createNextEstimateRevision({estimateReleaseId:source.release.id,createdBy:"staff-1",createdByName:"Staff User",reason:"customer_amendment"});
+  assert.equal(successor.revision_no,2);assert.equal(successor.status,"Draft");assert.equal(successor.base_estimate_ref,"TEST-EST-PORTAL-01");
+  await source.db.run("UPDATE estimates SET status='Working' WHERE id=?",successor.id);
+  assert.equal((await source.db.get("SELECT status FROM estimates WHERE id='estimate-a1'")).status,"Issued");assert.equal((await source.db.get("SELECT status FROM estimates WHERE id=?",successor.id)).status,"Working");
+  assert.equal((await source.db.get("SELECT COUNT(*) count FROM estimate_revision_lineage WHERE source_release_id=?",source.release.id)).count,1);
+});
+
+test("review, decline and intent commands are authorized, audited and idempotent without creating an Order",async t=>{
+  const source=await fixture(t),auth=await authenticated(t,source);
+  const reviewStarted=await source.service.startReview(auth.session,{projectId:"project-a1",estimateReleaseId:source.release.id}),reviewStartedReplay=await source.service.startReview(auth.session,{projectId:"project-a1",estimateReleaseId:source.release.id});assert.equal(reviewStarted.idempotentReplay,false);assert.equal(reviewStartedReplay.idempotentReplay,true);
+  const reviewInput={projectId:"project-a1",estimateReleaseId:source.release.id,idempotencyKey:"review-command-1",positions:[{estimatePositionId:"position-a",positionReference:"W1",response:"amendment_requested",comment:"Please change finish"}]};
+  const first=await source.service.submitReview(auth.session,reviewInput),replay=await source.service.submitReview(auth.session,reviewInput);
+  assert.equal(first.idempotentReplay,false);assert.equal(replay.idempotentReplay,true);assert.equal(first.reviewSubmissionId,replay.reviewSubmissionId);assert.equal((await source.db.get("SELECT COUNT(*) count FROM portal_review_submissions")).count,1);
+  await assert.rejects(()=>source.service.submitReview(auth.session,{...reviewInput,generalComment:"different"}),error=>error.code==="portal_idempotency_conflict");
+  await assert.rejects(()=>source.service.submitReview(auth.session,{...reviewInput,idempotencyKey:"review-command-2"}),error=>error.code==="portal_review_already_submitted");
+  const declined=await source.service.declineEstimate(auth.session,{projectId:"project-a1",estimateReleaseId:source.release.id,idempotencyKey:"decline-1",reason:"chose_another_supplier",optionalSupplierName:"Optional competitor"});
+  const declineReplay=await source.service.declineEstimate(auth.session,{projectId:"project-a1",estimateReleaseId:source.release.id,idempotencyKey:"decline-1",reason:"chose_another_supplier",optionalSupplierName:"Optional competitor"});assert.equal(declineReplay.idempotentReplay,true);assert.equal(declined.status,"declined");
+  await assert.rejects(()=>source.service.indicateIntentToProceed(auth.session,{projectId:"project-a1",estimateReleaseId:source.release.id,idempotencyKey:"proceed-after-decline"}),error=>error.code==="portal_estimate_decision_conflict");
+  assert.equal((await source.db.get("SELECT COUNT(*) count FROM orders")).count,0);assert.equal((await source.db.get("SELECT COUNT(*) count FROM portal_estimate_decisions")).count,1);
+  assert.equal((await source.db.get("SELECT COUNT(*) count FROM portal_audit_events WHERE portal_command_id IS NOT NULL")).count,2);assert.equal((await source.db.get("SELECT COUNT(*) count FROM portal_audit_events WHERE event_type='estimate.review.started'")).count,1);
+  assert.deepEqual((await source.db.all("SELECT event_name FROM workflow_events WHERE event_name LIKE 'estimate.%' ORDER BY event_name")).map((row)=>row.event_name),["estimate.customer_declined","estimate.customer_reviewing","estimate.revision_requested"]);
+});
+
+test("intent to proceed records one workflow decision and never creates a supplier Order",async t=>{
+  const source=await fixture(t),auth=await authenticated(t,source),input={projectId:"project-a1",estimateReleaseId:source.release.id,idempotencyKey:"intent-command-1"};
+  const first=await source.service.indicateIntentToProceed(auth.session,input),replay=await source.service.indicateIntentToProceed(auth.session,input);
+  assert.equal(first.status,"intent_to_proceed");assert.equal(first.supplierOrderCreated,false);assert.equal(replay.idempotentReplay,true);
+  assert.equal((await source.db.get("SELECT COUNT(*) count FROM portal_estimate_decisions WHERE decision_type='intent_to_proceed'")).count,1);
+  assert.equal((await source.db.get("SELECT COUNT(*) count FROM workflow_events WHERE event_name='estimate.intent_to_proceed'")).count,1);
+  assert.equal((await source.db.get("SELECT COUNT(*) count FROM orders")).count,0);
+});
+
+test("HTTP boundary is fail-closed by default and requires authentication plus CSRF when explicitly test-enabled",async t=>{
+  const source=await fixture(t),app=express();app.use(express.json());app.use("/api/client-portal",createClientPortalRouter({databasePromise:Promise.resolve(source.db)}));
+  const server=createServer(app);await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
+  const base=`http://127.0.0.1:${server.address().port}`;
+  const blocked=await fetch(`${base}/api/client-portal/external/projects/project-a1`);assert.equal(blocked.status,503);assert.equal(blocked.headers.get("cache-control"),"private, no-store");assert.equal(blocked.headers.get("x-frame-options"),"DENY");assert.equal((await blocked.json()).code,"portal_external_access_disabled");
+  const enabledApp=express();enabledApp.use(express.json());enabledApp.use("/api/client-portal",createClientPortalRouter({databasePromise:Promise.resolve(source.db),externalAccessEnabled:true,serviceOptions:source.options}));
+  const enabledServer=createServer(enabledApp);await new Promise(resolve=>enabledServer.listen(0,"127.0.0.1",resolve));t.after(()=>new Promise(resolve=>enabledServer.close(resolve)));const enabledBase=`http://127.0.0.1:${enabledServer.address().port}`;
+  assert.equal((await fetch(`${enabledBase}/api/client-portal/external/projects/project-a1`)).status,401);
+  const invitation=await source.service.createInvitation({clientId:"client-a",projectId:"project-a1",email:"a@example.test",createdBy:"staff-1"});
+  const acceptedResponse=await fetch(`${enabledBase}/api/client-portal/external/invitations/accept`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:invitation.token,identityAssertion:{subject:"http-subject",email:"a@example.test"}})});assert.equal(acceptedResponse.status,200);const accepted=await acceptedResponse.json(),cookie=acceptedResponse.headers.get("set-cookie").split(";")[0];assert.equal(acceptedResponse.headers.get("set-cookie").includes("HttpOnly"),true);assert.equal(acceptedResponse.headers.get("set-cookie").includes("Secure"),true);assert.equal(acceptedResponse.headers.get("set-cookie").includes("SameSite=Strict"),true);
+  const badCsrf=await fetch(`${enabledBase}/api/client-portal/external/logout`,{method:"POST",headers:{Cookie:cookie,"X-Portal-CSRF":"wrong"}});assert.equal(badCsrf.status,403);
+  const projectResponse=await fetch(`${enabledBase}/api/client-portal/external/projects/project-a1`,{headers:{Cookie:cookie}});assert.equal(projectResponse.status,200);assert.equal((await projectResponse.json()).project.id,"project-a1");
+  const logout=await fetch(`${enabledBase}/api/client-portal/external/logout`,{method:"POST",headers:{Cookie:cookie,"X-Portal-CSRF":accepted.csrfToken}});assert.equal(logout.status,200);
+  assert.equal((await fetch(`${enabledBase}/api/client-portal/external/projects/project-a1`,{headers:{Cookie:cookie}})).status,401);
+});

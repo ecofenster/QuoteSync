@@ -39,6 +39,22 @@ function blocksForLabel(pageBlocks, label) {
   return result;
 }
 
+function thermalQualificationFromPage(pageBlocks) {
+  const pageText = clean(pageBlocks.map((block) => block.text).join(' '));
+  const rawText = clean(pageText.match(/\*?According to standard EN ISO 12567\s*(?:\/|or)\s*(?:EN ISO )?10077[^.]*\.?(?:\s*Georgian\/feature bars, thresholds etc\. are not taken into consideration\.?)?/i)?.[0]);
+  if (!rawText) return null;
+  const sourceBlocks = pageBlocks.filter((block) => /According to standard|standard test window size|Georgian\/feature bars|not taken into consideration/i.test(block.text));
+  const size = rawText.match(/standard test window size of\s*(\d+)\s*x\s*(\d+)/i);
+  return {
+    rawText,
+    standard: 'EN ISO 12567 / EN ISO 10077',
+    standardSizeMm: size ? { width: Number(size[1]), height: Number(size[2]) } : null,
+    exclusions: /Georgian\/feature bars, thresholds/i.test(rawText) ? 'Georgian/feature bars and thresholds are not taken into consideration.' : null,
+    sourcePage: sourceBlocks[0]?.pageNumber ?? pageBlocks[0]?.pageNumber ?? null,
+    sourceBlocks,
+  };
+}
+
 function field({ section, label, rawValue, blocks, ordinal, evidenceClass = 'explicit', inheritedFromSystem = null }) {
   return {
     id: `${slug(section)}:${slug(label)}:${ordinal}`,
@@ -95,7 +111,7 @@ function systemFromPage(document, system, productFamily) {
     values[label] = clean(blocks.map((block) => block.text).join(' ')) || null;
     evidenceBlocks[label] = blocks;
   }
-  return { system, productFamily, sourcePage: page.pageNumber, values, evidenceBlocks };
+  return { system, productFamily, sourcePage: page.pageNumber, values, evidenceBlocks, thermalQualification: thermalQualificationFromPage(pageBlocks) };
 }
 
 export function extractInternormEcohausSystemDefaults(document) {
@@ -200,6 +216,9 @@ export function extractInternormEcohausPositionSpecification(document, blocks, p
     if (!value) continue;
     systemFields[label] = add('System defaults', label, value, system.evidenceBlocks[label], { evidenceClass: 'inherited_system_default', inheritedFromSystem: position.system });
   }
+  const thermalQualificationField = system.thermalQualification
+    ? add('System defaults', 'Thermal qualification', system.thermalQualification.rawText, system.thermalQualification.sourceBlocks, { evidenceClass: 'inherited_system_default', inheritedFromSystem: position.system })
+    : null;
   const headerBlocks = blocks.slice(0, Math.min(blocks.length, 8));
   const productField = add('Position', 'Product', position.productDescription, headerBlocks);
   add('Position', 'Description', position.description, blocks.filter((block) => clean(block.text) === position.description));
@@ -240,6 +259,8 @@ export function extractInternormEcohausPositionSpecification(document, blocks, p
   });
   const internal = systemFields['Colour inside'];
   const external = systemFields['External colour'];
+  const timberSpecies = /\bspruce\b/i.test(internal?.rawValue ?? '') ? 'Spruce' : null;
+  const aluminiumCladding = /aluminium/i.test(system.productFamily) ? 'Aluminium clad' : null;
   const sourcePages = [...new Set(fields.map((item) => item.sourcePage).filter(Number.isInteger))];
   return {
     version: 'manufacturer-source-specification-v1',
@@ -254,6 +275,8 @@ export function extractInternormEcohausPositionSpecification(document, blocks, p
     canonical: {
       system: canonicalValue(position.system, productField?.id),
       productFamily: canonicalValue(system.productFamily, productField?.id),
+      material: canonicalValue(timberSpecies, internal?.id),
+      aluminiumCladding: canonicalValue(aluminiumCladding, productField?.id),
       constructionDepthMm: canonicalValue(decimal(system.values['Construction depth']?.match(/[\d,.]+/)?.[0]), systemFields['Construction depth']?.id),
       frameProfile: canonicalValue(frameValue, frameField?.id),
       transoms: divisionFields.filter(Boolean).map((item) => canonicalValue(item.rawValue, item.id, { role: item.label })),
@@ -267,7 +290,14 @@ export function extractInternormEcohausPositionSpecification(document, blocks, p
       coating: canonicalValue(system.values.Coating, systemFields.Coating?.id),
       sashes,
       thermalUw: canonicalValue(uwValue, uwField?.id, { basis: uwValue ? 'actual_position_size' : null, standard: uwValue ? thermalStandard : null, evidenceStatus: uwValue ? (thermalStandard ? 'value_and_standard_stated' : 'value_stated') : 'not_stated' }),
-      systemThermalPerformance: canonicalValue(decimal(system.values['Heat insulation*']?.match(/[\d,.]+/)?.[0]), systemFields['Heat insulation*']?.id, { basis: 'system standard test window', standard: thermalStandard }),
+      systemThermalPerformance: canonicalValue(decimal(system.values['Heat insulation*']?.match(/[\d,.]+/)?.[0]), systemFields['Heat insulation*']?.id, {
+        basis: 'system_standard_size',
+        standard: system.thermalQualification?.standard ?? thermalStandard,
+        standardSizeMm: system.thermalQualification?.standardSizeMm ?? null,
+        qualification: system.thermalQualification?.rawText ?? null,
+        exclusions: system.thermalQualification?.exclusions ?? null,
+        qualificationSourceFieldId: thermalQualificationField?.id ?? null,
+      }),
       securityEvidence: pas24Claim ? { status: 'specified_not_certified', claim: clean(pas24Claim), certification: 'PAS24', qualification: 'The quotation contains a product-family claim but no attached position-level certificate is represented by this evidence.' } : null,
       accessories: accessoryFields.filter(Boolean).map((item) => ({ description: item.rawValue, customerFacing: /^Hardware accessory$/i.test(item.label), sourceFieldId: item.id })),
       messages: messageFields.filter(Boolean).map((item) => ({ label: item.label, value: item.rawValue, sourceFieldId: item.id })),

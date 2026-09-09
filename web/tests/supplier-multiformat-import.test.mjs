@@ -53,6 +53,51 @@ test('supplier profiles consume one canonical evidence contract across structura
   }
 });
 
+test('VELFAC frame rows keep duplicated prices out of the Position reference and crop to the owned drawing with dimensions', () => {
+  const header = { ...block('Frame No: 2 Qty: 1 VELFAC V200E Guided Casement Location: W01 £1,015.50 £1,015.50', 0), boundingBox: { x: 28.2, y: 477.69, width: 536.032, height: 10 } };
+  const dimensions = { ...block('1109 x 1600', 1), boundingBox: { x: 54.64, y: 362.27, width: 43.18, height: 8 } };
+  const document = {
+    attachmentId: 'adw-source', sourceSha256: 'a'.repeat(64), mediaType: 'application/pdf',
+    pages: [{
+      pageNumber: 1, width: 595, height: 841.89,
+      blocks: [block('ADW Quotation', 0), block('VELFAC', 1), header, dimensions],
+      lines: [header, dimensions],
+      imageEvidence: [{ id: 'pdf-1-image-w01', pageNumber: 1, boundingBox: { x: 46.692, y: 369.973, width: 60.126, height: 85.498 } }],
+    }],
+  };
+  const parsed = parsePdfSupplierFields(document), position = parsed.rows[0], visual = position.manufacturerEvidence.sourceVisual;
+  assert.equal(parsed.adapter, 'frame_schedule_geometry_v1');
+  assert.equal(position.displayReference, 'W01');
+  assert.equal(position.unitPrice, '1015.50');
+  assert.equal(position.totalPrice, '1015.50');
+  assert.equal(visual.role, 'position_drawing');
+  assert.equal(visual.mappingMethod, 'frame-schedule-position-drawing-v1');
+  assert.equal(visual.mappingReviewStatus, 'mapped_automatic');
+  assert.deepEqual(visual.originalAsset.sourceObjectIds, ['pdf-1-image-w01']);
+  assert.ok(visual.boundingRegion.width < 100, 'The crop must exclude the adjacent specification and price columns.');
+  assert.ok(visual.boundingRegion.height > 100, 'The crop must retain the drawing dimension annotations.');
+});
+
+test('Norrsken summary items resolve to their own detail-card drawing regions', () => {
+  const summaryLines = ['5 Type D - 2 alu-clad tilt and turn window 2300 1000 Triple 0.84 £ 1,380.87 £ 2,761.74'];
+  const detailLines = ['Item 5 – Type D -', 'Type: P34A tilt and turn inward opening window Width: 2300 Height: 1000', 'U-Values: Glass 0.5 Window: 0.84'];
+  const document = {
+    attachmentId: 'norrsken-source', sourceSha256: 'a'.repeat(64), mediaType: 'application/pdf',
+    pages: [
+      { pageNumber: 1, width: 595, height: 842, blocks: ['Item Location No. Type Width Height Glazing', 'Price ea.', 'Price Total'].map((text, index) => block(text, index, 1)), lines: summaryLines.map((text, index) => block(text, index, 1)) },
+      { pageNumber: 5, width: 595, height: 842, blocks: detailLines.map((text, index) => ({ ...block(text, index, 5), boundingBox: { x: 57, y: index ? 740 - index * 15 : 771, width: 180, height: 11 } })), lines: detailLines.map((text, index) => ({ ...block(text, index, 5), boundingBox: { x: 57, y: index ? 740 - index * 15 : 771, width: 180, height: 11 } })) },
+    ],
+  };
+  const parsed = parsePdfSupplierFields(document);
+  const visual = parsed.rows[0].manufacturerEvidence.sourceVisual;
+  assert.equal(parsed.rows[0].displayReference, 'Type D');
+  assert.equal(visual.sourcePage, 5);
+  assert.equal(visual.mappingMethod, 'norrsken_item_detail_drawing_v1');
+  assert.equal(visual.mappingReviewStatus, 'mapped_automatic');
+  assert.equal(visual.geometryEvidence.supplierItemNumber, '5');
+  assert.ok(visual.boundingRegion.height >= 200, 'A shallow summary-row crop is not a position drawing.');
+});
+
 test('import diagnostics distinguish extraction, persistence and Products / Supply projection failures', () => {
   assert.equal(createSupplierImportDiagnostics({ textAvailable: false }).status, 'ocr_required');
   assert.equal(createSupplierImportDiagnostics({ textAvailable: true, parsedPositions: 0 }).status, 'no_positions_recognised');

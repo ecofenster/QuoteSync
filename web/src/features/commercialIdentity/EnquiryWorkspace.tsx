@@ -51,7 +51,7 @@ function EnquiryWorkspaceContent({ clients, onCommercialIdentityChanged }: Works
         client: mode === "new_client" ? { name: selected.displayName || selected.companyName, companyName: selected.companyName, email: selected.email, telephone: selected.telephone } : undefined,
         project: { name: projectName, contextYear: projectYear, siteAddress: selected.siteAddress },
       });
-      setMessage(`${result.enquiry.enquiryRef} qualified to ${result.client.clientRef} · ${result.project.name}.`);
+      setMessage(`${result.enquiry.enquiryRef} qualified to ${result.client.clientRef} · ${result.project.name}. ${result.driveProvisioning.message}`);
       await Promise.all([load(), onCommercialIdentityChanged()]);
     } catch (error) { setMessage(error instanceof Error ? error.message : "Enquiry qualification failed."); }
     finally { releaseEnquirySubmission(submissionLock); setBusy(false); }

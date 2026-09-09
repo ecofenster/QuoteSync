@@ -34,18 +34,66 @@ test("status rendering uses accessible text as well as colour", async () => {
 });
 
 test("chronology remains ordered and displays the current checkpoint", () => {
-  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 98 }, (_, index) => index + 1));
+  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 120 }, (_, index) => index + 1));
   assert.equal([...ROADMAP_CHRONOLOGY].reverse().find((entry) => entry.checkpointSha)?.checkpointSha, ROADMAP_CHECKPOINT_SHA);
   assert.equal(ROADMAP_CHRONOLOGY.find((entry) => entry.title === "Browser automation process-lifecycle hardening")?.sequence, 75);
-  assert.equal(ROADMAP_CHECKPOINT_SHA, "41fd3aa74039b9472e79262936aab7a177d7285d");
+  assert.equal(ROADMAP_CHECKPOINT_SHA, "5dc75f996a52a213e6bb10121b730a401f4f2df8");
+});
+
+test("Drive provisioning ownership and the two separate PDF deliverables remain explicit", () => {
+  const driveEntry = ROADMAP_CHRONOLOGY.find((entry) => entry.title === "Canonical Project Drive provisioning visibility");
+  const comparisonPdf = all.find((item) => item.id === "compare-quotes-position-drawings-pdf");
+  const estimateOutput = all.find((item) => item.id === "customer-estimate-presentation-output");
+  assert.match(driveEntry?.objective ?? "", /standalone Client creation owns EF-CL identity.*Project creation or Enquiry qualification owns the provider workspace/);
+  assert.equal(comparisonPdf?.parentId, "compare-quotes");
+  assert.equal(comparisonPdf?.status, "in_progress");
+  assert.match(comparisonPdf?.nextAction ?? "", /user's QuoteSuite session.*Position A\/G\/N \(A\)\/P findings/i);
+  assert.match(comparisonPdf?.summary ?? "", /supplier-specific extracted item drawings.*comprehensive paginated print\/PDF output.*shared report model v2.*older comparisons/i);
+  assert.match((comparisonPdf?.notes ?? []).join(" "), /Production Zyle DOCX\/EMF extraction and retained PNG serving are supported.*isolated environments/i);
+  assert.equal(estimateOutput?.parentId, "internal-ecofenster-mvp");
+  assert.equal(estimateOutput?.status, "not_started");
+  assert.match(estimateOutput?.summary ?? "", /approved cover, product showcase and specification overview.*Position pages and Estimate Summary/i);
+  assert.match(estimateOutput?.nextAction ?? "", /docs\/QuoteSuite - PDF Print Out\/New/);
+  assert.notEqual(comparisonPdf?.id, estimateOutput?.id);
+});
+
+test("reference-led comparison correction and customer presentation remain separate governed phases", () => {
+  const correction = ROADMAP_CHRONOLOGY.find((entry) => entry.title === "Reference-led Compare Quotes assessment correction");
+  const delivery = ROADMAP_CHRONOLOGY.find((entry) => entry.title === "Simplified Compare Quotes customer presentation");
+  const presentation = all.find((item) => item.id === "compare-quotes-customer-overview-schedule");
+  assert.equal(correction?.resultingStatus, "in_progress");
+  assert.match(correction?.objective ?? "", /supplier-neutral reference evidence.*invalid thermal values.*quantity conflicts.*withhold unsupported/i);
+  assert.equal(delivery?.resultingStatus,"in_progress");
+  assert.equal(presentation?.status, "in_progress");
+  assert.match(presentation?.summary ?? "", /three-page customer-language overview.*Ty Clai.*equal-sized proportional drawing areas.*supplier rows grouped by canonical Position.*plain-language/i);
+  assert.match((presentation?.notes ?? []).join(" "), /same deterministic customer-language presentation fields.*does not label an ordering as best value or force a Top 3.*commercial breakdown fields.*outstanding compatibility task/i);
 });
 
 test("comparison, manufacturer documents and portal foundations retain their authority boundaries", async () => {
   const agents = await read("AGENTS.md"), comparison = all.find((item) => item.id === "compare-quotes"), documents = all.find((item) => item.id === "manufacturer-system-document-library"), portal = all.find((item) => item.id === "customer-portal");
   assert.equal(comparison?.status,"in_progress");assert.match(comparison?.summary ?? "",/extraction-first.*automatically selected canonical Estimate revision.*Position identities/);
   assert.match((documents?.notes ?? []).join(" "),/customer-approved records relevant to products\/systems actually supplied/);
-  assert.match((portal?.notes ?? []).join(" "),/internal Client-owned Portal Preview.*not a public route/);
+  assert.match((portal?.notes ?? []).join(" "),/internal Client-owned Portal Preview.*non-public/);
   assert.match(agents,/Client Database → Client → Compare Quotes/);assert.match(agents,/supplier item numbers.*never replace canonical Estimate Position identity/i);
+  assert.match(agents,/upload\/select once → analyse → review exceptions → compare/);
+  assert.match((comparison?.notes ?? []).join(" "), /qualifies specification and dimensional\/configuration compliance before value/);
+  assert.match((comparison?.notes ?? []).join(" "), /architect\/customer requirements schedules should become the preferred project requirement source/);
+});
+
+test("portal security foundation keeps authentication, release and command boundaries fail-closed", async () => {
+  const [rootAgents, webAgents, adr] = await Promise.all([read("../AGENTS.md"), read("AGENTS.md"), read("docs/ADR-0005-client-portal-security-and-issued-estimate-revisions.md")]);
+  const portal = all.find((item) => item.id === "customer-portal");
+  const entry = ROADMAP_CHRONOLOGY.find((item) => item.title === "Client Portal security and immutable issued Estimate foundation");
+  assert.equal(portal?.status, "in_progress");
+  assert.match((portal?.blockers ?? []).join(" "), /Production OIDC\/passwordless provider.*Tenant-aware persistence.*GDPR/);
+  assert.match(entry?.objective ?? "", /hashed invitations and sessions.*exact Project\/resource authorization.*immutable issued Estimate releases/);
+  for (const text of [rootAgents, webAgents]) {
+    assert.match(text, /Portal authentication.*resource authorization.*separate/i);
+    assert.match(text, /Unreleased Estimates and Documents|unreleased Estimate or Document/i);
+    assert.match(text, /Intent to Proceed.*not an Order|Intent to Proceed never commits a supplier Order/i);
+  }
+  assert.match(adr, /production external access remains disabled/i);
+  assert.match(adr, /Secure, HttpOnly, SameSite cookies/);
 });
 
 test("governed commercial lifecycle keeps automation and approval boundaries explicit", async () => {
@@ -53,9 +101,29 @@ test("governed commercial lifecycle keeps automation and approval boundaries exp
   const lifecycle = all.find((item) => item.id === "end-to-end-commercial-lifecycle");
   assert.equal(lifecycle?.status, "in_progress");
   assert.match(lifecycle?.summary ?? "", /Enquiry → RFQ → Supplier Quote → Estimate → Client Review → Revision → Acceptance → Supplier Order → Supplier Confirmation → Customer Final Confirmation → Payment → Delivery \/ Installation/);
-  assert.match((lifecycle?.notes ?? []).join(" "), /immutable issued Estimate revision aggregate.*position-level client comments\/acceptance.*secure portal.*supplier-order aggregate.*invoices\/payments/i);
+  assert.match((lifecycle?.notes ?? []).join(" "), /immutable issued Estimate release snapshots.*complete position-level acceptance\/signature.*secure production portal deployment.*supplier-order aggregate.*invoices\/payments/i);
   assert.match(agents, /Enquiry → RFQ → Supplier Quote → Estimate → Client Review → Revision → Acceptance → Supplier Order → Supplier Confirmation → Customer Final Confirmation → Payment → Delivery \/ Installation/);
   assert.match(agents, /commercial decisions, issued-document changes, customer acceptance and supplier-confirmation differences remain explicit governed approval points/);
+});
+
+test("Email intake, Enquiry qualification and Portal review form one phased Estimate-revision workflow", () => {
+  const enquiry = all.find((item) => item.id === "crm-lifecycle");
+  const communications = all.find((item) => item.id === "communications");
+  const portal = all.find((item) => item.id === "customer-portal");
+  const lifecycle = all.find((item) => item.id === "end-to-end-commercial-lifecycle");
+  const comparisonPdf = all.find((item) => item.id === "compare-quotes-position-drawings-pdf");
+  const estimateOutput = all.find((item) => item.id === "customer-estimate-presentation-output");
+  assert.match((enquiry?.notes ?? []).join(" "), /Gmail intake.*Add Enquiry by default.*Add Client.*Link Existing Client \/ Project/);
+  assert.match((enquiry?.notes ?? []).join(" "), /provider folder IDs remain authoritative across retries.*Drawings \(Client\)/);
+  assert.match((communications?.notes ?? []).join(" "), /Supplier enquiry\/RFQ email is staff-reviewed.*Manufacturer replies.*working Estimate/);
+  assert.match((communications?.notes ?? []).join(" "), /Changes Requested queue.*supplier change summary.*returned revisions repeat/);
+  assert.match((portal?.notes ?? []).join(" "), /pending Portal invitation.*Google sign-in or Microsoft sign-in/);
+  assert.match((portal?.notes ?? []).join(" "), /Project under review → Estimate in progress → Estimate ready to review → Changes sent → Estimate being updated → Updated Estimate ready to review/);
+  assert.match((portal?.notes ?? []).join(" "), /Accept, Request Changes or Reject.*Position-level comments and general comments/);
+  assert.match((portal?.notes ?? []).join(" "), /third distinct issued Estimate revision.*10%/);
+  assert.match((lifecycle?.notes ?? []).join(" "), /Small implementation phases: \(1\) Gmail intake.*\(8\) commitment prompt/);
+  assert.equal(comparisonPdf?.status, "in_progress");
+  assert.equal(estimateOutput?.status, "not_started");
 });
 
 test("source-owned positions, captured FX and watched development are governed together", async () => {

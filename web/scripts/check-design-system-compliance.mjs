@@ -10,6 +10,11 @@ const documentOutputFiles = new Set([
   "features/customerQuotation/CustomerQuotationPreview.tsx",
   "features/customerQuotation/customerQuotation.css",
   "features/customerQuotation/customerQuotationBrand.css",
+  // A4 Compare Quotes output is a bounded generated-document surface. Its
+  // millimetre geometry and print-safe palette do not style application UI.
+  "features/quoteComparisons/ComparisonPrintDocument.tsx",
+  "features/quoteComparisons/comparisonPdfExport.ts",
+  "features/quoteComparisons/comparisonPrint.css",
   // Sandboxed Email srcdoc owns a safety-bounded, light document canvas. It
   // does not style the QuoteSuite application chrome or sender-authored HTML.
   "features/communications/domain/emailPresentation.ts",
@@ -32,6 +37,7 @@ const typographySpecialistFiles = new Set([
   // Millimetre/A4 customer output and reviewed Configurator annotation geometry
   // own bounded typography contracts outside the ordinary QuoteSuite UI scale.
   "features/customerQuotation/customerQuotation.css",
+  "features/quoteComparisons/comparisonPrint.css",
   "features/b92Configurator/B92Configurator.css",
 ]);
 const approvedDynamicLayoutFiles = new Set([

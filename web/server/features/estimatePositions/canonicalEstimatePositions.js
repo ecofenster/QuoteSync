@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { assertEstimateRevisionEditable } from '../estimates/estimateRevisionPolicy.js';
 
 const parsePositions=value=>{try{const parsed=JSON.parse(value||'[]');return Array.isArray(parsed)?parsed:[];}catch{return [];}};
 const normalized=value=>String(value??'').trim().replace(/\s+/g,' ').toUpperCase();
@@ -57,6 +58,7 @@ export async function readCanonicalEstimatePositions(db,estimateId){
 }
 
 export async function linkSupplierPositionToEstimate(db,{estimateId,sourcePositionId,sourceRevisionId,sourceQuoteId=null,quotationReference=null,sourceSequence,displayReference,quantity,widthMm,heightMm,classification='standard',alternativeTo=null,supplierName=null,supplierCode=null,product=null,productSystem=null,preferredEstimatePositionId=null,replacesSourcePositionId=null}){
+  await assertEstimateRevisionEditable(db,estimateId);
   const row=await db.get('SELECT positions_json FROM estimates WHERE id=?',estimateId);if(!row)throw Object.assign(new Error('Estimate not found.'),{code:'estimate_not_found'});
   const positions=resolveCanonicalAlternativeRelationships(parsePositions(row.positions_json)), evidence={sourcePositionId,sourceRevisionId,sourceQuoteId,quotationReference,supplierName,supplierCode,linkedAt:new Date().toISOString()};
   const reviewed=await db.get("SELECT target_estimate_position_id,action FROM supplier_position_applications WHERE estimate_id=? AND supplier_quote_position_id=? AND active=1 ORDER BY applied_at DESC LIMIT 1",estimateId,sourcePositionId);
@@ -79,14 +81,16 @@ export async function linkSupplierPositionToEstimate(db,{estimateId,sourcePositi
 }
 
 export async function saveConfiguredEstimatePosition(db,{estimateId,positionId,configuredContract,projection}){
+  await assertEstimateRevisionEditable(db,estimateId);
   const row=await db.get('SELECT positions_json FROM estimates WHERE id=?',estimateId);if(!row)return null;const positions=resolveCanonicalAlternativeRelationships(parsePositions(row.positions_json)),index=positions.findIndex(position=>position.id===positionId);if(index<0)return null;
   const current=positions[index];positions[index]={...current,...projection,id:current.id,sourceSequence:current.sourceSequence,classification:current.classification,alternativeTo:current.alternativeTo,alternativeToPositionId:current.alternativeToPositionId,supplier:current.supplier,sourceProvenance:current.sourceProvenance,supplierEvidenceLinks:current.supplierEvidenceLinks,configuredContract,origin:current.origin==='supplier_imported'?'supplier_imported':current.origin??'b92_configured',configurationState:current.supplierEvidenceLinks?.length?'imported_configured':'configured',matchStatus:current.matchStatus};
   await db.run('UPDATE estimates SET positions_json=?,updated_at=? WHERE id=?',JSON.stringify(positions),new Date().toISOString(),estimateId);return positions[index];
 }
 
-export async function addConfiguredEstimatePosition(db,{estimateId,position}){const row=await db.get('SELECT positions_json FROM estimates WHERE id=?',estimateId);if(!row)return null;const positions=resolveCanonicalAlternativeRelationships(parsePositions(row.positions_json)),normalized=normalizeCanonicalEstimatePosition({...position,sourceSequence:positions.length,origin:'b92_configured',configurationState:'configured'},positions.length);if(positions.some(item=>item.id===normalized.id))return positions.find(item=>item.id===normalized.id);positions.push(normalized);const resolved=resolveCanonicalAlternativeRelationships(positions);await db.run('UPDATE estimates SET positions_json=?,updated_at=? WHERE id=?',JSON.stringify(resolved),new Date().toISOString(),estimateId);return resolved.find(item=>item.id===normalized.id);}
+export async function addConfiguredEstimatePosition(db,{estimateId,position}){await assertEstimateRevisionEditable(db,estimateId);const row=await db.get('SELECT positions_json FROM estimates WHERE id=?',estimateId);if(!row)return null;const positions=resolveCanonicalAlternativeRelationships(parsePositions(row.positions_json)),normalized=normalizeCanonicalEstimatePosition({...position,sourceSequence:positions.length,origin:'b92_configured',configurationState:'configured'},positions.length);if(positions.some(item=>item.id===normalized.id))return positions.find(item=>item.id===normalized.id);positions.push(normalized);const resolved=resolveCanonicalAlternativeRelationships(positions);await db.run('UPDATE estimates SET positions_json=?,updated_at=? WHERE id=?',JSON.stringify(resolved),new Date().toISOString(),estimateId);return resolved.find(item=>item.id===normalized.id);}
 
 export async function replaceEditableEstimatePositions(db,{estimateId,incomingPositions}){
+  await assertEstimateRevisionEditable(db,estimateId);
   const estimate=await db.get('SELECT id,positions_json FROM estimates WHERE id=? AND deleted_at IS NULL',estimateId);
   if(!estimate)return null;
   const positions=mergeSourceOwnedEstimatePositions(parsePositions(estimate.positions_json),incomingPositions);

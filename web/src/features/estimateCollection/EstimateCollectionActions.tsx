@@ -2,6 +2,7 @@ import type { Dispatch, SetStateAction } from "react";
 import type { Client, ClientId, EstimateId, EstimateOutcome } from "../../models/types";
 import { Button, qsOutcomeClassName } from "../estimatePicker/tabs/shared";
 import type { EstimateCollectionItem } from "./EstimateCollectionItem";
+import { openInternalClientPortal } from "../clientPortal/portalInternalNavigation";
 
 type Props = {
   item: EstimateCollectionItem;
@@ -145,6 +146,13 @@ export default function EstimateCollectionActions(props: Props) {
         <div className="ep-estimate-action-label">Open estimate</div>
         <Button variant="primary" onClick={() => openEstimateFromPicker(item.id)}>
           Open
+        </Button>
+      </div>
+
+      <div className="ep-estimate-action-group">
+        <div className="ep-estimate-action-label">Client Portal</div>
+        <Button variant="outline" disabled={!item.projectId} onClick={() => item.projectId&&openInternalClientPortal({clientId:String(itemClient.id),projectId:String(item.projectId),source:currentOutcome==="Order"?"order":currentOutcome==="Lost"?"rejected":"estimate"})}>
+          Open Portal
         </Button>
       </div>
 

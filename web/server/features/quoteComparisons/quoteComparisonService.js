@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { applyMarkup } from "../projectCalculatorLab/exchangeRateModel.js";
 import { inferQuoteComparisonMappings } from "../../../shared/quoteComparisonPositionMapping.js";
+import { hydrateLegacyComparisonDrawingEvidence } from "./comparisonDrawingCompatibility.js";
 
 const parseJson = (value, fallback) => {
   try { return JSON.parse(value ?? ""); } catch { return fallback; }
@@ -20,7 +21,7 @@ const positionReference = (position) => asText(position?.customerReference || po
 async function enrichedBaselinePositions(db, estimateId, positions, scenarioId = null) {
   if (!scenarioId || !Array.isArray(positions) || !positions.length) return positions;
   const [rows, markupRow] = await Promise.all([
-    db.all(`SELECT estimate_position_id,source_snapshot_json,selling_amount_gbp,quantity,markup_override_percent
+    db.all(`SELECT estimate_position_id,source_position_id,source_revision_id,source_snapshot_json,selling_amount_gbp,quantity,markup_override_percent
       FROM project_calculator_estimate_product_rows WHERE scenario_id=? AND estimate_position_id IS NOT NULL
       ORDER BY created_at,id`, scenarioId).catch(() => []),
     db.get("SELECT product_percent FROM project_calculator_lab_markup_rules WHERE scenario_id=?", scenarioId).catch(() => null),
@@ -47,6 +48,11 @@ async function enrichedBaselinePositions(db, estimateId, positions, scenarioId =
       customerSafeSpecification: manufacturer.customerSafeSpecification ?? [],
       sourceSpecification: manufacturer.sourceSpecification ?? null,
       canonicalSpecification: manufacturer.canonicalSpecification ?? manufacturer.sourceSpecification?.canonical ?? null,
+      sourceVisuals: manufacturer.sourceVisuals ?? [],
+      sourceVisual: manufacturer.sourceVisual ?? source.sourceVisual ?? null,
+      sourceAttachmentId: manufacturer.sourceVisual?.originalAsset?.attachmentId ?? source.sourceAttachmentId ?? source.attachmentId ?? null,
+      sourceRevisionId: source.supplierRevisionId ?? row.source_revision_id ?? null,
+      sourceRowId: row.source_position_id ?? null,
       customerUnitPrice,
       customerQuantityPrice: selling ?? null,
       customerPriceSource: "project_costing_position_selling_value",
@@ -123,9 +129,13 @@ function mapMappingRow(row) {
 }
 
 export function createQuoteComparisonService(db) {
-  async function hydrate(row) {
+  async function hydrate(row, includeLegacyDrawingCompatibility = false) {
     if (!row) return null;
     const comparison = mapComparisonRow(row);
+    const project = comparison.projectId
+      ? await db.get("SELECT name FROM projects WHERE id=? AND deleted_at IS NULL", comparison.projectId).catch(() => null)
+      : null;
+    comparison.projectName = asText(project?.name) || null;
     const proposalRows = await db.all("SELECT * FROM quote_comparison_proposals WHERE comparison_id=? ORDER BY created_at,id", row.id);
     const proposals = [];
     for (const proposalRow of proposalRows) {
@@ -144,7 +154,8 @@ export function createQuoteComparisonService(db) {
       proposal.positionMappings = (await db.all("SELECT * FROM quote_comparison_position_mappings WHERE proposal_id=? ORDER BY created_at,id", proposal.id)).map(mapMappingRow);
       proposals.push(proposal);
     }
-    return { ...comparison, proposals };
+    const hydrated = { ...comparison, proposals };
+    return includeLegacyDrawingCompatibility ? hydrateLegacyComparisonDrawingEvidence(db, hydrated) : hydrated;
   }
 
   async function listForClient(clientId) {
@@ -226,7 +237,7 @@ export function createQuoteComparisonService(db) {
     const row = clientId
       ? await db.get("SELECT * FROM quote_comparisons WHERE id=? AND client_id=? AND deleted_at IS NULL", asText(comparisonId), asText(clientId))
       : await db.get("SELECT * FROM quote_comparisons WHERE id=? AND deleted_at IS NULL", asText(comparisonId));
-    return hydrate(row);
+    return hydrate(row, true);
   }
 
   async function resolveAutomaticBaseline(clientId, projectId = null) {
@@ -243,7 +254,8 @@ export function createQuoteComparisonService(db) {
       WHERE iq.estimate_id=? AND iq.status='issued' ORDER BY iq.issued_at DESC,iq.created_at DESC LIMIT 1`, estimate.id).catch(()=>null);
     const scenario = await db.get("SELECT id,revision_number,updated_at FROM project_calculator_lab_scenarios WHERE estimate_id=? ORDER BY updated_at DESC LIMIT 1", estimate.id).catch(()=>null);
     const positions = await enrichedBaselinePositions(db, estimate.id, rawPositions, scenario?.id);
-    const technicalSourceEvidence=scenario?await db.all(`SELECT DISTINCT attachment.id attachmentId,attachment.original_file_name fileName,quote.supplier_name supplierName,revision.id revisionId
+    const technicalSourceEvidence=scenario?await db.all(`SELECT DISTINCT attachment.id attachmentId,attachment.original_file_name fileName,quote.supplier_name supplierName,revision.id revisionId,
+      revision.supplier_quotation_number quotationNumber,revision.supplier_revision quotationRevision,revision.quotation_date quotationDate
       FROM project_calculator_supplier_quote_revisions linked
       JOIN supplier_quote_revisions revision ON revision.id=linked.revision_id
       JOIN supplier_quotes quote ON quote.id=revision.supplier_quote_id
@@ -291,6 +303,13 @@ export function createQuoteComparisonService(db) {
     const rawPositions = parseJson(estimate.positions_json, []);
     const activeScenario = await db.get("SELECT id FROM project_calculator_lab_scenarios WHERE estimate_id=? ORDER BY updated_at DESC LIMIT 1", estimate.id).catch(() => null);
     const positions = await enrichedBaselinePositions(db, estimate.id, rawPositions, activeScenario?.id);
+    const technicalSourceEvidence=activeScenario?await db.all(`SELECT DISTINCT attachment.id attachmentId,attachment.original_file_name fileName,quote.supplier_name supplierName,revision.id revisionId,
+      revision.supplier_quotation_number quotationNumber,revision.supplier_revision quotationRevision,revision.quotation_date quotationDate
+      FROM project_calculator_supplier_quote_revisions linked
+      JOIN supplier_quote_revisions revision ON revision.id=linked.revision_id
+      JOIN supplier_quotes quote ON quote.id=revision.supplier_quote_id
+      JOIN supplier_quote_attachments attachment ON attachment.revision_id=revision.id AND attachment.estimate_id=revision.estimate_id
+      WHERE linked.scenario_id=? AND attachment.role<>'derived_artifact' ORDER BY attachment.created_at`,activeScenario.id).catch(()=>[]):[];
     if (!Array.isArray(positions) || positions.some((position) => !asText(position?.id))) fail("The baseline Estimate contains a position without canonical identity.", 422, "comparison_baseline_position_identity_missing");
     const canonicalPositionIds = new Set(positions.map((position) => asText(position.id)));
     const requestedCommercial=input?.baselineCommercial||{};
@@ -331,6 +350,7 @@ export function createQuoteComparisonService(db) {
       capturedAt: now,
       sourceUpdatedAt: estimate.updated_at || estimate.created_at,
       customerCommercial,
+      technicalSourceEvidence,
       technicalEvidenceRole:"canonical_positions_and_retained_supplier_sources",
     };
     await db.exec("BEGIN IMMEDIATE");

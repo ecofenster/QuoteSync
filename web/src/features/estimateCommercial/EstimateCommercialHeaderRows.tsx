@@ -5,6 +5,8 @@ import EstimateCommercialViewSwitch, {
 import SupplierCommercialReview, {
   type SupplierCommercialResult,
 } from "../projectCalculatorLab/SupplierCommercialReview";
+import EstimateProcurementActions from "./EstimateProcurementActions";
+import { openInternalClientPortal } from "../clientPortal/portalInternalNavigation";
 
 export default function EstimateCommercialHeaderRows({
   clientRef,
@@ -16,12 +18,16 @@ export default function EstimateCommercialHeaderRows({
   scenarioId,
   supplierPolicies,
   nextActionMessage,
+  nextActionLabel,
   revisionStatus,
   creatingRevision,
   onCreateRevision,
   onOpenDocuments,
   canReviewCustomerQuotation,
   onReviewCustomerQuotation,
+  estimateId,
+  clientId,
+  projectId,
 }: {
   clientRef: string;
   estimateRef: string;
@@ -32,12 +38,16 @@ export default function EstimateCommercialHeaderRows({
   scenarioId: string;
   supplierPolicies: SupplierCommercialResult[];
   nextActionMessage: string;
+  nextActionLabel?: string;
   revisionStatus?: string;
   creatingRevision: boolean;
   onCreateRevision: () => void;
   onOpenDocuments: () => void;
   canReviewCustomerQuotation: boolean;
   onReviewCustomerQuotation: () => void;
+  estimateId: string;
+  clientId?: string;
+  projectId?: string|null;
 }) {
   return <>
     <header className="estimate-commercial__estimate-row" data-project-costing-order="estimate" data-estimate-ref={estimateRef}>
@@ -47,13 +57,15 @@ export default function EstimateCommercialHeaderRows({
         <small>Supplier/Product Defaults are set separately. Add Position starts at Position Configuration.</small>
       </div>
       <div className="estimate-commercial__estimate-actions">
+        <EstimateProcurementActions estimateId={estimateId} />
+        <button type="button" className="ui-button" disabled={!clientId||!projectId} title={clientId&&projectId?"Open the governed customer presentation for this Project.":"A canonical Client and Project are required."} onClick={()=>clientId&&projectId&&openInternalClientPortal({clientId,projectId,source:"estimate"})}>Open Client Portal</button>
         {commercialView === "internal" ? supplierPolicies.length ? <SupplierCommercialReview scenarioId={scenarioId} policies={supplierPolicies} /> : <button type="button" className="ui-button" disabled={!scenarioId}>Amend Commercial Choices</button> : null}
         <div className="estimate-commercial__view-switch"><EstimateCommercialViewSwitch view={commercialView} onChange={onViewChange} /></div>
         {onBack ? <button type="button" className="ui-button" onClick={onBack}>Back</button> : null}
       </div>
     </header>
     <aside className="estimate-commercial__next-action" data-project-costing-order="next-action">
-      <div><strong>Next Action</strong><span>{nextActionMessage}</span>{revisionStatus ? <small role="status">{revisionStatus}</small> : null}</div>
+      <div><strong>Next Action</strong>{nextActionLabel?<b>{nextActionLabel}</b>:null}<span>{nextActionMessage}</span>{revisionStatus ? <small role="status">{revisionStatus}</small> : null}</div>
       <div className="estimate-commercial__next-actions">
         <button type="button" className="ui-button" disabled={!scenarioId || creatingRevision} onClick={onCreateRevision}>{creatingRevision ? "Creating…" : "Create Revision"}</button>
         <button type="button" className="ui-button" onClick={onOpenDocuments}>Files / Documents</button>

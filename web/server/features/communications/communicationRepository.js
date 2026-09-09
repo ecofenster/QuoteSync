@@ -11,8 +11,36 @@ export function createCommunicationRepository(db) {
     bodyHtml: row.body_html, bodyText: row.body_text, inReplyToProviderMessageId: row.in_reply_to_provider_message_id, links: parse(row.links_json), error: row.error_message,
     sentAt: row.sent_at, createdAt: row.created_at, updatedAt: row.updated_at,
     ...parse(row.provider_state_json, {}),
+    attachmentCount: attachments.length,
     attachments: attachments.map((item) => ({ id: item.id, fileName: item.file_name, mediaType: item.media_type, sizeBytes: item.size_bytes, storageKey: item.storage_key, providerAttachmentId: item.provider_attachment_id, driveFileId: item.drive_file_id, sha256: item.sha256, contentId: item.content_id || null, inline: Boolean(item.is_inline) })),
   }) : null;
+
+  const mapSummary = (row) => row ? ({
+    id: row.id, provider: row.provider, providerMessageId: row.provider_message_id, threadId: row.provider_thread_id, mailboxId: row.mailbox_id,
+    direction: row.direction, folder: row.folder, status: row.status, from: parse(row.from_json), to: parse(row.to_json), cc: parse(row.cc_json), bcc: parse(row.bcc_json), subject: row.subject,
+    bodyHtml: "", bodyText: "", inReplyToProviderMessageId: row.in_reply_to_provider_message_id, links: parse(row.links_json), error: row.error_message,
+    sentAt: row.sent_at, createdAt: row.created_at, updatedAt: row.updated_at,
+    ...parse(row.provider_state_json, {}),
+    attachmentCount: Number(row.attachment_count || 0),
+    attachments: [],
+  }) : null;
+
+  async function listSummaries({ provider = "google_workspace", query = "", limit = 1000 } = {}) {
+    const normalizedQuery = String(query || "").trim().toLowerCase(), clauses = ["m.provider=?"], params = [provider];
+    if (normalizedQuery.startsWith("from:")) {
+      clauses.push("lower(m.from_json) LIKE ?");
+      params.push(`%${normalizedQuery.slice(5).replaceAll('"', "").trim()}%`);
+    } else if (normalizedQuery.startsWith("subject:")) {
+      clauses.push("lower(m.subject) LIKE ?");
+      params.push(`%${normalizedQuery.slice(8).replaceAll('"', "").trim()}%`);
+    } else if (normalizedQuery) {
+      clauses.push("lower(m.from_json || ' ' || m.subject || ' ' || m.body_text) LIKE ?");
+      params.push(`%${normalizedQuery}%`);
+    }
+    params.push(Math.min(1000, Math.max(1, Number(limit) || 1000)));
+    const rows = await db.all(`SELECT m.id,m.provider,m.provider_message_id,m.provider_thread_id,m.mailbox_id,m.direction,m.folder,m.status,m.from_json,m.to_json,m.cc_json,m.bcc_json,m.subject,m.in_reply_to_provider_message_id,m.links_json,m.error_message,m.sent_at,m.created_at,m.updated_at,m.provider_state_json,COALESCE(a.attachment_count,0) attachment_count FROM communication_messages m LEFT JOIN (SELECT communication_message_id,COUNT(*) attachment_count FROM communication_attachments GROUP BY communication_message_id) a ON a.communication_message_id=m.id WHERE ${clauses.join(" AND ")} ORDER BY COALESCE(m.sent_at,m.updated_at) DESC LIMIT ?`, ...params);
+    return rows.map(mapSummary);
+  }
 
   async function get(id) {
     const row = await db.get("SELECT * FROM communication_messages WHERE id=?", id);
@@ -29,6 +57,11 @@ export function createCommunicationRepository(db) {
     if (Array.isArray(message.attachments)) for (const attachment of message.attachments) {
       const attachmentId = String(attachment.id || randomUUID());
       await db.run(`INSERT INTO communication_attachments(id,communication_message_id,file_name,media_type,size_bytes,storage_key,provider_attachment_id,drive_file_id,sha256,created_at,content_id,is_inline) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET provider_attachment_id=excluded.provider_attachment_id,drive_file_id=excluded.drive_file_id,content_id=excluded.content_id,is_inline=excluded.is_inline`, attachmentId, id, String(attachment.fileName || "attachment"), String(attachment.mediaType || "application/octet-stream"), Number(attachment.sizeBytes || 0), attachment.storageKey ?? null, attachment.providerAttachmentId ?? null, attachment.driveFileId ?? null, attachment.sha256 ?? null, timestamp, attachment.contentId ?? null, attachment.inline ? 1 : 0);
+    }
+    if (Array.isArray(message.attachments)) {
+      const currentIds = message.attachments.map((attachment) => String(attachment.id));
+      if (currentIds.length) await db.run("DELETE FROM communication_attachments WHERE communication_message_id=? AND storage_key IS NULL AND drive_file_id IS NULL AND id NOT IN (SELECT value FROM json_each(?))", id, JSON.stringify(currentIds));
+      else await db.run("DELETE FROM communication_attachments WHERE communication_message_id=? AND storage_key IS NULL AND drive_file_id IS NULL", id);
     }
     return get(id);
   }
@@ -49,8 +82,7 @@ export function createCommunicationRepository(db) {
   }
 
   async function listMailbox({ folder = "inbox", query = "", offset = 0, limit = 30 } = {}) {
-    const rows = await db.all("SELECT id FROM communication_messages WHERE provider='google_workspace' ORDER BY COALESCE(sent_at,updated_at) DESC LIMIT 1000");
-    const messages = await Promise.all(rows.map((row) => get(row.id))), normalizedQuery = String(query || "").trim().toLowerCase();
+    const messages = await listSummaries({ query, limit: 1000 });
     const labelId = String(folder).startsWith("label:") ? String(folder).slice(6) : null;
     const matchesFolder = (message) => {
       if (message.providerRemoved) return false;
@@ -62,15 +94,8 @@ export function createCommunicationRepository(db) {
       if (["social", "updates", "forums", "promotions", "snoozed"].includes(folder)) return labels.has(folder === "snoozed" ? "SNOOZED" : `CATEGORY_${folder.toUpperCase()}`);
       return message.folder === folder;
     };
-    const matchesQuery = (message) => {
-      if (!normalizedQuery) return true;
-      const subject = String(message.subject || "").toLowerCase(), sender = (message.from || []).join(" ").toLowerCase(), text = `${sender} ${subject} ${message.bodyText || ""}`.toLowerCase();
-      if (normalizedQuery.startsWith("from:")) return sender.includes(normalizedQuery.slice(5).replaceAll('"', "").trim());
-      if (normalizedQuery.startsWith("subject:")) return subject.includes(normalizedQuery.slice(8).replaceAll('"', "").trim());
-      return text.includes(normalizedQuery);
-    };
     const grouped = new Map();
-    for (const message of messages.filter((item) => matchesFolder(item) && matchesQuery(item))) {
+    for (const message of messages.filter(matchesFolder)) {
       const key = message.threadId || message.providerMessageId || message.id;
       if (!grouped.has(key)) grouped.set(key, []);
       grouped.get(key).push(message);
@@ -78,7 +103,7 @@ export function createCommunicationRepository(db) {
     const conversations = [...grouped.values()].map((items) => {
       items.sort((left, right) => String(left.sentAt || left.updatedAt).localeCompare(String(right.sentAt || right.updatedAt)));
       const latest = items.at(-1);
-      return { ...latest, unread: items.some((item) => item.unread), starred: items.some((item) => item.starred), important: items.some((item) => item.important), threadMessages: items, threadCount: items.length };
+      return { ...latest, unread: items.some((item) => item.unread), starred: items.some((item) => item.starred), important: items.some((item) => item.important), attachmentCount: items.reduce((total, item) => total + Number(item.attachmentCount || 0), 0), threadCount: items.length };
     }).sort((left, right) => String(right.sentAt || right.updatedAt).localeCompare(String(left.sentAt || left.updatedAt)));
     const start = Math.max(0, Number(offset) || 0), size = Math.min(100, Math.max(1, Number(limit) || 30));
     return { messages: conversations.slice(start, start + size), nextPageToken: start + size < conversations.length ? `cache:${start + size}` : null };
@@ -133,5 +158,5 @@ export function createCommunicationRepository(db) {
   }
   async function finishNotification(provider, providerAccountId, notificationId, outcome) { await db.run("UPDATE communication_provider_notifications SET outcome=?,processed_at=? WHERE provider=? AND provider_account_id=? AND notification_id=?", outcome, nowIso(), provider, providerAccountId, notificationId); }
 
-  return { get, save, findByProviderId, list, listMailbox, markProviderRemoved, getSyncState, saveSyncState, addLink, removeLink, getWatchState, saveWatchState, recordNotification, finishNotification };
+  return { get, save, findByProviderId, list, listSummaries, listMailbox, markProviderRemoved, getSyncState, saveSyncState, addLink, removeLink, getWatchState, saveWatchState, recordNotification, finishNotification };
 }

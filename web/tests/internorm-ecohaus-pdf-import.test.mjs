@@ -85,8 +85,15 @@ test('system defaults inherit with provenance while position glazing and Uw over
   assert.equal(a.sourceSpecification.inheritance.system, 'HF410');
   assert.equal(a.sourceSpecification.canonical.internalFinish.value, 'Spruce FI501 (FI501)');
   assert.equal(a.sourceSpecification.canonical.externalFinish.manufacturerCode, 'HM721');
+  assert.equal(a.sourceSpecification.canonical.material.value, 'Spruce');
+  assert.equal(a.sourceSpecification.canonical.aluminiumCladding.value, 'Aluminium clad');
   assert.equal(a.sourceSpecification.canonical.constructionDepthMm.value, '85');
   assert.equal(a.sourceSpecification.canonical.systemThermalPerformance.value, '0.71');
+  assert.equal(a.sourceSpecification.canonical.systemThermalPerformance.basis, 'system_standard_size');
+  assert.equal(a.sourceSpecification.canonical.systemThermalPerformance.standard, 'EN ISO 12567 / EN ISO 10077');
+  assert.deepEqual(a.sourceSpecification.canonical.systemThermalPerformance.standardSizeMm, { width: 1230, height: 1480 });
+  assert.match(a.sourceSpecification.canonical.systemThermalPerformance.qualification, /standard test window size of 1230x1480/i);
+  assert.equal(a.sourceSpecification.sections.flatMap((section) => section.fields).find((field) => field.label === 'Thermal qualification')?.sourcePage, 2);
   assert.ok(a.internalSpecification.groups.find((group) => group.id === 'thermal').items.some((item) => item.label === 'System heat insulation' && item.value === '0.71'));
   assert.equal(a.manufacturerQuotedUg, '0.5');
   assert.equal(h.manufacturerQuotedUg, '0.6');

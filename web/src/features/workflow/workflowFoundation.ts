@@ -18,7 +18,7 @@ export type WorkflowEvent = {
   evidenceId?: string | null;
 };
 
-export type NextActionId = "import_manufacturer_quote" | "review_costing" | "review_customer_quotation" | "send_to_client" | "complete_send_quotation" | "complete_follow_up" | "schedule_next_follow_up" | "prepare_order";
+export type NextActionId = "create_or_import_estimate" | "review_costing" | "review_customer_quotation" | "send_to_client" | "complete_send_quotation" | "complete_follow_up" | "schedule_next_follow_up" | "prepare_order";
 
 export type NextAction = {
   id: NextActionId;
@@ -39,7 +39,7 @@ export function deriveNextAction(state: {
   customerAccepted: boolean;
   orderCreated: boolean;
 }): NextAction | null {
-  if (!state.manufacturerQuoteImported) return { id: "import_manufacturer_quote", label: "Import Manufacturer Quote", reason: "No reviewed manufacturer quotation is linked to this Estimate.", critical: false };
+  if (!state.manufacturerQuoteImported) return { id: "create_or_import_estimate", label: "Create or import Estimate", reason: "Add a Position or import a manufacturer quotation in Products / Supply Only.", critical: false };
   if (!state.costingReady) return { id: "review_costing", label: "Review Project Costing", reason: "Manufacturer evidence is available and commercial costing requires review.", critical: true };
   if (!state.quotationReviewed) return { id: "review_customer_quotation", label: "Review Customer Quotation", reason: "Costing is ready for customer-safe document review.", critical: false };
   if (state.quotationPrepared && !state.quotationIssued) return { id: "complete_send_quotation", label: "Complete / Send Quotation", reason: "A persisted quotation and exact PDF are prepared but have not been confirmed as sent.", critical: true };

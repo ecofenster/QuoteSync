@@ -8,7 +8,7 @@ import "../../src/index.css";
 import "../../src/layout/AppShell.css";
 
 const parameters=new URLSearchParams(window.location.search);
-const client={id:parameters.get("clientId")||"test-client",type:"Individual",clientRef:parameters.get("clientRef")||"TEST-CL-TY-CLAI",clientName:"Disposable comparison acceptance",email:"test@example.invalid",mobile:"",home:"",projectName:"Comparison acceptance",customerAddress:"",projectAddress:"Disposable evidence only",invoiceAddress:"",estimates:[]} as unknown as Client;
+const client={id:parameters.get("clientId")||"test-client",type:"Individual",clientRef:parameters.get("clientRef")||"TEST-CL-TY-CLAI",clientName:parameters.get("clientName")||"Disposable comparison acceptance",email:"test@example.invalid",mobile:"",home:"",projectName:parameters.get("projectName")||"Comparison acceptance",customerAddress:"",projectAddress:"Disposable evidence only",invoiceAddress:"",estimates:[]} as unknown as Client;
 
 function Acceptance(){
   useEffect(()=>{applyQuoteSuiteVisualTheme("quotesuite-v2-dark",false);const timer=window.setInterval(()=>{const button=[...document.querySelectorAll("button")].find(item=>item.textContent==="New comparison") as HTMLButtonElement|undefined;if(button){button.click();window.clearInterval(timer)}},25);return()=>window.clearInterval(timer)},[]);

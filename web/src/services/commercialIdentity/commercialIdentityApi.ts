@@ -1,6 +1,11 @@
 import { apiFetch } from "../api/apiClient";
 
 export type EnquiryStatus = "new" | "qualified" | "closed" | "converted";
+export type DriveProvisioningOutcome = {
+  status: "provisioned" | "pending_provider_connection" | "pending_root_configuration" | "not_configured" | "failed";
+  code: string | null;
+  message: string;
+};
 export type EnquiryRecord = {
   id: string;
   enquiryRef: string;
@@ -36,6 +41,7 @@ export type ProjectRecord = {
   orderCount: number;
   createdAt: string;
   updatedAt: string;
+  driveProvisioning?: DriveProvisioningOutcome;
 };
 
 const json = (path: string, body: unknown) => apiFetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -43,7 +49,8 @@ const json = (path: string, body: unknown) => apiFetch(path, { method: "POST", h
 export const commercialIdentityApi = {
   listEnquiries: () => apiFetch("/api/enquiries") as Promise<EnquiryRecord[]>,
   createEnquiry: (input: Partial<EnquiryRecord>) => json("/api/enquiries", input) as Promise<EnquiryRecord>,
-  qualifyEnquiry: (enquiryId: string, input: { mode: "existing_client" | "new_client"; clientId?: string; client?: { name: string; companyName?: string; email?: string; telephone?: string }; project: { name: string; contextYear: number; siteAddress?: string } }) => json(`/api/enquiries/${encodeURIComponent(enquiryId)}/qualify`, input) as Promise<{ enquiry: EnquiryRecord; client: { id: string; clientRef: string; name: string }; project: ProjectRecord }>,
+  qualifyEnquiry: (enquiryId: string, input: { mode: "existing_client" | "new_client"; clientId?: string; client?: { name: string; companyName?: string; email?: string; telephone?: string }; project: { name: string; contextYear: number; siteAddress?: string } }) => json(`/api/enquiries/${encodeURIComponent(enquiryId)}/qualify`, input) as Promise<{ enquiry: EnquiryRecord; client: { id: string; clientRef: string; name: string }; project: ProjectRecord; driveProvisioning: DriveProvisioningOutcome }>,
   listProjects: (clientId: string) => apiFetch(`/api/projects?client_id=${encodeURIComponent(clientId)}`) as Promise<ProjectRecord[]>,
   createProject: (input: { clientId: string; name: string; contextYear: number; siteAddress?: string }) => json("/api/projects", input) as Promise<ProjectRecord>,
+  provisionProjectDrive: (projectId: string) => json(`/api/projects/${encodeURIComponent(projectId)}/provision-drive`, {}) as Promise<DriveProvisioningOutcome>,
 };

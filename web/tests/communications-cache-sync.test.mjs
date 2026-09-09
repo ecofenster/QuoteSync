@@ -6,6 +6,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import sqlite3 from "sqlite3";
 import { open } from "sqlite";
 import { createCommunicationsService } from "../server/features/communications/communicationsService.js";
+import { createCommunicationRepository } from "../server/features/communications/communicationRepository.js";
 import { createGmailProvider } from "../server/features/communications/gmailProvider.js";
 
 const message=(overrides={})=>({provider:"google_workspace",providerMessageId:"message-1",threadId:"thread-1",direction:"inbound",folder:"inbox",status:"received",from:["Sender <sender@example.test>"],to:["sales@example.test"],cc:[],bcc:[],subject:"Cached enquiry",snippet:"Cached body",bodyHtml:"<p>Cached body</p>",bodyText:"Cached body",attachments:[],sentAt:"2026-08-27T12:00:00.000Z",unread:true,starred:false,important:false,labels:[{id:"INBOX",name:"Inbox",system:true},{id:"UNREAD",name:"Unread",system:true}],threadCount:1,links:[],...overrides});
@@ -36,6 +37,36 @@ test("expired Gmail history falls back without clearing the visible cached proje
   const service=createCommunicationsService(db,{workspace,gmail});await service.repository.save({...message({subject:"Visible cache"}),id:"local-1",mailboxId:"me"});await service.repository.saveSyncState("google_workspace","account-1","inbox",{status:"synced",cursor:"100",lastSuccessAt:"2026-08-27T12:00:00.000Z"});
   assert.equal((await service.listMailbox({folder:"inbox"})).messages[0].subject,"Visible cache");
   const result=await service.syncMailbox({folder:"inbox"});assert.equal(result.sync.strategy,"expired_history_full_sync");assert.equal(lists,1);assert.equal(result.messages[0].subject,"Fallback result");
+});
+
+test("mailbox pages project bounded summaries while message detail retains bodies and attachments",async t=>{
+  const db=await fixture(t),repository=createCommunicationRepository(db);
+  const attachments=Array.from({length:120},(_,index)=>({id:`attachment-${index}`,fileName:`evidence-${index}.pdf`,mediaType:"application/pdf",sizeBytes:1024,providerAttachmentId:`provider-${index}`}));
+  await repository.save({...message({bodyHtml:`<p>${"x".repeat(250000)}</p>`,bodyText:"x".repeat(250000),snippet:"Bounded mailbox preview",attachments}),id:"large-message",mailboxId:"me"});
+  const page=await repository.listMailbox({folder:"inbox",limit:30});
+  assert.equal(page.messages.length,1);
+  assert.equal(page.messages[0].snippet,"Bounded mailbox preview");
+  assert.equal(page.messages[0].bodyHtml,"");
+  assert.equal(page.messages[0].bodyText,"");
+  assert.equal(page.messages[0].attachments.length,0);
+  assert.equal(page.messages[0].attachmentCount,120);
+  assert.equal(Object.hasOwn(page.messages[0],"threadMessages"),false);
+  assert.ok(Buffer.byteLength(JSON.stringify(page))<5000);
+  const detail=await repository.get("large-message");
+  assert.equal(detail.bodyText.length,250000);
+  assert.equal(detail.attachments.length,120);
+});
+
+test("provider attachment refresh replaces rotating provider IDs without accumulating stale cache rows",async t=>{
+  const db=await fixture(t),workspace={async status(){return{connected:true,state:"connected",account:{id:"account-1"},scopes:[],capabilities:{gmail:{available:true}}}}};
+  let version=0;
+  const attachment=()=>({sourcePartId:"1.2",fileName:"drawing.pdf",mediaType:"application/pdf",sizeBytes:1024,providerAttachmentId:`rotating-${++version}`});
+  const gmail={async list(){return{messages:[thread({attachments:[attachment()]})],nextPageToken:null}},async currentHistoryId(){return version===1?"100":"101"},async listHistory(){return{historyId:"101",changedThreadIds:["thread-1"],deletedMessageIds:[]}},async readThread(){return thread({attachments:[attachment()]})}};
+  const service=createCommunicationsService(db,{workspace,gmail});
+  await service.syncMailbox({folder:"inbox"});
+  await service.syncMailbox({folder:"inbox"});
+  const rows=await db.all("SELECT provider_attachment_id FROM communication_attachments");
+  assert.deepEqual(rows,[{provider_attachment_id:"rotating-2"}]);
 });
 
 test("Gmail history adapter projects changed threads and deletion evidence across pages",async()=>{

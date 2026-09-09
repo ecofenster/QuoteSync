@@ -127,6 +127,8 @@ import GlassWeightCalculatorTool from "./features/tools/glass/GlassWeightCalcula
 import EstimateCollectionView from "./features/estimateCollection/EstimateCollectionView";
 import type { EstimateCollectionViewMode } from "./features/estimateCollection/EstimateCollectionView";
 import mapGlobalEstimateToCollectionItem from "./features/estimateCollection/adapters/mapGlobalEstimateToCollectionItem";
+import ClientPortalStaffWorkspace from "./features/clientPortal/ClientPortalStaffWorkspace";
+import { INTERNAL_PORTAL_NAVIGATION_EVENT, type InternalPortalNavigationDetail } from "./features/clientPortal/portalInternalNavigation";
 
 /* =========================
    Helpers
@@ -745,16 +747,22 @@ function ModalOverlay({
   children,
   width = "min(1100px, 96vw)",
   onClose,
+  dismissOnBackdrop = true,
 }: {
   children: React.ReactNode;
   width?: string;
   onClose?: () => void;
+  dismissOnBackdrop?: boolean;
 }) {
   return (
-    <div className="app-modal-scrim ui-scrim" onClick={() => onClose?.()}>
+    <div
+      className="app-modal-scrim ui-scrim"
+      onClick={(event) => {
+        if (dismissOnBackdrop && event.target === event.currentTarget) onClose?.();
+      }}
+    >
       <div
         className={`app-modal ui-dialog ${width.includes("720px") ? "app-modal--medium" : "app-modal--wide"}`}
-        onClick={(event) => event.stopPropagation()}
       >
         {children}
       </div>
@@ -1327,6 +1335,7 @@ export default function App() {
 
 
   const [menu, setMenu] = useState<Models.MenuKey>("dashboard");
+  const [portalContext,setPortalContext]=useState<{clientId:string;projectId:string}|null>(null);
 
   const [view, setView] = useState<Models.View>("customers");
 
@@ -1348,6 +1357,8 @@ export default function App() {
   useEffect(() => {
     void getIntegrationStatuses().then(setIntegrationStatuses).catch(() => setIntegrationStatuses([]));
   }, []);
+
+  useEffect(()=>{const openPortal=(event:Event)=>{const detail=(event as CustomEvent<InternalPortalNavigationDetail>).detail;setTopShellPage("app");setActiveTopShellNavKey("home");setMenu("client_portal");setView("customers");setSelectedClientId(null);setSelectedEstimateId(null);setEstimatePickerClientId(null);setPortalContext(detail.clientId&&detail.projectId?{clientId:detail.clientId,projectId:detail.projectId}:null)};window.addEventListener(INTERNAL_PORTAL_NAVIGATION_EVENT,openPortal);return()=>window.removeEventListener(INTERNAL_PORTAL_NAVIGATION_EVENT,openPortal)},[]);
 
 
   
@@ -2118,6 +2129,7 @@ async function handleWhat3WordsMapPick(lat: number, lng: number) {
     setEstimatePickerClientId(null);
     estimatePickerRef.current?.clear();
     setShowAddClient(false);
+    if(k==="client_portal")setPortalContext(null);
   }
 
   function handleTopShellMenuClick(key: string) {
@@ -4433,6 +4445,7 @@ return (
               <div className="qs-migrated-86">
                 <SidebarItem label="Enquiries" active={menu === "enquiries"} onClick={() => selectMenu("enquiries")} />
                 <SidebarItem label="Client Database" active={menu === "client_database"} onClick={() => selectMenu("client_database")} />
+                <SidebarItem label="Client Portal" active={menu === "client_portal"} onClick={() => selectMenu("client_portal")} />
                 <SidebarItem label="Follow Ups" active={menu === "follow_ups"} onClick={() => selectMenu("follow_ups")} />
                 <SidebarItem label="Email" active={menu === "email"} onClick={() => selectMenu("email")} />
               </div>
@@ -4541,7 +4554,11 @@ return (
 )}
 
 {showAddClient && (
-  <ModalOverlay width="min(1100px, 96vw)" onClose={closeAddClientPanel}>
+  <ModalOverlay
+    width="min(1100px, 96vw)"
+    onClose={closeAddClientPanel}
+    dismissOnBackdrop={false}
+  >
     <div className="app-cluster app-cluster--between app-cluster--start">
       <div>
         <H2>{editingClientId ? "Edit client" : "Add client"}</H2>
@@ -4613,6 +4630,7 @@ return (
       <div>
         <div className="qs-migrated-12">Project name</div>
         <Input value={draftProjectName} onChange={setDraftProjectName} placeholder="Project name" />
+        <Small>Client save creates the Client identity only. Create the reviewed canonical Project in Client Info to provision its Files workspace.</Small>
       </div>
 
       <div className="legacy-section-divider qs-migrated-14">
@@ -4962,6 +4980,8 @@ return (
               <EmailWorkspace onOpenIntegrations={()=>{setAdminInitialSection("integrations");setTopShellPage("admin");setActiveTopShellNavKey("admin")}} onOpenFollowUps={()=>selectMenu("follow_ups")} />
             )}
 
+            {menu === "client_portal" && view === "customers" && <ClientPortalStaffWorkspace clients={clients} initialClientId={portalContext?.clientId??null} initialProjectId={portalContext?.projectId??null} onContextConsumed={()=>setPortalContext(null)} />}
+
             {menu === "enquiries" && view === "customers" && (
               <EnquiryWorkspace clients={clients} onCommercialIdentityChanged={refreshClientsFromApi} />
             )}
@@ -5160,7 +5180,7 @@ return (
             )}
 
             {/* Fallback for other menus */}
-            {menu !== "dashboard" && menu !== "enquiries" && menu !== "client_database" && menu !== "follow_ups" && menu !== "email" && menu !== "estimates" && menu !== "orders" && menu !== "lost" && menu !== "installation" && menu !== "project_map" && menu !== "completed_projects" && menu !== "recycle_bin" && menu !== "project_preferences" && (
+            {menu !== "dashboard" && menu !== "enquiries" && menu !== "client_database" && menu !== "client_portal" && menu !== "follow_ups" && menu !== "email" && menu !== "estimates" && menu !== "orders" && menu !== "lost" && menu !== "installation" && menu !== "project_map" && menu !== "completed_projects" && menu !== "recycle_bin" && menu !== "project_preferences" && (
               <Card className="qs-migrated-2">
                 <H2>{menu.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase())}</H2>
                 <Small>Placeholder screen.</Small>

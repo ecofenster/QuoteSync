@@ -97,9 +97,51 @@ function frameProductSystem(product, manufacturer) {
   return match ? `${manufacturer} ${match[1]}` : null;
 }
 
+const FRAME_DRAWING_REGION_VERSION = 'frame-schedule-position-drawing-v1';
+
+function framePositionDrawingRegion(document, blocks) {
+  const header = blocks[0];
+  if (!header?.boundingBox || !Number.isInteger(header.pageNumber)) return null;
+  const page = document.pages.find((candidate) => candidate.pageNumber === header.pageNumber);
+  if (!page || !Number.isFinite(page.width) || !Number.isFinite(page.height)) return null;
+  const headerBottom = header.boundingBox.y;
+  const drawings = (page.imageEvidence || []).filter((candidate) => {
+    const box = candidate.boundingBox;
+    if (!box || box.width < 20 || box.height < 20 || box.x >= page.width * 0.25) return false;
+    const top = box.y + box.height;
+    return top < headerBottom + 1 && top > headerBottom - 190;
+  }).sort((left, right) => (right.boundingBox.y + right.boundingBox.height) - (left.boundingBox.y + left.boundingBox.height));
+  const drawing = drawings[0];
+  if (!drawing) return null;
+  const box = drawing.boundingBox;
+  const left = Math.max(0, box.x - 12);
+  const bottom = Math.max(0, box.y - 14);
+  const right = Math.min(page.width * 0.24, box.x + box.width + 10);
+  const top = Math.min(headerBottom, box.y + box.height + 14);
+  if (right - left <= 1 || top - bottom <= 1) return null;
+  return {
+    sourcePage: page.pageNumber,
+    boundingRegion: { x: left, y: bottom, width: right - left, height: top - bottom },
+    role: 'position_drawing',
+    primary: true,
+    mappingMethod: FRAME_DRAWING_REGION_VERSION,
+    renderCacheVersion: FRAME_DRAWING_REGION_VERSION,
+    sourceObjectIds: [drawing.id],
+    geometryEvidence: {
+      version: FRAME_DRAWING_REGION_VERSION,
+      classifier: 'frame_schedule_owned_image_and_dimension_annotations',
+      confidence: 'strong',
+      reviewState: 'mapped_automatic',
+      sourceObjectIds: [drawing.id],
+      sourceHeaderBlockId: header.id,
+      reason: 'The quotation row header owns the next bounded left-column drawing object; the crop retains its dimension annotations and excludes the specification and price columns.',
+    },
+  };
+}
+
 function parseFrameQuotation(document){
   const identity=frameQuotationIdentity(document),rows=[]; const segments=pageSegments(document,/^Frame No:\s*\d+\s+Qty:/i);
-  for(const blocks of segments){const header=blocks[0].text.match(/^Frame No:\s*(\d+)\s+Qty:\s*(\d+)\s+(.+?)\s*Location:\s*(.+?)\s+£\s*([\d,.]+)$/i);if(!header)continue;const dimension=blocks.find(block=>/\b\d{2,5}\s*x\s*\d{2,5}\b/i.test(block.text))?.text.match(/\b(\d{2,5})\s*x\s*(\d{2,5})\b/i);const uw=blocks.map(block=>block.text).join(' ').match(/\bU(?:w|-Value(?:\s*\(element\))?)\s*[:=]?\s*([\d.,]+)/i)?.[1]??null;const location=cleanMetadataValue(header[4]),product=cleanMetadataValue(header[3]);rows.push(row(document,{ordinal:rows.length,reference:location||`Frame ${header[1]}`,manufacturerName:identity.manufacturer,manufacturerItemNumber:header[1],roomLocation:location,product,productSystem:frameProductSystem(product,identity.manufacturer),configurationDescription:product,quantity:integerQuantity(header[2]),widthMm:dimension?Number(dimension[1]):null,heightMm:dimension?Number(dimension[2]):null,unitPrice:decimal(header[5]),totalPrice:decimal(header[5]),manufacturerQuotedUw:decimal(uw),blocks,warnings:dimension?[]:['Position dimensions were not recognised.']}));}
+  for(const blocks of segments){const header=blocks[0].text.match(/^Frame No:\s*(\d+)\s+Qty:\s*(\d+)\s+(.+?)\s*Location:\s*(.*?)\s+£\s*([\d,.]+)(?:\s+£\s*([\d,.]+))?\s*$/i);if(!header)continue;const dimension=blocks.find(block=>/\b\d{2,5}\s*x\s*\d{2,5}\b/i.test(block.text))?.text.match(/\b(\d{2,5})\s*x\s*(\d{2,5})\b/i);const uw=blocks.map(block=>block.text).join(' ').match(/\bU(?:w|-Value(?:\s*\(element\))?)\s*[:=]?\s*([\d.,]+)/i)?.[1]??null;const location=cleanMetadataValue(header[4]),product=cleanMetadataValue(header[3]),visualRegion=framePositionDrawingRegion(document,blocks);rows.push(row(document,{ordinal:rows.length,reference:location||`Frame ${header[1]}`,manufacturerName:identity.manufacturer,manufacturerItemNumber:header[1],roomLocation:location,product,productSystem:frameProductSystem(product,identity.manufacturer),configurationDescription:product,quantity:integerQuantity(header[2]),widthMm:dimension?Number(dimension[1]):null,heightMm:dimension?Number(dimension[2]):null,unitPrice:decimal(header[5]),totalPrice:decimal(header[6]??header[5]),manufacturerQuotedUw:decimal(uw),blocks,visualRegion,warnings:dimension?[]:['Position dimensions were not recognised.']}));}
   const all=flatten(document),quoteLabel=all.findIndex(block=>/^Quote Number:$/i.test(block.text)),quotation=quoteLabel>=0?cleanMetadataValue(all.slice(quoteLabel+1,quoteLabel+6).find(block=>/^Q[A-Z0-9/-]+$/i.test(block.text))?.text):all.find(block=>/^(?:Quotation|Quote)\s+(?:No\.?\s*)?\d+/i.test(block.text))?.text.match(/\d[\d/-]*/)?.[0]??null,dateLabel=all.findIndex(block=>/^Quotation Date:$/i.test(block.text)),quotationDate=dateLabel>=0?dateIso(all.slice(dateLabel+1,dateLabel+8).find(block=>/^\d{2}[./]\d{2}[./]\d{4}$/.test(block.text))?.text):null;
   return{adapter:'frame_schedule_geometry_v1',...identity,documentType:'complete_quotation',quotation:{supplierQuotationNumber:quotation,supplierRevision:null,fullQuotationReference:quotation,referenceAuthority:quotation?'explicit_source_document':'unavailable',warnings:[]},metadata:{supplierCustomer:null,projectReference:cleanMetadataValue(all[all.findIndex(block=>/^Customer Reference:$/i.test(block.text))+1]?.text),quotationDate},rows,warnings:rows.length?[]:['Frame quotation positions were not detected.']};
 }
@@ -191,7 +233,14 @@ function parseNorrsken(document){
     const sill=cleanMetadataValue(joined.match(/(?:Groove for Sill:\s*[^.]*?mm|Threshold:\s*[^.]+?)(?=\s+(?:Extra Packers|Material|Access Reqd|Glazing|$))/i)?.[0]);
     const configuration=[product,division?`Division ${division.replace(/\s+/g,' / ')}`:null,notes].filter(Boolean).join(' · ')||null;
     const sourceSpecification=compactSourceSpecification({family:'norrsken',material,aluminiumCladding,internalFinish,externalFinish,glazing,ug,uw,configuration,hardware:handle,division,sill,notes:[notes],thermalEvidence:{basis:'supplier_position_table',standard:null,evidenceStatus:'value_stated'},securityEvidence:null});
-    rows.push(row(document,{ordinal:rows.length,reference,manufacturerName:'Norrsken',manufacturerItemNumber:marker[1],product,configurationDescription:configuration,glassSpecification:glazing,fittingsSpecification:handle,quantity,widthMm,heightMm,unitPrice:prices[0],totalPrice:prices.at(-1),currency:'GBP',classification:alternative?'alternative':'standard',alternativeTo:alternative?baseReference:null,classificationEvidence:alternative?'Supplier table and schedule label the position as an option not included in the total.':null,manufacturerQuotedUg:ug,manufacturerQuotedUw:uw,blocks:[block,...detail],sourceSpecification}));
+    const detailHeading=detail[0],detailPage=detailHeading?document.pages.find(page=>page.pageNumber===detailHeading.pageNumber):null,headingBox=detailHeading?.boundingBox;
+    const visualRegion=detailPage&&headingBox&&Number.isFinite(detailPage.width)&&Number.isFinite(detailPage.height)?{
+      sourcePage:detailPage.pageNumber,
+      boundingRegion:{x:Math.max(0,detailPage.width*0.075),y:Math.max(0,headingBox.y-235),width:Math.min(detailPage.width*0.405,detailPage.width-Math.max(0,detailPage.width*0.075)),height:220},
+      role:'combined_source',primary:true,mappingMethod:'norrsken_item_detail_drawing_v1',renderCacheVersion:'norrsken-item-detail-drawing-v1',
+      geometryEvidence:{version:'norrsken-item-detail-drawing-v1',classifier:'supplier_item_number_to_fixed_detail_card_drawing_region',confidence:'strong',reviewState:'mapped_automatic',supplierItemNumber:marker[1],sourceHeadingBlockId:detailHeading.id,reason:'The summary item number resolves to the identically numbered Norrsken detail card; the bounded left-hand card region contains that item drawing and cannot cross into the adjacent item card.'},
+    }:null;
+    rows.push(row(document,{ordinal:rows.length,reference,manufacturerName:'Norrsken',manufacturerItemNumber:marker[1],product,configurationDescription:configuration,glassSpecification:glazing,fittingsSpecification:handle,quantity,widthMm,heightMm,unitPrice:prices[0],totalPrice:prices.at(-1),currency:'GBP',classification:alternative?'alternative':'standard',alternativeTo:alternative?baseReference:null,classificationEvidence:alternative?'Supplier table and schedule label the position as an option not included in the total.':null,manufacturerQuotedUg:ug,manufacturerQuotedUw:uw,blocks:[block,...detail],visualRegion,sourceSpecification}));
   }
   const all=flatten(document),documentText=textOf(document),quoteIdIndex=all.findIndex(block=>/^Quote ID:$/i.test(block.text)),quoteDateIndex=all.findIndex(block=>/^Quote Date:$/i.test(block.text)),quotation=cleanMetadataValue(all.slice(Math.max(0,quoteIdIndex-10),quoteIdIndex).find(block=>/^\d{4}-\d{4,}-\d+$/.test(block.text))?.text)??documentText.match(/\b\d{4}-\d{4,}-\d+\b/)?.[0]??null,quotationDate=cleanMetadataValue(all.slice(Math.max(0,quoteDateIndex-10),quoteDateIndex).find(block=>/^\d{2}\/\d{2}\/\d{4}$/.test(block.text))?.text)??null,issuer=all.filter(block=>/Norrsken Co\. Ltd/i.test(block.text));
   return{adapter:'norrsken_item_table_v2',supplier:'Norrsken',manufacturer:'Norrsken',documentType:'complete_quotation',commercialScope:'supply_and_install',supplierIdentity:{role:'quotation_issuer',authority:'explicit_document_issuer',sourceLegalName:'Norrsken Co. Ltd',dealerName:'Norrsken',evidence:sourceTrace(document,issuer)},commercialSupplierIdentity:{role:'commercial_supplier',authority:'explicit_document_issuer',proposedName:'Norrsken',evidence:sourceTrace(document,issuer)},manufacturerIdentity:{role:'product_manufacturer',authority:'explicit_product_brand',evidence:sourceTrace(document,all.filter(block=>/Norrsken/i.test(block.text)))},quotation:{supplierQuotationNumber:quotation,supplierRevision:null,fullQuotationReference:quotation,referenceAuthority:quotation?'explicit_source_document':'unavailable',warnings:[]},metadata:{supplierCustomer:'Nick and Catherine Corlett',projectReference:'Ty Clai',quotationDate:dateIso(quotationDate?.replaceAll('/','.'))},rows,warnings:rows.length?[]:['Norrsken item table was not detected.']};

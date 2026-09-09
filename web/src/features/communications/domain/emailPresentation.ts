@@ -53,7 +53,7 @@ export function projectMailboxRow(message: CommunicationMessageView, folder: str
     unread: message.unread,
     starred: message.starred,
     labels: message.labels.filter((label) => !label.system).map((label) => label.name),
-    attachmentCount: message.attachments.length,
+    attachmentCount: message.attachmentCount ?? message.attachments.length,
     threadCount: Math.max(1, message.threadCount || message.threadMessages?.length || 1),
   };
 }

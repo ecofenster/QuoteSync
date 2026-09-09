@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolveManagedPath, resolveAttachmentRoot } from "../supplierQuotes/managedAttachmentStorage.js";
 import { createCommunicationRepository } from "./communicationRepository.js";
@@ -24,6 +24,14 @@ const decodeAttachment = (attachment, attachmentRoot) => {
 
 export function preserveCommunicationLinks(existing, providerMessage) {
   return Array.isArray(existing?.links) ? existing.links : Array.isArray(providerMessage?.links) ? providerMessage.links : [];
+}
+
+function attachmentRecordId(messageId, attachment, index) {
+  const sourceIdentity = attachment.sourcePartId
+    ? `part:${attachment.sourcePartId}`
+    : `ordinal:${index}|content:${attachment.contentId || ""}|name:${attachment.fileName || ""}|type:${attachment.mediaType || ""}`;
+  const digest = createHash("sha256").update(sourceIdentity).digest("hex").slice(0, 24);
+  return `${messageId}_attachment_${digest}`;
 }
 
 const uniqueSuggestions = (suggestions) => [...new Map(suggestions.map((item) => [`${item.kind}:${item.id}`, item])).values()];
@@ -100,7 +108,8 @@ export function createCommunicationsService(db, options = {}) {
 
   async function persistProviderMessage(message) {
     const existing = message.providerMessageId ? await repository.findByProviderId("google_workspace", message.providerMessageId) : null;
-    const saved = await repository.save({ ...message, id: existing?.id ?? randomUUID(), links: preserveCommunicationLinks(existing, message), mailboxId: "me", attachments: (message.attachments || []).map((attachment) => ({ ...attachment, id: `${existing?.id ?? message.providerMessageId}_${attachment.providerAttachmentId || attachment.id}` })) });
+    const messageId = existing?.id ?? randomUUID();
+    const saved = await repository.save({ ...message, id: messageId, links: preserveCommunicationLinks(existing, message), mailboxId: "me", attachments: (message.attachments || []).map((attachment, index) => ({ ...attachment, id: attachmentRecordId(messageId, attachment, index) })) });
     return { ...saved, ...message, id: saved.id, links: saved.links, attachments: (message.attachments || []).map((attachment) => ({ ...attachment, id: `${saved.id}_${attachment.providerAttachmentId || attachment.id}` })) };
   }
 
@@ -108,7 +117,7 @@ export function createCommunicationsService(db, options = {}) {
 
   async function listCachedMailbox(input) {
     if (String(input.folder || "").startsWith("quotesuite:")) {
-      const view = String(input.folder).slice(11), all = await repository.list({ limit: 500 });
+      const view = String(input.folder).slice(11), all = await repository.listSummaries({ limit: 500 });
       const kinds = { enquiries: "enquiry", clients: "client", projects: "project", estimates: "estimate", orders: "order", suppliers: "supplier" };
       const messages = view === "unlinked" ? all.filter((message) => !message.links.length) : view === "follow_up" ? all.filter((message) => message.links.some((link) => link.kind === "follow_up")) : all.filter((message) => message.links.some((link) => link.kind === kinds[view]));
       return { messages: messages.slice(0, 100).map((message) => ({ ...message, snippet: message.bodyText, unread: false, starred: false, important: false, labels: [], threadCount: 1 })), nextPageToken: null, source: "cache" };

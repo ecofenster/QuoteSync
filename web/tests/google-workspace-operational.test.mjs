@@ -90,6 +90,18 @@ test("Google OAuth configuration and tokens are encrypted, reconnectable and dis
   assert.equal(status.capabilities.gmail.available,false);assert.equal(status.capabilities.drive.available,false);
 });
 
+test("revoked refresh grant becomes a reconnect-required integration state without exposing tokens",async t=>{
+  const accessFixture=opaqueFixture(71),refreshFixture=opaqueFixture(72),secretFixture=opaqueFixture(73);
+  let revoke=false;
+  const fetchImpl=async url=>String(url).includes("oauth2.googleapis.com")?(revoke?response({error:"invalid_grant",error_description:"Token has been expired or revoked."},{ok:false,status:400}):response({access_token:accessFixture,refresh_token:refreshFixture,token_type:"Bearer",expires_in:3600,scope:GOOGLE_WORKSPACE_SCOPES.join(" ")})):response({sub:"account-revoked",email:"revoked@example.com",name:"Revoked"});
+  const {db}=await databaseFixture(t),service=createGoogleWorkspaceService(db,{fetchImpl,environment:{},encryptionKey});
+  await service.configure({clientId:"fixture-client",clientSecret:secretFixture,redirectUri:"http://localhost/callback",estimatesRootFolderId:"root"});const oauth=await service.beginOAuth();await service.completeOAuth({state:oauth.state,code:"code"});
+  await db.run("UPDATE integration_oauth_connections SET expires_at='2000-01-01T00:00:00.000Z' WHERE provider='google_workspace'");revoke=true;
+  await assert.rejects(()=>service.accessToken(),error=>error.code==="reconnect_required"&&error.status===409&&/Reconnect in Administration/.test(error.message));
+  const row=await db.get("SELECT status,error_message,encrypted_refresh_token FROM integration_oauth_connections WHERE provider='google_workspace'");assert.equal(row.status,"error");assert.match(row.error_message,/reconnect required/i);assert.ok(row.encrypted_refresh_token);assert.equal(JSON.stringify(row).includes(refreshFixture),false);
+  assert.equal((await service.status()).state,"reconnect_required");
+});
+
 test("gmail.modify is minimally requested and an older grant requires non-destructive re-consent",async t=>{
   assert.ok(GOOGLE_WORKSPACE_SCOPES.includes(GMAIL_MODIFY_SCOPE));
   assert.ok(GOOGLE_WORKSPACE_SCOPES.includes("https://www.googleapis.com/auth/gmail.readonly"));

@@ -214,13 +214,15 @@ test("Client sync persists explicit folder-not-matched, no-files and failed cach
   assert.equal(cached.sync.state, "failed");
 });
 
-test("Files UI renders cached records before background provider refresh and exposes explicit Sync", async () => {
+test("Files UI renders cached records without automatic provider mutation and exposes explicit Sync", async () => {
   const [source, api] = await Promise.all([
     readFile("src/features/documents/CanonicalDocumentsPanel.tsx", "utf8"),
     readFile("src/services/documents/documentRecordsApi.ts", "utf8"),
   ]);
   const cachedIndex = source.indexOf("const cached=await listCached()");
-  assert.ok(cachedIndex >= 0 && cachedIndex < source.indexOf("await syncDrive()", cachedIndex));
+  assert.ok(cachedIndex >= 0);
+  const effect=source.slice(source.indexOf("useEffect(() => { let active"),source.indexOf("const types"));
+  assert.doesNotMatch(effect,/syncDrive/);
   assert.match(source, /Syncing…/);
   assert.match(source, /Sync failed — showing cached files/);
   assert.match(source, /Synced — no files found/);
@@ -228,6 +230,7 @@ test("Files UI renders cached records before background provider refresh and exp
   assert.match(source, /Project assignment pending — Client files cached/);
   assert.match(source, /↻ Sync Drive/);
   assert.match(source, /setResult\(cached\)/);
+  assert.match(source, /Reconnect through Administration → Integrations/);
   assert.match(api, /syncClient:\(clientId:string\)=>sync\(\{client_id:clientId\}\)/);
   assert.match(api, /apiFetch\("\/api\/documents\/sync"/);
 });

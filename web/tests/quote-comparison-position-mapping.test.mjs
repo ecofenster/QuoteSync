@@ -34,3 +34,10 @@ test("position report keeps options separate and withholds ranking when a compet
   assert.equal(report.positions[0].recommendationStatus,"review_required");
   assert.deepEqual(report.positions[0].recommendations,[]);
 });
+
+test("ampersand lift-and-slide wording remains a sliding-door reference operation",()=>{
+  const baseline={id:"g",positionRef:"G",quantity:1,widthMm:2600,heightMm:2500,product:"Lift & Slide Door ALUCLAD SKY 92 mm.",configurationDescription:"View from inside"};
+  const result=inferQuoteComparisonMappings([item("Type G",1,2600,2500,{product:"S319A sliding door",configurationDescription:"Right pane slides to the left"})],[baseline]).mappings[0];
+  assert.equal(result.differenceStatus,"exact_match");
+  assert.equal(result.differences.some(difference=>difference.field==="configuration"),false);
+});

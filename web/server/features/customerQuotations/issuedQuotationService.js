@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createCustomerQuotationDocumentService } from "./customerQuotationDocumentService.js";
 import { createCommunicationsService } from "../communications/communicationsService.js";
+import { createPortalSecurityService } from "../clientPortal/portalSecurityService.js";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const parse = (value, fallback = null) => { try { return JSON.parse(value || ""); } catch { return fallback; } };
@@ -8,7 +9,7 @@ const plusDays = (value, days) => { const date = new Date(value); date.setUTCDat
 const requiredText = (value, label) => { const text = String(value || "").trim(); if (!text) throw Object.assign(new Error(`${label} is required.`), { status: 400 }); return text; };
 
 export function createIssuedQuotationService(db, options = {}) {
-  const documents = createCustomerQuotationDocumentService(db, options), communications = createCommunicationsService(db, options);
+  const documents = createCustomerQuotationDocumentService(db, options), communications = createCommunicationsService(db, options), portalSecurity = createPortalSecurityService(db, options.portalSecurityOptions || {});
 
   async function mapIssued(row) {
     if (!row) return null;
@@ -39,6 +40,7 @@ export function createIssuedQuotationService(db, options = {}) {
     await db.exec("BEGIN IMMEDIATE");
     try {
       await db.run("UPDATE issued_quotations SET status='issued',provider='google_workspace',provider_message_id=?,communication_message_id=?,issued_at=?,failed_at=NULL,failure_reason=NULL,updated_at=? WHERE id=? AND status<>'issued'", communication.providerMessageId, communication.id, issuedAt, issuedAt, row.id);
+      await portalSecurity.releaseIssuedEstimate({ issuedQuotationId: row.id, releasedBy: "system" });
       await db.run(`INSERT INTO workflow_events(id,event_name,evidence_id,occurred_at,links_json,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(event_name,evidence_id) DO NOTHING`, eventId, "quotation.issued", row.id, issuedAt, JSON.stringify([{ kind: "client", id: row.client_id }, { kind: "estimate", id: row.estimate_id }, { kind: "issued_quotation", id: row.id }]), issuedAt);
       await db.run(`INSERT INTO followups(id,client_id,estimate_id,title,notes,due_at,status,issued_quotation_id,communication_message_id,origin_event_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`, followUpId, row.client_id, row.estimate_id, `Follow up: ${row.subject}`, "Call / email customer regarding issued quotation", plusDays(issuedAt, 3), "pending", row.id, communication.id, eventId, issuedAt, issuedAt);
       await db.exec("COMMIT");

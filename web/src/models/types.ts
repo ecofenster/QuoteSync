@@ -26,6 +26,7 @@ export const asFollowUpId = (v: string) => v as FollowUpId;
 export type MenuKey =
   | "dashboard"
   | "client_database"
+  | "client_portal"
   | "enquiries"
   | "follow_ups"
   | "email"

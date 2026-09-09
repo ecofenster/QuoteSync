@@ -12,7 +12,7 @@ const cleanHeader = (value) => String(value || "").replace(/[\r\n]+/g, " ").trim
 function collectParts(part, result) {
   if (!part) return;
   const mediaType = String(part.mimeType || ""), contentId = headerValue(part.headers, "Content-ID").replace(/^<|>$/g, "") || null, disposition = headerValue(part.headers, "Content-Disposition");
-  if (part.body?.attachmentId) result.attachments.push({ id: part.body.attachmentId, fileName: part.filename || contentId || "inline-image", mediaType: mediaType || "application/octet-stream", sizeBytes: Number(part.body.size || 0), providerAttachmentId: part.body.attachmentId, contentId, inline: /^inline/i.test(disposition) || Boolean(contentId) });
+  if (part.body?.attachmentId) result.attachments.push({ id: part.body.attachmentId, sourcePartId: part.partId ? String(part.partId) : null, fileName: part.filename || contentId || "inline-image", mediaType: mediaType || "application/octet-stream", sizeBytes: Number(part.body.size || 0), providerAttachmentId: part.body.attachmentId, contentId, inline: /^inline/i.test(disposition) || Boolean(contentId) });
   else if (part.body?.data && mediaType === "text/html") result.bodyHtml += fromBase64Url(part.body.data).toString("utf8");
   else if (part.body?.data && mediaType === "text/plain") result.bodyText += fromBase64Url(part.body.data).toString("utf8");
   for (const child of part.parts || []) collectParts(child, result);

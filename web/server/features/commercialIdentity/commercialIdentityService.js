@@ -5,6 +5,12 @@ const timestamp = (now) => now().toISOString();
 const clean = (value) => String(value || "").trim();
 const json = (value, fallback = {}) => { try { return JSON.stringify(value ?? fallback); } catch { return JSON.stringify(fallback); } };
 const problem = (message, status, code) => Object.assign(new Error(message), { status, code });
+const DRIVE_PROVISIONING_MESSAGES = Object.freeze({
+  provisioned: "Client / Project folders are ready. Existing folders were reused where present.",
+  pending_provider_connection: "Reconnect your connected storage before creating Client / Project folders.",
+  pending_root_configuration: "Configure the Estimates folder in Administration → Integrations before creating Client / Project folders.",
+  not_configured: "Connected storage is not configured for Client / Project folder creation.",
+});
 
 async function transaction(db, work) {
   await db.exec("BEGIN IMMEDIATE");
@@ -42,6 +48,29 @@ function mapProject(row) {
 }
 
 export function createCommercialIdentityService(db, { now = () => new Date(), id = randomUUID, driveTransitions = null } = {}) {
+  async function provisionProjectOutcome(projectId) {
+    if (!driveTransitions?.provisionProject) {
+      return { status: "not_configured", code: "drive_provisioning_not_configured", message: DRIVE_PROVISIONING_MESSAGES.not_configured };
+    }
+    try {
+      const result = await driveTransitions.provisionProject(projectId);
+      const status = clean(result?.status);
+      if (Object.hasOwn(DRIVE_PROVISIONING_MESSAGES, status)) {
+        return { status, code: null, message: DRIVE_PROVISIONING_MESSAGES[status] };
+      }
+      return { status: "failed", code: "drive_provisioning_unexpected_status", message: "The Project was saved, but folder creation returned an unknown result." };
+    } catch (cause) {
+      const code = clean(cause?.code) || "drive_provisioning_failed";
+      return {
+        status: "failed",
+        code,
+        message: code === "reconnect_required"
+          ? DRIVE_PROVISIONING_MESSAGES.pending_provider_connection
+          : "The Project was saved, but Client / Project folders could not be created. Check Administration → Integrations, then try Create Client / Project Folders again.",
+      };
+    }
+  }
+
   async function createEnquiry(input = {}) {
     const displayName = clean(input.displayName || input.companyName);
     if (!displayName) throw problem("An Enquiry needs a person or company name.", 422, "enquiry_identity_required");
@@ -73,8 +102,8 @@ export function createCommercialIdentityService(db, { now = () => new Date(), id
     await db.run(`INSERT INTO projects(id,client_id,source_enquiry_id,name,status,context_year,site_address,site_address_json,postcode,what3words,latitude,longitude,created_at,updated_at)
       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, projectId, clientId, clean(input.sourceEnquiryId) || null, name, clean(input.status) || "active", Number(input.contextYear) || now().getUTCFullYear(), clean(input.siteAddress), json(input.siteAddressJson), clean(input.postcode), clean(input.what3words), Number.isFinite(Number(input.latitude)) ? Number(input.latitude) : null, Number.isFinite(Number(input.longitude)) ? Number(input.longitude) : null, createdAt, createdAt);
     const project = mapProject(await db.get("SELECT p.*,0 estimate_count,0 order_count FROM projects p WHERE p.id=?", projectId));
-    if (driveTransitions?.provisionProject) driveTransitions.provisionProject(projectId).catch(() => {});
-    return project;
+    const driveProvisioning = await provisionProjectOutcome(projectId);
+    return { ...project, driveProvisioning };
   }
 
   async function listProjects({ clientId, projectId } = {}) {
@@ -116,11 +145,23 @@ export function createCommercialIdentityService(db, { now = () => new Date(), id
       await db.run(`UPDATE enquiries SET status='qualified',qualification_mode=?,converted_client_id=?,converted_project_id=?,conversion_evidence_json=?,qualified_at=?,updated_at=? WHERE id=?`, mode, client.id, projectId, JSON.stringify(evidence), qualifiedAt, qualifiedAt, enquiry.id);
       return { enquiry: mapEnquiry(await db.get("SELECT * FROM enquiries WHERE id=?", enquiry.id)), client: { id: client.id, clientRef: client.client_ref, name: client.name }, project: mapProject(await db.get("SELECT p.*,0 estimate_count,0 order_count FROM projects p WHERE id=?", projectId)) };
     });
-    if (driveTransitions?.provisionProject) driveTransitions.provisionProject(result.project.id).catch(() => {});
-    return result;
+    const driveProvisioning = await provisionProjectOutcome(result.project.id);
+    const driveTransitionStatus = driveProvisioning.status === "provisioned"
+      ? "linked"
+      : driveProvisioning.status === "not_configured"
+        ? "not_required"
+        : driveProvisioning.status === "failed"
+          ? "failed"
+          : "pending";
+    await db.run("UPDATE enquiries SET drive_transition_status=?,updated_at=? WHERE id=?", driveTransitionStatus, timestamp(now), result.enquiry.id);
+    return {
+      ...result,
+      enquiry: mapEnquiry(await db.get("SELECT * FROM enquiries WHERE id=?", result.enquiry.id)),
+      driveProvisioning,
+    };
   }
 
-  return { createEnquiry, listEnquiries, qualifyEnquiry, createProject, listProjects };
+  return { createEnquiry, listEnquiries, qualifyEnquiry, createProject, listProjects, provisionProjectDrive: provisionProjectOutcome };
 }
 
 function parseJson(value) { try { return JSON.parse(value || "{}"); } catch { return {}; } }

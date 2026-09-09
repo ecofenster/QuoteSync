@@ -14,6 +14,8 @@ function systemPage(pageNumber, system, family, values) {
     block('Offer number: 20260057'), block(system), block(family), block('CHARACTERISTICS'),
     ...Object.entries(values).flatMap(([label, value]) => [block(label), ...[].concat(value).map((part) => block(part))]),
     block('●'), block('Deviations to this information are listed in the positions descriptions!'),
+    block('*According to standard EN ISO 12567 or 10077 referring to a standard test window size of 1230x1480.'),
+    block('Georgian/feature bars, thresholds etc. are not taken into consideration.'),
   ], { rasterImageCount: 1, vectorPathCount: 8 });
 }
 

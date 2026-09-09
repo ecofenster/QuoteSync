@@ -170,7 +170,14 @@ export function createGoogleWorkspaceService(db, { fetchImpl = fetch, environmen
 
   async function refresh(connectionRow) {
     if (!connectionRow.encrypted_refresh_token) throw providerError("Google Workspace refresh token is unavailable; reconnect the account.", 401, "reconnect_required");
-    const config = await resolvedConfig(), tokens = await exchangeToken({ refresh_token: vault.decrypt(connectionRow.encrypted_refresh_token), client_id: config.clientId, client_secret: config.clientSecret, grant_type: "refresh_token" });
+    const config = await resolvedConfig();
+    let tokens;
+    try { tokens = await exchangeToken({ refresh_token: vault.decrypt(connectionRow.encrypted_refresh_token), client_id: config.clientId, client_secret: config.clientSecret, grant_type: "refresh_token" }); }
+    catch {
+      const timestamp=now().toISOString();
+      await db.run("UPDATE integration_oauth_connections SET status='error',error_message=?,updated_at=? WHERE provider=?", "Authorization expired or revoked; reconnect required.", timestamp, GOOGLE_WORKSPACE_PROVIDER);
+      throw providerError("Google Workspace authorization expired or was revoked. Reconnect in Administration → Integrations.", 409, "reconnect_required");
+    }
     const expiresAt = new Date(now().getTime() + Number(tokens.expires_in || 3600) * 1000).toISOString();
     await db.run("UPDATE integration_oauth_connections SET encrypted_access_token=?,expires_at=?,token_type=?,updated_at=?,error_message=NULL,status='connected' WHERE provider=?", vault.encrypt(tokens.access_token), expiresAt, String(tokens.token_type || "Bearer"), now().toISOString(), GOOGLE_WORKSPACE_PROVIDER);
     return tokens.access_token;
