@@ -41,3 +41,40 @@ test("ampersand lift-and-slide wording remains a sliding-door reference operatio
   assert.equal(result.differenceStatus,"exact_match");
   assert.equal(result.differences.some(difference=>difference.field==="configuration"),false);
 });
+
+test("split supplier frames map as one source-evidenced composite opening",()=>{
+  const baseline={id:"d04",positionRef:"D04-1 D04-2 D04-3",quantity:1,widthMm:5384,heightMm:2100,product:"Lift & Slide Door",configurationDescription:"View from inside"};
+  const supplierItems=[
+    item("D04-1",1,1346,2100,{product:"Inline Patio 25mm LH",unitPrice:"1840.11",totalPrice:"1840.11"}),
+    item("D04-2",1,2692,2100,{product:"Biparting Door 25mm",unitPrice:"4234.84",totalPrice:"4234.84"}),
+    item("D04-3",1,1346,2100,{product:"Inline Patio 25mm RH",unitPrice:"1840.11",totalPrice:"1840.11"}),
+  ];
+  const inferred=inferQuoteComparisonMappings(supplierItems,[baseline]).mappings;
+  assert.deepEqual(inferred.map(mapping=>mapping.canonicalEstimatePositionId),["d04","d04","d04"]);
+  assert.equal(inferred.every(mapping=>mapping.relationshipKind==="grouped"),true);
+  assert.equal(inferred.every(mapping=>mapping.provenance.mappingAuthority==="automatic_composite_reference_geometry"),true);
+  const proposal={id:"adw",supplierName:"ADW",manufacturerName:"VELFAC",scopeKind:"supply_only",currency:"GBP",provenance:{commercialNormalization:{productsSupply:{netAmount:"7915.06"}}},positionMappings:inferred.map((mapping,index)=>({...mapping,id:`m${index}`}))};
+  const report=buildQuoteComparisonReport({recordRevision:1,baselineSnapshot:{estimateRef:"EF-EST-2026-057",positions:[{...baseline,customerUnitPrice:"9088.05",supplierName:"Zyle Fenster"}],customerCommercial:{}},proposals:[proposal]});
+  const offered=report.positions[0].offers.find(offer=>offer.proposalId==="adw");
+  assert.equal(offered.relationship,"grouped");
+  assert.equal(offered.quantity,1);
+  assert.equal(offered.attributes.measurements,"5384 × 2100 mm");
+  assert.equal(offered.commercial.netQuantityCost,7915.06);
+  assert.deepEqual(offered.commercial.components.map(component=>component.reference),["D04-1","D04-2","D04-3"]);
+});
+
+test("selected-supplier alternatives stay with their required Position and do not create another opening",()=>{
+  const required={id:"d02",positionRef:"D02",quantity:1,widthMm:1000,heightMm:2100,product:"Eco Therm+ Door INWARD",configurationDescription:"View from inside, opening inside",customerUnitPrice:"1778.86",supplierName:"Zyle Fenster",classification:"standard"};
+  const alternative={id:"d02-alt",positionRef:"D02.",quantity:1,widthMm:1000,heightMm:2100,product:"92 Europa open IN door ALUCLAD",configurationDescription:"View from inside, opening inside",customerUnitPrice:"3701.07",supplierName:"Zyle Fenster",classification:"alternative",classificationEvidence:"Alternative position (not included in total sum of the offer)"};
+  const proposal={id:"adw",supplierName:"ADW",manufacturerName:"VELFAC",scopeKind:"supply_only",currency:"GBP",positionMappings:[{...item("D02",1,1000,2100,{product:"VELFAC RIBO Flush Door Open In",unitPrice:"1728.16",totalPrice:"1728.16"}),id:"m1",canonicalEstimatePositionId:"d02",relationshipKind:"exact",differenceStatus:"close_acceptable_alternative",differences:[]}]};
+  const report=buildQuoteComparisonReport({recordRevision:1,baselineSnapshot:{estimateRef:"EF-EST-2026-057",positions:[required,alternative],customerCommercial:{}},proposals:[proposal]});
+  assert.equal(report.positions.length,1);
+  assert.equal(report.positions[0].reference,"D02");
+  const selectedAlternative=report.positions[0].offers.find(offer=>offer.reference==="D02.");
+  assert.equal(selectedAlternative.isAlternative,true);
+  assert.equal(selectedAlternative.quantityCost,3701.07);
+  assert.equal(report.positions[0].offers.filter(offer=>offer.proposalId==="adw").length,1);
+  assert.doesNotMatch(report.positions[0].offers.find(offer=>offer.proposalId==="adw").compliance.label,/Supporting component/i);
+  assert.match(report.positions[0].conclusion,/no corresponding alternative recorded/i);
+  assert.match(report.positions[0].conclusion,/not treated as a missing required opening/i);
+});

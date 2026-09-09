@@ -17,11 +17,11 @@ export const supplierImportOperationStatuses = Object.freeze([
 const normalized = (value) => String(value ?? '').trim().replace(/\s+/g, ' ').toUpperCase();
 const hash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
-export function createSupplierImportOperationIdentity({ quote, revision, scenarioId, attachments, selectedRowKeys, reviewedRows = [], reviewedCurrency }) {
+export function createSupplierImportOperationIdentity({ quote, revision, scenarioId, attachments, selectedRowKeys, reviewedRows = [], reviewedCurrency, extractionContract = null }) {
   const sourceIdentity = [...attachments].map((attachment) => ({ attachmentId: attachment.id, sha256: attachment.sha256, documentKind: attachment.document_kind })).sort((left, right) => left.attachmentId.localeCompare(right.attachmentId));
   const rowKeys = [...new Set(selectedRowKeys || [])].sort();
   const reviewedEvidence = reviewedRows.map((row) => ({ reference: normalized(row.displayReference), quantity: row.quantity, widthMm: row.widthMm, heightMm: row.heightMm, unitPrice: row.unitPrice, totalPrice: row.totalPrice, currency: normalized(row.currency), classification: row.classification || 'standard', included: row.includedInSupplierTotal !== false, alternativeTo: normalized(row.alternativeTo), product: normalized(row.manufacturerEvidence?.product ?? row.product), productSystem: normalized(row.manufacturerEvidence?.productSystem ?? row.productSystem) }));
-  const selectionIdentity = { rowKeys, reviewedEvidenceHash: hash(reviewedEvidence) };
+  const selectionIdentity = { rowKeys, reviewedEvidenceHash: hash(reviewedEvidence), extractionContract };
   const identity = { supplier: normalized(quote.supplier_code || quote.supplier_name), quotation: normalized(revision.supplier_quotation_number), revision: normalized(revision.supplier_revision), scenarioId: String(scenarioId), sourceIdentity, selectionIdentity, reviewedCurrency: normalized(reviewedCurrency) };
   const operationKey = hash(identity);
   return { operationId: `supplier-import-operation-${operationKey}`, operationKey, sourceIdentity, selectionIdentity };
@@ -48,7 +48,7 @@ export async function readSupplierImportState(db, { scenarioId, revisionId }) {
     supplierPositions: await one('SELECT COUNT(*) count FROM supplier_quote_positions WHERE revision_id=?', revisionId),
     productsSupplyRows: await one('SELECT COUNT(*) count FROM project_calculator_estimate_product_rows WHERE scenario_id=? AND source_revision_id=?', scenarioId, revisionId),
     projectCostingRows: await one('SELECT COUNT(*) count FROM project_calculator_estimate_product_rows WHERE scenario_id=? AND source_revision_id=? AND estimate_position_id IS NOT NULL', scenarioId, revisionId),
-    supplierExtras: await one('SELECT COUNT(*) count FROM supplier_quote_extras WHERE revision_id=?', revisionId),
+    supplierExtras: await one('SELECT COUNT(*) count FROM supplier_quote_extras WHERE revision_id=? AND superseded_at IS NULL', revisionId),
     projectCostingSupplierCosts: await one('SELECT COUNT(*) count FROM project_calculator_estimate_supplier_costs WHERE scenario_id=? AND source_revision_id=?', scenarioId, revisionId),
     revisionScenarioLinks: await one('SELECT COUNT(*) count FROM project_calculator_supplier_quote_revisions WHERE scenario_id=? AND revision_id=?', scenarioId, revisionId),
   };

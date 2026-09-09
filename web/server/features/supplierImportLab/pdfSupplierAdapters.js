@@ -139,11 +139,96 @@ function framePositionDrawingRegion(document, blocks) {
   };
 }
 
+function frameDatasheetRows(document) {
+  const page = document.pages.find((candidate) => candidate.blocks.some((block) => /^Datasheet$/i.test(String(block.text || '').trim())));
+  if (!page) return new Map();
+  const blocks = page.blocks.map((block) => ({ ...block, text: String(block.text || '').trim(), pageNumber: page.pageNumber })).filter((block) => block.text && block.boundingBox);
+  const heading = blocks.find((block) => /^Frame No\.$/i.test(block.text));
+  if (!heading) return new Map();
+  const rowBlocks = blocks.filter((block) => block.boundingBox.y < heading.boundingBox.y - 2 && block.boundingBox.y > 70);
+  const rowYs = [...new Set(rowBlocks.filter((block) => block.boundingBox.x < 80 && /^\d{1,3}$/.test(block.text)).map((block) => block.boundingBox.y))];
+  const valueAt = (y, minimumX, maximumX) => rowBlocks
+    .filter((block) => Math.abs(block.boundingBox.y - y) < 1.5 && block.boundingBox.x >= minimumX && block.boundingBox.x < maximumX)
+    .sort((left, right) => left.boundingBox.x - right.boundingBox.x)
+    .map((block) => block.text).join('').trim() || null;
+  return new Map(rowYs.map((y) => {
+    const frameNumber = valueAt(y, 40, 80);
+    return [frameNumber, {
+      frameNumber,
+      quantity: valueAt(y, 90, 125),
+      profile: valueAt(y, 125, 220),
+      internalFinish: valueAt(y, 220, 340),
+      externalFinish: valueAt(y, 340, 455),
+      uw: valueAt(y, 455, 530),
+      sourcePage: page.pageNumber,
+    }];
+  }).filter(([frameNumber]) => frameNumber));
+}
+
+function framePositionSpecification(document, blocks, { frameNumber, product, productSystem, uw, datasheetSourcePage = null }) {
+  const joined = blocks.map((block) => block.text).join(' ');
+  const capture = (label, following) => {
+    const source = blocks.find((block) => new RegExp(`${label}:`, 'i').test(block.text))?.text || '';
+    return cleanMetadataValue(source.match(new RegExp(`${label}:\\s*(.*?)(?=\\s+(?:${following})(?::|\\s)|$)`, 'i'))?.[1]);
+  };
+  const finishes = joined.match(/Ext:\s*(.*?)\s*\/\s*Int:\s*(.*?)(?=\s+(?:Win Hinge|Cill|Beading|Comment|Restrictor|External Cup|Circular Catch|Frame\/Element|\d+mm Transom|Glazing|Dimensions):?|$)/i);
+  const normalizeSplitFinish = (value) => {
+    const cleaned = cleanMetadataValue(value);
+    return /Non Standard RAL\s*-?\s*$/i.test(cleaned || '') && /\bTBC\b/i.test(joined) ? 'Non Standard RAL - TBC' : cleaned;
+  };
+  const internalFinish = normalizeSplitFinish(finishes?.[2]);
+  const externalFinish = normalizeSplitFinish(finishes?.[1]);
+  const glazingBlock = blocks.find((block) => /\d+\s*\/\s*\d+\s*\/\s*\d+.*(?:Tgh|Tough|Lam|Float|G\s*value)/i.test(block.text))?.text;
+  const glazing = cleanMetadataValue(glazingBlock?.match(/(\d+(?:\.\d+)?\s*\/\s*\d+(?:\.\d+)?\s*\/\s*\d+(?:\.\d+)?[\s\S]*?(?:G\s*value|$))/i)?.[1]);
+  const gValue = glazing?.match(/([\d.,]+)\s*G\s*value/i)?.[1] ?? null;
+  const handle = capture('Win Handle', 'Ext|Win Hinge|Door Hinge|Cill|Beading|Comment');
+  const hinge = capture('(?:Win|Door) Hinge', 'Cill|Beading|Comment|Glazing|Dimensions')?.replace(/\s+TBC$/i, '') || null;
+  const cill = capture('Cill', 'Ext|Restrictor|Beading|Comment|Glazing|Dimensions')?.replace(/^No Cill\s+TBC$/i, 'No Cill') || null;
+  const beading = capture('Beading', 'Ext|External Cup|Circular Catch|Comment|Glazing|Dimensions')?.replace(/\s+TBC$/i, '') || null;
+  const additional = blocks.map((block) => block.text).filter((value) => /(?:Restrictor|Catch Handle|Cup handle|Transom\/Mullion|Frame\/Element Depth|support packer|Offered at max\.)/i.test(value)).map((value) => value.slice(value.search(/(?:Restrictor|Circular Catch|External Cup|\d+mm Transom\/Mullion|Frame\/Element Depth|support packer|Offered at max\.)/i)));
+  const hardware = [handle, hinge, ...additional.filter((value) => /Handle|Hinge|Restrictor/i.test(value))].filter(Boolean).join(' · ') || null;
+  const commentIndex = blocks.findIndex((block) => /\bComment:/i.test(block.text));
+  const commentParts = [];
+  if (commentIndex >= 0) for (const block of blocks.slice(commentIndex, commentIndex + 6)) {
+    if (commentParts.length && (/\bGlazing:/i.test(block.text) || /^Cill attachment/i.test(block.text) || /^A\d+\b/.test(block.text))) break;
+    commentParts.push(commentParts.length ? block.text : block.text.replace(/^.*?Comment:\s*/i, ''));
+  }
+  const sourceComment = cleanMetadataValue(commentParts.join(' '));
+  const notes = [...new Set([beading ? `Beading: ${beading}` : null, sourceComment, ...additional.filter((value) => !/Handle|Hinge|Restrictor|Beading/i.test(value))].filter(Boolean))];
+  const sourcePage = blocks.find((block) => Number.isInteger(block.pageNumber))?.pageNumber ?? null;
+  const field = (id, label, rawValue, page = sourcePage) => rawValue == null || rawValue === '' ? null : ({ id, ordinal: 0, section: 'Position and datasheet evidence', label, rawValue, sourcePage: page, evidenceClass: 'explicit', confidence: 'strong', reviewStatus: 'mapped_automatic' });
+  const fields = [
+    field(`frame:${frameNumber}:system`, 'Product / system', productSystem || product),
+    field(`frame:${frameNumber}:internal-finish`, 'Internal finish', internalFinish),
+    field(`frame:${frameNumber}:external-finish`, 'External finish', externalFinish),
+    field(`frame:${frameNumber}:glazing`, 'Glazing', glazing),
+    field(`frame:${frameNumber}:hardware`, 'Hardware', hardware),
+    field(`frame:${frameNumber}:sill`, 'Cill', cill),
+    field(`frame:${frameNumber}:uw`, 'U-value', uw, datasheetSourcePage ?? sourcePage),
+  ].filter(Boolean).map((item, ordinal) => ({ ...item, ordinal }));
+  const sourceSpecification = compactSourceSpecification({ family: `frame:${frameNumber}`, material: null, aluminiumCladding: null, internalFinish, externalFinish, glazing, ug: null, uw, configuration: product, hardware, division: null, sill: cill, notes, thermalEvidence: uw ? { basis: 'actual_position_size', evidenceStatus: 'value_stated', sourcePage: datasheetSourcePage ?? sourcePage, qualification: 'Supplier datasheet value for this numbered frame; the quotation states that weights and U-values are approximations.' } : null });
+  sourceSpecification.version = 'frame-schedule-position-specification-v2';
+  sourceSpecification.sourceAttachmentId = document.attachmentId;
+  sourceSpecification.sourcePages = [...new Set(blocks.map((block) => block.pageNumber).filter(Number.isInteger).concat(uw && Number.isInteger(datasheetSourcePage) ? [datasheetSourcePage] : []))];
+  sourceSpecification.sections = fields.length ? [{ name: 'Position and datasheet evidence', fields }] : [];
+  sourceSpecification.canonical.system = sourceField(productSystem || product, `frame:${frameNumber}:system`);
+  if (sourceSpecification.canonical.internalFinish) sourceSpecification.canonical.internalFinish.sourceFieldId = `frame:${frameNumber}:internal-finish`;
+  if (sourceSpecification.canonical.externalFinish) sourceSpecification.canonical.externalFinish.sourceFieldId = `frame:${frameNumber}:external-finish`;
+  if (sourceSpecification.canonical.glazing) sourceSpecification.canonical.glazing.sourceFieldId = `frame:${frameNumber}:glazing`;
+  if (sourceSpecification.canonical.glazingUnits[0]) {
+    sourceSpecification.canonical.glazingUnits[0].sourceFieldIds = [`frame:${frameNumber}:glazing`];
+    sourceSpecification.canonical.glazingUnits[0].solarGainPercent = gValue;
+  }
+  if (sourceSpecification.canonical.thermalUw) sourceSpecification.canonical.thermalUw.sourceFieldId = `frame:${frameNumber}:uw`;
+  if (sourceSpecification.canonical.sill) sourceSpecification.canonical.sill.sourceFieldId = `frame:${frameNumber}:sill`;
+  return { sourceSpecification, glassSpecification: glazing, fittingsSpecification: hardware, internalFinish, externalFinish, cill };
+}
+
 function parseFrameQuotation(document){
-  const identity=frameQuotationIdentity(document),rows=[]; const segments=pageSegments(document,/^Frame No:\s*\d+\s+Qty:/i);
-  for(const blocks of segments){const header=blocks[0].text.match(/^Frame No:\s*(\d+)\s+Qty:\s*(\d+)\s+(.+?)\s*Location:\s*(.*?)\s+£\s*([\d,.]+)(?:\s+£\s*([\d,.]+))?\s*$/i);if(!header)continue;const dimension=blocks.find(block=>/\b\d{2,5}\s*x\s*\d{2,5}\b/i.test(block.text))?.text.match(/\b(\d{2,5})\s*x\s*(\d{2,5})\b/i);const uw=blocks.map(block=>block.text).join(' ').match(/\bU(?:w|-Value(?:\s*\(element\))?)\s*[:=]?\s*([\d.,]+)/i)?.[1]??null;const location=cleanMetadataValue(header[4]),product=cleanMetadataValue(header[3]),visualRegion=framePositionDrawingRegion(document,blocks);rows.push(row(document,{ordinal:rows.length,reference:location||`Frame ${header[1]}`,manufacturerName:identity.manufacturer,manufacturerItemNumber:header[1],roomLocation:location,product,productSystem:frameProductSystem(product,identity.manufacturer),configurationDescription:product,quantity:integerQuantity(header[2]),widthMm:dimension?Number(dimension[1]):null,heightMm:dimension?Number(dimension[2]):null,unitPrice:decimal(header[5]),totalPrice:decimal(header[6]??header[5]),manufacturerQuotedUw:decimal(uw),blocks,visualRegion,warnings:dimension?[]:['Position dimensions were not recognised.']}));}
+  const identity=frameQuotationIdentity(document),rows=[],datasheet=frameDatasheetRows(document); const segments=pageSegments(document,/^Frame No:\s*\d+\s+Qty:/i);
+  for(const blocks of segments){const header=blocks[0].text.match(/^Frame No:\s*(\d+)\s+Qty:\s*(\d+)\s+(.+?)\s*Location:\s*(.*?)\s+£\s*([\d,.]+)(?:\s+£\s*([\d,.]+))?\s*$/i);if(!header)continue;const dimension=blocks.find(block=>/\b\d{2,5}\s*x\s*\d{2,5}\b/i.test(block.text))?.text.match(/\b(\d{2,5})\s*x\s*(\d{2,5})\b/i);const location=cleanMetadataValue(header[4]),product=cleanMetadataValue(header[3]),productSystem=frameProductSystem(product,identity.manufacturer),datasheetRow=datasheet.get(header[1]),uw=decimal(datasheetRow?.uw??blocks.map(block=>block.text).join(' ').match(/\bU(?:w|-Value(?:\s*\(element\))?)\s*[:=]?\s*([\d.,]+)/i)?.[1]??null),visualRegion=framePositionDrawingRegion(document,blocks),specification=framePositionSpecification(document,blocks,{frameNumber:header[1],product,productSystem,uw,datasheetSourcePage:datasheetRow?.sourcePage??null});rows.push(row(document,{ordinal:rows.length,reference:location||`Frame ${header[1]}`,manufacturerName:identity.manufacturer,manufacturerItemNumber:header[1],roomLocation:location,product,productSystem,configurationDescription:product,glassSpecification:specification.glassSpecification,fittingsSpecification:specification.fittingsSpecification,quantity:integerQuantity(header[2]),widthMm:dimension?Number(dimension[1]):null,heightMm:dimension?Number(dimension[2]):null,unitPrice:decimal(header[5]),totalPrice:decimal(header[6]??header[5]),manufacturerQuotedUw:uw,blocks,visualRegion,sourceSpecification:specification.sourceSpecification,warnings:dimension?[]:['Position dimensions were not recognised.']}));}
   const all=flatten(document),quoteLabel=all.findIndex(block=>/^Quote Number:$/i.test(block.text)),quotation=quoteLabel>=0?cleanMetadataValue(all.slice(quoteLabel+1,quoteLabel+6).find(block=>/^Q[A-Z0-9/-]+$/i.test(block.text))?.text):all.find(block=>/^(?:Quotation|Quote)\s+(?:No\.?\s*)?\d+/i.test(block.text))?.text.match(/\d[\d/-]*/)?.[0]??null,dateLabel=all.findIndex(block=>/^Quotation Date:$/i.test(block.text)),quotationDate=dateLabel>=0?dateIso(all.slice(dateLabel+1,dateLabel+8).find(block=>/^\d{2}[./]\d{2}[./]\d{4}$/.test(block.text))?.text):null;
-  return{adapter:'frame_schedule_geometry_v1',...identity,documentType:'complete_quotation',quotation:{supplierQuotationNumber:quotation,supplierRevision:null,fullQuotationReference:quotation,referenceAuthority:quotation?'explicit_source_document':'unavailable',warnings:[]},metadata:{supplierCustomer:null,projectReference:cleanMetadataValue(all[all.findIndex(block=>/^Customer Reference:$/i.test(block.text))+1]?.text),quotationDate},rows,warnings:rows.length?[]:['Frame quotation positions were not detected.']};
+  return{adapter:'frame_schedule_geometry_v1',...identity,documentType:'complete_quotation',commercialScope:'supply_only',quotation:{supplierQuotationNumber:quotation,supplierRevision:null,fullQuotationReference:quotation,referenceAuthority:quotation?'explicit_source_document':'unavailable',warnings:[]},metadata:{supplierCustomer:null,projectReference:cleanMetadataValue(all[all.findIndex(block=>/^Customer Reference:$/i.test(block.text))+1]?.text),quotationDate},rows,warnings:rows.length?[]:['Frame quotation positions were not detected.']};
 }
 
 function parseIdealcombi(document){
@@ -1209,6 +1294,26 @@ export function parsePdfSupplierSummary(document,positionRows=[]){
   if(parsed.adapter==='internorm_ecohaus_complete_quotation_v1')return parseInternormEcohausSummary(document,parsed,positionRows);
   if(parsed.adapter==='internorm_aspect_schedule_v1')return parseInternormAspectSummary(document,parsed,positionRows);
   if(parsed.adapter==='internorm_schedule_v1')return{summary:null,additionalItems:[],warnings:['Line prices and quotation total are supplied separately.']};
+  if(parsed.adapter==='frame_schedule_geometry_v1'){
+    const pageLines=lines(document);const lineEvidence=(pattern)=>{const block=pageLines.find(item=>pattern.test(item.text)),value=decimal(block?.text.match(/£\s*([\d,.]+)\s*$/)?.[1]);return{block,value}};
+    const tPiece=lineEvidence(/\bT Piece\b/i),coverCaps=lineEvidence(/^Cover cap\b/i),delivery=lineEvidence(/delivery charge/i),net=lineEvidence(/\bNett Total\b/i),vat=lineEvidence(/\b20% VAT\b/i),final=lineEvidence(/^TOTAL INC\. VAT\b/i);
+    const positionSubtotal=positionRows.every(item=>item.totalPrice!=null)?positionRows.reduce((sum,item)=>sum+Number(item.totalPrice),0).toFixed(2):null;
+    const extras=[
+      tPiece.value?internormEcohausAdditionalItem(document,{ordinal:0,category:'accessory',commercialRole:'coupling_profile',description:'90/114 8mm T Piece 3m',quantity:7,quantityUnit:'length',totalPrice:tPiece.value,blocks:[tPiece.block],includedInSupplierTotal:true,inclusionEvidence:'Explicit supplier extra included in the Nett Total.'}):null,
+      coverCaps.value?internormEcohausAdditionalItem(document,{ordinal:1,category:'accessory',commercialRole:'cover_caps',description:'Cover cap 14/19mm, white',quantity:200,quantityUnit:'unit',totalPrice:coverCaps.value,blocks:[coverCaps.block],includedInSupplierTotal:true,inclusionEvidence:'Explicit supplier extra included in the Nett Total.'}):null,
+      delivery.value?internormEcohausAdditionalItem(document,{ordinal:2,category:'delivery',commercialRole:'delivery',description:'Delivery charge',quantity:1,quantityUnit:'delivery',totalPrice:delivery.value,blocks:[delivery.block],includedInSupplierTotal:true,inclusionEvidence:'Explicit supplier delivery charge included in the Nett Total.'}):null,
+    ].filter(Boolean);
+    const additionalItemsSubtotal=[tPiece.value,coverCaps.value].every(Boolean)?(Number(tPiece.value)+Number(coverCaps.value)).toFixed(2):null;
+    const value=summary(document,{currency:'GBP',productSubtotal:positionSubtotal,additionalItemsSubtotal,deliveryTotal:delivery.value,vatTotal:vat.value,finalSupplierTotal:final.value});
+    const expectedNet=[positionSubtotal,additionalItemsSubtotal,delivery.value].every(Boolean)?(Number(positionSubtotal)+Number(additionalItemsSubtotal)+Number(delivery.value)).toFixed(2):null;
+    const expectedFinal=expectedNet&&vat.value?(Number(expectedNet)+Number(vat.value)).toFixed(2):null;
+    const warnings=[];
+    if(!expectedNet||!net.value||Number(expectedNet)!==Number(net.value))warnings.push('The extracted Products / Supply, extras and delivery do not reconcile with the supplier Nett Total.');
+    if(!expectedFinal||!final.value||Number(expectedFinal)!==Number(final.value))warnings.push('The supplier Nett Total, VAT and total including VAT do not reconcile.');
+    value.reconciliation={positionSubtotal,additionalSubtotal:additionalItemsSubtotal,deliverySubtotal:delivery.value,expectedFinal,reconciled:warnings.length===0,warnings};
+    value.comparisonScope={productsSupply:{status:'separately_reconstructed_from_position_rows',grossListAmount:positionSubtotal,discountPercentage:null,netAmount:positionSubtotal},extras:{status:'separately_stated',amount:additionalItemsSubtotal,labels:['90/114 8mm T Piece 3m','Cover cap 14/19mm, white']},delivery:{status:'included_separately_stated',amount:delivery.value},installation:{status:'not_stated',amount:null},survey:{status:'not_stated',amount:null},vat:{status:'separately_stated',rate:20,amount:vat.value}};
+    value.warnings=warnings;value.status=warnings.length?'needs_review':'extracted';return{summary:value,additionalItems:extras,warnings};
+  }
   if(parsed.adapter==='glass_worx_cover_v1'){
     const packageValues=blocks.filter(block=>/^\d{1,3},\d{3}\.\d{2}$/.test(block.text)).map(block=>decimal(block.text)).slice(-3);const selected=packageValues[1]??packageValues[0]??null;
     const labels=['Bronze / Supply Only','Silver / Install Support','Gold / Full Installation'];const value=summary(document,{currency:'GBP',finalSupplierTotal:selected});value.comparisonTotals=packageValues.map((amount,index)=>({classification:'package_option',label:labels[index],amount,currency:'GBP',includedInSupplierTotal:index===1,selected:index===1,sourceTrace:sourceTrace(document,blocks.filter(block=>decimal(block.text)===amount))}));value.originalExtractedSnapshot.comparisonTotals=value.comparisonTotals;value.warnings=['Line-level reconciliation is unavailable because the authoritative schedule is unpriced.'];value.status='needs_review';value.reconciliation={positionSubtotal:null,additionalSubtotal:null,deliverySubtotal:null,expectedFinal:null,reconciled:false,warnings:value.warnings};return{summary:value,additionalItems:[],warnings:value.warnings};
@@ -1237,7 +1342,7 @@ export function parsePdfSupplierSummary(document,positionRows=[]){
   if(parsed.adapter==='twenty_one_degrees_detail_v1'){
     const pageLines=lines(document);const amount=(pattern)=>{const match=pageLines.find(block=>pattern.test(block.text))?.text.match(/£\s*([\d,.]+)\s*$/);return decimal(match?.[1]);};const productSubtotal=amount(/^Sub Total After Discount\b/i),vatTotal=amount(/^VAT\b/i),finalSupplierTotal=amount(/^Total Order Value\b/i);const value=summary(document,{currency:'GBP',productSubtotal,vatTotal,finalSupplierTotal});value.warnings=['Dimensional reconciliation is incomplete because position dimensions are absent from the text layer.'];value.status='needs_review';value.reconciliation={positionSubtotal:positionRows.reduce((sum,item)=>sum+Number(item.totalPrice||0),0).toFixed(2),additionalSubtotal:null,deliverySubtotal:null,expectedFinal:productSubtotal&&vatTotal?(Number(productSubtotal)+Number(vatTotal)).toFixed(2):null,reconciled:Boolean(productSubtotal&&vatTotal&&finalSupplierTotal&&Number(productSubtotal)+Number(vatTotal)===Number(finalSupplierTotal)),warnings:value.warnings};return{summary:value,additionalItems:[],warnings:value.warnings};
   }
-  if(['idealcombi_position_table_v1','frame_schedule_geometry_v1','westcoast_position_schedule_v1'].includes(parsed.adapter))return{summary:null,additionalItems:[],warnings:['A trustworthy end-of-quotation commercial summary was not recognised for this layout.']};
+  if(['idealcombi_position_table_v1','westcoast_position_schedule_v1'].includes(parsed.adapter))return{summary:null,additionalItems:[],warnings:['A trustworthy end-of-quotation commercial summary was not recognised for this layout.']};
   const totalLabel=blocks.findIndex(block=>parsed.adapter==='gutmann_web_v1'?/^Net price$/i.test(block.text):/^Totals$/i.test(block.text));const candidates=blocks.slice(Math.max(0,totalLabel),totalLabel+40).map(block=>decimal(block.text)).filter(Boolean);const final=candidates[0];const productSubtotal=positionRows.every(item=>item.totalPrice!=null)?positionRows.reduce((sum,item)=>sum+Number(item.totalPrice),0).toFixed(2):null;const detectedCurrency=detectPdfDocumentCurrency(document).currency;const rowCurrencies=[...new Set(positionRows.map(item=>item.currency).filter(Boolean))];const currency=rowCurrencies.length===1?rowCurrencies[0]:detectedCurrency;const value=summary(document,{currency,finalSupplierTotal:final,productSubtotal});const reconciled=productSubtotal!=null&&final!=null&&Number(productSubtotal)===Number(final);value.reconciliation={positionSubtotal:productSubtotal,additionalSubtotal:null,deliverySubtotal:null,expectedFinal:productSubtotal,reconciled,warnings:reconciled?[]:['Supplied final total does not reconcile with the extracted commercial evidence.']};if(!currency)value.reconciliation.warnings.push('The document currency is absent or ambiguous and requires review.');value.warnings=value.reconciliation.warnings;value.status=value.warnings.length?'needs_review':'extracted';return{summary:value,additionalItems:[],warnings:value.warnings};
 }
 

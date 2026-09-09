@@ -574,14 +574,21 @@ function offerFromMappings(proposal, mappings, position, offerKind = "base") {
   } : { ...attrs, systemEvidence: completeAttributes.map((item) => item.sourceEvidence).filter((item) => item.system) };
   const sourceReferences = new Set(commercialItems.map((mapping) => supplierItemReference(mapping).replace(/[^A-Z0-9]+/gi, "").toUpperCase()).filter(Boolean));
   const componentAssembly = commercialItems.length > 1 && sourceReferences.size === 1 && commercialItems.every((mapping) => numeric(record(mapping.supplierItemSnapshot).quantity) === position.quantity);
+  const assemblySnapshots = commercialItems.map((mapping) => record(mapping.supplierItemSnapshot));
+  const spatialAssembly = commercialItems.length > 1
+    && assemblySnapshots.every((item) => (numeric(item.quantity) ?? 1) === position.quantity)
+    && ((assemblySnapshots.every((item) => numeric(item.heightMm) === position.heightMm)
+      && Math.abs(assemblySnapshots.reduce((sum, item) => sum + (numeric(item.widthMm) ?? 0), 0) - position.widthMm) <= 5)
+      || (assemblySnapshots.every((item) => numeric(item.widthMm) === position.widthMm)
+      && Math.abs(assemblySnapshots.reduce((sum, item) => sum + (numeric(item.heightMm) ?? 0), 0) - position.heightMm) <= 5));
   const supportingQuantity = meaningful.filter((mapping) => record(mapping.supplierItemSnapshot).componentRole).reduce((sum, mapping) => sum + (numeric(record(mapping.supplierItemSnapshot).quantity) ?? 0), 0) || null;
-  const quantity = componentAssembly ? position.quantity : commercialItems.reduce((sum, mapping) => sum + (numeric(record(mapping.supplierItemSnapshot).quantity) ?? 0), 0) || supportingQuantity;
+  const quantity = componentAssembly || spatialAssembly ? position.quantity : commercialItems.reduce((sum, mapping) => sum + (numeric(record(mapping.supplierItemSnapshot).quantity) ?? 0), 0) || supportingQuantity;
   const commercial = positionCommercialEvidence(proposal, meaningful, commercialItems, quantity);
-  const groupedQuantityMatches = meaningful.length > 1 && quantity === position.quantity && meaningful.every((mapping) => {
+  const groupedQuantityMatches = meaningful.length > 1 && quantity === position.quantity && (spatialAssembly || meaningful.every((mapping) => {
     const item = record(mapping.supplierItemSnapshot);
     return item.componentRole || numeric(item.widthMm) === position.widthMm && numeric(item.heightMm) === position.heightMm && (mapping.differences || []).every((difference) => difference.field === "quantity");
-  });
-  const status = groupedQuantityMatches ? "exact_match" : chosen?.differenceStatus ?? "missing";
+  }));
+  const status = !meaningful.length ? "missing" : groupedQuantityMatches ? "exact_match" : chosen?.differenceStatus ?? "missing";
   const explanation = groupedQuantityMatches
     ? `Grouped supplier rows reconcile to the required quantity ${position.quantity} and dimensions.`
     : status === "quantity_mismatch" && quantity != null
@@ -597,7 +604,7 @@ function offerFromMappings(proposal, mappings, position, offerKind = "base") {
     assessment: assessment[status] ?? assessment.review_required,
     assessmentCode: status,
     explanation,
-    attributes: combinedAttributes,
+    attributes: spatialAssembly ? { ...combinedAttributes, measurements: position.measurements } : combinedAttributes,
     quantity,
     itemCost: commercial.netItemCost,
     quantityCost: commercial.netQuantityCost,
@@ -1116,7 +1123,11 @@ function customerFindingForOffer(offer, baseline) {
     confirm: unknownLabels.length ? `Confirm with ${offer.supplierName}: ${readableList(unknownLabels)}.` : null,
     confirmation: [
       evidence.differences.some((item) => item.startsWith("Quantity:")) ? `Confirm whether the required quantity is ${baseline.quantity} or ${offer.quantity}; neither is assumed wrong.` : null,
-      evidence.missingEvidence.some((item) => item.startsWith("Opening direction:")) ? `The selected reference states the viewing side but not which leaf must slide; confirm the required arrangement before treating ${offer.supplierName}'s stated direction as equivalent.` : null,
+      evidence.missingEvidence.some((item) => item.startsWith("Opening direction:"))
+        ? baseline.attributes.operation === "lift-and-slide"
+          ? `The selected reference states the viewing side but not which leaf must slide; confirm the required arrangement before treating ${offer.supplierName}'s stated direction as equivalent.`
+          : `Confirm that ${offer.supplierName}'s opening direction matches the selected reference; viewing direction alone is not treated as opening-operation evidence.`
+        : null,
     ].filter(Boolean).join(" ") || null,
     recommendation,
     disclosure: technicalDisclosureForOffer(offer, baseline),
@@ -1232,7 +1243,34 @@ function normalizePosition(position) {
     configuration,
     widthMm: width,
     heightMm: height,
+    classification: text(position.classification).toLowerCase() || "standard",
+    alternativeTo: text(position.alternativeTo ?? position.alternativeToReference) || null,
+    alternativeToPositionId: text(position.alternativeToPositionId ?? position.alternativeToEstimatePositionId) || null,
+    classificationEvidence: text(position.classificationEvidence) || null,
+    sourceSequence: numeric(position.sourceSequence),
   };
+}
+
+function isSourceAlternative(position) {
+  return text(position?.classification).toLowerCase() === "alternative";
+}
+
+function resolveBaselineAlternativeOwner(alternative, requiredSources) {
+  const explicitId = text(alternative.alternativeToPositionId ?? alternative.alternativeToEstimatePositionId);
+  if (explicitId) return requiredSources.find((candidate) => text(candidate.id) === explicitId) || null;
+  const explicitReference = text(alternative.alternativeTo ?? alternative.alternativeToReference);
+  if (explicitReference) return requiredSources.find((candidate) => text(candidate.positionRef ?? candidate.customerReference ?? candidate.reference) === explicitReference) || null;
+  if (!/alternative/i.test(text(alternative.classificationEvidence)) && !isSourceAlternative(alternative)) return null;
+  const alternativeKind = openingKind([alternative.product, alternative.positionType, alternative.configurationDescription, alternative.insertion].map(text).join(" · "));
+  const candidates = requiredSources.filter((candidate) => {
+    const sameGeometry = numeric(candidate.widthMm) === numeric(alternative.widthMm)
+      && numeric(candidate.heightMm) === numeric(alternative.heightMm)
+      && (numeric(candidate.quantity ?? candidate.qty) ?? 1) === (numeric(alternative.quantity ?? alternative.qty) ?? 1);
+    if (!sameGeometry) return false;
+    const candidateKind = openingKind([candidate.product, candidate.positionType, candidate.configurationDescription, candidate.insertion].map(text).join(" · "));
+    return !alternativeKind || !candidateKind || candidateKind === alternativeKind;
+  });
+  return candidates.length === 1 ? candidates[0] : null;
 }
 
 function baselineOffer(source, position, comparison) {
@@ -1271,6 +1309,21 @@ function baselineOffer(source, position, comparison) {
     mappingDifferences: [],
     drawings: drawingEvidenceForMappings([{ id: "baseline-reference-estimate", supplierItemReference: position.reference, supplierItemSnapshot: source, relationshipKind: "reference", provenance: {} }], { id: "baseline-reference-estimate", supplierName: supplier }, "base"),
     isBaselineReference: true,
+  };
+}
+
+function baselineAlternativeOffer(source, comparison) {
+  const position = normalizePosition(source);
+  const offer = baselineOffer(source, position, comparison);
+  return {
+    ...offer,
+    offerKey: `baseline-reference-estimate:alternative:${position.id}`,
+    relationship: "alternative",
+    assessment: assessment.alternative,
+    assessmentCode: "alternative",
+    explanation: "Source-evidenced selected-supplier alternative; it is not an additional required opening and is excluded from the base requirement and totals.",
+    isAlternative: true,
+    isBaselineReference: false,
   };
 }
 
@@ -1389,10 +1442,18 @@ export function buildQuoteComparisonReport(comparison) {
   const scopeCounts = new Map();
   for (const proposal of proposals) if (proposal.scopeKind && proposal.scopeKind !== "unresolved") scopeCounts.set(proposal.scopeKind, (scopeCounts.get(proposal.scopeKind) ?? 0) + 1);
   const commonScope = [...scopeCounts.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] ?? null;
-  const positions = (comparison?.baselineSnapshot?.positions ?? []).map((source) => {
+  const baselineSources = comparison?.baselineSnapshot?.positions ?? [];
+  const requiredSources = baselineSources.filter((source) => !isSourceAlternative(source));
+  const alternativesByOwner = new Map(requiredSources.map((source) => [text(source.id), []]));
+  for (const alternative of baselineSources.filter(isSourceAlternative)) {
+    const owner = resolveBaselineAlternativeOwner(alternative, requiredSources);
+    if (owner) alternativesByOwner.get(text(owner.id))?.push(alternative);
+  }
+  const positions = requiredSources.map((source) => {
     const position = normalizePosition(source);
     const referenceOffer = baselineOffer(source, position, comparison);
-    const rawOffers = [referenceOffer, ...proposals.flatMap((proposal) => {
+    const selectedSupplierAlternatives = (alternativesByOwner.get(position.id) || []).map((alternative) => baselineAlternativeOffer(alternative, comparison));
+    const rawOffers = [referenceOffer, ...selectedSupplierAlternatives, ...proposals.flatMap((proposal) => {
       const mappings = proposal.positionMappings.filter((mapping) => mapping.canonicalEstimatePositionId === position.id);
       return [offerFromMappings(proposal, mappings, position), offerFromMappings(proposal, mappings, position, "alternative")].filter(Boolean);
     })];
@@ -1414,11 +1475,20 @@ export function buildQuoteComparisonReport(comparison) {
     const comparableOffers = offers.filter((offer) => offer.commercial.comparabilityStatus === "comparable_supply" && offer.commercial.netQuantityCost != null);
     const lowestComparable = comparableOffers.length >= 2 ? lowestKnown(comparableOffers, (offer) => offer.commercial.netQuantityCost) : null;
     const narrative = positionNarrative(position, offers);
+    const hasSelectedSupplierAlternative = offers.some((offer) => offer.proposalId === "baseline-reference-estimate" && offer.isAlternative);
+    const suppliersWithoutAlternative = hasSelectedSupplierAlternative ? proposals.filter((proposal) => {
+      const proposalOffers = offers.filter((offer) => offer.proposalId === proposal.id);
+      return proposalOffers.some((offer) => !offer.isAlternative && offer.assessmentCode !== "missing") && !proposalOffers.some((offer) => offer.isAlternative);
+    }).map((proposal) => proposal.supplierName) : [];
+    const alternativeCoverage = suppliersWithoutAlternative.length
+      ? `${readableList(suppliersWithoutAlternative)} ${suppliersWithoutAlternative.length === 1 ? "has" : "have"} no corresponding alternative recorded. This is not treated as a missing required opening.`
+      : null;
+    const conclusion = [narrative.conclusion, alternativeCoverage].filter(Boolean).join(" ");
     return {
       ...position,
       offers,
-      report: `${narrative.report} Conclusion: ${narrative.conclusion}`,
-      conclusion: narrative.conclusion,
+      report: `${narrative.report} Conclusion: ${conclusion}`,
+      conclusion,
       findings: {
         bestUw: thermalFinding(bestUw, "uw", offers[0]),
         bestUg: thermalFinding(bestUg, "ug", offers[0]),

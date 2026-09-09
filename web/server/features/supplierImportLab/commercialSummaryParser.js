@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { normalizeDecimal } from './commercialFieldParser.js';
 import { parsePdfSupplierSummary } from './pdfSupplierAdapters.js';
+import { assessSupplierRoundingVariance } from './supplierRoundingPolicy.js';
 
-export const SUMMARY_PARSER_VERSION = '1.0.0';
+export const SUMMARY_PARSER_VERSION = '1.1.0';
 const moneyOnly = /^[+-]?[\d.,]+(?:\s*[A-Z]{3})?$/i;
 const totalQuantity = /^(?:total\s+quantity|qty\s*\(([^)]+)\))\s*:?$/i;
 const totalArea = /^(?:total\s+)?(?:area|m2|m²)\s*:?$/i;
@@ -37,6 +38,11 @@ function categoryFor(description) {
 function quantityFrom(text) {
   const match = text.match(/\((\d+)\s*([A-Za-z]+)\)/); return match ? { quantity: match[1], quantityUnit: match[2] } : { quantity: null, quantityUnit: null };
 }
+function tabularQuantityFrom(text) {
+  const match = String(text || '').trim().match(/^([\d.,]+)\s*([A-Za-z]+)\.?$/);
+  const quantity = normalizeDecimal(match?.[1]);
+  return quantity && match ? { quantity, quantityUnit: match[2].replace(/\.$/, '') } : null;
+}
 function decimalParts(value) { const [whole, fraction = ''] = String(value).split('.'); return { integer: BigInt(`${whole}${fraction}`), scale: fraction.length }; }
 function sumDecimals(values) {
   const present = values.filter((value) => value != null); if (!present.length) return null; const parts = present.map(decimalParts); const scale = Math.max(...parts.map((item) => item.scale)); const integer = parts.reduce((sum, item) => sum + item.integer * 10n ** BigInt(scale - item.scale), 0n); const digits = integer.toString().padStart(scale + 1, '0'); return scale ? `${digits.slice(0, -scale)}.${digits.slice(-scale)}` : digits;
@@ -49,13 +55,17 @@ export function reconcileCommercialSummary(positionRows, summary, additionalItem
   const additionalSubtotal = sumDecimals(includedItems.filter((item) => item.category !== 'delivery').map((item) => item.totalPrice));
   const deliverySubtotal = sumDecimals(includedItems.filter((item) => item.category === 'delivery').map((item) => item.totalPrice));
   const expectedFinal = sumDecimals([summary.productSubtotal ?? positionSubtotal, additionalSubtotal, summary.deliveryTotal ?? deliverySubtotal, summary.vatTotal]);
-  const warnings = [];
-  if (summary.productSubtotal && positionSubtotal && !equalDecimals(summary.productSubtotal, positionSubtotal)) warnings.push('Supplied product subtotal does not match extracted position totals.');
-  if (summary.additionalItemsSubtotal && additionalSubtotal && !equalDecimals(summary.additionalItemsSubtotal, additionalSubtotal)) warnings.push('Supplied additional-items subtotal does not match extracted additional costs.');
-  if (summary.deliveryTotal && deliverySubtotal && !equalDecimals(summary.deliveryTotal, deliverySubtotal)) warnings.push('Supplied delivery total does not match delivery lines.');
-  if (summary.finalSupplierTotal && expectedFinal && !equalDecimals(summary.finalSupplierTotal, expectedFinal)) warnings.push('Supplied final total does not reconcile with the extracted commercial evidence.');
-  if (!summary.finalSupplierTotal || !expectedFinal) warnings.push('Commercial reconciliation is incomplete because one or more totals are absent.');
-  return { positionSubtotal, additionalSubtotal, deliverySubtotal, expectedFinal, reconciled: Boolean(summary.finalSupplierTotal && expectedFinal && equalDecimals(summary.finalSupplierTotal, expectedFinal)), warnings };
+  const blockingWarnings = [], reviewWarnings = [];
+  if (summary.productSubtotal && positionSubtotal && !equalDecimals(summary.productSubtotal, positionSubtotal)) blockingWarnings.push('Supplied product subtotal does not match extracted position totals.');
+  if (summary.additionalItemsSubtotal && additionalSubtotal && !equalDecimals(summary.additionalItemsSubtotal, additionalSubtotal)) blockingWarnings.push('Supplied additional-items subtotal does not match extracted additional costs.');
+  if (summary.deliveryTotal && deliverySubtotal && !equalDecimals(summary.deliveryTotal, deliverySubtotal)) blockingWarnings.push('Supplied delivery total does not match delivery lines.');
+  const finalIsExact = equalDecimals(summary.finalSupplierTotal, expectedFinal);
+  const roundingVariance = assessSupplierRoundingVariance({ currency: summary.currency, calculatedTotal: expectedFinal, supplierStatedTotal: summary.finalSupplierTotal });
+  if (roundingVariance.status === 'accepted_supplier_rounding_variance') reviewWarnings.push(`Accepted supplier rounding variance: extracted source lines total ${expectedFinal} ${summary.currency}, while the supplier states ${summary.finalSupplierTotal} ${summary.currency} (one minor currency unit).`);
+  else if (summary.finalSupplierTotal && expectedFinal && !finalIsExact && !roundingVariance.accepted) blockingWarnings.push('Supplied final total does not reconcile with the extracted commercial evidence.');
+  if (!summary.finalSupplierTotal || !expectedFinal) blockingWarnings.push('Commercial reconciliation is incomplete because one or more totals are absent.');
+  const warnings = [...blockingWarnings, ...reviewWarnings];
+  return { positionSubtotal, additionalSubtotal, deliverySubtotal, expectedFinal, reconciled: Boolean(summary.finalSupplierTotal && expectedFinal && (finalIsExact || roundingVariance.accepted) && blockingWarnings.length === 0), warnings, roundingVariance };
 }
 
 export function parseCommercialSummary(document, { currency: sessionCurrency, positionRows = [] }) {
@@ -65,22 +75,43 @@ export function parseCommercialSummary(document, { currency: sessionCurrency, po
   const endBlocks = blocks.slice(start); const valueAfter = (pattern) => { const index = endBlocks.findIndex((block) => pattern.test(block.text)); return index >= 0 ? { index, value: normalizeDecimal(endBlocks[index + 1]?.text), blocks: endBlocks.slice(index, index + 2) } : { index: -1, value: null, blocks: [] }; };
   const comparisonTotals=[]; for(let index=0;index<blocks.length-1;index+=1){const match=blocks[index].text.match(alternativeScenarioTotal);const amount=match&&normalizeDecimal(blocks[index+1].text);if(amount)comparisonTotals.push({classification:/excl/i.test(match[2])?'alternative_supplier_subtotal':'alternative_final_total',label:blocks[index].text.replace(/\s*:$/,''),amount,currency:sessionCurrency.toUpperCase(),includedInSupplierTotal:false,sourceTrace:trace(document,[blocks[index],blocks[index+1]])});}
   const quantity = valueAfter(totalQuantity); const area = valueAfter(totalArea); const product = valueAfter(productTotal); const additional = valueAfter(additionalTotal); const final = valueAfter(finalTotal);
-  const finalIndex = final.index >= 0 ? final.index : endBlocks.length; const leadingSummaryIndex = Math.max(quantity.index, area.index); const firstItem = product.index >= 0 ? product.index + 2 : leadingSummaryIndex >= 0 ? leadingSummaryIndex + 2 : 0; const items = [];
-  for (let index = Math.max(0, firstItem); index < finalIndex;) {
-    const descriptionBlock = endBlocks[index]; if (!descriptionBlock || moneyOnly.test(descriptionBlock.text) || /^(?:all prices|average\s+u-value|total\b)/i.test(descriptionBlock.text)) { index += 1; continue; }
-    const itemBlocks = [descriptionBlock]; let cursor = index + 1; while (cursor < finalIndex && !moneyOnly.test(endBlocks[cursor].text)) { itemBlocks.push(endBlocks[cursor]); cursor += 1; }
-    const priceBlock = endBlocks[cursor]; const totalPrice = priceBlock ? normalizeDecimal(priceBlock.text) : null; if (!totalPrice) { index += 1; continue; } itemBlocks.push(priceBlock);
-    const originalDescription = itemBlocks.slice(0, -1).map((block) => block.text).join('\n'); const quantityValue = quantityFrom(originalDescription); const category = categoryFor(originalDescription); const warnings = [];
+  const finalIndex = final.index >= 0 ? final.index : endBlocks.length; const leadingSummaryIndex = Math.max(quantity.index, area.index); const firstItem = product.index >= 0 ? product.index + 2 : leadingSummaryIndex >= 0 ? leadingSummaryIndex + 2 : 0; const items = []; const consumedItemBlockIds = new Set();
+  for (let index = 0; index < finalIndex; index += 1) if (alternativeScenarioTotal.test(endBlocks[index].text)) {
+    consumedItemBlockIds.add(endBlocks[index].id);
+    if (normalizeDecimal(endBlocks[index + 1]?.text)) consumedItemBlockIds.add(endBlocks[index + 1].id);
+  }
+  const addItem = ({ descriptionBlocks, quantityValue = null, unitPriceBlock = null, totalPriceBlock, normalizedLabel = null }) => {
+    const originalDescription = descriptionBlocks.map((block) => block.text).join('\n'); const descriptionQuantity = quantityFrom(originalDescription); const category = categoryFor(originalDescription); const totalPrice = normalizeDecimal(totalPriceBlock?.text); const unitPrice = normalizeDecimal(unitPriceBlock?.text); const warnings = [];
+    if (!totalPrice) return false;
     if (totalPrice.startsWith('-') && category !== 'discount') warnings.push('Negative amount requires an explicit discount or credit category.');
-    const original = { category, originalDescription, normalizedLabel: null, quantity: quantityValue.quantity, quantityUnit: quantityValue.quantityUnit, unitPrice: null, totalPrice, currency: sessionCurrency.toUpperCase(), includedInSupplierTotal:true, inclusionEvidence:'Included item in the supplier commercial summary.', selectedForFutureUse: true };
-    items.push({ id: randomUUID(), ordinal: items.length, ...original, sourceTrace: trace(document, itemBlocks), warnings, confidence: warnings.length ? 0.75 : 0.96, status: warnings.length ? 'needs_review' : 'extracted', originalExtractedSnapshot: original }); index = cursor + 1;
+    const original = { category, originalDescription, normalizedLabel, quantity: quantityValue?.quantity ?? descriptionQuantity.quantity, quantityUnit: quantityValue?.quantityUnit ?? descriptionQuantity.quantityUnit, unitPrice, totalPrice, currency: sessionCurrency.toUpperCase(), includedInSupplierTotal:true, inclusionEvidence:'Included item in the supplier commercial summary.', selectedForFutureUse: true };
+    const sourceBlocks = [...descriptionBlocks, ...(unitPriceBlock ? [unitPriceBlock] : []), ...(quantityValue?.block ? [quantityValue.block] : []), totalPriceBlock];
+    items.push({ id: randomUUID(), ordinal: items.length, ...original, sourceTrace: trace(document, sourceBlocks), warnings, confidence: warnings.length ? 0.75 : 0.96, status: warnings.length ? 'needs_review' : 'extracted', originalExtractedSnapshot: original });
+    sourceBlocks.forEach((block) => consumedItemBlockIds.add(block.id)); return true;
+  };
+  const tabularHeaderIndex = endBlocks.findIndex((block, index) => /^Price\s*,?\s*[A-Z]{3}$/i.test(block.text) && /^Quantit(?:y|ies)$/i.test(endBlocks[index + 1]?.text || '') && /^Total\s*,?\s*[A-Z]{3}$/i.test(endBlocks[index + 2]?.text || ''));
+  if (tabularHeaderIndex >= 0 && tabularHeaderIndex < finalIndex) {
+    endBlocks.slice(tabularHeaderIndex, tabularHeaderIndex + 3).forEach((block) => consumedItemBlockIds.add(block.id));
+    for (let cursor = tabularHeaderIndex + 3; cursor + 3 < finalIndex;) {
+      const descriptionBlock = endBlocks[cursor], unitPriceBlock = endBlocks[cursor + 1], quantityBlock = endBlocks[cursor + 2], totalPriceBlock = endBlocks[cursor + 3];
+      const quantityValue = tabularQuantityFrom(quantityBlock?.text);
+      if (!descriptionBlock || moneyOnly.test(descriptionBlock.text) || !normalizeDecimal(unitPriceBlock?.text) || !quantityValue || !normalizeDecimal(totalPriceBlock?.text)) break;
+      addItem({ descriptionBlocks: [descriptionBlock], quantityValue: { ...quantityValue, block: quantityBlock }, unitPriceBlock, totalPriceBlock, normalizedLabel: descriptionBlock.text });
+      cursor += 4;
+    }
+  }
+  for (let index = Math.max(0, firstItem); index < finalIndex;) {
+    const descriptionBlock = endBlocks[index]; if (!descriptionBlock || consumedItemBlockIds.has(descriptionBlock.id) || moneyOnly.test(descriptionBlock.text) || /^(?:all prices|average\s+u-value|total\b|price\s*,?\s*[A-Z]{3}|quantit(?:y|ies))$/i.test(descriptionBlock.text)) { index += 1; continue; }
+    const itemBlocks = [descriptionBlock]; let cursor = index + 1; while (cursor < finalIndex && !moneyOnly.test(endBlocks[cursor].text)) { itemBlocks.push(endBlocks[cursor]); cursor += 1; }
+    const priceBlock = endBlocks[cursor]; if (!priceBlock || !addItem({ descriptionBlocks: itemBlocks, totalPriceBlock: priceBlock })) { index += 1; continue; } index = cursor + 1;
   }
   for(const block of blocks){const match=block.text.match(explicitStandaloneCost);if(!match)continue;const amount=normalizeDecimal(match[3]);if(!amount)continue;const currency=match[4]==='€'?'EUR':match[4]==='£'?'GBP':match[4].toLowerCase()==='zł'?'PLN':match[4].toUpperCase();const originalDescription=`${match[1]} ${match[2]}`;const original={category:categoryFor(originalDescription),originalDescription,normalizedLabel:originalDescription,quantity:null,quantityUnit:null,unitPrice:null,totalPrice:amount,currency,includedInSupplierTotal:false,inclusionEvidence:'The supplier identifies an additional cost but does not state whether it is included in the selected quotation total.',selectedForFutureUse:true};items.push({id:randomUUID(),ordinal:items.length,...original,sourceTrace:trace(document,[block]),warnings:['Review whether this standalone additional cost is included in the supplier end price.'],confidence:0.92,status:'needs_review',originalExtractedSnapshot:original});}
   const deliveryItems = items.filter((item) => item.category === 'delivery'); const deliveryTotal = deliveryItems.length === 1 ? deliveryItems[0].totalPrice : null;
   const uBlock = endBlocks.find((block) => uValue.test(block.text)); const weightBlock = endBlocks.find((block) => weight.test(block.text)); const u = uBlock?.text.match(uValue)?.[1]; const kg = weightBlock?.text.match(weight)?.[1];
   const notesStart = endBlocks.findIndex((block) => /^(?:all prices|\s*-\s|Uw values)/i.test(block.text)); const noteBlocks = notesStart >= 0 ? endBlocks.slice(notesStart).filter((block) => !stopNotes.test(block.text) && !uValue.test(block.text) && !weight.test(block.text)) : [];
   const summaryBlockIds = new Set([...quantity.blocks, ...area.blocks, ...product.blocks, ...additional.blocks, ...final.blocks, ...(uBlock ? [uBlock] : []), ...(weightBlock ? [weightBlock] : []), ...noteBlocks].map((block) => block.id)); const summaryBlocks = endBlocks.filter((block) => summaryBlockIds.has(block.id));
-  const original = { currency: sessionCurrency.toUpperCase(), totalQuantity: integerDecimal(quantity.value), totalQuantityUnit: quantity.index >= 0 ? endBlocks[quantity.index].text.match(totalQuantity)?.[1] || 'sets' : null, totalAreaSquareMetres: area.value, productSubtotal: product.value, additionalItemsSubtotal: additional.value, deliveryTotal, vatTotal: null, finalSupplierTotal: final.value, comparisonTotals, averageUValue: normalizeDecimal(u), totalWeightKg: normalizeDecimal(kg), closingNotes: noteBlocks.map((block) => block.text).join('\n') || null };
+  const derivedAdditionalItemsSubtotal = sumDecimals(items.filter((item) => item.includedInSupplierTotal !== false && item.category !== 'delivery').map((item) => item.totalPrice));
+  const original = { currency: sessionCurrency.toUpperCase(), totalQuantity: integerDecimal(quantity.value), totalQuantityUnit: quantity.index >= 0 ? endBlocks[quantity.index].text.match(totalQuantity)?.[1] || 'sets' : null, totalAreaSquareMetres: area.value, productSubtotal: product.value, additionalItemsSubtotal: additional.value ?? derivedAdditionalItemsSubtotal, deliveryTotal, vatTotal: null, finalSupplierTotal: final.value, comparisonTotals, averageUValue: normalizeDecimal(u), totalWeightKg: normalizeDecimal(kg), closingNotes: noteBlocks.map((block) => block.text).join('\n') || null };
   const summary = { id: randomUUID(), ...original, sourceTrace: trace(document, summaryBlocks), warnings: [], confidence: 0.96, status: 'extracted', originalExtractedSnapshot: original };
   const reconciliation = reconcileCommercialSummary(positionRows, summary, items); const vatExplicit = endBlocks.some((block) => /\bVAT\b/i.test(block.text)); summary.warnings = [...reconciliation.warnings, ...(final.value && !vatExplicit ? ['VAT treatment is not explicit in the detected summary.'] : [])]; if (summary.warnings.length) summary.status = 'needs_review';
   return { summary: { ...summary, reconciliation }, additionalItems: items, warnings: summary.warnings };

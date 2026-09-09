@@ -367,6 +367,8 @@ const tables = [
     trace_json TEXT NOT NULL DEFAULT '[]',
     included_in_supplier_total INTEGER NOT NULL DEFAULT 1 CHECK (included_in_supplier_total IN (0,1)),
     inclusion_evidence TEXT,
+    superseded_at TEXT,
+    superseded_by_operation_id TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (revision_id, estimate_id) REFERENCES supplier_quote_revisions(id, estimate_id) ON DELETE CASCADE
   )`,
@@ -1001,6 +1003,7 @@ export async function initializeSupplierCommercialSchema(db) {
   for(const [column,definition] of [['included_in_supplier_total','INTEGER NOT NULL DEFAULT 1'],['inclusion_evidence','TEXT']])if(!labCostColumns.some(item=>item.name===column))await db.exec(`ALTER TABLE supplier_import_lab_additional_cost_items ADD COLUMN ${column} ${definition}`);
   const supplierExtraColumns=await db.all('PRAGMA table_info(supplier_quote_extras)');
   for(const [column,definition] of [['included_in_supplier_total','INTEGER NOT NULL DEFAULT 1'],['inclusion_evidence','TEXT']])if(!supplierExtraColumns.some(item=>item.name===column))await db.exec(`ALTER TABLE supplier_quote_extras ADD COLUMN ${column} ${definition}`);
+  for(const [column,definition] of [['superseded_at','TEXT'],['superseded_by_operation_id','TEXT']])if(!supplierExtraColumns.some(item=>item.name===column))await db.exec(`ALTER TABLE supplier_quote_extras ADD COLUMN ${column} ${definition}`);
   const manualCostColumns=await db.all('PRAGMA table_info(project_calculator_lab_manual_cost_lines)');
   if(!manualCostColumns.some(item=>item.name==='included_in_current_estimate'))await db.exec('ALTER TABLE project_calculator_lab_manual_cost_lines ADD COLUMN included_in_current_estimate INTEGER NOT NULL DEFAULT 1');
   const installationCompanyColumns=await db.all('PRAGMA table_info(installation_companies)');

@@ -60,7 +60,9 @@ export async function readCanonicalEstimatePositions(db,estimateId){
 export async function linkSupplierPositionToEstimate(db,{estimateId,sourcePositionId,sourceRevisionId,sourceQuoteId=null,quotationReference=null,sourceSequence,displayReference,quantity,widthMm,heightMm,classification='standard',alternativeTo=null,supplierName=null,supplierCode=null,product=null,productSystem=null,preferredEstimatePositionId=null,replacesSourcePositionId=null}){
   await assertEstimateRevisionEditable(db,estimateId);
   const row=await db.get('SELECT positions_json FROM estimates WHERE id=?',estimateId);if(!row)throw Object.assign(new Error('Estimate not found.'),{code:'estimate_not_found'});
-  const positions=resolveCanonicalAlternativeRelationships(parsePositions(row.positions_json)), evidence={sourcePositionId,sourceRevisionId,sourceQuoteId,quotationReference,supplierName,supplierCode,linkedAt:new Date().toISOString()};
+  const positions=resolveCanonicalAlternativeRelationships(parsePositions(row.positions_json));
+  const existingEvidence=positions.flatMap(position=>Array.isArray(position.supplierEvidenceLinks)?position.supplierEvidenceLinks:[]).find(link=>link.sourcePositionId===sourcePositionId);
+  const evidence={sourcePositionId,sourceRevisionId,sourceQuoteId,quotationReference,supplierName,supplierCode,linkedAt:existingEvidence?.linkedAt??new Date().toISOString()};
   const reviewed=await db.get("SELECT target_estimate_position_id,action FROM supplier_position_applications WHERE estimate_id=? AND supplier_quote_position_id=? AND active=1 ORDER BY applied_at DESC LIMIT 1",estimateId,sourcePositionId);
   let matched=preferredEstimatePositionId?positions.find(position=>position.id===preferredEstimatePositionId):reviewed?.target_estimate_position_id?positions.find(position=>position.id===reviewed.target_estimate_position_id):positions.find(position=>Array.isArray(position.supplierEvidenceLinks)&&position.supplierEvidenceLinks.some(link=>link.sourcePositionId===sourcePositionId));
   let matchStatus='matched';

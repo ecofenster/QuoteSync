@@ -17,7 +17,7 @@ const sourceRow = (ordinal, { invalid = false } = {}) => {
   return { id: `row-${ordinal}`, ordinal, ...original, ...manufacturerEvidence, sourcePages: [1], sourceTrace: [{ pageNumber: 1, region: `position-${ordinal + 1}` }], confidence: invalid ? '0.45' : '0.98', warnings: invalid ? ['Width requires review.'] : [], status: invalid ? 'needs_review' : 'extracted', originalExtractedSnapshot: structuredClone(original) };
 };
 
-async function setup(t, { rowCount = 22, invalidRows = 0, priorRuns = 0, existingExtras = 0, failureInjector = async () => {} } = {}) {
+async function setup(t, { rowCount = 22, invalidRows = 0, priorRuns = 0, existingExtras = 0, summaryResult = null, failureInjector = async () => {} } = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'qs-import-reliability-'));
   const db = await open({ filename: path.join(root, 'fixture.sqlite'), driver: sqlite3.Database });
   t.after(async () => { await db.close(); await fs.rm(root, { recursive: true, force: true }); });
@@ -31,7 +31,7 @@ async function setup(t, { rowCount = 22, invalidRows = 0, priorRuns = 0, existin
     attachmentRoot: root,
     extractDocument: async () => ({ textAvailable: true, warnings: [], pages: [{ blocks: rows.map((row) => ({ id: row.id, text: row.displayReference })) }] }),
     parseFields: () => ({ quotation: { supplierQuotationNumber: '343117', supplierRevision: '5' }, rows: rows.map((row) => structuredClone(row)), warnings: [] }),
-    parseSummary: () => ({ summary: null, additionalItems: [], warnings: [] }),
+    parseSummary: () => structuredClone(summaryResult ?? { summary: null, additionalItems: [], warnings: [] }),
     failureInjector,
   });
   const quote = await supplier.createQuote('estimate', { supplierCode: 'ZF', supplierName: 'Zyle Fenster' });
@@ -89,6 +89,32 @@ test('343117-5-shaped recovery confirms 22 rows, preserves 11 extras/source, and
   assert.equal(await count(context.db, 'supplier_quote_import_operations', 'revision_id=?', context.revision.id), 1);
   assert.equal(await count(context.db, 'supplier_quote_positions', 'revision_id=?', context.revision.id), 22);
   assert.equal(await count(context.db, 'supplier_quote_extras', 'revision_id=?', context.revision.id), 11);
+});
+
+test('reviewed re-import supersedes stale commercial projections and retains prior evidence', async (t) => {
+  const summaryResult = {
+    summary: { currency: 'GBP', productSubtotal: '11000.00', additionalItemsSubtotal: '666.84', deliveryTotal: '3500.00', finalSupplierTotal: '15166.84', comparisonTotals: [], reconciliation: { reconciled: true } },
+    additionalItems: [
+      { category: 'sill', normalizedLabel: 'Aluminium sill 180mm. (12pcs)', originalDescription: 'Aluminium sill 180mm. (12pcs)', quantity: '14.81', quantityUnit: 'm', unitPrice: '31.41', totalPrice: '465.13', currency: 'GBP', includedInSupplierTotal: true, inclusionEvidence: 'Explicit source line total.', sourceTrace: [], warnings: [], originalExtractedSnapshot: {} },
+      { category: 'accessory', normalizedLabel: 'Alu end cap for brick work 180mm.', originalDescription: 'Alu end cap for brick work 180mm.', quantity: '12', quantityUnit: 'pair', unitPrice: '16.81', totalPrice: '201.71', currency: 'GBP', includedInSupplierTotal: true, inclusionEvidence: 'Explicit source line total.', sourceTrace: [], warnings: [], originalExtractedSnapshot: {} },
+    ], warnings: [],
+  };
+  const context = await setup(t, { rowCount: 2, priorRuns: 1, existingExtras: 2, summaryResult });
+  const result = await context.supplier.extractAndLoadSupplierCosts('estimate', context.scenario.id, context.selection, confirmationFor(context));
+  assert.equal(result.operationStatus, 'confirmed');
+  assert.match(result.documents[0].warnings.join(' '), /2 stale supplier commercial projection rows were superseded/);
+  assert.equal(await count(context.db, 'supplier_quote_extras', 'revision_id=? AND superseded_at IS NULL', context.revision.id), 2);
+  assert.equal(await count(context.db, 'supplier_quote_extras', 'revision_id=? AND superseded_at IS NOT NULL', context.revision.id), 2);
+  assert.deepEqual(await context.db.all('SELECT label,quantity,unit_price_amount,total_price_amount FROM supplier_quote_extras WHERE revision_id=? AND superseded_at IS NULL ORDER BY total_price_amount', context.revision.id), [
+    { label: 'Alu end cap for brick work 180mm.', quantity: '12', unit_price_amount: '16.81', total_price_amount: '201.71' },
+    { label: 'Aluminium sill 180mm. (12pcs)', quantity: '14.81', unit_price_amount: '31.41', total_price_amount: '465.13' },
+  ]);
+  assert.deepEqual(await context.db.all('SELECT label,amount,category FROM project_calculator_estimate_supplier_costs WHERE scenario_id=? ORDER BY amount', context.scenario.id), [
+    { label: 'Alu end cap for brick work 180mm.', amount: '201.71', category: 'extras' },
+    { label: 'Aluminium sill 180mm. (12pcs)', amount: '465.13', category: 'extras' },
+  ]);
+  const revision = await context.db.get('SELECT extras_total_amount,delivery_total_amount,final_supplier_total_amount FROM supplier_quote_revisions WHERE id=?', context.revision.id);
+  assert.deepEqual(revision, { extras_total_amount: '666.84', delivery_total_amount: '3500.00', final_supplier_total_amount: '15166.84' });
 });
 
 test('mixed evidence preserves all parsed rows while committing only canonical-ready rows as review-required', async (t) => {

@@ -1,8 +1,10 @@
 import path from "node:path";
 import { extractSupplierDocument } from "../supplierImportLab/documentExtraction.js";
 import { parseCommercialFields } from "../supplierImportLab/commercialFieldParser.js";
+import { parseCommercialSummary } from "../supplierImportLab/commercialSummaryParser.js";
 import { derivePdfPositionPreviews } from "../supplierImportLab/pdfPositionPreviews.js";
 import { readFileIntegrity, resolveAttachmentRoot, resolveManagedPath } from "../supplierQuotes/managedAttachmentStorage.js";
+import { inferQuoteComparisonMappings } from "../../../shared/quoteComparisonPositionMapping.js";
 
 const asText = (value) => String(value ?? "").trim();
 const parseJson = (value, fallback = {}) => {
@@ -32,6 +34,13 @@ const needsRecoveredSpecificationEvidence = (snapshot = {}) => {
   const canonical = snapshot.canonicalSpecification || source.canonical || {};
   const systemThermal = canonical.systemThermalPerformance || {};
   return Boolean(systemThermal.value && systemThermal.basis && (!systemThermal.standardSizeMm || !systemThermal.qualification));
+};
+const needsRecoveredSupplierPositionEvidence = (snapshot = {}) => {
+  const source = snapshot.sourceSpecification || {};
+  const canonical = snapshot.canonicalSpecification || source.canonical || {};
+  return !Object.keys(canonical).length
+    || !asText(snapshot.glassSpecification || snapshot.manufacturerEvidence?.glassSpecification || canonical.glazing?.value)
+    || !asText(snapshot.fittingsSpecification || snapshot.manufacturerEvidence?.fittingsSpecification);
 };
 const attachmentAnalysisCache = new Map();
 const MAX_CACHE_ENTRIES = 32;
@@ -65,6 +74,7 @@ async function analyseLinkedAttachment(db, comparison, proposal, source, attachm
   }, { visualRoot: path.join(attachmentRoot, "manufacturer-position-visuals") });
   if (!extracted.textAvailable) return new Map();
   const fields = parseCommercialFields(extracted, { currency: attachment.currency || proposal.currency });
+  const commercial = parseCommercialSummary(extracted, { currency: attachment.currency || proposal.currency || "GBP", positionRows: fields.rows });
   await derivePdfPositionPreviews({
     filename,
     attachment,
@@ -72,7 +82,7 @@ async function analyseLinkedAttachment(db, comparison, proposal, source, attachm
     rows: fields.rows,
     visualRoot: path.join(attachmentRoot, "manufacturer-position-visuals"),
   });
-  return cacheResult(cacheKey, new Map(fields.rows.map((row) => [
+  const rows = new Map(fields.rows.map((row) => [
     `${attachment.id}:${row.ordinal}`,
     {
       sourceVisuals: row.manufacturerEvidence?.sourceVisuals || [],
@@ -83,7 +93,35 @@ async function analyseLinkedAttachment(db, comparison, proposal, source, attachm
       sourceRevisionId: attachment.revision_id,
       sourceRowKey: `${attachment.id}:${row.ordinal}`,
     },
-  ])));
+  ]));
+  return cacheResult(cacheKey, { rows, commercial });
+}
+
+function recoveredCommercialNormalization(commercial, fallbackCurrency) {
+  const summary = commercial?.summary;
+  if (!summary) return null;
+  const scope = summary.comparisonScope || {};
+  return {
+    version: "comparison-commercial-normalization-v1",
+    currency: summary.currency || fallbackCurrency || null,
+    headlineTotal: summary.finalSupplierTotal || null,
+    productsSupply: {
+      grossListAmount: scope.productsSupply?.grossListAmount ?? summary.productSubtotal ?? null,
+      discountPercentage: scope.productsSupply?.discountPercentage ?? null,
+      discountAmount: null,
+      netAmount: scope.productsSupply?.netAmount ?? summary.productSubtotal ?? null,
+      priceBasis: "verified_retained_supplier_evidence",
+    },
+    extras: { amount: scope.extras?.amount ?? summary.additionalItemsSubtotal ?? null, labels: scope.extras?.labels ?? [] },
+    delivery: { amount: scope.delivery?.amount ?? summary.deliveryTotal ?? null, evidence: scope.delivery ?? null },
+    installation: { amount: scope.installation?.amount ?? null, evidence: scope.installation ?? null },
+    survey: { amount: scope.survey?.amount ?? null, evidence: scope.survey ?? null },
+    vat: { evidence: scope.vat ?? (summary.vatTotal ? { status: "separately_stated", amount: summary.vatTotal } : null) },
+    scopeEvidence: scope,
+    sourceReconciliation: summary.reconciliation ?? null,
+    sourceItems: commercial.additionalItems ?? [],
+    recovery: { authority: "retained_attachment_hash_and_source_parser", persistedComparisonCommercialEvidenceChanged: false },
+  };
 }
 
 function mergeCanonicalSpecification(frozen = {}, recovered = {}) {
@@ -238,13 +276,16 @@ export async function hydrateLegacyComparisonDrawingEvidence(db, input, { attach
   }
 
   for (const proposal of comparison.proposals || []) {
-    const requiresRecovery = proposal.positionMappings.filter((mapping) => !hasFrozenVisualEvidence(mapping.supplierItemSnapshot) || needsMoreSpecificDrawingEvidence(mapping.supplierItemSnapshot) || needsRecoveredSpecificationEvidence(mapping.supplierItemSnapshot));
+    const requiresRecovery = proposal.positionMappings.filter((mapping) => !mapping.supplierItemSnapshot?.generatedFromBaseline && (!hasFrozenVisualEvidence(mapping.supplierItemSnapshot) || needsMoreSpecificDrawingEvidence(mapping.supplierItemSnapshot) || needsRecoveredSpecificationEvidence(mapping.supplierItemSnapshot) || needsRecoveredSupplierPositionEvidence(mapping.supplierItemSnapshot)));
     if (!requiresRecovery.length) continue;
     const recoveredByRowKey = new Map();
+    let recoveredCommercial = null;
     for (const source of proposal.documents.filter((document) => document.supplierAttachmentId)) {
       try {
-        const analysed = await analyseAttachment(db, comparison, proposal, source, attachmentRoot);
+        const result = await analyseAttachment(db, comparison, proposal, source, attachmentRoot);
+        const analysed = result instanceof Map ? result : result.rows;
         for (const [key, value] of analysed) recoveredByRowKey.set(key, value);
+        recoveredCommercial ||= recoveredCommercialNormalization(result instanceof Map ? null : result.commercial, proposal.currency);
       } catch {
         // A missing, corrupt or unsupported source remains explicitly unavailable;
         // one source must never erase the other frozen comparison evidence.
@@ -256,6 +297,16 @@ export async function hydrateLegacyComparisonDrawingEvidence(db, input, { attach
       const recovered = recoveredByRowKey.get(rowKey);
       return recovered ? { ...mapping, supplierItemSnapshot: withRecoveredEvidence(mapping.supplierItemSnapshot, recovered) } : mapping;
     });
+    const frozenCommercial = proposal.provenance?.commercialNormalization || {};
+    const frozenScopeEvidence = frozenCommercial.scopeEvidence || {};
+    const frozenIncomplete = !asText(frozenCommercial.headlineTotal)
+      && !frozenScopeEvidence.extras && !frozenScopeEvidence.delivery
+      && !frozenCommercial.extras?.evidence && !frozenCommercial.delivery?.evidence;
+    if (recoveredCommercial && frozenIncomplete) {
+      proposal.provenance = { ...proposal.provenance, commercialNormalization: recoveredCommercial };
+      proposal.originalTotalAmount ||= recoveredCommercial.headlineTotal;
+    }
+    proposal.positionMappings = inferQuoteComparisonMappings(proposal.positionMappings, comparison.baselineSnapshot?.positions || []).mappings;
   }
   return comparison;
 }
