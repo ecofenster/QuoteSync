@@ -42,6 +42,11 @@ test("message row projection keeps date and time, unread, labels, attachment and
   assert.match(formatMailboxDateTime(message.sentAt),/26 Aug 2026 ·/);
 });
 
+test("inline CID resources stay in the safe body pipeline and do not become downloadable attachment evidence",()=>{
+  const withInline={...message,attachmentCount:undefined,attachments:[...message.attachments,{id:"inline-logo",fileName:"logo.png",mediaType:"image/png",sizeBytes:48,providerAttachmentId:"attachment-logo",contentId:"logo-1",inline:true}]};
+  assert.equal(projectMailboxRow(withInline,"inbox").attachmentCount,1);
+});
+
 test("mailbox preview decodes escaped sender, subject and snippet characters",()=>{
   const row=projectMailboxRow({...message,from:["Smith &amp; Co &lt;mail@example.com&gt;"],subject:"Windows &amp; doors &#x2014; update",snippet:"Price &#163;1,250 &quot;net&quot;"},"inbox");
   assert.equal(row.sender,"Smith & Co <mail@example.com>");
@@ -98,6 +103,15 @@ test("Email UI exposes dense accessible state, threads, pagination, menus, selec
   for(const state of ["border-bottom:1px solid var(--qs-border-standard)",".email-message-row.is-unread",".email-message-row.is-selected",".email-message-row.is-selected.is-unread",".email-message-row:hover",".email-message-row:focus-visible","@media(max-width:560px)"])assert.ok(css.includes(state));
   assert.match(api,/page_token/);assert.match(api,/\/threads\//);assert.match(api,/\/commands/);assert.match(api,/\/links/);assert.match(ui,/communicationsApi\.link/);assert.doesNotMatch(ui,/gmail\.googleapis\.com|access_token|refresh_token/);
   assert.match(ui,/unreadOnly\?"is:unread"/);assert.match(ui,/aria-pressed=\{unreadOnly\}/);assert.match(ui,/Unread · Show All/);
+});
+
+test("controlled form and checkbox updates snapshot DOM values before functional state updates",async()=>{
+  const [email,documents]=await Promise.all([readFile("src/features/communications/EmailWorkspace.tsx","utf8"),readFile("src/features/admin/AdminManufacturerDocuments.tsx","utf8")]);
+  for(const unsafe of ["if(event.currentTarget.checked)","[field]:event.currentTarget.value","subject:event.currentTarget.value","bodyHtml:event.currentTarget.value"])assert.equal(email.includes(unsafe),false);
+  assert.match(email,/const checked=event\.currentTarget\.checked;setSelected/);
+  assert.match(email,/const value=event\.currentTarget\.value;setComposer/);
+  assert.match(documents,/const updateForm=/);
+  assert.doesNotMatch(documents,/setForm\([^\n]*=>[^\n]*event\.currentTarget/);
 });
 
 test("Administration exposes explicit Google Workspace re-consent without credential re-entry",async()=>{

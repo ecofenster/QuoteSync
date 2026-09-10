@@ -5,6 +5,8 @@ export function createTestDeliveryPolicy(environment = process.env) {
   const deliveryEnabled = enabled && String(environment.QUOTESUITE_TEST_DELIVERY_ENABLED || '') === '1';
   const customer = normalize(environment.QUOTESUITE_TEST_CUSTOMER_EMAIL);
   const factory = normalize(environment.QUOTESUITE_TEST_FACTORY_EMAIL);
+  // A controlled journey may route both roles to one user-owned inbox;
+  // the role checks below still prevent any other recipient.
   const allowed = new Set([customer, factory].filter(Boolean));
   return {
     enabled,

@@ -11,7 +11,7 @@ export function createCommunicationRepository(db) {
     bodyHtml: row.body_html, bodyText: row.body_text, inReplyToProviderMessageId: row.in_reply_to_provider_message_id, links: parse(row.links_json), error: row.error_message,
     sentAt: row.sent_at, createdAt: row.created_at, updatedAt: row.updated_at,
     ...parse(row.provider_state_json, {}),
-    attachmentCount: attachments.length,
+    attachmentCount: attachments.filter((item) => !item.is_inline).length,
     attachments: attachments.map((item) => ({ id: item.id, fileName: item.file_name, mediaType: item.media_type, sizeBytes: item.size_bytes, storageKey: item.storage_key, providerAttachmentId: item.provider_attachment_id, driveFileId: item.drive_file_id, sha256: item.sha256, contentId: item.content_id || null, inline: Boolean(item.is_inline) })),
   }) : null;
 
@@ -42,7 +42,7 @@ export function createCommunicationRepository(db) {
       params.push(`%${normalizedQuery}%`);
     }
     params.push(Math.min(1000, Math.max(1, Number(limit) || 1000)));
-    const rows = await db.all(`SELECT m.id,m.provider,m.provider_message_id,m.provider_thread_id,m.mailbox_id,m.direction,m.folder,m.status,m.from_json,m.to_json,m.cc_json,m.bcc_json,m.subject,m.in_reply_to_provider_message_id,m.links_json,m.error_message,m.sent_at,m.created_at,m.updated_at,m.provider_state_json,COALESCE(a.attachment_count,0) attachment_count FROM communication_messages m LEFT JOIN (SELECT communication_message_id,COUNT(*) attachment_count FROM communication_attachments GROUP BY communication_message_id) a ON a.communication_message_id=m.id WHERE ${clauses.join(" AND ")} ORDER BY COALESCE(m.sent_at,m.updated_at) DESC LIMIT ?`, ...params);
+    const rows = await db.all(`SELECT m.id,m.provider,m.provider_message_id,m.provider_thread_id,m.mailbox_id,m.direction,m.folder,m.status,m.from_json,m.to_json,m.cc_json,m.bcc_json,m.subject,m.in_reply_to_provider_message_id,m.links_json,m.error_message,m.sent_at,m.created_at,m.updated_at,m.provider_state_json,COALESCE(a.attachment_count,0) attachment_count FROM communication_messages m LEFT JOIN (SELECT communication_message_id,COUNT(*) attachment_count FROM communication_attachments WHERE COALESCE(is_inline,0)=0 GROUP BY communication_message_id) a ON a.communication_message_id=m.id WHERE ${clauses.join(" AND ")} ORDER BY COALESCE(m.sent_at,m.updated_at) DESC LIMIT ?`, ...params);
     return rows.map(mapSummary);
   }
 

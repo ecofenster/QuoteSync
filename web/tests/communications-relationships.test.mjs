@@ -56,6 +56,13 @@ test("provider enrichment preserves explicit canonical links",async t=>{
   assert.deepEqual((await repository.get("message-local-1")).links,[{kind:"estimate",id:"estimate-1"}]);
 });
 
+test("mailbox summaries count downloadable files without counting inline CID resources",async t=>{
+  const db=await fixture(t),repository=createCommunicationRepository(db);
+  await repository.save({...providerMessage(),attachments:[{id:"inline-logo",fileName:"logo.png",mediaType:"image/png",providerAttachmentId:"inline-provider",contentId:"logo-1",inline:true},{id:"quotation",fileName:"quotation.pdf",mediaType:"application/pdf",providerAttachmentId:"file-provider",inline:false}]});
+  const full=await repository.get("message-local-1"),summary=(await repository.listSummaries({limit:10}))[0];
+  assert.equal(full.attachments.length,2);assert.equal(full.attachmentCount,1);assert.equal(summary.attachmentCount,1);
+});
+
 test("exact evidence produces conservative canonical suggestions without auto-linking",async t=>{
   const db=await fixture(t),suggestions=await findRelationshipSuggestions(db,providerMessage());
   assert.deepEqual(new Set(suggestions.map(item=>item.kind)),new Set(["enquiry","client","project","estimate","order","supplier","supplier_quotation"]));
