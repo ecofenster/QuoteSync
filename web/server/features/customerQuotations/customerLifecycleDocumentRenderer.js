@@ -25,6 +25,8 @@ const mimeFromName = (fileName) => /\.jpe?g$/i.test(fileName) ? "image/jpeg" : /
 
 async function imageDataUrl(value, attachmentRoot) {
   if (!value) return null;
+  const embedded = String(value).match(/^data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/=]+$/);
+  if (embedded && String(value).length <= 21 * 1024 * 1024) return String(value);
   let pathname;
   try { pathname = new URL(String(value), "http://quotesuite.local").pathname; } catch { return null; }
   const visualMatch = pathname.match(/^\/api\/manufacturer-position-visuals\/([a-f0-9]{40})\/([A-Za-z0-9._-]+)$/i);

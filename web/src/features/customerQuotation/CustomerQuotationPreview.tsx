@@ -22,6 +22,7 @@ import CustomerQuotationPositionCard from "./CustomerQuotationPositionCard";
 import { quotationWorkflowApi, type IssuedQuotationView } from "../../services/quotations/quotationWorkflowApi";
 import "./customerQuotation.css";
 import "./customerQuotationBrand.css";
+import { loadDocumentCoverPhoto } from "./documentCoverPhoto";
 
 type DocumentTemplate = "technical_schedule" | "customer_quotation";
 const money = (value: string | null | undefined) =>
@@ -162,13 +163,13 @@ export default function CustomerQuotationPreview({
           throw new Error(
             "Save Project Costing before previewing the customer quotation.",
           );
-        const scenario = await projectCalculatorLabApi.getScenario(
-          saved.id,
-          String(estimate.id),
-        );
+        const [scenario, coverPhoto] = await Promise.all([
+          projectCalculatorLabApi.getScenario(saved.id, String(estimate.id)),
+          loadDocumentCoverPhoto().catch(() => null),
+        ]);
         if (!cancelled)
           setProjection(
-            buildCustomerQuotationProjection({ scenario, client, estimate }),
+            buildCustomerQuotationProjection({ scenario, client, estimate, coverPhotoUrl: coverPhoto?.dataUrl ?? null }),
           );
       })
       .catch((reason) => {

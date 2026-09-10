@@ -126,6 +126,7 @@ export function buildCustomerQuotationProjection(input: {
   estimate: Pick<Estimate, "id" | "estimateRef" | "positions" | "projectAddress">;
   previewDate?: string;
   brand?: CustomerDocumentBrand;
+  coverPhotoUrl?: string | null;
   displayOptions?: CustomerQuotationDisplayOptions;
 }): CustomerQuotationProjection {
   const result = deriveProjectCostingCommercialResult(input.scenario);
@@ -227,7 +228,7 @@ export function buildCustomerQuotationProjection(input: {
     documentSubtitle: "Windows & Doors",
     clientReference: input.client.clientRef,
     architecturalDetailUrl,
-    coverPhotoUrl: null,
+    coverPhotoUrl: input.coverPhotoUrl ?? null,
     productShowcases,
     specificationOverview,
     displayOptions: input.displayOptions ?? DEFAULT_CUSTOMER_QUOTATION_DISPLAY_OPTIONS,

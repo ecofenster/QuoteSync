@@ -38,6 +38,12 @@ async function run(){
     await waitFor(()=>tab.evaluate("Boolean(document.querySelector('.theme-selector'))"),"Application shell unavailable");
     const adminOpened=await tab.evaluate(`(()=>{const node=[...document.querySelectorAll('.app-shell__nav-button')].find(item=>['Admin','Administration'].includes(item.textContent.trim()));if(!node)return false;node.click();return true})()`);
     assert(adminOpened,"Administration navigation unavailable");
+    await clickText(tab,"Branding",".admin-nav-button-label");
+    await waitFor(()=>tab.evaluate("Boolean(document.querySelector('.admin-theme-panel'))"),"Branding workspace unavailable");
+    await clickText(tab,"Identity & Logos");
+    await waitFor(()=>tab.evaluate("Boolean(document.querySelector('.admin-document-cover'))"),"Document cover setting unavailable");
+    const coverResult=await tab.evaluate("({input:Boolean(document.querySelector('.admin-document-cover input[type=file][accept=\"image/jpeg,image/png\"]')),preview:Boolean(document.querySelector('.admin-document-cover__preview')),banner:document.querySelector('.admin-document-cover__banner')?.textContent.trim()})");
+    assert(coverResult.input&&coverResult.preview&&coverResult.banner.includes('ESTIMATE'),"Document cover upload or left-banner preview is incomplete");
     await clickText(tab,"Manufacturer / System Documents",".admin-nav-button-label");
     await waitFor(()=>tab.evaluate("Boolean(document.querySelector('.admin-manufacturer-documents'))"),"Manufacturer documents workspace unavailable");
     await clickText(tab,"Register document");
@@ -73,7 +79,7 @@ async function run(){
     const forbidden=tab.requests.filter(request=>request.method==="POST"&&(/\/api\/admin\/manufacturer-documents(?:$|\?)/.test(request.url)||/\/api\/communications\/(commands|drafts|send|reply|forward)/.test(request.url)));
     assert(forbidden.length===0,`Acceptance performed a forbidden mutation: ${JSON.stringify(forbidden)}`);
     assert(tab.diagnostics.length===0,`Browser diagnostics: ${tab.diagnostics.join("; ")}`);
-    console.log(JSON.stringify({adminInteraction,checkboxResult,toggle,inlineResult,selection,routeStatuses:{manufacturerDocuments:200,canonicalSources:200,thread:inlineResult.status},forbiddenMutations:forbidden.length},null,2));
+    console.log(JSON.stringify({coverResult,adminInteraction,checkboxResult,toggle,inlineResult,selection,routeStatuses:{manufacturerDocuments:200,canonicalSources:200,thread:inlineResult.status},forbiddenMutations:forbidden.length},null,2));
   }finally{
     tab?.close();
     const cleanup=await controller.stop("final");

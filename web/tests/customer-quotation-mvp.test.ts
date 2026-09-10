@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { customerLifecycleDocumentRendererInternals } from "../server/features/customerQuotations/customerLifecycleDocumentRenderer.js";
+import { DOCUMENT_COVER_PHOTO_MAX_BYTES, normaliseDocumentCoverPhoto } from "../src/features/customerQuotation/documentCoverPhoto";
 import { readFile } from "node:fs/promises";
 import { buildCustomerQuotationProjection } from "../src/features/customerQuotation/customerQuotationProjection";
 import { deriveProjectCostingCommercialResult } from "../src/features/projectCalculatorLab/domain/projectCostingCommercialResult";
@@ -57,7 +59,23 @@ test("customer Estimate front matter is source-backed and includes only systems 
   assert.deepEqual(quote.productShowcases[0].positionReferences, ["W01"]);
   assert.equal(quote.specificationOverview.some((group) => group.positionReferences.includes("W01")), true);
   assert.equal(quote.coverPhotoUrl, null, "an approved raw architectural photo must be supplied rather than reconstructed from the mock-up");
+  const configured = buildCustomerQuotationProjection({ scenario: scenario(), client, estimate, coverPhotoUrl: "data:image/jpeg;base64,b3JpZ2luYWw=" });
+  assert.equal(configured.coverPhotoUrl, "data:image/jpeg;base64,b3JpZ2luYWw=", "the reviewed original is carried unchanged into the immutable projection");
   assert.match(quote.architecturalDetailUrl, /4da9b264/);
+});
+
+test("production renderer accepts only bounded original JPEG or PNG data URLs", async () => {
+  const original = "data:image/jpeg;base64,b3JpZ2luYWw=";
+  assert.equal(await customerLifecycleDocumentRendererInternals.imageDataUrl(original), original);
+  assert.equal(await customerLifecycleDocumentRendererInternals.imageDataUrl("data:image/svg+xml;base64,PHN2Zz4="), null);
+});
+
+test("document cover setting accepts only bounded original JPEG or PNG evidence",()=>{
+  const original={dataUrl:"data:image/jpeg;base64,b3JpZ2luYWw=",fileName:"approved-original.jpg",mimeType:"image/jpeg",sizeBytes:8,updatedAt:"2026-09-10T16:00:00.000Z"};
+  assert.deepEqual(normaliseDocumentCoverPhoto(original),original);
+  assert.equal(normaliseDocumentCoverPhoto({...original,mimeType:"image/webp",dataUrl:"data:image/webp;base64,b3JpZ2luYWw="}),null);
+  assert.equal(normaliseDocumentCoverPhoto({...original,sizeBytes:DOCUMENT_COVER_PHOTO_MAX_BYTES+1}),null);
+  assert.equal(normaliseDocumentCoverPhoto({...original,dataUrl:"https://example.test/replacement.jpg"}),null);
 });
 
 test("supplier EUR purchase data and internal commercial fields cannot leak into the projection", () => {
