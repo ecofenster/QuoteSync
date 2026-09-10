@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { createCustomerQuotationDocumentService } from "./customerQuotationDocumentService.js";
 import { createCommunicationsService } from "../communications/communicationsService.js";
 import { createPortalSecurityService } from "../clientPortal/portalSecurityService.js";
+import { createTestDeliveryPolicy } from "../lifecycle/testDeliveryPolicy.js";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const parse = (value, fallback = null) => { try { return JSON.parse(value || ""); } catch { return fallback; } };
@@ -9,7 +10,8 @@ const plusDays = (value, days) => { const date = new Date(value); date.setUTCDat
 const requiredText = (value, label) => { const text = String(value || "").trim(); if (!text) throw Object.assign(new Error(`${label} is required.`), { status: 400 }); return text; };
 
 export function createIssuedQuotationService(db, options = {}) {
-  const documents = createCustomerQuotationDocumentService(db, options), communications = createCommunicationsService(db, options), portalSecurity = createPortalSecurityService(db, options.portalSecurityOptions || {});
+  const documents = createCustomerQuotationDocumentService(db, options), communications = createCommunicationsService(db, options), portalSecurity = createPortalSecurityService(db, options.portalSecurityOptions || {}), delivery = options.deliveryPolicy || createTestDeliveryPolicy(options.environment);
+  const customerSubject = (value) => delivery.enabled && !/^TEST Customer\b/i.test(value) ? `TEST Customer · ${value}` : value;
 
   async function mapIssued(row) {
     if (!row) return null;
@@ -19,7 +21,7 @@ export function createIssuedQuotationService(db, options = {}) {
   async function get(id) { return mapIssued(await db.get("SELECT * FROM issued_quotations WHERE id=?", id)); }
 
   async function prepare(input) {
-    const estimateId = requiredText(input.estimateId, "Estimate ID"), clientId = requiredText(input.clientId, "Client ID"), recipient = requiredText(input.recipient, "Recipient"), projection = input.projection;
+    const estimateId = requiredText(input.estimateId, "Estimate ID"), clientId = requiredText(input.clientId, "Client ID"), requestedRecipient = requiredText(input.recipient, "Recipient"), recipient = delivery.enabled && delivery.customer ? delivery.customer : requestedRecipient, projection = input.projection;
     const aggregate = await db.get(`SELECT e.id,e.client_id,e.estimate_ref,e.revision_no,c.name client_name,c.email FROM estimates e JOIN clients c ON c.id=e.client_id WHERE e.id=? AND e.client_id=? AND e.deleted_at IS NULL AND c.deleted_at IS NULL`, estimateId, clientId);
     if (!aggregate) throw Object.assign(new Error("Active Client and Estimate relationship was not found."), { status: 404 });
     const estimateRevision = Number(input.estimateRevision), quotationRevision = Number(input.quotationRevision);
@@ -34,7 +36,7 @@ export function createIssuedQuotationService(db, options = {}) {
       const missing = missingPosition + missingGeneral;
       if (!revisionRequest.returned_document_id || !revisionRequest.verified_at || unresolved || missing) throw Object.assign(new Error("Resolve every requested and unrelated material supplier-revision change before issuing the successor Estimate."), { status: 409, code: "supplier_revision_verification_required" });
     }
-    const subject = requiredText(input.subject || `Estimate ${aggregate.estimate_ref} from Ecofenster`, "Subject"), total = String(projection.totalIncVatGbp), bodyHtml = String(input.bodyHtml || `<p>Dear ${aggregate.client_name},</p><p>Please find attached Estimate <strong>${aggregate.estimate_ref}</strong> for your review.</p><p><strong>Total including VAT: GBP ${Number(total).toFixed(2)}</strong></p><p>Please contact us if you would like to discuss the Estimate.</p><p>Kind regards,<br>Ecofenster</p>`);
+    const subject = customerSubject(requiredText(input.subject || `Estimate ${aggregate.estimate_ref} from Ecofenster`, "Subject")), total = String(projection.totalIncVatGbp), bodyHtml = String(input.bodyHtml || `<p>Dear ${aggregate.client_name},</p><p>Please find attached Estimate <strong>${aggregate.estimate_ref}</strong> for your review.</p><p><strong>Total including VAT: GBP ${Number(total).toFixed(2)}</strong></p><p>Please contact us if you would like to discuss the Estimate.</p><p>Kind regards,<br>Ecofenster</p>`);
     const commercialSnapshot = { subtotalExVatGbp: String(projection.subtotalExVatGbp), vatRatePercent: String(projection.vatRatePercent), vatGbp: String(projection.vatGbp), totalIncVatGbp: total };
     const idempotencyKey = hash(JSON.stringify({ estimateId, estimateRevision, quotationRevision, projection, recipient, termsSnapshot: input.termsSnapshot ?? null }));
     const existing = await db.get("SELECT * FROM issued_quotations WHERE idempotency_key=?", idempotencyKey); if (existing) return mapIssued(existing);
@@ -62,7 +64,7 @@ export function createIssuedQuotationService(db, options = {}) {
     if (row.status === "issued") return mapIssued(row);
     const existingCommunication = await communications.repository.get(row.communication_message_id);
     if (existingCommunication?.status === "sent" && existingCommunication.providerMessageId) return finalize(row, existingCommunication);
-    const document = await documents.get(row.document_id), recipient = requiredText(overrides.recipient ?? row.recipient, "Recipient"), subject = requiredText(overrides.subject ?? row.subject, "Subject"), bodyHtml = requiredText(overrides.bodyHtml ?? existingCommunication?.bodyHtml, "Email body");
+    const document = await documents.get(row.document_id), requestedRecipient = requiredText(overrides.recipient ?? row.recipient, "Recipient"), recipient = delivery.enabled ? delivery.assertRecipient(requestedRecipient, "customer") : requestedRecipient, subject = customerSubject(requiredText(overrides.subject ?? row.subject, "Subject")), bodyHtml = requiredText(overrides.bodyHtml ?? existingCommunication?.bodyHtml, "Email body");
     try {
       const communication = await communications.sendMessage({ ...existingCommunication, id: row.communication_message_id, to: [recipient], subject, bodyHtml, bodyText: bodyHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(), folder: "sent", links: existingCommunication.links, attachments: [{ ...(existingCommunication.attachments?.[0] || {}), fileName: document.fileName, mediaType: document.mediaType, sizeBytes: document.sizeBytes, storageKey: document.storageKey, sha256: document.sha256 }] });
       await db.run("UPDATE issued_quotations SET recipient=?,subject=?,updated_at=? WHERE id=?", recipient, subject, new Date().toISOString(), id);

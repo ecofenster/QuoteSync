@@ -9,12 +9,13 @@ import { initializeWorkflowSchema } from "../server/features/workflow/workflowSc
 import { createGoogleWorkspaceService, GOOGLE_WORKSPACE_SCOPES } from "../server/features/integrations/googleWorkspaceService.js";
 import { createIssuedQuotationService } from "../server/features/customerQuotations/issuedQuotationService.js";
 import { initializePortalSecuritySchema } from "../server/features/clientPortal/portalSecuritySchema.js";
+import { initializeLifecycleSchema } from "../server/features/lifecycle/lifecycleSchema.js";
 
 const encryptionKey=Buffer.alloc(32,7);
 const jsonResponse=(body,{ok=true,status=200}={})=>({ok,status,json:async()=>body});
 const projection=(reference,total="1200.00")=>({estimateReference:reference,clientName:"Ada Client",projectName:"Garden Room",projectAddress:"1 Test Street",commercialRevision:4,positions:[{id:"p1",reference:"W1",customerReference:"W1",classification:"included",includedInQuotationTotal:true,quantity:1,widthMm:1000,heightMm:1200,productSystem:"Europa 92",totalSellingPriceGbp:"1000.00"},{id:"p2",reference:"W1A",customerReference:"W1A",classification:"alternative",includedInQuotationTotal:false,alternativeToReference:"W1",quantity:1,widthMm:1000,heightMm:1200,productSystem:"Europa 92",totalSellingPriceGbp:"900.00"}],charges:[{id:"products",label:"Products / Supply Only",amountGbp:"1000.00"}],subtotalExVatGbp:"1000.00",vatRatePercent:"20",vatGbp:"200.00",totalIncVatGbp:total});
 
-async function fixture(t,{gmailFailure=false}={}){
+async function fixture(t,{gmailFailure=false,environment={}}={}){
   const root=await mkdtemp(path.join(os.tmpdir(),"qs-issued-")),db=await open({filename:path.join(root,"test.db"),driver:sqlite3.Database});
   await db.exec(`
     CREATE TABLE clients(id TEXT PRIMARY KEY,name TEXT,email TEXT,project_name TEXT,deleted_at TEXT);
@@ -26,6 +27,7 @@ async function fixture(t,{gmailFailure=false}={}){
   `);
   await initializeWorkflowSchema(db);
   await initializePortalSecuritySchema(db);
+  await initializeLifecycleSchema(db);
   await db.run("INSERT INTO clients VALUES(?,?,?,?,NULL)","client-1","Ada Client","ada@example.com","Garden Room");
   await db.run("INSERT INTO projects VALUES('project-1','client-1','Garden Room',NULL)");
   await db.run("INSERT INTO estimates VALUES(?,?,?,?,?,?,'Draft',?,'1 Test Street','{}','AA1 1AA','',NULL,NULL,?,NULL)","estimate-1","client-1","project-1","EST-100","EST-100",2,JSON.stringify([{id:"p1",positionRef:"W1",qty:1}]),"2026-08-26T09:00:00.000Z");
@@ -40,7 +42,7 @@ async function fixture(t,{gmailFailure=false}={}){
     if(value.endsWith("/messages/send")){gmailSendCount+=1;return gmailFailure?jsonResponse({error:{message:"Provider rejected message"}},{ok:false,status:503}):jsonResponse({id:"gmail-message-1",threadId:"gmail-thread-1"})}
     throw new Error(`Unexpected Google request: ${value}`);
   };
-  const options={fetchImpl,environment:{},encryptionKey,attachmentRoot:path.join(root,"attachments")};
+  const options={fetchImpl,environment,encryptionKey,attachmentRoot:path.join(root,"attachments")};
   const workspace=createGoogleWorkspaceService(db,options);
   await workspace.configure({clientId:"fixture-client",clientSecret:secretFixture,redirectUri:"http://localhost:3001/api/integrations/googleWorkspace/oauth/callback"});
   const oauth=await workspace.beginOAuth();
@@ -81,6 +83,16 @@ test("provider-confirmed send issues once and creates exactly one linked three-d
   await assert.rejects(()=>db.run("UPDATE estimates SET status='Changed' WHERE id='estimate-1'"),/immutable/);
   const release=await db.get("SELECT * FROM estimate_revision_releases WHERE issued_quotation_id=?",issued.id);assert.equal(release.estimate_revision,2);assert.equal(release.project_id,"project-1");
   const state=await service.estimateState("estimate-1");assert.equal(state.quotationIssued,true);assert.equal(state.followUpDue,true);assert.equal(state.followUpDueDate,followUps[0].due_at);
+});
+
+test("controlled customer delivery fixes the role address and subject and blocks every other recipient",async t=>{
+  const environment={NODE_ENV:"development",QUOTESUITE_TEST_JOURNEY:"1",QUOTESUITE_TEST_DELIVERY_ENABLED:"1",QUOTESUITE_TEST_CUSTOMER_EMAIL:"info@ecofenster.co.uk",QUOTESUITE_TEST_FACTORY_EMAIL:"info@ecofenster.co.uk"};
+  const {service,gmailSendCount}=await fixture(t,{environment});
+  const prepared=await service.prepare({clientId:"client-1",estimateId:"estimate-1",estimateRevision:2,quotationRevision:4,recipient:"real-customer@example.com",projection:projection("EST-100")});
+  assert.equal(prepared.recipient,"info@ecofenster.co.uk");
+  assert.match(prepared.subject,/^TEST Customer · Estimate EST-100/);
+  await assert.rejects(()=>service.send(prepared.id,{recipient:"outside@example.com",subject:"Edited subject",bodyHtml:"<p>Body</p>"}),/configured test customer address/);
+  assert.equal(gmailSendCount(),0);
 });
 
 test("provider failure records failed evidence and never emits quotation.issued or a Follow Up",async t=>{
