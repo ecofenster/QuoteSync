@@ -34,7 +34,7 @@ test("status rendering uses accessible text as well as colour", async () => {
 });
 
 test("chronology remains ordered and displays the current checkpoint", () => {
-  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 127 }, (_, index) => index + 1));
+  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 128 }, (_, index) => index + 1));
   assert.equal([...ROADMAP_CHRONOLOGY].reverse().find((entry) => entry.checkpointSha)?.checkpointSha, ROADMAP_CHECKPOINT_SHA);
   assert.equal(ROADMAP_CHRONOLOGY.find((entry) => entry.title === "Browser automation process-lifecycle hardening")?.sequence, 75);
   assert.equal(ROADMAP_CHECKPOINT_SHA, "5dc75f996a52a213e6bb10121b730a401f4f2df8");
@@ -51,9 +51,9 @@ test("Drive provisioning ownership and the two separate PDF deliverables remain 
   assert.match(comparisonPdf?.summary ?? "", /supplier-specific extracted item drawings.*comprehensive paginated print\/PDF output.*shared report model v2.*older comparisons/i);
   assert.match((comparisonPdf?.notes ?? []).join(" "), /Production Zyle DOCX\/EMF extraction and retained PNG serving are supported.*isolated environments/i);
   assert.equal(estimateOutput?.parentId, "internal-ecofenster-mvp");
-  assert.equal(estimateOutput?.status, "not_started");
-  assert.match(estimateOutput?.summary ?? "", /approved cover, product showcase and specification overview.*Position pages and Estimate Summary/i);
-  assert.match(estimateOutput?.nextAction ?? "", /docs\/QuoteSuite - PDF Print Out\/New/);
+  assert.equal(estimateOutput?.status, "in_progress");
+  assert.match(estimateOutput?.summary ?? "", /approved Option C cover grammar.*product showcase and specification overview.*Position pages and Estimate Summary/i);
+  assert.match(estimateOutput?.nextAction ?? "", /standalone approved architectural cover photograph.*browser-review/i);
   assert.notEqual(comparisonPdf?.id, estimateOutput?.id);
 });
 
@@ -123,7 +123,7 @@ test("Email intake, Enquiry qualification and Portal review form one phased Esti
   assert.match((portal?.notes ?? []).join(" "), /third distinct issued Estimate revision.*10%/);
   assert.match((lifecycle?.notes ?? []).join(" "), /Delivered foundations: Gmail intake\/review.*configurable informational commitment prompt/);
   assert.equal(comparisonPdf?.status, "in_progress");
-  assert.equal(estimateOutput?.status, "not_started");
+  assert.equal(estimateOutput?.status, "in_progress");
 });
 
 test("source-owned positions, captured FX and watched development are governed together", async () => {

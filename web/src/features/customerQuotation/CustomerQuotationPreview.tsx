@@ -63,12 +63,36 @@ function PageHeader({
         </span>
       </div>
       <div className="customer-quotation-page__quote">
-        <small>QUOTATION</small>
+        <small>ESTIMATE</small>
         <strong>{projection.estimateReference}</strong>
         <span>Commercial revision {projection.commercialRevision}</span>
       </div>
     </header>
   );
+}
+
+function EstimateCover({ projection }: { projection: CustomerQuotationProjection }) {
+  return <section className={`customer-quotation-page customer-quotation-cover${projection.coverPhotoUrl ? " customer-quotation-cover--photographic" : " customer-quotation-cover--awaiting-photo"}`}>
+    {projection.coverPhotoUrl ? <img className="customer-quotation-cover__photo" src={projection.coverPhotoUrl} alt="" /> : <div className="customer-quotation-cover__photo-placeholder" aria-hidden="true" />}
+    <div className="customer-quotation-cover__banner">
+      {projection.brand.logoLightUrl ? <img className="customer-quotation-cover__logo" src={projection.brand.logoLightUrl} alt={projection.brand.tradingName} /> : <strong className="customer-quotation-cover__brand">{projection.brand.tradingName}</strong>}
+      <div className="customer-quotation-cover__rule" />
+      <div className="customer-quotation-cover__title"><h1>{projection.documentTitle}</h1><p>{projection.documentSubtitle}</p></div>
+      <dl className="customer-quotation-cover__details"><div><dt>Prepared for</dt><dd>{projection.clientName}</dd></div><div><dt>Client reference</dt><dd>{projection.clientReference || "—"}</dd></div><div><dt>Project</dt><dd>{projection.projectName || projection.projectAddress}</dd></div><div><dt>Estimate reference</dt><dd>{projection.estimateReference}</dd></div><div><dt>Issue date</dt><dd>{new Date(projection.previewDate).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</dd></div></dl>
+      <p className="customer-quotation-cover__basis">Prepared from the information currently available</p>
+      <img className="customer-quotation-cover__detail" src={projection.architecturalDetailUrl} alt="Architectural window section detail" />
+      <p className="customer-quotation-cover__strapline">PEOPLE<br />SPACES<br />A BRIGHTER TOMORROW</p>
+    </div>
+    {!projection.coverPhotoUrl ? <p className="customer-quotation-cover__asset-note no-print">Approved raw architectural cover photograph required. The document structure is ready; no substitute image has been invented.</p> : null}
+  </section>;
+}
+
+function ProductsInEstimate({ projection, page, total }: { projection: CustomerQuotationProjection; page: number; total: number }) {
+  return <section className="customer-quotation-page customer-quotation-page--showcase"><PageHeader projection={projection} /><main><header><span className="customer-quotation-page__kicker">Your selected systems</span><h2>Products in Your Estimate</h2><p>Only product systems included in this Estimate are shown.</p></header><div className="customer-quotation-showcases">{projection.productShowcases.map((showcase) => <article key={showcase.id}><img src={showcase.imageUrl} alt={`${showcase.name} product section`} /><div><h3>{showcase.name}</h3><p>Included for Position{showcase.positionReferences.length === 1 ? "" : "s"} {showcase.positionReferences.join(", ")}.</p><small>{showcase.sourceLabel}</small></div></article>)}</div></main><PageFooter projection={projection} page={page} total={total} /></section>;
+}
+
+function SpecificationOverview({ projection, page, total }: { projection: CustomerQuotationProjection; page: number; total: number }) {
+  return <section className="customer-quotation-page customer-quotation-page--specification-overview"><PageHeader projection={projection} /><main><header><span className="customer-quotation-page__kicker">Effective reviewed specification</span><h2>Your Specification at a Glance</h2><p>Shared system evidence is summarised here. Position pages remain authoritative for dimensions, quantities, prices and explicit Position overrides.</p></header><div className="customer-quotation-specification-overview">{projection.specificationOverview.map((group) => <article key={group.productSystem}><header><h3>{group.productSystem}</h3><small>Positions {group.positionReferences.join(", ")}</small></header><dl>{group.items.map((item) => <div key={item.label}><dt>{item.label}</dt><dd>{item.values.join(" · ")}</dd></div>)}</dl></article>)}</div></main><PageFooter projection={projection} page={page} total={total} /></section>;
 }
 function PageFooter({
   projection,
@@ -166,7 +190,8 @@ export default function CustomerQuotationPreview({
         : [],
     [projection],
   );
-  const totalPages = pages.length + (projection ? 1 : 0);
+  const frontMatterPages = projection ? 2 + (projection.productShowcases.length ? 1 : 0) : 0;
+  const totalPages = pages.length + frontMatterPages + (projection ? 1 : 0);
   const includedPositions = projection?.positions.filter((position) => position.includedInQuotationTotal) ?? [];
   const style = projection
     ? ({
@@ -195,7 +220,7 @@ export default function CustomerQuotationPreview({
       <PageHeader projection={projection} />
       <main>
         <section className="customer-quotation-summary">
-          <h2>Quotation Summary</h2>
+          <h2>Estimate Summary</h2>
           <p>
             {includedPositions.length} included position(s) and {projection.alternatives.length} alternative option(s) for{" "}
             {projection.projectName || projection.clientName}.
@@ -258,9 +283,7 @@ export default function CustomerQuotationPreview({
       >
         <div className="customer-quotation__controls no-print">
           <div>
-            <strong id="customer-quotation-title">
-              Customer Quotation Preview
-            </strong>
+            <strong id="customer-quotation-title">Customer Estimate Preview</strong>
             <small>Saved Project Costing · customer-safe preview</small>
           </div>
           <label>
@@ -274,7 +297,7 @@ export default function CustomerQuotationPreview({
               }
             >
               <option value="technical_schedule">Technical Schedule</option>
-              <option value="customer_quotation">Customer Quotation</option>
+              <option value="customer_quotation">Customer Estimate</option>
             </select>
           </label>
           <label>
@@ -342,6 +365,9 @@ export default function CustomerQuotationPreview({
             data-section-details={options.sectionDetails}
             style={style}
           >
+            <EstimateCover projection={projection} />
+            {projection.productShowcases.length ? <ProductsInEstimate projection={projection} page={2} total={totalPages} /> : null}
+            <SpecificationOverview projection={projection} page={projection.productShowcases.length ? 3 : 2} total={totalPages} />
             {pages.map((page, index) => (
               <section
                 className={`customer-quotation-page${page.wide ? " customer-quotation-page--wide" : ""}`}
@@ -361,7 +387,7 @@ export default function CustomerQuotationPreview({
                 </main>
                 <PageFooter
                   projection={projection}
-                  page={index + 1}
+                  page={index + frontMatterPages + 1}
                   total={totalPages}
                 />
               </section>

@@ -13,7 +13,12 @@ import { initializeLifecycleSchema } from './features/lifecycle/lifecycleSchema.
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const dbPath = path.resolve(__dirname, '../quotesync.db');
+// Browser/test journeys must be able to exercise the real API against an
+// explicitly owned disposable database. Production and ordinary development
+// retain the established repository-local database when no override is set.
+const dbPath = process.env.QUOTESUITE_DB_PATH
+  ? path.resolve(process.env.QUOTESUITE_DB_PATH)
+  : path.resolve(__dirname, '../quotesync.db');
 
 const CURRENT_SYSTEM_USER = {
   id: 'user-1',

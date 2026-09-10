@@ -13,7 +13,7 @@ const configuredContract = { schemaVersion: 1, source: "b92_configurator", produ
 const estimate = { id: "estimate-1", estimateRef: "EF-EST-MVP-001", projectAddress: "1 Test Street", positions: [
   { id: "position-1", positionRef: "W01", roomName: "Kitchen", configuredContract },
 ] } as any;
-const client = { clientName: "Disposable MVP Customer", projectName: "Quotation Test", projectAddress: "1 Test Street" } as any;
+const client = { clientName: "Disposable MVP Customer", clientRef: "TEST-CL-ESTIMATE", projectName: "Estimate Test", projectAddress: "1 Test Street" } as any;
 
 function scenario(fixed = true) {
   return {
@@ -46,6 +46,18 @@ test("saved Project Costing is the single GBP customer pricing authority", () =>
   const quote = buildCustomerQuotationProjection({ scenario: scenario(), client, estimate, previewDate: "2026-08-17T12:00:00.000Z" });
   assert.equal(quote.currency, "GBP");
   assert.equal(quote.subtotalExVatGbp, "2000.00");
+});
+
+test("customer Estimate front matter is source-backed and includes only systems used in the Estimate", () => {
+  const quote = buildCustomerQuotationProjection({ scenario: scenario(), client, estimate, previewDate: "2026-09-10T12:00:00.000Z" });
+  assert.equal(quote.documentTitle, "Estimate");
+  assert.equal(quote.documentSubtitle, "Windows & Doors");
+  assert.equal(quote.clientReference, "TEST-CL-ESTIMATE");
+  assert.deepEqual(quote.productShowcases.map((item) => item.name), ["Europa 92 Alu"]);
+  assert.deepEqual(quote.productShowcases[0].positionReferences, ["W01"]);
+  assert.equal(quote.specificationOverview.some((group) => group.positionReferences.includes("W01")), true);
+  assert.equal(quote.coverPhotoUrl, null, "an approved raw architectural photo must be supplied rather than reconstructed from the mock-up");
+  assert.match(quote.architecturalDetailUrl, /4da9b264/);
 });
 
 test("supplier EUR purchase data and internal commercial fields cannot leak into the projection", () => {
@@ -346,7 +358,10 @@ test("the canonical entry point and A4 print path are present and misleading leg
   assert.match(preview, /window\.print\(\)/);
   assert.match(preview, /Print \/ Save PDF/);
   assert.match(preview, /Technical Schedule/);
-  assert.match(preview, /Customer Quotation/);
+  assert.match(preview, /Customer Estimate/);
+  assert.match(preview, /Products in Your Estimate/);
+  assert.match(preview, /Your Specification at a Glance/);
+  assert.match(preview, /customer-quotation-cover__banner/);
   assert.match(preview, /data-document-template/);
   assert.match(preview, /data-thermal-mode/);
   assert.match(preview, /data-section-details/);
@@ -360,6 +375,7 @@ test("the canonical entry point and A4 print path are present and misleading leg
   assert.doesNotMatch(preview, /DOCX|Print Word Doc|supplier purchase price|purchase FX|gross margin|Supplier Import Lab/);
   assert.doesNotMatch(`${pickerActions}\n${collectionActions}`, />Print Word Doc<|>Print PDF</);
   assert.match(css, /@page\{size:A4 portrait/);
+  assert.match(css, /customer-quotation-cover__banner[\s\S]*rgba\(255,255,255,.91\)/);
   assert.match(css, /height:297mm/);
   assert.match(css, /grid-template-rows:repeat\(2,minmax\(0,1fr\)\)/);
   assert.match(css, /no-print/);

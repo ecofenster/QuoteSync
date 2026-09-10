@@ -14,12 +14,12 @@ const money = (value) => `GBP ${Number(value || 0).toFixed(2)}`;
 
 function projectionLines(projection) {
   const lines = [
-    "CUSTOMER QUOTATION",
+    "CUSTOMER ESTIMATE",
     `Reference: ${ascii(projection.estimateReference)}`,
     `Customer: ${ascii(projection.clientName)}`,
     `Project: ${ascii(projection.projectName || projection.clientName)}`,
     `Address: ${ascii(projection.projectAddress)}`,
-    `Quotation revision: ${Number(projection.commercialRevision)}`,
+    `Estimate commercial revision: ${Number(projection.commercialRevision)}`,
     "",
     "Quoted positions",
   ];
@@ -41,7 +41,7 @@ function projectionLines(projection) {
   lines.push(`Subtotal excluding VAT: ${money(projection.subtotalExVatGbp)}`);
   lines.push(`VAT (${ascii(projection.vatRatePercent)}%): ${money(projection.vatGbp)}`);
   lines.push(`Total including VAT: ${money(projection.totalIncVatGbp)}`);
-  lines.push("", "This PDF is the immutable document representation attached to the issued quotation record.");
+  lines.push("", "This PDF is the immutable customer Estimate representation attached to the issued record.");
   return lines;
 }
 
@@ -88,7 +88,7 @@ export function createCustomerQuotationDocumentService(db, { attachmentRoot = re
       if (existing) return this.get(existing.id);
       const documentId = randomUUID();
       const bytes = buildPdf(projection), documentSha256 = sha256(bytes);
-      const fileName = `${ascii(projection.estimateReference).replace(/[^A-Za-z0-9_-]+/g, "-") || "quotation"}-R${Number(quotationRevision)}.pdf`;
+      const fileName = `${ascii(projection.estimateReference).replace(/[^A-Za-z0-9_-]+/g, "-") || "estimate"}-Estimate-R${Number(quotationRevision)}.pdf`;
       const storageKey = `estimates/${safeEstimateId}/customer-quotations/${documentId}.pdf`;
       const target = await ensureManagedParent(storageKey, attachmentRoot);
       await writeFile(target, bytes, { flag: "wx" });
