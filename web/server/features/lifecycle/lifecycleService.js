@@ -161,15 +161,21 @@ export function createLifecycleService(db, options = {}) {
     for (const check of checks) await db.run(`INSERT INTO factory_confirmation_checks(id,factory_confirmation_id,estimate_position_id,field_key,approved_value,confirmed_value,status,approved_source_reference,confirmation_source_reference,resolution_note,resolved_by,resolved_at)
       VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(factory_confirmation_id,estimate_position_id,field_key) DO UPDATE SET confirmed_value=excluded.confirmed_value,status=excluded.status,confirmation_source_reference=excluded.confirmation_source_reference,resolution_note=excluded.resolution_note,resolved_by=excluded.resolved_by,resolved_at=excluded.resolved_at`, randomUUID(), confirmation.id, text(check.estimatePositionId), text(check.fieldKey), text(check.approvedValue) || null, text(check.confirmedValue) || null, deriveConfirmationCheck(check), text(check.approvedSourceReference) || null, text(check.confirmationSourceReference) || null, text(check.resolutionNote), text(input.reviewedBy) || null, input.reviewedBy ? stamp() : null);
     const values = await db.all('SELECT * FROM factory_confirmation_checks WHERE factory_confirmation_id=? ORDER BY estimate_position_id,field_key', confirmation.id);
-    const unresolved = values.filter((check) => ['change_detected','needs_review'].includes(check.status)).length;
+    const acceptedPositions = await db.all(`SELECT pa.estimate_position_id FROM portal_position_acceptances pa JOIN portal_estimate_acceptances a ON a.id=pa.estimate_acceptance_id WHERE a.order_id=? AND pa.accepted=1 ORDER BY pa.estimate_position_id`, orderId);
+    const checkedPositionIds = new Set(values.map((check) => check.estimate_position_id));
+    const missingPositionIds = acceptedPositions.map((row) => row.estimate_position_id).filter((id) => !checkedPositionIds.has(id));
+    const unresolved = values.filter((check) => ['change_detected','needs_review'].includes(check.status)).length + missingPositionIds.length;
     await db.run("UPDATE factory_confirmations SET status=? WHERE id=? AND status<>'released'", unresolved ? 'staff_review' : 'review_resolved', confirmation.id);
-    return { confirmationId: confirmation.id, status: unresolved ? 'staff_review' : 'review_resolved', checks: values, unresolved, releaseAllowed: unresolved === 0 };
+    return { confirmationId: confirmation.id, status: unresolved ? 'staff_review' : 'review_resolved', checks: values, missingPositionIds, unresolved, releaseAllowed: unresolved === 0 };
   }
 
   async function releaseFactoryConfirmation(confirmationId, input = {}) {
     const confirmation = await db.get(`SELECT fc.*,o.client_id,o.project_id,o.id order_id FROM factory_confirmations fc JOIN orders o ON o.id=fc.order_id WHERE fc.id=?`, confirmationId);
     if (!confirmation) throw problem('Factory confirmation was not found.', 404, 'factory_confirmation_not_found');
-    const unresolved = Number((await db.get(`SELECT COUNT(*) count FROM factory_confirmation_checks WHERE factory_confirmation_id=? AND status IN ('change_detected','needs_review')`, confirmationId))?.count || 0);
+    const accepted = await db.all(`SELECT pa.estimate_position_id FROM portal_position_acceptances pa JOIN portal_estimate_acceptances a ON a.id=pa.estimate_acceptance_id WHERE a.order_id=? AND pa.accepted=1`, confirmation.order_id);
+    const checked = new Set((await db.all('SELECT DISTINCT estimate_position_id FROM factory_confirmation_checks WHERE factory_confirmation_id=?', confirmationId)).map((row) => row.estimate_position_id));
+    const missingPositionCount = accepted.filter((row) => !checked.has(row.estimate_position_id)).length;
+    const unresolved = Number((await db.get(`SELECT COUNT(*) count FROM factory_confirmation_checks WHERE factory_confirmation_id=? AND status IN ('change_detected','needs_review')`, confirmationId))?.count || 0) + missingPositionCount;
     if (unresolved) throw problem('Resolve every detected or uncertain factory confirmation change before customer release.', 409, 'factory_confirmation_review_required');
     const existing = await db.get('SELECT * FROM factory_confirmation_releases WHERE factory_confirmation_id=?', confirmationId);
     if (existing) return { ...existing, idempotentReplay: true };

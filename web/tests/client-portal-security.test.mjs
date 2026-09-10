@@ -175,6 +175,24 @@ test("customer acceptance creates one canonical Order and factory commitment rem
   const draft=await lifecycle.prepareFactoryOrder(accepted.orderId,{recipient:"factory@example.test",createdBy:"staff-1",documentIds:["document-issued"]});assert.equal(draft.status,"draft");assert.equal((await source.db.get("SELECT status FROM orders WHERE id=?",accepted.orderId)).status,"staff_approved");
 });
 
+test("accepted Positions remain a fail-closed gate through factory confirmation and final customer sign-off",async t=>{
+  const source=await fixture(t),auth=await authenticated(t,source),lifecycle=createLifecycleService(source.db,{portal:source.service,deliveryPolicy:{publicStatus:()=>({deliveryMode:"preview_only"}),assertRecipient(){throw new Error("test journey must remain preview-only")}}});
+  const accepted=await source.service.acceptEstimate(auth.session,{projectId:"project-a1",estimateReleaseId:source.release.id,idempotencyKey:"journey-accept-1",overallAccepted:true,positions:[{estimatePositionId:"position-a",positionReference:"W1",accepted:true,confirmations:{item_reference:true,configuration:true,dimensions:true,specification:true}}]});
+  await lifecycle.approveOrder(accepted.orderId,{approvedBy:"staff-1",note:"Reviewed exact issued Estimate"});
+  const factoryOrder=await lifecycle.prepareFactoryOrder(accepted.orderId,{recipient:"factory@example.test",createdBy:"staff-1",subject:`TEST Factory Order ${accepted.orderRef}`,bodyText:"Preview only; use the approved Estimate evidence.",documentIds:["document-issued"],send:false});
+  assert.equal(factoryOrder.status,"draft");
+  const empty=await lifecycle.recordFactoryConfirmation(accepted.orderId,{canonicalDocumentId:"document-safe",revision:"1",createdBy:"staff-1",reviewedBy:"staff-1",checks:[]});
+  assert.deepEqual(empty.missingPositionIds,["position-a"]);assert.equal(empty.releaseAllowed,false);
+  await assert.rejects(()=>lifecycle.releaseFactoryConfirmation(empty.confirmationId,{releasedBy:"staff-1"}),error=>error.code==="factory_confirmation_review_required");
+  const checked=await lifecycle.recordFactoryConfirmation(accepted.orderId,{canonicalDocumentId:"document-safe",revision:"1",createdBy:"staff-1",reviewedBy:"staff-1",checks:[{estimatePositionId:"position-a",fieldKey:"dimensions",approvedValue:"1000 × 1200 mm",confirmedValue:"1000 × 1200 mm",approvedSourceReference:"Issued Estimate Position W1",confirmationSourceReference:"Factory confirmation p2"}]});
+  assert.equal(checked.releaseAllowed,true);assert.deepEqual(checked.missingPositionIds,[]);
+  const released=await lifecycle.releaseFactoryConfirmation(checked.confirmationId,{releasedBy:"staff-1"});
+  const signed=await source.service.signOffFactoryConfirmation(auth.session,{projectId:"project-a1",factoryConfirmationReleaseId:released.id,idempotencyKey:"journey-final-signoff-1",overallApproved:true,positions:[{estimatePositionId:"position-a",approved:true}]});
+  assert.equal(signed.status,"customer_final_confirmation_approved");
+  assert.equal((await source.db.get("SELECT status FROM orders WHERE id=?",accepted.orderId)).status,"customer_final_confirmation_approved");
+  for(const eventName of ["order.staff_approved","factory.order.prepared","factory.confirmation.released","factory.confirmation.customer_approved"])assert.equal((await source.db.get("SELECT COUNT(*) count FROM workflow_events WHERE event_name=?",eventName)).count,1,eventName);
+});
+
 test("an issued revision can create only one canonical Order across delegated contacts",async t=>{
   const source=await fixture(t),first=await authenticated(t,source),payload={projectId:"project-a1",estimateReleaseId:source.release.id,overallAccepted:true,positions:[{estimatePositionId:"position-a",positionReference:"W1",accepted:true,confirmations:{item_reference:true,configuration:true,dimensions:true,specification:true}}]};
   const accepted=await source.service.acceptEstimate(first.session,{...payload,idempotencyKey:"contact-a-acceptance"});
