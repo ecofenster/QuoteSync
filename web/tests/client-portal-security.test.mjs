@@ -13,6 +13,9 @@ import { initializePortalSecuritySchema } from "../server/features/clientPortal/
 import { createPortalSecurityService } from "../server/features/clientPortal/portalSecurityService.js";
 import { initializeLifecycleSchema } from "../server/features/lifecycle/lifecycleSchema.js";
 import { createLifecycleService, deriveConfirmationCheck, deriveRevisionCheck } from "../server/features/lifecycle/lifecycleService.js";
+import { createTestDeliveryPolicy } from "../server/features/lifecycle/testDeliveryPolicy.js";
+import { createPortalTestAdapter } from "../server/features/clientPortal/portalTestAdapter.js";
+import { createIssuedQuotationService } from "../server/features/customerQuotations/issuedQuotationService.js";
 import { createClientPortalRouter } from "../server/routes/clientPortal.js";
 import { CLIENT_PORTAL_FEATURES, PORTAL_POSITION_ACCEPTANCE_CONFIRMATIONS, PORTAL_REVIEW_POSITION_RESPONSES } from "../shared/clientPortalContracts.js";
 
@@ -26,6 +29,16 @@ const issuedProjection = {
 test("review evidence and future signed Position acceptance remain distinct contracts",()=>{
   assert.deepEqual([...PORTAL_REVIEW_POSITION_RESPONSES],["accepted_as_shown","amendment_requested","question_comment"]);
   assert.deepEqual([...PORTAL_POSITION_ACCEPTANCE_CONFIRMATIONS],["item_reference","configuration","dimensions","specification"]);
+});
+
+test("test identities work in preview-only mode while actual delivery needs a separate explicit flag",async()=>{
+  const environment={NODE_ENV:"development",QUOTESUITE_TEST_JOURNEY:"1",QUOTESUITE_TEST_CUSTOMER_EMAIL:"customer@example.test",QUOTESUITE_TEST_FACTORY_EMAIL:"factory@example.test"};
+  const policy=createTestDeliveryPolicy(environment),adapter=createPortalTestAdapter(environment);
+  assert.equal(policy.publicStatus().deliveryMode,"preview_only");assert.equal(adapter.enabled,true);
+  await assert.doesNotReject(()=>adapter.verify({email:"customer@example.test"},{expectedEmail:"customer@example.test"}));
+  assert.throws(()=>policy.assertRecipient("factory@example.test","factory"),error=>error.code==="test_delivery_disabled");
+  const enabled=createTestDeliveryPolicy({...environment,QUOTESUITE_TEST_DELIVERY_ENABLED:"1"});assert.equal(enabled.publicStatus().deliveryMode,"test_allowlist");assert.equal(enabled.assertRecipient("factory@example.test","factory"),"factory@example.test");
+  assert.throws(()=>enabled.assertRecipient("real@example.com","factory"),error=>error.code==="test_delivery_recipient_blocked");
 });
 
 async function fixture(t,{clockStart=Date.parse("2026-09-06T10:00:00.000Z")}={}) {
@@ -53,7 +66,7 @@ async function fixture(t,{clockStart=Date.parse("2026-09-06T10:00:00.000Z")}={})
   await db.run("INSERT INTO canonical_documents(id,provider,provider_account_id,provider_file_id,client_id,project_id,document_type,file_name,discovered_at,last_seen_at,updated_at) VALUES('document-unreleased','fixture','account','private','client-a','project-a1','supplier_quotation','Supplier cost.pdf',?,?,?)",now,now,now);
   await db.run("INSERT INTO project_calculator_lab_scenarios(id,estimate_id,revision_number,updated_at) VALUES('scenario-a1','estimate-a1',1,?)",now);
   await db.run("INSERT INTO project_calculator_lab_manual_cost_lines(id,scenario_id,label) VALUES('cost-before','scenario-a1','Before release')");
-  const options={clock:()=>clock,tokenFactory:()=>Buffer.from(`portal-test-token-${++tokenIndex}`.padEnd(32,"x")).toString("base64url"),identityVerifier:async(assertion)=>({provider:"test-oidc-adapter",subject:String(assertion?.subject||"subject-a"),email:String(assertion?.email||"a@example.test")})};
+  const options={clock:()=>clock,tokenFactory:()=>Buffer.from(`portal-test-token-${++tokenIndex}`.padEnd(32,"x")).toString("base64url"),identityVerifier:async(assertion)=>({provider:"test-oidc-adapter",subject:String(assertion?.subject||"subject-a"),email:String(assertion?.email||"a@example.test")}),documentOptions:{attachmentRoot:path.join(root,"attachments")}};
   const service=createPortalSecurityService(db,options);
   for(const featureKey of CLIENT_PORTAL_FEATURES)await service.setFeatureControl(featureKey,true,"fixture");
   const release=await service.releaseIssuedEstimate({issuedQuotationId:"issued-a1",releasedBy:"staff-1"});
@@ -155,6 +168,24 @@ test("review, decline and intent commands are authorized, audited and idempotent
   assert.deepEqual((await source.db.all("SELECT event_name FROM workflow_events WHERE event_name LIKE 'estimate.%' ORDER BY event_name")).map((row)=>row.event_name),["estimate.customer_declined","estimate.customer_reviewing","estimate.revision_requested"]);
 });
 
+test("customer changes produce a carried-forward working revision, attached change summary and evidence-gated successor issue",async t=>{
+  const source=await fixture(t),auth=await authenticated(t,source),lifecycle=createLifecycleService(source.db,{portal:source.service,documentOptions:source.options.documentOptions,deliveryPolicy:{publicStatus:()=>({deliveryMode:"preview_only"}),assertRecipient(){throw new Error("preview only")}}});
+  const review=await source.service.submitReview(auth.session,{projectId:"project-a1",estimateReleaseId:source.release.id,idempotencyKey:"revision-review-1",generalResponse:"amendment_requested",generalComment:"Please change the project finish schedule.",positions:[{estimatePositionId:"position-a",positionReference:"W1",response:"amendment_requested",comment:"Change the external finish to black."}]});
+  const request=await lifecycle.prepareSupplierRevision({reviewSubmissionId:review.reviewSubmissionId,createdBy:"staff-1",createdByName:"Staff User"});
+  const successor=await source.db.get("SELECT * FROM estimates WHERE id=?",request.successorEstimateId);assert.equal(successor.revision_no,2);assert.equal((await source.db.get("SELECT COUNT(*) count FROM project_calculator_lab_manual_cost_lines WHERE scenario_id<>(SELECT id FROM project_calculator_lab_scenarios WHERE estimate_id='estimate-a1')")).count,1);
+  const correspondence=await lifecycle.prepareSupplierRevisionCorrespondence(request.id,{reviewedBy:"staff-1",recipient:"factory@example.test",subject:"TEST reviewed changes",documentIds:["document-safe"],send:false});
+  assert.match(correspondence.changeDocument.fileName,/Requested-Changes\.pdf$/);const communication=await source.db.get("SELECT * FROM communication_messages WHERE id=?",correspondence.communicationMessageId);assert.ok(communication);
+  const attachments=await source.db.all("SELECT file_name,storage_key FROM communication_attachments WHERE communication_message_id=? ORDER BY file_name",correspondence.communicationMessageId);assert.equal(attachments.some(item=>/Requested-Changes\.pdf$/.test(item.file_name)&&item.storage_key),true);
+  await lifecycle.attachSupplierRevisionDocument(request.id,{sourceKind:"canonical_document",canonicalDocumentId:"document-safe",revision:"2",reviewedBy:"staff-1"});
+  const incomplete=await lifecycle.verifySupplierRevision(request.id,{reviewedBy:"staff-1",checks:[{estimatePositionId:"position-a",fieldKey:"external_finish",requestedChange:"Black",beforeValue:"White",expectedValue:"Black",afterValue:"Black",beforeSourceReference:"Issued Estimate W1",afterSourceReference:"Revision 2 p2"}],unrelatedChanges:[{estimatePositionId:"position-a",fieldKey:"hardware",requestedChange:"Unrelated material change",beforeValue:"Standard",expectedValue:"Standard",afterValue:"Different",beforeSourceReference:"Issued Estimate W1",afterSourceReference:"Revision 2 p2"}]});
+  assert.equal(incomplete.issueAllowed,false);
+  const projection={...issuedProjection,estimateReference:successor.estimate_ref,clientName:"Client A",commercialRevision:1};const issuance=createIssuedQuotationService(source.db,{attachmentRoot:source.options.documentOptions.attachmentRoot,portalSecurityOptions:source.options});
+  await assert.rejects(()=>issuance.prepare({estimateId:successor.id,clientId:"client-a",estimateRevision:2,quotationRevision:1,projection,recipient:"a@example.test"}),error=>error.code==="supplier_revision_verification_required");
+  const verified=await lifecycle.verifySupplierRevision(request.id,{reviewedBy:"staff-1",checks:[{estimatePositionId:"position-a",fieldKey:"external_finish",requestedChange:"Black",beforeValue:"White",expectedValue:"Black",afterValue:"Black",beforeSourceReference:"Issued Estimate W1",afterSourceReference:"Revision 2 p2"},{estimatePositionId:null,fieldKey:"general_finish_schedule",requestedChange:"Change finish schedule",beforeValue:"Original schedule",expectedValue:"Revised schedule",afterValue:"Revised schedule",beforeSourceReference:"Issued Estimate overview",afterSourceReference:"Revision 2 overview"}],unrelatedChanges:[{estimatePositionId:"position-a",fieldKey:"hardware",requestedChange:"Unrelated material change",beforeValue:"Standard",expectedValue:"Standard",afterValue:"Different",beforeSourceReference:"Issued Estimate W1",afterSourceReference:"Revision 2 p2",approvedDifference:true,resolutionNote:"Reviewed and accepted for the successor offer."}]});
+  assert.equal(verified.issueAllowed,true);const prepared=await issuance.prepare({estimateId:successor.id,clientId:"client-a",estimateRevision:2,quotationRevision:1,projection,recipient:"a@example.test"});assert.equal(prepared.status,"prepared_not_sent");
+  assert.equal((await source.db.get("SELECT status FROM estimates WHERE id='estimate-a1'")).status,"Issued");
+});
+
 test("intent to proceed records one workflow decision and never creates a supplier Order",async t=>{
   const source=await fixture(t),auth=await authenticated(t,source),input={projectId:"project-a1",estimateReleaseId:source.release.id,idempotencyKey:"intent-command-1"};
   const first=await source.service.indicateIntentToProceed(auth.session,input),replay=await source.service.indicateIntentToProceed(auth.session,input);
@@ -169,16 +200,18 @@ test("customer acceptance creates one canonical Order and factory commitment rem
   const accepted=await source.service.acceptEstimate(auth.session,acceptance),replay=await source.service.acceptEstimate(auth.session,acceptance);
   assert.match(accepted.orderRef,/^EF-ORD-2026-\d{3}$/);assert.equal(accepted.status,"customer_accepted_pending_staff_approval");assert.equal(replay.orderId,accepted.orderId);assert.equal(replay.idempotentReplay,true);
   assert.equal((await source.db.get("SELECT COUNT(*) count FROM orders WHERE id=?",accepted.orderId)).count,1);assert.equal((await source.db.get("SELECT COUNT(*) count FROM portal_position_acceptances WHERE estimate_acceptance_id=?",accepted.acceptanceId)).count,1);
-  const lifecycle=createLifecycleService(source.db,{portal:source.service,deliveryPolicy:{publicStatus:()=>({deliveryMode:"preview_only"}),assertRecipient(){throw new Error("delivery must not occur")}}});
+  const lifecycle=createLifecycleService(source.db,{portal:source.service,documentOptions:source.options.documentOptions,deliveryPolicy:{publicStatus:()=>({deliveryMode:"preview_only"}),assertRecipient(){throw new Error("delivery must not occur")}}});
   await assert.rejects(()=>lifecycle.prepareFactoryOrder(accepted.orderId,{recipient:"factory@example.test",createdBy:"staff-1"}),error=>error.code==="factory_order_staff_approval_required");
   const approval=await lifecycle.approveOrder(accepted.orderId,{approvedBy:"staff-1",note:"Reviewed exact issued revision"});assert.equal(approval.status,"staff_approved");
   const draft=await lifecycle.prepareFactoryOrder(accepted.orderId,{recipient:"factory@example.test",createdBy:"staff-1",documentIds:["document-issued"]});assert.equal(draft.status,"draft");assert.equal((await source.db.get("SELECT status FROM orders WHERE id=?",accepted.orderId)).status,"staff_approved");
 });
 
 test("accepted Positions remain a fail-closed gate through factory confirmation and final customer sign-off",async t=>{
-  const source=await fixture(t),auth=await authenticated(t,source),lifecycle=createLifecycleService(source.db,{portal:source.service,deliveryPolicy:{publicStatus:()=>({deliveryMode:"preview_only"}),assertRecipient(){throw new Error("test journey must remain preview-only")}}});
+  const source=await fixture(t),auth=await authenticated(t,source),lifecycle=createLifecycleService(source.db,{portal:source.service,documentOptions:source.options.documentOptions,deliveryPolicy:{publicStatus:()=>({deliveryMode:"preview_only"}),assertRecipient(){throw new Error("test journey must remain preview-only")}}});
   const accepted=await source.service.acceptEstimate(auth.session,{projectId:"project-a1",estimateReleaseId:source.release.id,idempotencyKey:"journey-accept-1",overallAccepted:true,positions:[{estimatePositionId:"position-a",positionReference:"W1",accepted:true,confirmations:{item_reference:true,configuration:true,dimensions:true,specification:true}}]});
+  assert.equal((await source.db.get("SELECT COUNT(*) count FROM customer_lifecycle_documents WHERE order_id=? AND document_kind='order'",accepted.orderId)).count,1);
   await lifecycle.approveOrder(accepted.orderId,{approvedBy:"staff-1",note:"Reviewed exact issued Estimate"});
+  assert.equal((await source.db.get("SELECT COUNT(*) count FROM customer_lifecycle_documents WHERE order_id=? AND document_kind='order'",accepted.orderId)).count,2);
   const factoryOrder=await lifecycle.prepareFactoryOrder(accepted.orderId,{recipient:"factory@example.test",createdBy:"staff-1",subject:`TEST Factory Order ${accepted.orderRef}`,bodyText:"Preview only; use the approved Estimate evidence.",documentIds:["document-issued"],send:false});
   assert.equal(factoryOrder.status,"draft");
   const empty=await lifecycle.recordFactoryConfirmation(accepted.orderId,{canonicalDocumentId:"document-safe",revision:"1",createdBy:"staff-1",reviewedBy:"staff-1",checks:[]});
@@ -187,10 +220,21 @@ test("accepted Positions remain a fail-closed gate through factory confirmation 
   const checked=await lifecycle.recordFactoryConfirmation(accepted.orderId,{canonicalDocumentId:"document-safe",revision:"1",createdBy:"staff-1",reviewedBy:"staff-1",checks:[{estimatePositionId:"position-a",fieldKey:"dimensions",approvedValue:"1000 × 1200 mm",confirmedValue:"1000 × 1200 mm",approvedSourceReference:"Issued Estimate Position W1",confirmationSourceReference:"Factory confirmation p2"}]});
   assert.equal(checked.releaseAllowed,true);assert.deepEqual(checked.missingPositionIds,[]);
   const released=await lifecycle.releaseFactoryConfirmation(checked.confirmationId,{releasedBy:"staff-1"});
+  assert.equal((await source.db.get("SELECT COUNT(*) count FROM customer_lifecycle_documents WHERE order_id=? AND document_kind='final_confirmation'",accepted.orderId)).count,1);
   const signed=await source.service.signOffFactoryConfirmation(auth.session,{projectId:"project-a1",factoryConfirmationReleaseId:released.id,idempotencyKey:"journey-final-signoff-1",overallApproved:true,positions:[{estimatePositionId:"position-a",approved:true}]});
   assert.equal(signed.status,"customer_final_confirmation_approved");
+  await source.db.run("INSERT INTO canonical_documents(id,provider,provider_account_id,provider_file_id,client_id,project_id,document_type,file_name,discovered_at,last_seen_at,updated_at) VALUES('document-signed','fixture','account','signed','client-a','project-a1','customer_signed_confirmation','Signed confirmation.pdf',?,?,?)","2026-09-06T12:00:00.000Z","2026-09-06T12:00:00.000Z","2026-09-06T12:00:00.000Z");
+  const signedPdf=await lifecycle.recordReviewedSignedApproval(released.id,{signedPdfDocumentId:"document-signed",reviewed:true,reviewedBy:"staff-1",overallApproved:true,positionIds:["position-a"]});
+  assert.equal(signedPdf.status,"customer_final_confirmation_approved");assert.equal((await source.db.get("SELECT COUNT(*) count FROM factory_confirmation_signed_pdf_reviews WHERE factory_confirmation_release_id=?",released.id)).count,1);
   assert.equal((await source.db.get("SELECT status FROM orders WHERE id=?",accepted.orderId)).status,"customer_final_confirmation_approved");
   for(const eventName of ["order.staff_approved","factory.order.prepared","factory.confirmation.released","factory.confirmation.customer_approved"])assert.equal((await source.db.get("SELECT COUNT(*) count FROM workflow_events WHERE event_name=?",eventName)).count,1,eventName);
+
+  await source.db.run("INSERT INTO canonical_documents(id,provider,provider_account_id,provider_file_id,client_id,project_id,document_type,file_name,discovered_at,last_seen_at,updated_at) VALUES('document-confirmation-v2','fixture','account','confirmation-v2','client-a','project-a1','factory_confirmation','Factory confirmation revision 2.pdf',?,?,?)","2026-09-06T13:00:00.000Z","2026-09-06T13:00:00.000Z","2026-09-06T13:00:00.000Z");
+  const replacement=await lifecycle.recordFactoryConfirmation(accepted.orderId,{canonicalDocumentId:"document-confirmation-v2",revision:"2",createdBy:"staff-1",reviewedBy:"staff-1",checks:[]});
+  assert.equal(replacement.releaseAllowed,false);assert.deepEqual(replacement.missingPositionIds,["position-a"]);
+  assert.equal((await source.db.get("SELECT status FROM factory_confirmations WHERE id=?",checked.confirmationId)).status,"superseded");
+  assert.equal((await source.db.get("SELECT status FROM orders WHERE id=?",accepted.orderId)).status,"factory_confirmation_received_staff_review");
+  await assert.rejects(()=>source.service.signOffFactoryConfirmation(auth.session,{projectId:"project-a1",factoryConfirmationReleaseId:released.id,idempotencyKey:"stale-release-signoff",overallApproved:true,positions:[{estimatePositionId:"position-a",approved:true}]}),error=>error.status===403||error.code==="factory_confirmation_release_not_found");
 });
 
 test("an issued revision can create only one canonical Order across delegated contacts",async t=>{
@@ -215,7 +259,7 @@ test("supplier revision and factory confirmation checks require exact source-bac
 });
 
 test("supplier enquiry preview and returned evidence stay linked to one canonical Project and working Estimate",async t=>{
-  const source=await fixture(t),lifecycle=createLifecycleService(source.db,{portal:source.service,deliveryPolicy:{publicStatus:()=>({deliveryMode:"preview_only"}),assertRecipient(){throw new Error("no send")}}});
+  const source=await fixture(t),lifecycle=createLifecycleService(source.db,{portal:source.service,documentOptions:source.options.documentOptions,deliveryPolicy:{publicStatus:()=>({deliveryMode:"preview_only"}),assertRecipient(){throw new Error("no send")}}});
   const enquiry=await lifecycle.prepareSupplierEnquiry("project-a1",{estimateId:"estimate-a1",recipient:"factory@example.test",subject:"TEST supplier enquiry",bodyText:"Please review the selected Project drawing.",documentIds:["document-safe"],createdBy:"staff-1"});
   assert.equal(enquiry.status,"draft");assert.deepEqual(enquiry.documents.map(item=>item.id),["document-safe"]);assert.equal((await source.db.get("SELECT COUNT(*) count FROM supplier_enquiry_drafts WHERE project_id='project-a1'")).count,1);
   const linked=await lifecycle.linkManufacturerResponse("project-a1",{estimateId:"estimate-a1",supplierEnquiryId:enquiry.id,communicationMessageId:enquiry.communicationMessageId,canonicalDocumentId:"document-safe",createdBy:"staff-1"});
@@ -234,6 +278,7 @@ test("HTTP boundary is fail-closed by default and requires authentication plus C
   assert.equal((await fetch(`${enabledBase}/api/client-portal/external/projects/project-a1`)).status,401);
   const invitation=await source.service.createInvitation({clientId:"client-a",projectId:"project-a1",email:"a@example.test",createdBy:"staff-1"});
   const acceptedResponse=await fetch(`${enabledBase}/api/client-portal/external/invitations/accept`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:invitation.token,identityAssertion:{subject:"http-subject",email:"a@example.test"}})});assert.equal(acceptedResponse.status,200);const accepted=await acceptedResponse.json(),cookie=acceptedResponse.headers.get("set-cookie").split(";")[0];assert.equal(acceptedResponse.headers.get("set-cookie").includes("HttpOnly"),true);assert.equal(acceptedResponse.headers.get("set-cookie").includes("Secure"),true);assert.equal(acceptedResponse.headers.get("set-cookie").includes("SameSite=Strict"),true);
+  const restored=await fetch(`${enabledBase}/api/client-portal/external/session`,{headers:{Cookie:cookie}});assert.equal(restored.status,200);const restoredBody=await restored.json();assert.deepEqual(restoredBody.session.projects.map(item=>item.id),["project-a1"]);assert.equal(JSON.stringify(restoredBody).includes(accepted.csrfToken),false);
   const badCsrf=await fetch(`${enabledBase}/api/client-portal/external/logout`,{method:"POST",headers:{Cookie:cookie,"X-Portal-CSRF":"wrong"}});assert.equal(badCsrf.status,403);
   const projectResponse=await fetch(`${enabledBase}/api/client-portal/external/projects/project-a1`,{headers:{Cookie:cookie}});assert.equal(projectResponse.status,200);assert.equal((await projectResponse.json()).project.id,"project-a1");
   const logout=await fetch(`${enabledBase}/api/client-portal/external/logout`,{method:"POST",headers:{Cookie:cookie,"X-Portal-CSRF":accepted.csrfToken}});assert.equal(logout.status,200);

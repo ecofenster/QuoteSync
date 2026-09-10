@@ -324,6 +324,8 @@ export async function initializePortalSecuritySchema(db) {
   if (!invitationColumns.some((column) => column.name === "access_role")) {
     await db.exec("ALTER TABLE portal_invitations ADD COLUMN access_role TEXT NOT NULL DEFAULT 'reviewer' CHECK(access_role IN ('viewer','reviewer','delegate'))");
   }
+  const reviewColumns = await db.all("PRAGMA table_info('portal_review_submissions')");
+  if (!reviewColumns.some((column) => column.name === "general_response")) await db.exec("ALTER TABLE portal_review_submissions ADD COLUMN general_response TEXT NOT NULL DEFAULT 'comment_only' CHECK(general_response IN ('comment_only','amendment_requested'))");
   for (const statement of indexes) await db.exec(statement);
   for (const statement of immutableTriggers) await db.exec(statement);
   await protectEstimateCostingTables(db);

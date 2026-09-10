@@ -18,10 +18,15 @@ export function resolveMailboxCapabilities(workspaceStatus) {
   return MUTATING_MAILBOX_CAPABILITIES.map((id) => ({ id, available: canModify }));
 }
 
-const decodeAttachment = (attachment, attachmentRoot) => {
+const decodeAttachment = async (attachment, attachmentRoot, workspace) => {
   if (attachment.bytes) return Promise.resolve({ ...attachment, bytes: Buffer.from(attachment.bytes) });
   if (attachment.contentBase64) return Promise.resolve({ ...attachment, bytes: Buffer.from(attachment.contentBase64, "base64") });
   if (attachment.storageKey) return readFile(resolveManagedPath(attachment.storageKey, attachmentRoot)).then((bytes) => ({ ...attachment, bytes }));
+  if (attachment.driveFileId) {
+    const response = await workspace.googleFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(attachment.driveFileId)}?alt=media&supportsAllDrives=true`);
+    if (!response.ok) throw Object.assign(new Error(`Attachment ${attachment.fileName || "file"} could not be read from connected storage.`), { status: response.status >= 500 ? 502 : response.status, code: "provider_attachment_unavailable" });
+    return { ...attachment, bytes: Buffer.from(await response.arrayBuffer()) };
+  }
   throw Object.assign(new Error(`Attachment ${attachment.fileName || "file"} has no content.`), { status: 400 });
 };
 
@@ -321,7 +326,7 @@ export function createCommunicationsService(db, options = {}) {
   async function createDraft(input) {
     guardTestRecipients(input);
     const status = await requireGmailCapability();
-    const attachments = await Promise.all((input.attachments || []).map((item) => decodeAttachment(item, attachmentRoot)));
+    const attachments = await Promise.all((input.attachments || []).map((item) => decodeAttachment(item, attachmentRoot, workspace)));
     const localId = String(input.id || randomUUID()), provider = await gmail.createDraft({ ...input, attachments });
     const saved = await repository.save({ ...input, id: localId, provider: "google_workspace", providerMessageId: provider.providerMessageId, threadId: provider.threadId, mailboxId: "me", direction: "outbound", folder: "drafts", status: "draft", attachments: attachments.map(({ bytes, ...item }) => ({ ...item, sizeBytes: item.sizeBytes ?? bytes.length })) });
     await bumpProjection(String(status.account?.id || status.account?.email || "me"), { lastReconciledAt: new Date().toISOString(), error: null });
@@ -331,7 +336,7 @@ export function createCommunicationsService(db, options = {}) {
   async function sendMessage(input) {
     guardTestRecipients(input);
     const status = await requireGmailCapability();
-    const attachments = await Promise.all((input.attachments || []).map((item) => decodeAttachment(item, attachmentRoot))), id = String(input.id || randomUUID());
+    const attachments = await Promise.all((input.attachments || []).map((item) => decodeAttachment(item, attachmentRoot, workspace))), id = String(input.id || randomUUID());
     await repository.save({ ...input, id, provider: "google_workspace", mailboxId: "me", direction: "outbound", folder: "sent", status: "sending", attachments: attachments.map(({ bytes, ...item }) => ({ ...item, sizeBytes: item.sizeBytes ?? bytes.length })) });
     try {
       const sent = await gmail.send({ ...input, attachments });

@@ -34,7 +34,7 @@ test("status rendering uses accessible text as well as colour", async () => {
 });
 
 test("chronology remains ordered and displays the current checkpoint", () => {
-  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 129 }, (_, index) => index + 1));
+  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 130 }, (_, index) => index + 1));
   assert.equal([...ROADMAP_CHRONOLOGY].reverse().find((entry) => entry.checkpointSha)?.checkpointSha, ROADMAP_CHECKPOINT_SHA);
   assert.equal(ROADMAP_CHRONOLOGY.find((entry) => entry.title === "Browser automation process-lifecycle hardening")?.sequence, 75);
   assert.equal(ROADMAP_CHECKPOINT_SHA, "5dc75f996a52a213e6bb10121b730a401f4f2df8");
@@ -257,7 +257,7 @@ test("roadmap is static and has no database or production Client mutation depend
 
 test("end-to-end quotation programme is linked without duplicate canonical systems", () => {
   const serialized = JSON.stringify(all);
-  for (const phrase of ["Alternative position customer offers", "Installation Materials Included", "Installation Included", "Enquiry → Client → Project → Estimate → Order", "Gmail / Google Workspace", "Microsoft 365 / Outlook", "Google Drive API", "Contextual Next Action", "Automatic 3-day issued quotation Follow Up", "Customer Portal", "electronic acceptance", "Supplier Order Prepared/Sent", "milestone", "canonical project/site pins"]) assert.match(serialized, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+  for (const phrase of ["Alternative position customer offers", "Installation Materials Included", "Installation Included", "Enquiry → Client → Project → Estimate → Order", "Gmail / Google Workspace", "Microsoft 365 / Outlook", "Google Drive API", "Contextual Next Action", "Automatic 3-day issued Estimate Follow Up", "Customer Portal", "electronic acceptance", "Supplier Order Prepared/Sent", "milestone", "canonical project/site pins"]) assert.match(serialized, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
   assert.equal(all.filter((item) => item.id === "workflow-orchestration").length, 1);
   assert.equal(all.filter((item) => item.id === "customer-portal").length, 1);
   assert.match(serialized, /leadSource/);

@@ -1,4 +1,4 @@
-import { apiFetch } from "../api/apiClient";
+import { apiFetch, apiUrl, extractApiErrorMessage } from "../api/apiClient";
 import type { CustomerQuotationProjection } from "../../features/customerQuotation/customerQuotationProjection";
 import type { CommunicationMessageView } from "../communications/communicationsApi";
 
@@ -10,4 +10,5 @@ export const quotationWorkflowApi={
   send:(id:string,input:{recipient:string;subject:string;bodyHtml:string})=>apiFetch(`/api/quotation-workflow/issued/${encodeURIComponent(id)}/send`,{method:"POST",headers:json,body:JSON.stringify(input)}) as Promise<IssuedQuotationView>,
   get:(id:string)=>apiFetch(`/api/quotation-workflow/issued/${encodeURIComponent(id)}`) as Promise<IssuedQuotationView>,
   state:(estimateId:string)=>apiFetch(`/api/quotation-workflow/estimates/${encodeURIComponent(estimateId)}/state`) as Promise<EstimateWorkflowState>,
+  downloadPreview:async(projection:CustomerQuotationProjection)=>{const response=await fetch(apiUrl("/api/quotation-workflow/preview-document"),{method:"POST",headers:json,body:JSON.stringify({projection})});if(!response.ok)throw new Error(extractApiErrorMessage(response.status,await response.text()));const blob=await response.blob(),url=URL.createObjectURL(blob),anchor=document.createElement("a");anchor.href=url;anchor.download=`${projection.estimateReference}-Estimate.pdf`;document.body.append(anchor);anchor.click();anchor.remove();window.setTimeout(()=>URL.revokeObjectURL(url),1000);return{sizeBytes:blob.size};},
 };

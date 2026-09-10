@@ -5007,7 +5007,7 @@ return (
               <EmailWorkspace onOpenIntegrations={()=>{setAdminInitialSection("integrations");setTopShellPage("admin");setActiveTopShellNavKey("admin")}} onOpenFollowUps={()=>selectMenu("follow_ups")} />
             )}
 
-            {menu === "client_portal" && view === "customers" && <ClientPortalStaffWorkspace clients={clients} initialClientId={portalContext?.clientId??null} initialProjectId={portalContext?.projectId??null} onContextConsumed={()=>setPortalContext(null)} />}
+            {menu === "client_portal" && view === "customers" && <ClientPortalStaffWorkspace clients={clients} initialClientId={portalContext?.clientId??null} initialProjectId={portalContext?.projectId??null} onContextConsumed={()=>setPortalContext(null)} onOpenEstimate={(clientId,estimateId)=>openEstimateDefaults(clientId as Models.ClientId,estimateId as Models.EstimateId)} />}
 
             {menu === "enquiries" && view === "customers" && (
               <EnquiryWorkspace clients={clients} onCommercialIdentityChanged={refreshClientsFromApi} />

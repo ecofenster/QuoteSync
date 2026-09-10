@@ -80,6 +80,22 @@ test("provider attachment refresh replaces rotating provider IDs without accumul
   assert.deepEqual(rows,[{provider_attachment_id:"rotating-2"}]);
 });
 
+test("outbound Communications resolves canonical Drive attachment bytes only at governed send time",async t=>{
+  const db=await fixture(t),downloaded=[];
+  const workspace={
+    async status(){return{connected:true,state:"connected",account:{id:"account-1"},scopes:[],capabilities:{gmail:{available:true}}}},
+    async googleFetch(url){downloaded.push(String(url));return new Response(Buffer.from("source-backed-project-file"),{status:200,headers:{"Content-Type":"application/pdf"}})},
+  };
+  let sentAttachment=null;
+  const gmail={async send(input){sentAttachment=input.attachments[0];return{providerMessageId:"sent-1",threadId:"sent-thread-1"}}};
+  const service=createCommunicationsService(db,{workspace,gmail});
+  const sent=await service.sendMessage({id:"drive-send",to:["factory@example.test"],cc:[],bcc:[],subject:"Reviewed Project evidence",bodyText:"Please review.",bodyHtml:"<p>Please review.</p>",links:[],attachments:[{id:"drive-attachment",fileName:"drawing.pdf",mediaType:"application/pdf",sizeBytes:26,driveFileId:"drive-file-1"}]});
+  assert.equal(sent.status,"sent");
+  assert.equal(downloaded.length,1);assert.match(downloaded[0],/drive-file-1\?alt=media/);
+  assert.equal(sentAttachment.bytes.toString(),"source-backed-project-file");
+  assert.equal((await db.get("SELECT drive_file_id FROM communication_attachments WHERE communication_message_id='drive-send'")).drive_file_id,"drive-file-1");
+});
+
 test("Gmail history adapter projects changed threads and deletion evidence across pages",async()=>{
   const urls=[];const responses=[{historyId:"11",nextPageToken:"next",history:[{messagesAdded:[{message:{id:"m1",threadId:"t1"}}],labelsRemoved:[{message:{id:"m2",threadId:"t2"}}]}]},{historyId:"12",history:[{messagesDeleted:[{message:{id:"m3",threadId:"t3"}}]}]}];
   const provider=createGmailProvider({async googleFetch(url){urls.push(String(url));return new Response(JSON.stringify(responses.shift()),{status:200,headers:{"Content-Type":"application/json"}})}});

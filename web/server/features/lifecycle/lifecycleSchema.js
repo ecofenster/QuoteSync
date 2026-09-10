@@ -29,6 +29,11 @@ const statements = [
     FOREIGN KEY(estimate_id) REFERENCES estimates(id) ON DELETE RESTRICT,
     FOREIGN KEY(communication_message_id) REFERENCES communication_messages(id) ON DELETE RESTRICT
   )`,
+  `CREATE TABLE IF NOT EXISTS supplier_revision_documents (
+    id TEXT PRIMARY KEY,supplier_revision_request_id TEXT NOT NULL UNIQUE,file_name TEXT NOT NULL,media_type TEXT NOT NULL,
+    storage_key TEXT NOT NULL,size_bytes INTEGER NOT NULL,sha256 TEXT NOT NULL,snapshot_sha256 TEXT NOT NULL,snapshot_json TEXT NOT NULL,created_at TEXT NOT NULL,
+    FOREIGN KEY(supplier_revision_request_id) REFERENCES supplier_revision_requests(id) ON DELETE RESTRICT
+  )`,
   `CREATE TABLE IF NOT EXISTS manufacturer_response_links (
     id TEXT PRIMARY KEY,project_id TEXT NOT NULL,estimate_id TEXT,supplier_enquiry_id TEXT,communication_message_id TEXT NOT NULL,canonical_document_id TEXT,
     status TEXT NOT NULL DEFAULT 'ready_for_import' CHECK(status IN ('ready_for_import','imported','review_required')),created_by TEXT NOT NULL,created_at TEXT NOT NULL,
@@ -82,13 +87,40 @@ const statements = [
     id TEXT PRIMARY KEY,signoff_id TEXT NOT NULL,estimate_position_id TEXT NOT NULL,approved INTEGER NOT NULL CHECK(approved IN (0,1)),created_at TEXT NOT NULL,
     UNIQUE(signoff_id,estimate_position_id),FOREIGN KEY(signoff_id) REFERENCES factory_confirmation_signoffs(id) ON DELETE RESTRICT
   )`,
+  `CREATE TABLE IF NOT EXISTS factory_confirmation_signed_pdf_reviews (
+    id TEXT PRIMARY KEY,factory_confirmation_release_id TEXT NOT NULL,signed_pdf_document_id TEXT NOT NULL,
+    reviewed_by TEXT NOT NULL,reviewed_at TEXT NOT NULL,overall_approved INTEGER NOT NULL CHECK(overall_approved IN (0,1)),
+    position_ids_json TEXT NOT NULL,UNIQUE(factory_confirmation_release_id,signed_pdf_document_id),
+    FOREIGN KEY(factory_confirmation_release_id) REFERENCES factory_confirmation_releases(id) ON DELETE RESTRICT,
+    FOREIGN KEY(signed_pdf_document_id) REFERENCES canonical_documents(id) ON DELETE RESTRICT
+  )`,
+  `CREATE TABLE IF NOT EXISTS customer_lifecycle_documents (
+    id TEXT PRIMARY KEY,document_kind TEXT NOT NULL CHECK(document_kind IN ('order','final_confirmation')),
+    owner_id TEXT NOT NULL,client_id TEXT NOT NULL,project_id TEXT NOT NULL,order_id TEXT NOT NULL,revision TEXT NOT NULL,
+    file_name TEXT NOT NULL,media_type TEXT NOT NULL,storage_key TEXT NOT NULL,size_bytes INTEGER NOT NULL,sha256 TEXT NOT NULL,
+    source_estimate_document_id TEXT NOT NULL,projection_sha256 TEXT NOT NULL,projection_json TEXT NOT NULL,context_json TEXT NOT NULL,created_at TEXT NOT NULL,
+    UNIQUE(document_kind,owner_id,revision),
+    FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE RESTRICT,
+    FOREIGN KEY(source_estimate_document_id) REFERENCES customer_quotation_documents(id) ON DELETE RESTRICT
+  )`,
 ];
 
+async function ensureColumn(db, table, name, definition) {
+  const columns = await db.all(`PRAGMA table_info("${table}")`);
+  if (!columns.some((column) => column.name === name)) await db.exec(`ALTER TABLE "${table}" ADD COLUMN "${name}" ${definition}`);
+}
+
 const immutable = [
-  'enquiry_email_intakes','supplier_enquiry_drafts','manufacturer_response_links','supplier_revision_requests','revision_change_checks','order_staff_approvals','factory_order_requests','factory_confirmations','factory_confirmation_checks','factory_confirmation_releases','factory_confirmation_signoffs','factory_confirmation_position_approvals',
+  'enquiry_email_intakes','supplier_enquiry_drafts','manufacturer_response_links','supplier_revision_requests','supplier_revision_documents','revision_change_checks','order_staff_approvals','factory_order_requests','factory_confirmations','factory_confirmation_checks','factory_confirmation_releases','factory_confirmation_signoffs','factory_confirmation_position_approvals','factory_confirmation_signed_pdf_reviews','customer_lifecycle_documents',
 ];
 
 export async function initializeLifecycleSchema(db) {
   for (const statement of statements) await db.exec(statement);
+  await ensureColumn(db, 'supplier_revision_requests', 'body_text', "TEXT NOT NULL DEFAULT ''");
+  await ensureColumn(db, 'supplier_revision_requests', 'returned_document_id', 'TEXT');
+  await ensureColumn(db, 'supplier_revision_requests', 'returned_revision', 'TEXT');
+  await ensureColumn(db, 'supplier_revision_requests', 'returned_source_kind', "TEXT NOT NULL DEFAULT 'canonical_document' CHECK(returned_source_kind IN ('canonical_document','supplier_quote_attachment'))");
+  await ensureColumn(db, 'supplier_revision_requests', 'verified_at', 'TEXT');
+  await ensureColumn(db, 'revision_change_checks', 'change_kind', "TEXT NOT NULL DEFAULT 'requested' CHECK(change_kind IN ('requested','unrelated_material_change'))");
   for (const table of immutable) await db.exec(`CREATE TRIGGER IF NOT EXISTS trg_${table}_delete_evidence BEFORE DELETE ON ${table} BEGIN SELECT RAISE(ABORT,'Lifecycle evidence must be superseded, not deleted'); END`);
 }

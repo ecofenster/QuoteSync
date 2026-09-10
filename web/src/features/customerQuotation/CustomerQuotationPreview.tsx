@@ -215,6 +215,7 @@ export default function CustomerQuotationPreview({
     catch(reason){setIssueError(reason instanceof Error?reason.message:"The provider did not send the quotation.");try{setIssuePreparation(await quotationWorkflowApi.get(issuePreparation.id))}catch{/* retain current preparation */}onWorkflowChanged?.()}
     finally{setIssueBusy(false)}
   };
+  const downloadProductionPdf=async()=>{if(!projection)return;setIssueBusy(true);setIssueError("");try{await quotationWorkflowApi.downloadPreview(projection)}catch(reason){setIssueError(reason instanceof Error?reason.message:"Estimate PDF could not be generated.")}finally{setIssueBusy(false)}};
   const summary = projection ? (
     <section className="customer-quotation-page customer-quotation-page--summary">
       <PageHeader projection={projection} />
@@ -339,9 +340,9 @@ export default function CustomerQuotationPreview({
             <button
               className="ui-button ui-button--primary"
               disabled={!projection}
-              onClick={() => window.print()}
+              onClick={() => void downloadProductionPdf()}
             >
-              Print / Save PDF
+              {issueBusy ? "Preparing PDF…" : "Download PDF"}
             </button>
           </div>
         </div>

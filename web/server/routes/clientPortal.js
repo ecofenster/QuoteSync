@@ -1,6 +1,8 @@
 import express from "express";
 import { createPortalSecurityService, PORTAL_SESSION_COOKIE } from "../features/clientPortal/portalSecurityService.js";
 import { CURRENT_APP_USER } from "../currentUser.js";
+import { createCustomerQuotationDocumentService } from "../features/customerQuotations/customerQuotationDocumentService.js";
+import { createCustomerLifecycleDocumentService } from "../features/lifecycle/customerLifecycleDocumentService.js";
 
 function cookieValue(header, name) {
   const prefix = `${name}=`;
@@ -65,9 +67,24 @@ export function createClientPortalRouter({ databasePromise, externalAccessEnable
       return res.json({ success: true });
     } catch (error) { return fail(res, error); }
   });
+  router.get("/external/session", async (req, res) => { try { return res.json({ session: await (await service()).externalSessionContext(req.portalSession) }); } catch (error) { return fail(res, error); } });
   router.get("/external/projects/:projectId", async (req, res) => { try { return res.json(await (await service()).getProjectPortal(req.portalSession, req.params.projectId)); } catch (error) { return fail(res, error); } });
   router.get("/external/projects/:projectId/estimates/:releaseId", async (req, res) => { try { return res.json(await (await service()).getReleasedEstimate(req.portalSession, req.params.projectId, req.params.releaseId)); } catch (error) { return fail(res, error); } });
   router.get("/external/projects/:projectId/documents/:documentId", async (req, res) => { try { return res.json(await (await service()).getReleasedDocument(req.portalSession, req.params.projectId, req.params.documentId)); } catch (error) { return fail(res, error); } });
+  router.get("/external/projects/:projectId/documents/:documentId/content", async (req, res) => {
+    try {
+      await (await service()).getReleasedDocument(req.portalSession, req.params.projectId, req.params.documentId);
+      const db = await databasePromise;
+      const lifecycle = await createCustomerLifecycleDocumentService(db, serviceOptions.documentOptions).read(req.params.documentId);
+      const estimate = lifecycle ? null : await createCustomerQuotationDocumentService(db, serviceOptions.documentOptions).read(req.params.documentId);
+      const file = lifecycle || estimate;
+      if (!file) return res.status(409).json({ error: "This released provider document is retained as canonical evidence but has no application-managed download copy.", code: "portal_document_binary_provider_managed" });
+      res.setHeader("Content-Type", file.document.mediaType);
+      res.setHeader("Content-Disposition", `inline; filename=\"${file.document.fileName.replaceAll('"', '')}\"`);
+      res.setHeader("Content-Length", String(file.bytes.length));
+      return res.send(file.bytes);
+    } catch (error) { return fail(res, error); }
+  });
   router.post("/external/projects/:projectId/estimates/:releaseId/review-started", async (req, res) => { try { return res.status(201).json(await (await service()).startReview(req.portalSession, { projectId: req.params.projectId, estimateReleaseId: req.params.releaseId })); } catch (error) { return fail(res, error); } });
   router.post("/external/projects/:projectId/estimates/:releaseId/review", async (req, res) => { try { return res.status(201).json(await (await service()).submitReview(req.portalSession, { ...req.body, projectId: req.params.projectId, estimateReleaseId: req.params.releaseId, idempotencyKey: req.get("Idempotency-Key") })); } catch (error) { return fail(res, error); } });
   router.post("/external/projects/:projectId/estimates/:releaseId/decline", async (req, res) => { try { return res.status(201).json(await (await service()).declineEstimate(req.portalSession, { ...req.body, projectId: req.params.projectId, estimateReleaseId: req.params.releaseId, idempotencyKey: req.get("Idempotency-Key") })); } catch (error) { return fail(res, error); } });

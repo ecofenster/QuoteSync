@@ -336,12 +336,13 @@ test("manufacturer visual URLs use the API origin without altering external asse
   assert.equal(resolveManufacturerVisualAssetUrl("https://cdn.example.test/image.png"), "https://cdn.example.test/image.png");
 });
 
-test("the canonical entry point and A4 print path are present and misleading legacy outputs are not exposed", async () => {
-  const [workspace, headerRows, viewSwitch, preview, css, pickerActions, collectionActions, collectionView, costing] = await Promise.all([
+test("the canonical entry point and unified server PDF path are present and misleading legacy outputs are not exposed", async () => {
+  const [workspace, headerRows, viewSwitch, preview, renderer, css, pickerActions, collectionActions, collectionView, costing] = await Promise.all([
     readFile("src/features/estimateCommercial/EstimateCommercialWorkspace.tsx", "utf8"),
     readFile("src/features/estimateCommercial/EstimateCommercialHeaderRows.tsx", "utf8"),
     readFile("src/features/estimateCommercial/EstimateCommercialViewSwitch.tsx", "utf8"),
     readFile("src/features/customerQuotation/CustomerQuotationPreview.tsx", "utf8"),
+    readFile("server/features/customerQuotations/customerLifecycleDocumentRenderer.js", "utf8"),
     readFile("src/features/customerQuotation/customerQuotation.css", "utf8"),
     readFile("src/features/estimatePicker/components/EstimateActionsBar.tsx", "utf8"),
     readFile("src/features/estimateCollection/EstimateCollectionActions.tsx", "utf8"),
@@ -355,8 +356,11 @@ test("the canonical entry point and A4 print path are present and misleading leg
   assert.match(collectionView, /<span>Email<\/span><span>Follow Up<\/span><span>Status<\/span><span>Copy<\/span><span>Delete<\/span><span>Open<\/span>/);
   assert.doesNotMatch(collectionView, /<th>Actions<\/th>/);
   assert.match(collectionView, /aria-label={`Open \$\{item\.estimateRef\}`}/);
-  assert.match(preview, /window\.print\(\)/);
-  assert.match(preview, /Print \/ Save PDF/);
+  assert.doesNotMatch(preview, /window\.print\(\)/);
+  assert.match(preview, /quotationWorkflowApi\.downloadPreview\(projection\)/);
+  assert.match(preview, /Download PDF/);
+  assert.match(renderer, /pageSize:\s*["']A4["']/);
+  assert.match(renderer, /"Final Confirmation"/);
   assert.match(preview, /Technical Schedule/);
   assert.match(preview, /Customer Estimate/);
   assert.match(preview, /Products in Your Estimate/);
