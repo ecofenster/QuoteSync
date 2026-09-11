@@ -274,6 +274,23 @@ test("reviewed Gmail attachments file once into the qualified Project Drawings (
   assert.equal(stored.document_type,"client_drawing");assert.equal(stored.enquiry_id,enquiry.id);assert.equal(stored.project_id,qualified.project.id);assert.equal(stored.storage_status,"stored");assert.match(stored.folder_path,/Drawings \(Client\)$/);
 });
 
+test("Email Enquiry intake retry resumes a partially created stable record without allocating a duplicate", async (t) => {
+  const db=await fixture(t);await initializeLifecycleSchema(db);
+  const workspace={async status(){return{connected:true,enquiriesRootFolderId:null,capabilities:{gmail:{available:true},drive:{available:true}},account:{id:"account"}}}};
+  const message={id:"partial-message-local",provider:"google_workspace",providerMessageId:"partial-provider-message",threadId:"partial-thread",mailboxId:"me",direction:"inbound",folder:"inbox",status:"received",from:["New Prospect <new.prospect@example.test>"],to:["sales@example.test"],cc:[],bcc:[],subject:"New garden room",bodyHtml:"",bodyText:"Please provide a quotation",links:[],attachments:[]};
+  const service=createCommunicationsService(db,{workspace,gmail:{async readMessage(){return message}},driveServiceOptions:{workspace,provider:{}},environment:{}});
+  const draft=await service.enquiryIntake(message.providerMessageId);assert.equal(draft.likelyMatches.length,0);
+  await db.exec("CREATE TRIGGER fail_email_intake_link BEFORE UPDATE OF links_json ON communication_messages BEGIN SELECT RAISE(ABORT, 'disposable link failure'); END");
+  let partial;
+  await assert.rejects(()=>service.createEnquiryFromMessage(message.providerMessageId,{displayName:draft.displayName,projectName:draft.projectName,brief:draft.brief,selectedAttachmentIds:[],existingRecordsReviewed:true,createNewConfirmed:true}),error=>{partial=error;return error.code==="enquiry_intake_partial_success"});
+  assert.match(partial.message,/will not create another one/i);assert.equal((await db.get("SELECT COUNT(*) count FROM enquiries")).count,1);
+  const first=await db.get("SELECT id,enquiry_ref FROM enquiries");
+  await db.exec("DROP TRIGGER fail_email_intake_link");
+  const resumed=await service.createEnquiryFromMessage(message.providerMessageId,{displayName:draft.displayName,projectName:draft.projectName,brief:draft.brief,selectedAttachmentIds:[],existingRecordsReviewed:true,createNewConfirmed:true});
+  assert.equal(resumed.enquiryId,first.id);assert.equal(resumed.enquiryRef,first.enquiry_ref);assert.equal(resumed.resumedIncomplete,true);
+  assert.equal((await db.get("SELECT COUNT(*) count FROM enquiries")).count,1);assert.equal((await db.get("SELECT COUNT(*) count FROM enquiry_email_intakes")).count,1);
+});
+
 test("reviewed existing-Client email filing creates Estimate → Suppliers → named supplier folders and reuses the genuine document", async (t) => {
   const db=await fixture(t,[{id:"client",name:"Disposable Stuart",ref:"EF-CL-928"}]);
   const identity=createCommercialIdentityService(db,{now}),project=await identity.createProject({id:"project",clientId:"client",name:"Disposable Red House",contextYear:2026});

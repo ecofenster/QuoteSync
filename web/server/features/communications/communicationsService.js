@@ -460,17 +460,34 @@ export function createCommunicationsService(db, options = {}) {
     if (!message) throw Object.assign(new Error("The selected message is unavailable."), { status: 404, code: "communication_message_not_found" });
     const existing = await db.get("SELECT i.*,e.enquiry_ref FROM enquiry_email_intakes i JOIN enquiries e ON e.id=i.enquiry_id WHERE i.communication_message_id=?", message.id).catch(() => null);
     const sender = String(message.from?.[0] || ""), email = /<([^>]+)>/.exec(sender)?.[1] || (sender.includes("@") ? sender : ""), displayName = sender.replace(/<[^>]+>/g, "").replace(/^['\"]|['\"]$/g, "").trim();
-    return { existing: existing ? { enquiryId: existing.enquiry_id, enquiryRef: existing.enquiry_ref } : null, communicationMessageId: message.id, providerMessageId, displayName, email: email.trim(), projectName: String(message.subject || "").replace(/^(?:re|fwd?):\s*/i, "").trim(), brief: String(message.bodyText || message.snippet || "").replace(/\s+/g, " ").trim().slice(0, 2400), attachments: (message.attachments || []).filter(item => !item.inline).map(item => ({ id: item.id, fileName: item.fileName, mediaType: item.mediaType, sizeBytes: item.sizeBytes })) };
+    const suggestions = (await findRelationshipSuggestions(db, message)).filter((item) => ["enquiry", "client", "project"].includes(item.kind));
+    const subjectReference = /\b(EF-CL-\d{3})\b\s*:?\s*(.*)$/i.exec(String(message.subject || ""));
+    const likelyMatches = await Promise.all(suggestions.map(async (item) => {
+      let conflict = null;
+      if (item.kind === "client") {
+        const client = await db.get("SELECT client_ref,name,email FROM clients WHERE id=? AND deleted_at IS NULL", item.id);
+        const subjectName = subjectReference?.[2]?.trim();
+        if (client && subjectName && subjectReference?.[1]?.toUpperCase() === String(client.client_ref || "").toUpperCase() && subjectName.localeCompare(String(client.name || ""), undefined, { sensitivity: "base" }) !== 0) conflict = `The email names “${subjectName}”; the canonical Client is “${client.name}”.`;
+        else if (client?.email && email && String(client.email).toLowerCase() === email.trim().toLowerCase() && displayName && displayName.localeCompare(String(client.name || ""), undefined, { sensitivity: "base" }) !== 0) conflict = `This email address belongs to “${client.name}”, while the sender is shown as “${displayName}”.`;
+      }
+      return { kind: item.kind, id: item.id, label: item.label, evidence: item.evidence, conflict };
+    }));
+    return { existing: existing ? { enquiryId: existing.enquiry_id, enquiryRef: existing.enquiry_ref } : null, communicationMessageId: message.id, providerMessageId, displayName, email: email.trim(), projectName: String(message.subject || "").replace(/^(?:re|fwd?):\s*/i, "").trim(), brief: String(message.bodyText || message.snippet || "").replace(/\s+/g, " ").trim().slice(0, 2400), likelyMatches, attachments: (message.attachments || []).filter(item => !item.inline).map(item => ({ id: item.id, fileName: item.fileName, mediaType: item.mediaType, sizeBytes: item.sizeBytes })) };
   }
 
   async function createEnquiryFromMessage(providerMessageId, input = {}) {
     const draft = await enquiryIntake(providerMessageId);
     if (draft.existing) return { ...draft.existing, idempotentReplay: true, storageStatus: "retained" };
+    if (draft.likelyMatches.length && (input.existingRecordsReviewed !== true || input.createNewConfirmed !== true)) throw Object.assign(new Error("Review the likely existing records before creating a separate Enquiry."), { status: 409, code: "enquiry_existing_record_review_required", details: { likelyMatches: draft.likelyMatches } });
     const selectedIds = new Set((input.selectedAttachmentIds || []).map(String)), attachments = draft.attachments.filter(item => selectedIds.has(item.id));
     if (selectedIds.size !== attachments.length) throw Object.assign(new Error("Every selected attachment must belong to the reviewed message."), { status: 422, code: "enquiry_attachment_invalid" });
     const drive = createCommercialDriveService(db, options.driveServiceOptions);
     const identities = createCommercialIdentityService(db, { driveTransitions: drive });
-    const enquiry = await identities.createEnquiry({ source: "gmail", leadSource: "email", displayName: input.displayName || draft.displayName, companyName: input.companyName, email: input.email || draft.email, telephone: input.telephone, projectName: input.projectName || draft.projectName, siteAddress: input.siteAddress, notes: input.brief || draft.brief });
+    const stableEnquiryId = `email-enquiry-${createHash("sha256").update(`google_workspace:${providerMessageId}`).digest("hex").slice(0, 24)}`;
+    const priorEnquiry = await db.get("SELECT id,enquiry_ref,drive_transition_status,deleted_at FROM enquiries WHERE id=?", stableEnquiryId);
+    if (priorEnquiry?.deleted_at) throw Object.assign(new Error("This email's earlier Enquiry is no longer active. Restore or review that record before retrying; QuoteSuite will not create a duplicate."), { status: 409, code: "enquiry_intake_prior_record_inactive", details: { enquiryId: priorEnquiry.id, enquiryRef: priorEnquiry.enquiry_ref } });
+    const resumedIncomplete = Boolean(priorEnquiry);
+    const enquiry = priorEnquiry ? { id: priorEnquiry.id, enquiryRef: priorEnquiry.enquiry_ref, driveTransitionStatus: priorEnquiry.drive_transition_status } : await identities.createEnquiry({ id: stableEnquiryId, source: "gmail", leadSource: "email", displayName: input.displayName || draft.displayName, companyName: input.companyName, email: input.email || draft.email, telephone: input.telephone, projectName: input.projectName || draft.projectName, siteAddress: input.siteAddress, notes: input.brief || draft.brief });
     const intakeId = randomUUID(), at = new Date().toISOString();
     await db.exec("BEGIN IMMEDIATE");
     try {
@@ -478,8 +495,11 @@ export function createCommunicationsService(db, options = {}) {
       for (const attachment of attachments) await db.run("INSERT INTO enquiry_intake_attachments(id,enquiry_email_intake_id,communication_attachment_id,file_name,storage_status) VALUES(?,?,?,?, 'pending')", randomUUID(), intakeId, attachment.id, attachment.fileName);
       await repository.addLink(draft.communicationMessageId, { kind: "enquiry", id: enquiry.id });
       await db.exec("COMMIT");
-    } catch (error) { await db.exec("ROLLBACK").catch(() => {}); throw error; }
-    return { enquiryId: enquiry.id, enquiryRef: enquiry.enquiryRef, idempotentReplay: false, selectedAttachmentCount: attachments.length, storageStatus: attachments.length ? "pending_reviewed_storage" : "no_attachments_selected", driveStatus: enquiry.driveTransitionStatus };
+    } catch (cause) {
+      await db.exec("ROLLBACK").catch(() => {});
+      throw Object.assign(new Error(`${enquiry.enquiryRef} was created, but its Email relationship is incomplete. Retry safely to resume this Enquiry; QuoteSuite will not create another one.`), { status: 409, code: "enquiry_intake_partial_success", cause, details: { enquiryId: enquiry.id, enquiryRef: enquiry.enquiryRef } });
+    }
+    return { enquiryId: enquiry.id, enquiryRef: enquiry.enquiryRef, idempotentReplay: false, resumedIncomplete, selectedAttachmentCount: attachments.length, storageStatus: attachments.length ? "pending_reviewed_storage" : "no_attachments_selected", driveStatus: enquiry.driveTransitionStatus };
   }
 
   return { status: workspace.status, mailbox, listMailbox, syncMailbox, readMessage, readThread, relationshipContext, linkRelationship, unlinkRelationship, assignmentOptions, reviewSupplierDocumentAssignment, assignSupplierDocument, prepareAssignedDocumentImport, changeState, maintainWatch, stopWatch, receiveNotification, command, createDraft, sendMessage, reply, forward, readAttachment, enquiryIntake, createEnquiryFromMessage, repository };

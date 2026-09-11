@@ -38,6 +38,7 @@ type AssignmentFeedback = {
     conflict?: { message?: string; evidence?: string; recommendedDecision?: string };
   };
 };
+export type EnquiryIntakeFeedback = { state:"creating"|"linking"|"failed";message:string };
 type Composer = {
   mode: ComposeMode;
   providerMessageId?: string;
@@ -57,12 +58,19 @@ type ContextMenu = {
 type EmailLayoutMode = "list" | "right" | "bottom";
 type EmailReadingMode = "message" | "conversation";
 type MailboxSyncState = "idle" | "syncing" | "synced" | "failed" | "offline";
-type EnquiryIntake = {
+export type EnquiryIntake = {
   providerMessageId: string;
   displayName: string;
   email: string;
   projectName: string;
   brief: string;
+  likelyMatches: Array<{
+    kind: "enquiry" | "client" | "project";
+    id: string;
+    label: string;
+    evidence: string;
+    conflict: string | null;
+  }>;
   attachments: Array<{
     id: string;
     fileName: string;
@@ -816,21 +824,26 @@ function ConversationReader({
   );
 }
 
-function EnquiryIntakeDialog({
+export function EnquiryIntakeDialog({
   draft,
   busy,
+  feedback,
   onClose,
   onSubmit,
+  onLinkExisting,
 }: {
   draft: EnquiryIntake;
   busy: boolean;
+  feedback: EnquiryIntakeFeedback | null;
   onClose: () => void;
-  onSubmit: (draft: EnquiryIntake, selected: string[]) => void;
+  onSubmit: (draft: EnquiryIntake, selected: string[], createNewConfirmed: boolean) => void;
+  onLinkExisting: (match: EnquiryIntake["likelyMatches"][number]) => void;
 }) {
   const [value, setValue] = useState(draft),
     [selected, setSelected] = useState(
       () => new Set(draft.attachments.map((item) => item.id)),
-    );
+    ),
+    [createNewConfirmed, setCreateNewConfirmed] = useState(false);
   return (
     <div className="ui-modal-backdrop" role="presentation">
       <section
@@ -856,6 +869,18 @@ function EnquiryIntakeDialog({
             Close
           </button>
         </header>
+        {feedback ? <p className={`ui-status${feedback.state === "failed" ? " ui-status--error" : ""}`} role={feedback.state === "failed" ? "alert" : "status"}>{feedback.message}{feedback.state === "failed" ? " Your entries are preserved; review the options and retry safely." : ""}</p> : null}
+        {value.likelyMatches.length ? (
+          <section className="email-enquiry-intake__matches" aria-label="Likely existing records">
+            <h4>Possible existing records</h4>
+            <p>QuoteSuite found supporting evidence. Link the email to the right record, or confirm that this is a separate Enquiry.</p>
+            {value.likelyMatches.map((match) => <article key={`${match.kind}:${match.id}`}>
+              <div><span>{match.kind === "enquiry" ? "Enquiry" : match.kind === "client" ? "Client" : "Project"} · {match.label}</span><small>{match.evidence}</small>{match.conflict ? <small className="ui-status ui-status--error">{match.conflict} Review the difference before continuing.</small> : null}</div>
+              <button type="button" className="ui-button ui-button--ghost" disabled={busy} onClick={() => onLinkExisting(match)}>Link this record</button>
+            </article>)}
+            <label><input type="checkbox" checked={createNewConfirmed} disabled={busy} onChange={(event) => setCreateNewConfirmed(event.currentTarget.checked)} /> Create a separate Enquiry despite these possible matches.</label>
+          </section>
+        ) : <p className="ui-status">No likely existing Enquiry, Client or Project was found from the email address or canonical references.</p>}
         <div className="email-enquiry-intake__grid">
           <label>
             Contact name
@@ -937,9 +962,9 @@ function EnquiryIntakeDialog({
             type="button"
             className="ui-button ui-button--primary"
             disabled={
-              busy || !value.displayName.trim() || !value.projectName.trim()
+              busy || !value.displayName.trim() || !value.projectName.trim() || (value.likelyMatches.length > 0 && !createNewConfirmed)
             }
-            onClick={() => onSubmit(value, [...selected])}
+            onClick={() => onSubmit(value, [...selected], createNewConfirmed)}
           >
             {busy ? "Creating Enquiry…" : "Create Enquiry"}
           </button>
@@ -1368,6 +1393,7 @@ export default function EmailWorkspace({
     [selectedIds, setSelectedIds] = useState<Set<string>>(new Set()),
     [composer, setComposer] = useState<Composer | null>(null),
     [enquiryIntake, setEnquiryIntake] = useState<EnquiryIntake | null>(null),
+    [enquiryFeedback, setEnquiryFeedback] = useState<EnquiryIntakeFeedback | null>(null),
     [assignment, setAssignment] =
       useState<CommunicationAssignmentOptions | null>(null),
     [assignmentResult, setAssignmentResult] =
@@ -1414,7 +1440,8 @@ export default function EmailWorkspace({
     queryRef = useRef(query),
     backgroundSyncing = useRef(false),
     projectionVersion = useRef(0),
-    assignmentSubmitting = useRef(false);
+    assignmentSubmitting = useRef(false),
+    enquirySubmitting = useRef(false);
   latestRightSize.current = rightSize;
   latestBottomSize.current = bottomSize;
   queryRef.current = query;
@@ -1647,6 +1674,7 @@ export default function EmailWorkspace({
     setFullReader(compact || layoutMode === "list");
     setBusy(true);
     setError("");
+    setEnquiryFeedback(null);
     setRelationship(null);
     try {
       const exact = message.providerMessageId
@@ -1699,6 +1727,7 @@ export default function EmailWorkspace({
     if (!providerMessageId) return;
     setBusy(true);
     setError("");
+    setEnquiryFeedback(null);
     try {
       const draft = await communicationsApi.enquiryIntake(providerMessageId);
       if (draft.existing) {
@@ -1804,8 +1833,12 @@ export default function EmailWorkspace({
   const submitEnquiryIntake = async (
     draft: EnquiryIntake,
     selectedAttachmentIds: string[],
+    createNewConfirmed: boolean,
   ) => {
+    if (enquirySubmitting.current) return;
+    enquirySubmitting.current = true;
     setBusy(true);
+    setEnquiryFeedback({ state:"creating", message:"Creating Enquiry…" });
     setError("");
     try {
       const result = await communicationsApi.createEnquiry(
@@ -1816,20 +1849,39 @@ export default function EmailWorkspace({
           projectName: draft.projectName,
           brief: draft.brief,
           selectedAttachmentIds,
+          existingRecordsReviewed: true,
+          createNewConfirmed,
         },
       );
       setEnquiryIntake(null);
+      setEnquiryFeedback(null);
       setContextNotice(
-        `${result.enquiryRef} created. ${result.selectedAttachmentCount} reviewed attachment(s) retained for the Client / Project file handoff.`,
+        `${result.enquiryRef} ${result.resumedIncomplete ? "resumed and linked" : "created"}. ${result.selectedAttachmentCount} reviewed attachment(s) retained for the Client / Project file handoff. Next: review the Enquiry and connect it to the right Client and Project.`,
       );
       setRelationship(await communicationsApi.context(draft.providerMessageId));
     } catch (reason) {
-      setError(
-        reason instanceof Error
-          ? reason.message
-          : "Enquiry could not be created.",
-      );
+      setEnquiryFeedback({ state:"failed", message:reason instanceof Error ? reason.message : "Enquiry could not be created." });
     } finally {
+      enquirySubmitting.current = false;
+      setBusy(false);
+    }
+  };
+  const linkEnquiryIntakeExisting = async (draft: EnquiryIntake, match: EnquiryIntake["likelyMatches"][number]) => {
+    if (enquirySubmitting.current) return;
+    enquirySubmitting.current = true;
+    setBusy(true);
+    setEnquiryFeedback({ state:"linking", message:"Linking existing record…" });
+    setError("");
+    try {
+      const next = await communicationsApi.link(draft.providerMessageId, { kind:match.kind, id:match.id });
+      setRelationship(next);
+      setEnquiryIntake(null);
+      setEnquiryFeedback(null);
+      setContextNotice(`Email linked to existing ${match.kind}: ${match.label}. No new Enquiry was created.`);
+    } catch (reason) {
+      setEnquiryFeedback({ state:"failed", message:reason instanceof Error ? reason.message : "The existing record could not be linked." });
+    } finally {
+      enquirySubmitting.current = false;
       setBusy(false);
     }
   };
@@ -2775,10 +2827,12 @@ export default function EmailWorkspace({
         <EnquiryIntakeDialog
           draft={enquiryIntake}
           busy={busy}
-          onClose={() => setEnquiryIntake(null)}
-          onSubmit={(draft, selected) =>
-            void submitEnquiryIntake(draft, selected)
+          feedback={enquiryFeedback}
+          onClose={() => { setEnquiryIntake(null); setEnquiryFeedback(null); }}
+          onSubmit={(draft, selected, createNewConfirmed) =>
+            void submitEnquiryIntake(draft, selected, createNewConfirmed)
           }
+          onLinkExisting={(match) => void linkEnquiryIntakeExisting(enquiryIntake, match)}
         />
       ) : null}
       {assignment ? (

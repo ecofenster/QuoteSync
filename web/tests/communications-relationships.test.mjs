@@ -116,3 +116,16 @@ test("saved communication documents hand off the exact provider file to the sele
   assert.equal(providerReads,1);assert.equal(staged.canonicalDocumentId,"document-1");assert.equal(staged.estimateId,"estimate-1");assert.equal(staged.supplierCode,"ZYLE");assert.equal(staged.fileName,"Zyle quotation.pdf");assert.equal(Buffer.from(staged.bytes).toString(),'%PDF-1.4\nfixture');assert.equal(result.review.documents[0].attachmentId,"attachment-1");
   await assert.rejects(()=>service.prepareAssignedDocumentImport("document-1","other-estimate"),error=>error.code==="canonical_supplier_document_not_found");
 });
+
+test("Email Enquiry intake requires an explicit existing-record decision and can link without creating a duplicate",async t=>{
+  const db=await fixture(t),message={...providerMessage(),subject:"EF-CL-028: Different Client Name",bodyText:"Please quote a new phase."};
+  const workspace={async status(){return{connected:true,capabilities:{gmail:{available:true}}}}};
+  const service=createCommunicationsService(db,{workspace,gmail:{async readMessage(){return message}},environment:{}});
+  const draft=await service.enquiryIntake("provider-message-1");
+  assert.ok(draft.likelyMatches.some(item=>item.kind==="client"&&item.id==="client-1"&&/canonical Client/i.test(item.conflict)));
+  assert.ok(draft.likelyMatches.some(item=>item.kind==="enquiry"&&item.id==="enquiry-1"));
+  await assert.rejects(()=>service.createEnquiryFromMessage("provider-message-1",{displayName:draft.displayName,projectName:draft.projectName,selectedAttachmentIds:[]}),error=>error.code==="enquiry_existing_record_review_required"&&error.details.likelyMatches.length>0);
+  const linked=await service.linkRelationship("provider-message-1",{kind:"client",id:"client-1"});
+  assert.ok(linked.links.some(item=>item.kind==="client"&&item.id==="client-1"));
+  assert.equal((await db.get("SELECT COUNT(*) count FROM enquiries")).count,1);
+});

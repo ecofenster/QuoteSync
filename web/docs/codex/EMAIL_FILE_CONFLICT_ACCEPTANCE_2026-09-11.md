@@ -8,8 +8,8 @@ Disposable browser evidence covers immediate “Saving document…” feedback, 
 
 ## Short user checklist
 
-1. In Email, select the intended individual message and choose **Link existing**.
-2. Confirm Client, Project, working Estimate, Supplier and the exact retained document.
+1. In Email, select the intended individual message. To start intake, choose **Add Enquiry** and review **Possible existing records**. Either **Link this record** (no Enquiry is created) or explicitly confirm a separate Enquiry; then check the progress, result and next action.
+2. To file a supplier return, choose **Link existing** and confirm Client, Project, working Estimate, Supplier and the exact retained document.
 3. Read **File check**. For a same-name supplier return, choose **Save this attachment as a new revision**; for confirmed identical bytes, choose whether to reuse the existing file.
 4. Select **File selected document** once. Confirm progress appears immediately.
 5. Confirm the result names the saved/reused filename and exact destination, then use **Open Files** or **Import Manufacturer Estimate**.

@@ -196,6 +196,12 @@ test("mailbox unread emphasis, assignment feedback and saved-document review han
   assert.doesNotMatch(css,/is-preview-selected \.email-message-row__subject\{font-weight/);
   assert.match(ui,/communicationsApi\.command\(\[exact\.threadId\], "mark_read"\)/);
   assert.match(ui,/message: "Saving document…"/);
+  assert.match(ui,/Possible existing records/);
+  assert.match(ui,/Create a separate Enquiry despite these possible matches/);
+  assert.match(ui,/No new Enquiry was created/);
+  assert.match(ui,/enquirySubmitting\.current/);
+  assert.match(ui,/existingRecordsReviewed: true/);
+  assert.match(ui,/Your entries are preserved/);
   assert.match(ui,/assignmentSubmitting\.current/);
   assert.match(ui,/communication_assignment_partial_success/);
   assert.match(ui,/Retry filing/);
