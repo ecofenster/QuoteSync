@@ -165,11 +165,12 @@ test("Email reuses one conversation reader across List, Right and Bottom preview
 
 test("Email defaults to the exact selected message, remembers optional conversation mode, and keeps Context above the body",async()=>{
   const [ui,css,api]=await Promise.all([readFile("src/features/communications/EmailWorkspace.tsx","utf8"),readFile("src/features/communications/emailWorkspace.css","utf8"),readFile("src/services/communications/communicationsApi.ts","utf8")]);
-  assert.match(ui,/type EmailReadingMode\s*=\s*"message"\s*\|\s*"conversation"/);assert.match(ui,/quotesuite\.email\.reading-mode\.v1/);assert.match(ui,/readPreference\(EMAIL_READING_MODE_KEY,\s*"message"\)/);
+  assert.match(ui,/type EmailReadingMode\s*=\s*"message"\s*\|\s*"conversation"/);assert.match(ui,/quotesuite\.email\.reading-mode\.v1/);assert.match(ui,/readPreference(?:<EmailReadingMode>)?\(\s*EMAIL_READING_MODE_KEY,\s*"message"/);
   assert.match(ui,/const exact\s*=\s*message\.providerMessageId[\s\S]*?communicationsApi\.read\(message\.providerMessageId\)/);assert.match(ui,/selectedMessage\s*\|\|\s*thread/);assert.match(ui,/readingMode\s*===\s*"message"[\s\S]*?<SelectedMessage/);
   assert.ok(ui.indexOf('className="email-context-panel"')<ui.indexOf('<SelectedMessage message={activeMessage}'));
   for(const label of ["Client","Project","Estimate","Supplier","Document","Open Files","Import Manufacturer Estimate"])assert.match(ui,new RegExp(`>\\s*${label}\\s*<`));
   assert.match(api,/assignmentOptions/);assert.match(api,/assignDocument/);assert.match(css,/\.email-message-row\.is-preview-selected\{[^}]*box-shadow:inset 5px/);assert.match(css,/\.email-reader__selected-message/);
+  assert.match(ui,/communicationsApi\.list\([\s\S]*?readingMode/);assert.match(ui,/communicationsApi\.sync\([\s\S]*?readingMode/);assert.match(ui,/inbox\|\|\|\$\{initialReadingMode\}/);assert.match(api,/mode:MailboxListMode="message"/);
 });
 
 test("Email and Files use QuoteSuite typography tokens and normal control hit targets",async()=>{

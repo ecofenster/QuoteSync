@@ -57,6 +57,18 @@ test("mailbox pages project bounded summaries while message detail retains bodie
   assert.equal(detail.attachments.length,120);
 });
 
+test("individual mailbox mode keeps same-thread messages separate while conversation mode groups them",async t=>{
+  const db=await fixture(t),repository=createCommunicationRepository(db),attachment=(id,name)=>({id,fileName:name,mediaType:"application/pdf",sizeBytes:100,providerAttachmentId:`provider-${id}`});
+  await repository.save({...message({providerMessageId:"zyle-word",threadId:"zyle-thread",subject:"EF-CL-028 Word Estimate",bodyText:"Please find the price offer",snippet:"Please find the price offer",sentAt:"2026-09-09T09:00:00.000Z",attachments:[attachment("word","Estimate.docx")]}),id:"zyle-word-local",mailboxId:"me"});
+  await repository.save({...message({providerMessageId:"zyle-pdf",threadId:"zyle-thread",subject:"EF-CL-028 PDF",bodyText:"PDF file attached",snippet:"PDF file attached",sentAt:"2026-09-10T04:39:00.000Z",attachments:[attachment("pdf","Estimate.pdf")]}),id:"zyle-pdf-local",mailboxId:"me"});
+  const first=await repository.listMailbox({folder:"inbox",mode:"message",limit:1});
+  assert.deepEqual(first.messages.map(item=>item.providerMessageId),["zyle-pdf"]);assert.equal(first.nextPageToken,"cache:1");assert.equal(first.messages[0].attachmentCount,1);
+  const second=await repository.listMailbox({folder:"inbox",mode:"message",offset:1,limit:1});
+  assert.deepEqual(second.messages.map(item=>item.providerMessageId),["zyle-word"]);assert.equal(second.nextPageToken,null);assert.equal(second.messages[0].attachmentCount,1);
+  const conversation=await repository.listMailbox({folder:"inbox",mode:"conversation",limit:30});
+  assert.equal(conversation.messages.length,1);assert.equal(conversation.messages[0].providerMessageId,"zyle-pdf");assert.equal(conversation.messages[0].threadCount,2);assert.equal(conversation.messages[0].attachmentCount,2);
+});
+
 test("Unread filters the complete cached mailbox projection and composes with search",async t=>{
   const db=await fixture(t),repository=createCommunicationRepository(db);
   await repository.save({...message({providerMessageId:"unread-1",threadId:"unread-thread",subject:"Ty Clai enquiry",unread:true}),id:"unread-local",mailboxId:"me"});

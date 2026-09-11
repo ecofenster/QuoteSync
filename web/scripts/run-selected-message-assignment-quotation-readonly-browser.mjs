@@ -248,6 +248,21 @@ async function run() {
         ),
       "Right preview unavailable",
     );
+    await waitFor(
+      () =>
+        tab.evaluate(
+          `(()=>{const rows=[...document.querySelectorAll('.email-message-row')].filter(row=>/Viktorija/i.test(row.textContent)&&/EF-CL-028/i.test(row.textContent));return rows.some(row=>/9 Sept? 2026/.test(row.querySelector('time')?.textContent||''))&&rows.some(row=>/10 Sept? 2026/.test(row.querySelector('time')?.textContent||''))})()`,
+        ),
+      "Both EF-CL-028 messages were not independently visible in Inbox",
+    );
+    const inboxRows = await tab.evaluate(
+      `(()=>[...document.querySelectorAll('.email-message-row')].filter(row=>/Viktorija/i.test(row.textContent)&&/EF-CL-028/i.test(row.textContent)).map(row=>({messageId:row.dataset.messageId,threadId:row.dataset.threadId,date:row.querySelector('time')?.textContent.trim(),text:row.textContent.trim()})))()`,
+    );
+    const targetInboxRows = inboxRows.filter((row) =>
+      /(?:9|10) Sept? 2026/.test(row.date || ""),
+    );
+    assert.equal(new Set(targetInboxRows.map((row) => row.messageId)).size, 2);
+    assert.equal(new Set(targetInboxRows.map((row) => row.threadId)).size, 1);
     const found = await tab.evaluate(
       `(()=>{const input=document.querySelector('.email-search input');if(!input)return false;Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'EF-CL-028');input.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('.email-search button[type=submit]')?.click();return true})()`,
     );
@@ -255,12 +270,64 @@ async function run() {
     await waitFor(
       () =>
         tab.evaluate(
-          "[...document.querySelectorAll('.email-message-row')].some(row=>row.textContent.includes('Stuart Gilks')&&row.textContent.includes('Viktorija'))",
+          `(()=>{const rows=[...document.querySelectorAll('.email-message-row')].filter(row=>/Viktorija/i.test(row.textContent)&&/EF-CL-028/i.test(row.textContent));return rows.some(row=>/9 Sept? 2026/.test(row.querySelector('time')?.textContent||''))&&rows.some(row=>/10 Sept? 2026/.test(row.querySelector('time')?.textContent||''))})()`,
         ),
-      "Exact Viktorija EF-CL-028 row unavailable",
+      "Both EF-CL-028 messages were not independently visible in search",
     );
+    const searchRows = await tab.evaluate(
+      `(()=>[...document.querySelectorAll('.email-message-row')].filter(row=>/Viktorija/i.test(row.textContent)&&/EF-CL-028/i.test(row.textContent)).map(row=>({messageId:row.dataset.messageId,threadId:row.dataset.threadId,date:row.querySelector('time')?.textContent.trim(),text:row.textContent.trim()})))()`,
+    );
+    const targetSearchRows = searchRows.filter((row) =>
+      /(?:9|10) Sept? 2026/.test(row.date || ""),
+    );
+    assert.equal(new Set(targetSearchRows.map((row) => row.messageId)).size, 2);
+    assert.equal(new Set(targetSearchRows.map((row) => row.threadId)).size, 1);
+    const screenshots = [await capture(tab, "00-individual-message-rows")];
+
+    const openedWord = await tab.evaluate(
+      `(()=>{const row=[...document.querySelectorAll('.email-message-row')].find(item=>/Viktorija/i.test(item.textContent)&&/EF-CL-028/i.test(item.textContent)&&/9 Sept? 2026/.test(item.querySelector('time')?.textContent||''));if(!row)return false;row.click();return true})()`,
+    );
+    assert.ok(openedWord, "9 September EF-CL-028 row could not be opened");
+    await waitFor(
+      () =>
+        tab.evaluate(
+          "/9 Sept? 2026/.test(document.querySelector('.email-reader__selected-message time')?.textContent||'')",
+        ),
+      "9 September selected message did not open",
+    );
+    await waitFor(
+      () =>
+        tab.evaluate(
+          `(()=>{const message=document.querySelector('.email-reader__selected-message'),body=message?.querySelector('iframe')?.getAttribute('srcdoc')||message?.querySelector('.email-reader__plain')?.textContent||'',attachments=[...message.querySelectorAll('.email-attachment strong')].map(item=>item.textContent.trim());return /Please find the price offer/i.test(body)&&attachments.some(name=>/\\.docx?$/i.test(name))})()`,
+        ),
+      "9 September Word Estimate body and attachment were not loaded",
+    );
+    const wordMessage = await tab.evaluate(
+      `(()=>{const message=document.querySelector('.email-reader__selected-message'),selected=document.querySelector('.email-message-row.is-preview-selected');return{messageId:selected?.dataset.messageId||'',date:message?.querySelector('time')?.textContent.trim(),body:message?.querySelector('iframe')?.getAttribute('srcdoc')||message?.querySelector('.email-reader__plain')?.textContent||'',attachments:[...message.querySelectorAll('.email-attachment strong')].map(item=>item.textContent.trim())}})()`,
+    );
+    assert.match(wordMessage.body, /Please find the price offer/i);
+    assert.ok(wordMessage.attachments.some((name) => /\.docx?$/i.test(name)));
+    await waitFor(
+      () =>
+        tab.evaluate(
+          "![...document.querySelectorAll('button')].find(item=>item.textContent.trim()==='Link existing')?.disabled",
+        ),
+      "9 September Link existing action unavailable",
+    );
+    await clickText(tab, "Link existing");
+    await waitFor(
+      () =>
+        tab.evaluate("Boolean(document.querySelector('.email-assignment'))"),
+      "9 September assignment picker unavailable",
+    );
+    const wordPickerDocument = await tab.evaluate(
+      `(()=>{const root=document.querySelector('.email-assignment'),label=[...root.querySelectorAll('label')].find(item=>item.childNodes[0]?.textContent.trim()==='Document');return label?.querySelector('select')?.selectedOptions?.[0]?.textContent.trim()||''})()`,
+    );
+    assert.ok(wordMessage.attachments.includes(wordPickerDocument));
+    await clickText(tab, "Close");
+
     const opened = await tab.evaluate(
-      `(()=>{const row=[...document.querySelectorAll('.email-message-row')].find(item=>item.textContent.includes('Stuart Gilks')&&item.textContent.includes('Viktorija'));if(!row)return false;row.click();return true})()`,
+      `(()=>{const row=[...document.querySelectorAll('.email-message-row')].find(item=>/Viktorija/i.test(item.textContent)&&/EF-CL-028/i.test(item.textContent)&&/10 Sept? 2026/.test(item.querySelector('time')?.textContent||''));if(!row)return false;row.click();return true})()`,
     );
     assert.ok(opened, "Exact EF-CL-028 row could not be opened");
     await waitFor(
@@ -278,7 +345,7 @@ async function run() {
       "Retained CID images were not resolved to local data URLs",
     );
     const messageView = await tab.evaluate(
-      `(()=>{const selected=document.querySelector('.email-message-row.is-preview-selected'),bulk=document.querySelectorAll('.email-message-row.is-selected').length,reader=document.querySelector('.email-reader'),context=document.querySelector('.email-context-panel'),message=document.querySelector('.email-reader__selected-message'),frame=message?.querySelector('iframe'),src=frame?.getAttribute('srcdoc')||'',selectedStyle=selected?getComputedStyle(selected):null,other=[...document.querySelectorAll('.email-message-row')].find(item=>item!==selected),otherStyle=other?getComputedStyle(other):null;return{subject:reader?.querySelector(':scope>header h3')?.textContent.trim(),date:message?.querySelector('time')?.textContent.trim(),conversationCards:reader?.querySelectorAll('.email-reader__message').length||0,contextAbove:Boolean(context&&message&&context.getBoundingClientRect().top<message.getBoundingClientRect().top),selectedRows:document.querySelectorAll('.email-message-row.is-preview-selected').length,bulk,distinctBackground:selectedStyle?.backgroundColor!==otherStyle?.backgroundColor,hasInternalUrl:src.includes('/api/communications/messages/'),hasDataImage:src.includes('data:image'),remoteControl:[...document.querySelectorAll('button')].some(item=>item.textContent.trim()==='Load remote images'),readingMode:document.querySelector('.email-reading-mode [aria-pressed=true]')?.textContent.trim()}})()`,
+      `(()=>{const selected=document.querySelector('.email-message-row.is-preview-selected'),bulk=document.querySelectorAll('.email-message-row.is-selected').length,reader=document.querySelector('.email-reader'),context=document.querySelector('.email-context-panel'),message=document.querySelector('.email-reader__selected-message'),frame=message?.querySelector('iframe'),src=frame?.getAttribute('srcdoc')||'',selectedStyle=selected?getComputedStyle(selected):null,other=[...document.querySelectorAll('.email-message-row')].find(item=>item!==selected),otherStyle=other?getComputedStyle(other):null;return{messageId:selected?.dataset.messageId||'',subject:reader?.querySelector(':scope>header h3')?.textContent.trim(),date:message?.querySelector('time')?.textContent.trim(),body:src,attachments:[...message.querySelectorAll('.email-attachment strong')].map(item=>item.textContent.trim()),conversationCards:reader?.querySelectorAll('.email-reader__message').length||0,contextAbove:Boolean(context&&message&&context.getBoundingClientRect().top<message.getBoundingClientRect().top),selectedRows:document.querySelectorAll('.email-message-row.is-preview-selected').length,bulk,distinctBackground:selectedStyle?.backgroundColor!==otherStyle?.backgroundColor,hasInternalUrl:src.includes('/api/communications/messages/'),hasDataImage:src.includes('data:image'),remoteControl:[...document.querySelectorAll('button')].some(item=>item.textContent.trim()==='Load remote images'),readingMode:document.querySelector('.email-reading-mode [aria-pressed=true]')?.textContent.trim()}})()`,
     );
     assert.equal(messageView.readingMode, "Message");
     assert.equal(messageView.conversationCards, 0);
@@ -290,6 +357,9 @@ async function run() {
     assert.equal(messageView.hasDataImage, true);
     assert.match(messageView.subject, /EF-CL-028: Stuart Gilks/i);
     assert.match(messageView.date, /10 Sept? 2026.*04:39/);
+    assert.match(messageView.body, /PDF file attached/i);
+    assert.ok(messageView.attachments.some((name) => /\.pdf$/i.test(name)));
+    assert.notEqual(messageView.messageId, wordMessage.messageId);
     await clickText(tab, "Link existing");
     await waitFor(
       () =>
@@ -307,9 +377,10 @@ async function run() {
       picker.document.text,
       /EcoTherm Aluminium Clad Casement window\.pdf/i,
     );
+    assert.ok(messageView.attachments.includes(picker.document.text));
     assert.match(picker.conflict, /Stuart Gilks.*Stuart Gilk/i);
     assert.ok(picker.buttons.includes("File selected document"));
-    const screenshots = [await capture(tab, "01-selected-message-and-picker")];
+    screenshots.push(await capture(tab, "01-selected-message-and-picker"));
     await clickText(tab, "Close");
     await clickText(tab, "Conversation");
     await waitFor(
@@ -488,7 +559,27 @@ async function run() {
     console.log(
       JSON.stringify(
         {
-          messageView,
+          inboxRows: targetInboxRows.map(({ messageId, threadId, date }) => ({
+            messageId,
+            threadId,
+            date,
+          })),
+          searchRows: targetSearchRows.map(({ messageId, threadId, date }) => ({
+            messageId,
+            threadId,
+            date,
+          })),
+          wordMessage: {
+            messageId: wordMessage.messageId,
+            date: wordMessage.date,
+            attachments: wordMessage.attachments,
+            pickerDocument: wordPickerDocument,
+          },
+          messageView: {
+            ...messageView,
+            body: undefined,
+            bodyMatches: /PDF file attached/i.test(messageView.body),
+          },
           picker: {
             client: picker.client.text,
             project: picker.project.text,

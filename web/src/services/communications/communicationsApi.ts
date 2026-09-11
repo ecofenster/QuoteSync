@@ -5,6 +5,7 @@ export type CommunicationAttachmentView = { id?:string;fileName:string;mediaType
 export type CommunicationLinkView = { kind:string;id:string };
 export type CanonicalCommunicationFolder = "inbox"|"sent"|"drafts"|"trash"|"spam"|"other";
 export type CommunicationMailboxView = "inbox"|"sent"|"drafts"|"starred"|"snoozed"|"important"|"all"|"spam"|"trash"|"social"|"updates"|"forums"|"promotions"|`label:${string}`|`quotesuite:${string}`;
+export type MailboxListMode = "message"|"conversation";
 export type CommunicationMessageView = { id:string;providerMessageId:string|null;threadId:string|null;direction:"inbound"|"outbound";folder:CanonicalCommunicationFolder;status:string;from:string[];to:string[];cc:string[];bcc:string[];subject:string;snippet:string;bodyHtml:string;bodyText:string;attachmentCount?:number;attachments:CommunicationAttachmentView[];sentAt:string|null;error:string|null;unread:boolean;starred:boolean;important:boolean;labels:CommunicationLabelView[];threadCount:number;threadMessages?:CommunicationMessageView[];links:CommunicationLinkView[] };
 export type MailboxLabelView = { id:string;name:string;type:"system"|"user";messagesTotal?:number;messagesUnread?:number;colour?:{textColor?:string;backgroundColor?:string}|null };
 export type MailboxCapability = { id:"archive"|"trash"|"read_state"|"star"|"move"|"labels"|"scheduled";available:boolean };
@@ -30,8 +31,8 @@ const json = { "Content-Type": "application/json" };
 export const communicationsApi = {
   status:()=>apiFetch("/api/communications/status") as Promise<GoogleWorkspaceStatus>,
   mailbox:()=>apiFetch("/api/communications/mailbox") as Promise<MailboxMetadata>,
-  list:(folder:CommunicationMailboxView,q="",pageToken:string|null=null)=>apiFetch(`/api/communications/messages?folder=${encodeURIComponent(folder)}&q=${encodeURIComponent(q)}${pageToken?`&page_token=${encodeURIComponent(pageToken)}`:""}`) as Promise<MailboxProjection>,
-  sync:(folder:CommunicationMailboxView,q="",pageToken:string|null=null)=>apiFetch("/api/communications/sync",{method:"POST",headers:json,body:JSON.stringify({folder,query:q,pageToken})}) as Promise<MailboxProjection>,
+  list:(folder:CommunicationMailboxView,q="",pageToken:string|null=null,mode:MailboxListMode="message")=>apiFetch(`/api/communications/messages?folder=${encodeURIComponent(folder)}&q=${encodeURIComponent(q)}&mode=${encodeURIComponent(mode)}${pageToken?`&page_token=${encodeURIComponent(pageToken)}`:""}`) as Promise<MailboxProjection>,
+  sync:(folder:CommunicationMailboxView,q="",pageToken:string|null=null,mode:MailboxListMode="message")=>apiFetch("/api/communications/sync",{method:"POST",headers:json,body:JSON.stringify({folder,query:q,pageToken,mode})}) as Promise<MailboxProjection>,
   read:(id:string)=>apiFetch(`/api/communications/messages/${encodeURIComponent(id)}`) as Promise<CommunicationMessageView>,
   thread:(id:string)=>apiFetch(`/api/communications/threads/${encodeURIComponent(id)}`) as Promise<CommunicationMessageView>,
   context:(id:string)=>apiFetch(`/api/communications/messages/${encodeURIComponent(id)}/context`) as Promise<CommunicationContextResult>,

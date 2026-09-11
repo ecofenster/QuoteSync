@@ -142,7 +142,7 @@ export function createCommunicationsService(db, options = {}) {
       const messages = view === "unlinked" ? all.filter((message) => !message.links.length) : view === "follow_up" ? all.filter((message) => message.links.some((link) => link.kind === "follow_up")) : all.filter((message) => message.links.some((link) => link.kind === kinds[view]));
       return { messages: messages.slice(0, 100).map((message) => ({ ...message, snippet: message.bodyText, unread: false, starred: false, important: false, labels: [], threadCount: 1 })), nextPageToken: null, source: "cache" };
     }
-    const cached = await repository.listMailbox({ folder: input.folder, query: input.query, offset: parseCacheOffset(input.pageToken), limit: options.gmailOptions?.pageSize || 30 });
+    const cached = await repository.listMailbox({ folder: input.folder, query: input.query, offset: parseCacheOffset(input.pageToken), limit: options.gmailOptions?.pageSize || 30, mode: input.mode === "conversation" ? "conversation" : "message" });
     return { ...cached, source: "cache" };
   }
 

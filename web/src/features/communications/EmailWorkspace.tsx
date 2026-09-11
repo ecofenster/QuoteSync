@@ -1198,7 +1198,11 @@ export default function EmailWorkspace({
   onOpenEstimateFiles?: (clientId: string, estimateId: string) => void;
   onImportManufacturerEstimate?: (clientId: string, estimateId: string) => void;
 }) {
-  const initialCached = mailboxMemoryCache.get("inbox||");
+  const initialReadingMode = readPreference<EmailReadingMode>(
+      EMAIL_READING_MODE_KEY,
+      "message",
+    ),
+    initialCached = mailboxMemoryCache.get(`inbox|||${initialReadingMode}`);
   const [status, setStatus] = useState<GoogleWorkspaceStatus | null>(null),
     [mailbox, setMailbox] = useState<MailboxMetadata | null>(null),
     [folder, setFolder] = useState<CommunicationMailboxView>("inbox"),
@@ -1239,9 +1243,8 @@ export default function EmailWorkspace({
     [layoutMode, setLayoutMode] = useState<EmailLayoutMode>(() =>
       readPreference(EMAIL_LAYOUT_KEY, "list"),
     ),
-    [readingMode, setReadingMode] = useState<EmailReadingMode>(() =>
-      readPreference(EMAIL_READING_MODE_KEY, "message"),
-    ),
+    [readingMode, setReadingMode] =
+      useState<EmailReadingMode>(initialReadingMode),
     [rightSize, setRightSize] = useState(() =>
       readPreference(EMAIL_RIGHT_SIZE_KEY, 440),
     ),
@@ -1326,7 +1329,7 @@ export default function EmailWorkspace({
       const providerQuery = [nextQuery.trim(), unreadOnly ? "is:unread" : ""]
           .filter(Boolean)
           .join(" "),
-        key = `${nextFolder}|${providerQuery}|${token || ""}`,
+        key = `${nextFolder}|${providerQuery}|${token || ""}|${readingMode}`,
         memory = mailboxMemoryCache.get(key);
       setError("");
       if (memory) applyProjection(key, memory);
@@ -1339,6 +1342,7 @@ export default function EmailWorkspace({
           nextFolder,
           providerQuery,
           token,
+          readingMode,
         );
         applyProjection(key, cached);
         setMailboxLoading(false);
@@ -1349,6 +1353,7 @@ export default function EmailWorkspace({
             nextFolder,
             providerQuery,
             token,
+            readingMode,
           );
           applyProjection(key, reconciled);
           setLastSyncedAt(
@@ -1374,7 +1379,7 @@ export default function EmailWorkspace({
         );
       }
     },
-    [applyProjection, unreadOnly],
+    [applyProjection, unreadOnly, readingMode],
   );
   const loadRef = useRef(load);
   loadRef.current = load;
@@ -1406,6 +1411,7 @@ export default function EmailWorkspace({
       void loadRef.current(folder, queryRef.current, null);
   }, [
     folder,
+    readingMode,
     unreadOnly,
     status?.connected,
     status?.capabilities.gmail.available,
@@ -1457,6 +1463,7 @@ export default function EmailWorkspace({
     folder,
     pageToken,
     query,
+    readingMode,
     status?.connected,
     status?.capabilities.gmail.available,
   ]);
@@ -1826,6 +1833,8 @@ export default function EmailWorkspace({
   const changeReadingMode = async (mode: EmailReadingMode) => {
     setReadingMode(mode);
     localStorage.setItem(EMAIL_READING_MODE_KEY, JSON.stringify(mode));
+    setPageToken(null);
+    setPageHistory([]);
     if (mode === "conversation" && activeMessage?.threadId) {
       setBusy(true);
       try {
@@ -2061,7 +2070,7 @@ export default function EmailWorkspace({
             <input
               type="checkbox"
               checked={allSelected}
-              aria-label="Select all conversations"
+              aria-label={`Select all ${readingMode === "message" ? "messages" : "conversations"}`}
               onChange={(event) =>
                 setSelectedIds(
                   event.currentTarget.checked
@@ -2168,11 +2177,13 @@ export default function EmailWorkspace({
       <div
         className="email-message-list"
         role="listbox"
-        aria-label={`${folderLabel} conversations`}
+        aria-label={`${folderLabel} ${readingMode === "message" ? "messages" : "conversations"}`}
         aria-multiselectable="true"
       >
         {mailboxLoading && !messages.length ? (
-          <div className="ui-empty-state">Loading conversations…</div>
+          <div className="ui-empty-state">
+            Loading {readingMode === "message" ? "messages" : "conversations"}…
+          </div>
         ) : messages.length ? (
           messages.map((message) => {
             const row = projectMailboxRow(message, folder),
@@ -2304,7 +2315,8 @@ export default function EmailWorkspace({
           })
         ) : (
           <div className="ui-empty-state">
-            No conversations returned by this mailbox view.
+            No {readingMode === "message" ? "messages" : "conversations"}{" "}
+            returned by this mailbox view.
           </div>
         )}
       </div>

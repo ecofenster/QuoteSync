@@ -85,7 +85,7 @@ export function createCommunicationRepository(db) {
     return Promise.all(rows.map((row) => get(row.id)));
   }
 
-  async function listMailbox({ folder = "inbox", query = "", offset = 0, limit = 30 } = {}) {
+  async function listMailbox({ folder = "inbox", query = "", offset = 0, limit = 30, mode = "message" } = {}) {
     const messages = await listSummaries({ query, limit: 1000 });
     const labelId = String(folder).startsWith("label:") ? String(folder).slice(6) : null;
     const matchesFolder = (message) => {
@@ -98,19 +98,23 @@ export function createCommunicationRepository(db) {
       if (["social", "updates", "forums", "promotions", "snoozed"].includes(folder)) return labels.has(folder === "snoozed" ? "SNOOZED" : `CATEGORY_${folder.toUpperCase()}`);
       return message.folder === folder;
     };
-    const grouped = new Map();
-    for (const message of messages.filter(matchesFolder)) {
-      const key = message.threadId || message.providerMessageId || message.id;
-      if (!grouped.has(key)) grouped.set(key, []);
-      grouped.get(key).push(message);
+    const individualMessages = messages.filter(matchesFolder);
+    let mailboxRows = individualMessages;
+    if (mode === "conversation") {
+      const grouped = new Map();
+      for (const message of individualMessages) {
+        const key = message.threadId || message.providerMessageId || message.id;
+        if (!grouped.has(key)) grouped.set(key, []);
+        grouped.get(key).push(message);
+      }
+      mailboxRows = [...grouped.values()].map((items) => {
+        items.sort((left, right) => String(left.sentAt || left.updatedAt).localeCompare(String(right.sentAt || right.updatedAt)));
+        const latest = items.at(-1);
+        return { ...latest, unread: items.some((item) => item.unread), starred: items.some((item) => item.starred), important: items.some((item) => item.important), attachmentCount: items.reduce((total, item) => total + Number(item.attachmentCount || 0), 0), threadCount: items.length };
+      }).sort((left, right) => String(right.sentAt || right.updatedAt).localeCompare(String(left.sentAt || left.updatedAt)));
     }
-    const conversations = [...grouped.values()].map((items) => {
-      items.sort((left, right) => String(left.sentAt || left.updatedAt).localeCompare(String(right.sentAt || right.updatedAt)));
-      const latest = items.at(-1);
-      return { ...latest, unread: items.some((item) => item.unread), starred: items.some((item) => item.starred), important: items.some((item) => item.important), attachmentCount: items.reduce((total, item) => total + Number(item.attachmentCount || 0), 0), threadCount: items.length };
-    }).sort((left, right) => String(right.sentAt || right.updatedAt).localeCompare(String(left.sentAt || left.updatedAt)));
     const start = Math.max(0, Number(offset) || 0), size = Math.min(100, Math.max(1, Number(limit) || 30));
-    return { messages: conversations.slice(start, start + size), nextPageToken: start + size < conversations.length ? `cache:${start + size}` : null };
+    return { messages: mailboxRows.slice(start, start + size), nextPageToken: start + size < mailboxRows.length ? `cache:${start + size}` : null };
   }
 
   async function markProviderRemoved(provider, providerMessageIds) {
