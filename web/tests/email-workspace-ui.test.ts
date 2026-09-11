@@ -188,11 +188,12 @@ test("mailbox unread emphasis, assignment feedback and saved-document review han
     readFile("server/features/documents/commercialDriveService.js","utf8"),
   ]);
   assert.match(css,/\.email-message-row__sender\{[^}]*font-weight:400/);
-  assert.match(css,/\.email-message-row__content strong\{[^}]*font-weight:400/);
+  assert.match(ui,/className="email-message-row__subject"/);
+  assert.match(css,/\.email-message-row__subject\{[^}]*font-size:[^;}]+;font-weight:400/);
   assert.match(css,/\.email-message-row__content small\{[^}]*font-weight:400/);
   assert.match(css,/\.email-message-row time\{[^}]*font-weight:400/);
   assert.match(css,/\.email-message-row\.is-unread \.email-message-row__sender,[\s\S]*?\.email-message-row\.is-unread time\{font-weight:600\}/);
-  assert.doesNotMatch(css,/is-preview-selected \.email-message-row__content strong\{font-weight/);
+  assert.doesNotMatch(css,/is-preview-selected \.email-message-row__subject\{font-weight/);
   assert.match(ui,/communicationsApi\.command\(\[exact\.threadId\], "mark_read"\)/);
   assert.match(ui,/message: "Saving document…"/);
   assert.match(ui,/assignmentSubmitting\.current/);

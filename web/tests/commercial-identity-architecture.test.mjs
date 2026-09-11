@@ -13,6 +13,7 @@ import { createCommercialDriveService } from "../server/features/documents/comme
 import { GOOGLE_DRIVE_FOLDER_MIME_TYPE } from "../server/features/documents/googleDriveProvider.js";
 import { initializeLifecycleSchema } from "../server/features/lifecycle/lifecycleSchema.js";
 import { createCommunicationRepository } from "../server/features/communications/communicationRepository.js";
+import { createCommunicationsService } from "../server/features/communications/communicationsService.js";
 
 const now = () => new Date("2026-08-27T10:00:00.000Z");
 const backup = { verified: true, backupId: "fixture-backup", sha256: "a".repeat(64) };
@@ -239,18 +240,26 @@ test("reviewed existing-Client email filing creates Estimate → Suppliers → n
   await db.run("INSERT INTO supplier_commercial_defaults VALUES('ZYLE','Zyle Fenster')");
   const children=new Map([["root",[]]]);let folders=0,uploads=0;
   const provider={async listChildren({parentId}){return structuredClone(children.get(parentId)||[])},async findFolderByName({parentId,name}){return(children.get(parentId)||[]).find(item=>item.name===name)||null},async createFolder({parentId,name,appProperties}){const item={id:`folder-${++folders}`,name,mimeType:GOOGLE_DRIVE_FOLDER_MIME_TYPE,appProperties};children.set(parentId,[...(children.get(parentId)||[]),item]);children.set(item.id,[]);return item},async uploadFile({parentId,fileName,mediaType,bytes,appProperties}){uploads+=1;const item={id:`provider-document-${uploads}`,name:fileName,mimeType:mediaType,size:String(bytes.length),version:"1",md5Checksum:"hash",webViewLink:`https://drive.invalid/provider-document-${uploads}`,appProperties};children.set(parentId,[...(children.get(parentId)||[]),item]);return item}};
-  const workspace={async status(){return{connected:true,estimatesRootFolderId:"root",capabilities:{drive:{available:true}},account:{id:"account"}}},async resolvedConfig(){return{stored:{folder_template_json:"{}"}}}};
-  const drive=createCommercialDriveService(db,{provider,workspace,now}),input={clientId:"client",projectId:project.id,estimateId:"estimate",supplierCode:"ZYLE",communicationAttachmentId:"disposable-message_document",providerMessageId:"disposable-message",providerAttachmentId:"document",fileName:"Zyle quotation.pdf",mediaType:"application/pdf",bytes:Buffer.from("genuine supplier evidence")};
-  const first=await drive.storeCommunicationSupplierDocument(input),second=await drive.storeCommunicationSupplierDocument(input);
+  const workspace={async status(){return{connected:true,state:"connected",estimatesRootFolderId:"root",scopes:[],capabilities:{gmail:{available:true},drive:{available:true}},account:{id:"account"}}},async resolvedConfig(){return{stored:{folder_template_json:"{}"}}}};
+  const drive=createCommercialDriveService(db,{provider,workspace,now});let providerRead=0,currentDocumentId="";
+  const actualAttachmentShape=()=>{providerRead+=1;currentDocumentId=`ANGjdJ-${String(providerRead).padEnd(418,"d")}`;return[
+    ...Array.from({length:16},(_,index)=>({sourcePartId:`0.${index+1}`,fileName:"image.png",mediaType:"image/png",sizeBytes:[1240,8200,837,780,1032,1086,929,694][index%8],providerAttachmentId:`ANGjdJ-${`${providerRead}-${index}`.padEnd(396,"i")}`,contentId:index<8?`ii_1a07b70b3b8cb971f${161+index}`:`retained-cid-${index}`,inline:true})),
+    {sourcePartId:"1",fileName:"EF-CL-028 Stuart Gilks, Ecotherm +.docx",mediaType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",sizeBytes:115091,providerAttachmentId:currentDocumentId,contentId:null,inline:false},
+  ]};
+  const gmail={async readMessage(){return{provider:"google_workspace",providerMessageId:"disposable-message",threadId:"disposable-thread",direction:"inbound",folder:"inbox",status:"received",from:["Viktorija <info@zylefenster.example>"],to:["sales@example.test"],cc:[],bcc:[],subject:"EF-CL-928: Disposable Stuart",bodyHtml:"<p>Please find the price offer attached.</p>",bodyText:"Please find the price offer attached.",links:[],sentAt:"2026-09-09T13:01:47.000Z",attachments:actualAttachmentShape()}},async attachment(messageId,attachmentId){assert.equal(messageId,"disposable-message");assert.equal(attachmentId,currentDocumentId);return Buffer.from("genuine supplier evidence")}};
+  const communications=createCommunicationsService(db,{workspace,gmail,drive,environment:{}}),options=await communications.assignmentOptions("disposable-message");
+  assert.equal(options.attachments.length,1);assert.equal(options.attachments[0].fileName,"EF-CL-028 Stuart Gilks, Ecotherm +.docx");
+  const selection={clientId:"client",projectId:project.id,estimateId:"estimate",supplierId:"ZYLE",attachmentId:options.attachments[0].id,conflictsReviewed:true};
+  const first=await communications.assignSupplierDocument("disposable-message",selection),second=await communications.assignSupplierDocument("disposable-message",selection);
   assert.equal(first.status,"stored");assert.equal(first.duplicate,false);assert.equal(second.duplicate,true);assert.equal(uploads,1);
   assert.match(first.folderPath,/EF-CL-928 - Disposable Stuart\/Disposable Red House\/Estimates\/EF-EST-2026-957\/Suppliers\/Zyle Fenster$/);
-  assert.equal(first.fileName,"Zyle quotation.pdf");
+  assert.equal(first.fileName,"EF-CL-028 Stuart Gilks, Ecotherm +.docx");assert.ok(providerRead>=3);
   assert.equal([...children.values()].flat().filter(item=>item.name==="Supplier").length,0);
   const stored=await db.get("SELECT client_id,project_id,estimate_id,supplier_id,document_type,folder_path FROM canonical_documents WHERE provider_file_id='provider-document-1'");
   assert.deepEqual({...stored},{client_id:"client",project_id:"project",estimate_id:"estimate",supplier_id:"ZYLE",document_type:"supplier_quotation",folder_path:first.folderPath});
   const legacyEstimate=await drive.provisionEstimate("estimate-legacy"),legacyRoot={id:"legacy-supplier-root",name:"Supplier",mimeType:GOOGLE_DRIVE_FOLDER_MIME_TYPE};
   children.set(legacyEstimate.folder.provider_folder_id,[...(children.get(legacyEstimate.folder.provider_folder_id)||[]),legacyRoot]);children.set(legacyRoot.id,[]);
-  const legacy=await drive.storeCommunicationSupplierDocument({...input,estimateId:"estimate-legacy",communicationAttachmentId:"legacy-message_document",providerMessageId:"legacy-message",providerAttachmentId:"legacy-document"});
+  const legacy=await drive.storeCommunicationSupplierDocument({clientId:"client",projectId:project.id,estimateId:"estimate-legacy",supplierCode:"ZYLE",communicationAttachmentId:"legacy-message_document",providerMessageId:"legacy-message",providerAttachmentId:"legacy-document",fileName:"Zyle quotation.pdf",mediaType:"application/pdf",bytes:Buffer.from("genuine supplier evidence")});
   assert.match(legacy.folderPath,/EF-EST-2026-958\/Supplier\/Zyle Fenster$/);
   const legacyRoots=(children.get(legacyEstimate.folder.provider_folder_id)||[]).filter(item=>["Supplier","Suppliers"].includes(item.name));
   assert.deepEqual(legacyRoots.map(item=>item.name),["Supplier"]);

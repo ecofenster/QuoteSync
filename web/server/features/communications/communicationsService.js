@@ -35,7 +35,7 @@ export function preserveCommunicationLinks(existing, providerMessage) {
   return Array.isArray(existing?.links) ? existing.links : Array.isArray(providerMessage?.links) ? providerMessage.links : [];
 }
 
-function attachmentRecordId(messageId, attachment, index) {
+export function communicationAttachmentRecordId(messageId, attachment, index) {
   const sourceIdentity = attachment.sourcePartId
     ? `part:${attachment.sourcePartId}`
     : `ordinal:${index}|content:${attachment.contentId || ""}|name:${attachment.fileName || ""}|type:${attachment.mediaType || ""}`;
@@ -130,8 +130,19 @@ export function createCommunicationsService(db, options = {}) {
   async function persistProviderMessage(message) {
     const existing = message.providerMessageId ? await repository.findByProviderId("google_workspace", message.providerMessageId) : null;
     const messageId = existing?.id ?? randomUUID();
-    const saved = await repository.save({ ...message, id: messageId, links: preserveCommunicationLinks(existing, message), mailboxId: "me", attachments: (message.attachments || []).map((attachment, index) => ({ ...attachment, id: attachmentRecordId(messageId, attachment, index) })) });
-    return { ...saved, ...message, id: saved.id, links: saved.links, attachments: (message.attachments || []).map((attachment) => ({ ...attachment, id: `${saved.id}_${attachment.providerAttachmentId || attachment.id}` })) };
+    const providerAttachments = (message.attachments || []).map((attachment, index) => ({ ...attachment, id: communicationAttachmentRecordId(messageId, attachment, index) }));
+    const saved = await repository.save({ ...message, id: messageId, links: preserveCommunicationLinks(existing, message), mailboxId: "me", attachments: providerAttachments });
+    const savedById = new Map(saved.attachments.map((attachment) => [attachment.id, attachment]));
+    return {
+      ...saved,
+      ...message,
+      id: saved.id,
+      links: saved.links,
+      // Gmail's opaque providerAttachmentId changes across full-message reads.
+      // The canonical ID is instead derived from the exact message and MIME part,
+      // while the refreshed provider ID is retained only for the subsequent GET.
+      attachments: providerAttachments.map((attachment) => ({ ...attachment, ...savedById.get(attachment.id), id: attachment.id, providerAttachmentId: attachment.providerAttachmentId })),
+    };
   }
 
   const parseCacheOffset = (token) => String(token || "").startsWith("cache:") ? Math.max(0, Number(String(token).slice(6)) || 0) : 0;
@@ -297,7 +308,16 @@ export function createCommunicationsService(db, options = {}) {
 
   async function assignSupplierDocument(providerMessageId, input = {}) {
     const optionsView = await assignmentOptions(providerMessageId), attachment = optionsView.attachments.find((item) => item.id === String(input.attachmentId || ""));
-    if (!attachment) throw Object.assign(new Error("Choose a genuine retained document from the selected message."), { status: 422, code: "communication_assignment_attachment_invalid" });
+    if (!attachment) {
+      const available = optionsView.attachments.map((item) => item.fileName);
+      throw Object.assign(new Error(available.length
+        ? `The selected document identity is no longer current. Reopen Link existing and choose ${available.length === 1 ? `“${available[0]}”` : "one of the currently listed documents"} from this exact message.`
+        : "This exact message has no eligible retained document to file."), {
+        status: 409,
+        code: "communication_assignment_attachment_stale",
+        details: { eligibleFileNames: available },
+      });
+    }
     const clientId = String(input.clientId || ""), projectId = String(input.projectId || ""), estimateId = String(input.estimateId || ""), supplierCode = String(input.supplierId || "");
     if (!optionsView.clients.some((item) => item.id === clientId) || !optionsView.projects.some((item) => item.id === projectId && item.client_id === clientId) || !optionsView.estimates.some((item) => item.id === estimateId && item.project_id === projectId) || !optionsView.suppliers.some((item) => item.id === supplierCode)) throw Object.assign(new Error("Review a canonical Client → Project → Estimate → Supplier filing path."), { status: 422, code: "communication_assignment_path_conflict" });
     if (optionsView.conflicts.length && input.conflictsReviewed !== true) throw Object.assign(new Error("Review the reference conflict before filing this document."), { status: 409, code: "communication_assignment_conflict_review_required" });

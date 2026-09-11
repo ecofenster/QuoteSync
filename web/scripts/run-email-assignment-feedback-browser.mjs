@@ -36,6 +36,7 @@ const json = (response, value, status = 200) => {
 let unread = true;
 let assignmentSubmissions = 0;
 let commandSubmissions = 0;
+const assignmentPayloads = [];
 const message = () => ({
   id: "local-message-1",
   providerMessageId: "message-1",
@@ -129,11 +130,12 @@ async function run() {
       return;
     }
     if (url.pathname === "/api/communications/messages/message-1/assignment" && request.method === "GET") {
-      json(response, { providerMessageId: "message-1", communicationMessageId: "local-message-1", reference: "EF-CL-928", clients: [{ id: "client-1", client_ref: "EF-CL-928", name: "Disposable Client" }], projects: [{ id: "project-1", client_id: "client-1", name: "Disposable Project", context_year: 2026 }], estimates: [{ id: "estimate-1", project_id: "project-1", estimate_ref: "EF-EST-2026-957", created_at: "2026-09-11" }], suppliers: [{ id: "ZYLE", name: "Zyle Fenster" }], attachments: [{ id: "attachment-1", providerAttachmentId: "provider-attachment-1", fileName: "Zyle quotation.pdf", mediaType: "application/pdf", sizeBytes: 128 }], conflicts: [], proposed: { clientId: "client-1", projectId: "project-1", estimateId: "estimate-1", supplierId: "ZYLE", attachmentId: "attachment-1" } });
+      json(response, { providerMessageId: "message-1", communicationMessageId: "local-message-1", reference: "EF-CL-928", clients: [{ id: "client-1", client_ref: "EF-CL-928", name: "Disposable Client" }], projects: [{ id: "project-1", client_id: "client-1", name: "Disposable Project", context_year: 2026 }], estimates: [{ id: "estimate-1", project_id: "project-1", estimate_ref: "EF-EST-2026-957", created_at: "2026-09-11" }], suppliers: [{ id: "ZYLE", name: "Zyle Fenster" }], attachments: [{ id: "local-message-1_attachment_stable-part-1", providerAttachmentId: "rotating-provider-token-not-submitted", fileName: "Zyle quotation.pdf", mediaType: "application/pdf", sizeBytes: 128 }], conflicts: [], proposed: { clientId: "client-1", projectId: "project-1", estimateId: "estimate-1", supplierId: "ZYLE", attachmentId: "local-message-1_attachment_stable-part-1" } });
       return;
     }
     if (url.pathname === "/api/communications/messages/message-1/assignment" && request.method === "POST") {
       assignmentSubmissions += 1;
+      assignmentPayloads.push(await readBody(request));
       await delay(500);
       if (assignmentSubmissions === 1) {
         json(response, { error: "The provider file was saved, but its QuoteSuite relationships are incomplete.", code: "communication_assignment_partial_success", details: { providerFileId: "provider-file-1", fileName: "Zyle quotation.pdf", folderPath: "2026/EF-CL-928 - Disposable Client/Disposable Project/Estimates/EF-EST-2026-957/Suppliers/Zyle Fenster", webViewLink: "https://drive.invalid/provider-file-1" } }, 409);
@@ -191,12 +193,28 @@ async function run() {
   await send("Page.enable");
   await waitFor(() => evaluate("document.querySelectorAll('.email-message-row').length===1"), "Mailbox row did not render");
 
-  const unreadStyle = await evaluate("(()=>{const row=document.querySelector('.email-message-row'),sender=row.querySelector('.email-message-row__sender'),subject=row.querySelector('.email-message-row__content strong'),snippet=row.querySelector('.email-message-row__content small'),date=row.querySelector('time');return{sender:getComputedStyle(sender).fontWeight,subject:getComputedStyle(subject).fontWeight,snippet:getComputedStyle(snippet).fontWeight,date:getComputedStyle(date).fontWeight}})()");
-  assert.deepEqual(unreadStyle, { sender: "600", subject: "600", snippet: "400", date: "600" });
+  const themes = ["current-light", "current-dark", "quotesuite-v2-light", "quotesuite-v2-dark", "ecofenster-v2-light", "ecofenster-v2-dark", "zyle-v2-light", "zyle-v2-dark", "glassworx-v2-light", "glassworx-v2-dark"];
+  const themeMatrix = [];
+  const rowStyle = async (theme) => evaluate(`(()=>{window.applyEmailAcceptanceTheme(${JSON.stringify(theme)});const row=document.querySelector('.email-message-row'),sender=row.querySelector('.email-message-row__sender'),subject=row.querySelector('.email-message-row__subject'),snippet=row.querySelector('.email-message-row__content small'),date=row.querySelector('time'),styles=[sender,subject,snippet,date].map(item=>getComputedStyle(item)),rowStyle=getComputedStyle(row),probe=document.createElement('span');probe.style.cssText='position:absolute;background:var(--qs-bg-card)';document.body.append(probe);const cardBackground=getComputedStyle(probe).backgroundColor;probe.remove();return{theme:${JSON.stringify(theme)},unread:row.classList.contains('is-unread'),selected:row.classList.contains('is-preview-selected'),weights:styles.map(item=>item.fontWeight),families:styles.map(item=>item.fontFamily),background:rowStyle.backgroundColor,cardBackground,boxShadow:rowStyle.boxShadow}})()`);
+  for (const theme of themes) {
+    const style = await rowStyle(theme);
+    assert.equal(style.unread, true, `${theme} changed unread state`);
+    assert.deepEqual(style.weights, ["600", "600", "400", "600"], `${theme} unread typography`);
+    assert.equal(new Set(style.families).size, 1, `${theme} mixed mailbox font families`);
+    themeMatrix.push(style);
+  }
   await evaluate("document.querySelector('.email-message-row').click()");
   await waitFor(() => evaluate("getComputedStyle(document.querySelector('.email-message-row__sender')).fontWeight==='400'"), "Opening did not remove unread emphasis");
-  const selected = await evaluate("(()=>{const selected=document.querySelector('.email-message-row.is-preview-selected'),other=document.querySelector('.email-message-row');return Boolean(selected&&getComputedStyle(selected).boxShadow!=='none'&&getComputedStyle(other.querySelector('.email-message-row__content small')).fontWeight==='400')})()");
-  assert.equal(selected, true);
+  await delay(250);
+  for (const theme of themes) {
+    const style = await rowStyle(theme);
+    assert.equal(style.unread, false, `${theme} changed read state`);
+    assert.equal(style.selected, true, `${theme} lost the independent row selection`);
+    assert.notEqual(style.background, style.cardBackground, `${theme} lost the visible selection background`);
+    assert.deepEqual(style.weights, ["400", "400", "400", "400"], `${theme} read typography`);
+    assert.equal(new Set(style.families).size, 1, `${theme} mixed mailbox font families`);
+    themeMatrix.push(style);
+  }
   assert.equal(unread, false);
   await evaluate("document.querySelector('button[aria-label=\"Mark unread\"]').click()");
   await waitFor(() => evaluate("document.querySelector('.email-message-row')?.classList.contains('is-unread')"), "Mark unread did not restore row state");
@@ -213,6 +231,7 @@ async function run() {
   assert.equal(await evaluate("[...document.querySelectorAll('button')].find(item=>item.textContent.includes('Saving document'))?.disabled"), true);
   await waitFor(() => evaluate("document.querySelector('.email-assignment__feedback')?.textContent.includes('provider file is preserved')"), "Partial-success recovery guidance was not visible");
   assert.equal(assignmentSubmissions, 1, "Double-click submitted the first filing twice");
+  assert.deepEqual(assignmentPayloads[0], { clientId: "client-1", projectId: "project-1", estimateId: "estimate-1", supplierId: "ZYLE", attachmentId: "local-message-1_attachment_stable-part-1", conflictsReviewed: false }, "Picker did not submit the exact offered canonical attachment identity and path");
   await evaluate("[...document.querySelectorAll('button')].find(item=>item.textContent.trim()==='Retry filing').click()");
   await waitFor(() => evaluate("document.querySelector('.email-assignment__result')?.textContent.includes('Zyle quotation.pdf')"), "Filing success did not show the filename");
   const success = await evaluate("document.querySelector('.email-assignment__result').textContent");
@@ -223,7 +242,7 @@ async function run() {
   await waitFor(() => evaluate("document.querySelector('[data-testid=import-handoff]').textContent.includes('canonical-document-1')"), "Canonical document import handoff was not retained");
   assert.equal(await evaluate("document.querySelector('[data-testid=import-handoff]').textContent"), "client-1|estimate-1|canonical-document-1");
   assert.deepEqual(diagnostics, []);
-  console.log(JSON.stringify({ unreadStyle, readStatePersisted: true, assignmentSubmissions, commandSubmissions, success, importHandoff: "client-1|estimate-1|canonical-document-1" }, null, 2));
+  console.log(JSON.stringify({ themeMatrix, readStatePersisted: true, assignmentSubmissions, commandSubmissions, success, importHandoff: "client-1|estimate-1|canonical-document-1" }, null, 2));
 }
 
 try {

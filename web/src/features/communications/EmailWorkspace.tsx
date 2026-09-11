@@ -32,6 +32,7 @@ type AssignmentFeedback = {
     fileName?: string;
     folderPath?: string;
     webViewLink?: string | null;
+    eligibleFileNames?: string[];
   };
 };
 type Composer = {
@@ -1073,6 +1074,11 @@ export function AssignmentDialog({
                 ) : null}
                 {feedback.details?.folderPath ? (
                   <span>Destination: {feedback.details.folderPath}</span>
+                ) : null}
+                {feedback.details?.eligibleFileNames?.length ? (
+                  <span>
+                    Eligible now: {feedback.details.eligibleFileNames.join(", ")}
+                  </span>
                 ) : null}
                 {feedback.state === "partial" ? (
                   <span>
@@ -2386,7 +2392,9 @@ export default function EmailWorkspace({
                   ))}
                 </span>
                 <span className="email-message-row__content">
-                  <strong>{row.subject}</strong>
+                  <span className="email-message-row__subject">
+                    {row.subject}
+                  </span>
                   <small> — {row.snippet}</small>
                 </span>
                 <span className="email-message-row__meta">

@@ -6,7 +6,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import sqlite3 from "sqlite3";
 import { open } from "sqlite";
 import { createCommunicationRepository } from "../server/features/communications/communicationRepository.js";
-import { createCommunicationsService, findRelationshipSuggestions, preserveCommunicationLinks, resolveCanonicalRelationship, resolveMailboxCapabilities } from "../server/features/communications/communicationsService.js";
+import { communicationAttachmentRecordId, createCommunicationsService, findRelationshipSuggestions, preserveCommunicationLinks, resolveCanonicalRelationship, resolveMailboxCapabilities } from "../server/features/communications/communicationsService.js";
 import { GMAIL_MODIFY_SCOPE } from "../server/features/integrations/googleWorkspaceService.js";
 
 async function fixture(t) {
@@ -87,16 +87,21 @@ test("mutating mailbox capabilities follow the persisted gmail.modify grant",()=
 });
 
 test("Link existing resolves EF-CL reference, exposes the full picker without a suggestion dependency, and files only after reviewed storage succeeds",async t=>{
-  const db=await fixture(t),message={...providerMessage(),from:["Viktorija <info@zylefenster.com>"],subject:"Ats.: EF-CL-028: Stuart Gilks",bodyText:"Please see attached.",attachments:[{fileName:"EcoTherm Aluminium Clad Casement window.pdf",mediaType:"application/pdf",sizeBytes:7,providerAttachmentId:"provider-document",inline:false}]};
+  const db=await fixture(t);let providerRead=0,currentProviderDocumentId="";
+  const providerDocument=()=>{providerRead+=1;currentProviderDocumentId=`ANGjdJ-${String(providerRead).padEnd(418,"x")}`;return{...providerMessage(),from:["Viktorija <info@zylefenster.com>"],subject:"Ats.: EF-CL-028: Stuart Gilks",bodyText:"Please see attached.",attachments:[
+    {sourcePartId:"0.1",fileName:"image.png",mediaType:"image/png",sizeBytes:1240,providerAttachmentId:`ANGjdJ-${String(providerRead).padEnd(396,"i")}`,contentId:"ii_1a07b70b3b8cb971f161",inline:true},
+    {sourcePartId:"1",fileName:"EF-CL-028 Stuart Gilks, Ecotherm +.docx",mediaType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",sizeBytes:115091,providerAttachmentId:currentProviderDocumentId,contentId:null,inline:false},
+  ]}};
   const workspace={async status(){return{connected:true,scopes:[],capabilities:{gmail:{available:true},drive:{available:true}}}}};
   let filed=null;
-  const drive={async storeCommunicationSupplierDocument(input){filed=input;return{status:"stored",duplicate:false,documentId:"document-1",providerFileId:"provider-file-1",fileName:"EcoTherm Aluminium Clad Casement window.pdf",folderPath:"2026/EF-CL-028 - Exact Client/Exact Project/Estimates/EF-EST-2026-041/Suppliers/Zyle Fenster",webViewLink:"https://drive.invalid/document-1"}}};
-  const service=createCommunicationsService(db,{workspace,gmail:{async readMessage(){return message},async attachment(messageId,attachmentId){assert.equal(messageId,"provider-message-1");assert.equal(attachmentId,"provider-document");return Buffer.from("genuine")}},drive,environment:{}});
+  const drive={async storeCommunicationSupplierDocument(input){filed=input;return{status:"stored",duplicate:false,documentId:"document-1",providerFileId:"provider-file-1",fileName:"EF-CL-028 Stuart Gilks, Ecotherm +.docx",folderPath:"2026/EF-CL-028 - Exact Client/Exact Project/Estimates/EF-EST-2026-041/Suppliers/Zyle Fenster",webViewLink:"https://drive.invalid/document-1"}}};
+  const service=createCommunicationsService(db,{workspace,gmail:{async readMessage(){return providerDocument()},async attachment(messageId,attachmentId){assert.equal(messageId,"provider-message-1");assert.equal(attachmentId,currentProviderDocumentId);return Buffer.from("genuine")}},drive,environment:{}});
   const options=await service.assignmentOptions("provider-message-1");
-  assert.equal(options.reference,"EF-CL-028");assert.equal(options.proposed.clientId,"client-1");assert.equal(options.proposed.projectId,"project-1");assert.equal(options.proposed.estimateId,"estimate-1");assert.equal(options.proposed.supplierId,"ZYLE");assert.equal(options.proposed.attachmentId,options.attachments[0].id);assert.ok(options.conflicts.some(item=>item.code==="client_name_variance"));
+  assert.equal(options.reference,"EF-CL-028");assert.equal(options.proposed.clientId,"client-1");assert.equal(options.proposed.projectId,"project-1");assert.equal(options.proposed.estimateId,"estimate-1");assert.equal(options.proposed.supplierId,"ZYLE");assert.equal(options.attachments.length,1);assert.equal(options.attachments[0].fileName,"EF-CL-028 Stuart Gilks, Ecotherm +.docx");assert.equal(options.proposed.attachmentId,options.attachments[0].id);assert.equal(options.attachments[0].id,communicationAttachmentRecordId(options.communicationMessageId,{sourcePartId:"1"},1));assert.ok(options.conflicts.some(item=>item.code==="client_name_variance"));
+  await assert.rejects(()=>service.assignSupplierDocument("provider-message-1",{...options.proposed,attachmentId:"obsolete-provider-derived-selection",conflictsReviewed:true}),error=>error.code==="communication_assignment_attachment_stale"&&error.details.eligibleFileNames[0]==="EF-CL-028 Stuart Gilks, Ecotherm +.docx");
   await assert.rejects(()=>service.assignSupplierDocument("provider-message-1",{...options.proposed,supplierId:"ZYLE",attachmentId:options.attachments[0].id}),/review the reference conflict/i);
   const result=await service.assignSupplierDocument("provider-message-1",{...options.proposed,supplierId:"ZYLE",attachmentId:options.attachments[0].id,conflictsReviewed:true});
-  assert.equal(Buffer.from(filed.bytes).toString(),"genuine");assert.equal(result.fileName,"EcoTherm Aluminium Clad Casement window.pdf");assert.equal(result.providerFileId,"provider-file-1");assert.equal(result.navigation.openFilesLabel,"Open Files");assert.equal(result.navigation.importLabel,"Import Manufacturer Estimate");
+  assert.ok(providerRead>=4);assert.equal(Buffer.from(filed.bytes).toString(),"genuine");assert.equal(filed.communicationAttachmentId,options.attachments[0].id);assert.equal(filed.providerAttachmentId,currentProviderDocumentId);assert.equal(result.fileName,"EF-CL-028 Stuart Gilks, Ecotherm +.docx");assert.equal(result.providerFileId,"provider-file-1");assert.equal(result.navigation.openFilesLabel,"Open Files");assert.equal(result.navigation.importLabel,"Import Manufacturer Estimate");
   assert.deepEqual(new Set(result.links.map(item=>item.kind)),new Set(["client","project","estimate","supplier"]));
 });
 

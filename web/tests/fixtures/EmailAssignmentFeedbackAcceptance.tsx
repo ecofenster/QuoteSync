@@ -1,10 +1,13 @@
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import EmailWorkspace from "../../src/features/communications/EmailWorkspace";
+import { applyQuoteSuiteVisualTheme, type QuoteSuiteVisualThemeId } from "../../src/theme/visualDesignV2";
 import "../../src/index.css";
 
 localStorage.setItem("quotesuite.email.layout.v1", JSON.stringify("right"));
 localStorage.setItem("quotesuite.email.reading-mode.v1", JSON.stringify("message"));
+applyQuoteSuiteVisualTheme("current-light", false);
+(window as unknown as { applyEmailAcceptanceTheme: (id: QuoteSuiteVisualThemeId) => void }).applyEmailAcceptanceTheme = (id) => applyQuoteSuiteVisualTheme(id, false);
 
 function Acceptance() {
   const [handoff, setHandoff] = useState("");
