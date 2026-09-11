@@ -6,23 +6,8 @@ import { allocateCanonicalReference } from '../features/commercialIdentity/refer
 
 const router = express.Router();
 
-const PROTECTED_CLIENT_REFS = new Set([
-  'EF-CL-001',
-  'EF-CL-002',
-  'EF-CL-003',
-  'EF-CL-004',
-  'EF-CL-005',
-  'EF-CL-006',
-  'EF-CL-007',
-  'EF-CL-008',
-]);
-
 function normalizeClientRef(value) {
   return String(value || '').trim().toUpperCase();
-}
-
-function isProtectedClientRef(value) {
-  return PROTECTED_CLIENT_REFS.has(normalizeClientRef(value));
 }
 
 async function getClientIdentity(db, id) {
@@ -39,7 +24,6 @@ async function getClientIdentity(db, id) {
 
 async function isProtectedClientIdentity(db, client) {
   if (!client) return false;
-  if (isProtectedClientRef(client.client_ref)) return true;
   return Boolean(await db.get('SELECT 1 FROM protected_client_identities WHERE client_id=?', client.id));
 }
 
@@ -110,47 +94,50 @@ router.get('/', async (req, res) => {
     const includeDeleted = parseFlag(req.query.include_deleted);
     const onlyDeleted = parseFlag(req.query.only_deleted);
 
-    let whereSql = 'WHERE deleted_at IS NULL';
+    let whereSql = 'WHERE clients.deleted_at IS NULL';
     if (onlyDeleted) {
-      whereSql = 'WHERE deleted_at IS NOT NULL';
+      whereSql = 'WHERE clients.deleted_at IS NOT NULL';
     } else if (includeDeleted) {
       whereSql = '';
     }
 
     const clients = await db.all(`
       SELECT
-        id,
-        name,
-        email,
-        phone,
-        mobile,
-        home,
-        project_name,
-        created_at,
-        client_ref,
-        client_type,
-        contact_name,
-        company_name,
-        customer_address,
-        project_address,
-        invoice_address,
-        invoice_same_as_customer,
-        invoice_same_as_project,
-        customer_address_json,
-        project_address_json,
-        invoice_address_json,
-        what3words,
-        latitude,
-        longitude,
-        commercial_lifecycle,
-        reference_namespace,
-        deleted_at
+        clients.id,
+        clients.name,
+        clients.email,
+        clients.phone,
+        clients.mobile,
+        clients.home,
+        clients.project_name,
+        clients.created_at,
+        clients.client_ref,
+        clients.client_type,
+        clients.contact_name,
+        clients.company_name,
+        clients.customer_address,
+        clients.project_address,
+        clients.invoice_address,
+        clients.invoice_same_as_customer,
+        clients.invoice_same_as_project,
+        clients.customer_address_json,
+        clients.project_address_json,
+        clients.invoice_address_json,
+        clients.what3words,
+        clients.latitude,
+        clients.longitude,
+        clients.commercial_lifecycle,
+        clients.reference_namespace,
+        clients.deleted_at,
+        CASE WHEN protected_client_identities.client_id IS NULL THEN 0 ELSE 1 END AS is_protected,
+        protected_client_identities.workspace_owner AS protection_workspace
       FROM clients
+      LEFT JOIN protected_client_identities ON protected_client_identities.client_id=clients.id
       ${whereSql}
       ORDER BY
-        CASE WHEN deleted_at IS NULL THEN 0 ELSE 1 END,
-        COALESCE(deleted_at, created_at) DESC,
-        rowid DESC
+        CASE WHEN clients.deleted_at IS NULL THEN 0 ELSE 1 END,
+        COALESCE(clients.deleted_at, clients.created_at) DESC,
+        clients.rowid DESC
     `);
 
     res.json(
@@ -163,6 +150,8 @@ router.get('/', async (req, res) => {
         latitude: normalizeCoordinate(row.latitude),
         longitude: normalizeCoordinate(row.longitude),
         deleted_at: row.deleted_at ? String(row.deleted_at) : null,
+        is_protected: Boolean(row.is_protected),
+        protection_workspace: row.protection_workspace ? String(row.protection_workspace) : null,
       }))
     );
   } catch (error) {

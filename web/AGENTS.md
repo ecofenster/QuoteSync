@@ -37,6 +37,31 @@
 
 - QuoteSuite application layouts must use the shared semantic spacing scale rather than feature-specific margin patches. Related controls stay visually grouped; fields, rows, groups and independent sections receive progressively clearer separation; labels, controls, helper text and actions must never appear accidentally attached. Responsive layouts wrap or reflow before controls are compressed, while compact specialist tables may retain an intentional local scroll boundary without causing page, shell or workspace overflow.
 
+## Guided user experience and outcome feedback
+
+- QuoteSuite workflows must use plain language and familiar actions. Keep implementation, provider and developer terminology out of the normal user path; place optional diagnostic or provenance detail behind a clearly labelled `View details` disclosure.
+- Show only the information and controls relevant to the current step, and give that step one clear primary action. Do not make users interpret unrelated workflow stages or competing primary commands.
+- Detect likely existing records, files and conflicts automatically. Ask the user only when a meaningful decision is required, show the supporting evidence, and explain each option and consequence simply. Never treat a matching filename as proof of identical content or silently overwrite/discard potentially revised evidence.
+- Every user-triggered multi-step or long-running action must show immediate progress, then a clear complete, partial or failed result stating what changed, what did not, the exact relevant identity or destination and the next useful action.
+- Preserve entered information and completed idempotent work after errors. Explain how to recover or retry safely without creating duplicates or losing successful prior steps.
+- Wording and behaviour must remain consistent across Email, Clients, Projects, Files, Estimates, Comparisons, Portal and Orders. Acceptance must demonstrate that an ordinary user can complete the task without developer guidance; passing an underlying unit, API or persistence test alone is insufficient.
+- Apply this principle incrementally to the current intake and filing repairs, then review other workspaces in bounded stages. It does not authorise an unrestricted redesign or mark untested workflow stages as accepted.
+
+## Ecofenster workspace protection and clean customer provisioning
+
+- Every Client currently present in Ecofenster's workspace is protected by its immutable canonical Client ID, including test/demo or recycled rows that remain part of that workspace history. Never infer the protected set from a reference range, name, row order or current active status.
+- Protection is workspace-owned metadata. It must not create, seed or identify Ecofenster Clients in another customer's installation or tenant. All Ecofenster-created Clients, Projects, Enquiries, Estimates, Orders, communications, files, issued documents, provider identities and associated history remain Ecofenster-only.
+- A new customer workspace starts with approved application defaults only. It must contain no Ecofenster business records, database copies, linked provider/storage IDs, credentials, OAuth tokens, cached email, search/index content, local attachments, generated customer PDFs or tenant-private branding/assets.
+- Shared QuoteSuite defaults and deliberately licensed product/catalogue reference data must be classified separately from customer-owned configuration and evidence. A default is not shared merely because it currently lives in source control or is convenient for development.
+- Provisioning, migration, fixture, build and packaging changes must be checked in a disposable environment for both a clean-workspace inventory and cross-tenant isolation across UI, APIs, search, downloads and Portal links. Never delete or reset Ecofenster's workspace to create a clean release.
+- Unverified tenant isolation or a provisioning/package path contaminated with customer-owned data is a release blocker, even when single-workspace functional tests pass.
+
+## Development Roadmap maintenance
+
+- Review and update the authoritative Development Roadmap whenever functionality is added, amended, completed, found incomplete, blocked or superseded. Update an existing requirement before adding a new one and avoid duplicate requirements.
+- Roadmap status must distinguish implementation, technical verification and ordinary-user acceptance. Tests do not imply user acceptance, and recording a requirement does not imply implementation.
+- Every future completion report must identify the Roadmap entries updated, or explain why the completed work did not require a Roadmap change. Reconcile displayed totals with the underlying entries whenever statuses change.
+
 ## Administration interaction consistency
 
 - Administration configuration areas must reuse established QuoteSuite navigation, tab, table, CRUD, modal, status, responsive and theme patterns. Main sidebar entries own one Administration area; meaningful sub-sections use the shared tab pattern instead of long stacked pages, and Administration must not duplicate an Estimate-owned operational workspace.

@@ -199,6 +199,8 @@ test("mailbox unread emphasis, assignment feedback and saved-document review han
   assert.match(ui,/assignmentSubmitting\.current/);
   assert.match(ui,/communication_assignment_partial_success/);
   assert.match(ui,/Retry filing/);
+  assert.match(ui,/<summary>View details<\/summary>/);
+  assert.match(ui,/The saved file is preserved/);
   assert.match(ui,/result\.fileName/);
   assert.match(app,/canonicalDocumentId:documentId/);
   assert.match(workspace,/canonicalDocumentId=\{importCanonicalDocumentId\}/);

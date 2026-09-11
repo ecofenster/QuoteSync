@@ -49,7 +49,7 @@ test("Client projection preserves coordinates and customer postcode fallback wit
   assert.match(app, /const customerPostcode = usableLocationText\(customerStructured\.postcode/);
   assert.match(app, /postcode: projectPostcode \|\| customerPostcode/);
   assert.match(app, /latitude,\s*longitude,/s);
-  assert.match(app, /if \(isProtectedClientRef\(targetClient\.clientRef\)\) return/);
+  assert.match(app, /if \(targetClient\.isProtected\) return/);
 });
 
 test("whitespace-only project locations cannot block a customer-address fallback", async () => {
@@ -91,7 +91,8 @@ test("EF-CL-005-shaped customer fixture reaches BA2 8AP without protected-record
   assert.equal(fixture.projectAddress.trim(), "");
   assert.equal(fixture.customerAddressStructured.postcode, "BA2 8AP");
   assert.match(location, /geocodeWithGoogle\(`\$\{clientPostcode\}, UK`/);
-  assert.match(app, /isProtectedClientRef\(targetClient\.clientRef\)/);
+  assert.match(app, /targetClient\.isProtected/);
+  assert.doesNotMatch(app, /isProtectedClientRef\(targetClient\.clientRef\)/);
 });
 
 test("Project Map card explicitly distinguishes Client fallback from confirmed site location", async () => {

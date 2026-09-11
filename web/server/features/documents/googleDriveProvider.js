@@ -2,6 +2,7 @@ const API = "https://www.googleapis.com/drive/v3";
 const UPLOAD_API = "https://www.googleapis.com/upload/drive/v3";
 export const GOOGLE_DRIVE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
 const LIST_FIELDS = "nextPageToken,incompleteSearch,files(id,name,mimeType,parents,size,createdTime,modifiedTime,version,md5Checksum,trashed,appProperties,webViewLink,driveId,shortcutDetails)";
+const ITEM_FIELDS = "id,name,mimeType,parents,size,createdTime,modifiedTime,version,md5Checksum,trashed,appProperties,webViewLink,driveId,shortcutDetails";
 const q = (value) => String(value || "").replaceAll("\\", "\\\\").replaceAll("'", "\\'");
 
 export function createGoogleDriveProvider(googleWorkspace) {
@@ -20,6 +21,12 @@ export function createGoogleDriveProvider(googleWorkspace) {
     url.searchParams.set("fields", LIST_FIELDS);
     url.searchParams.set("q", `'${q(parentId)}' in parents${includeTrashed ? "" : " and trashed=false"}`);
     if (pageToken) url.searchParams.set("pageToken", pageToken);
+    return json(await googleWorkspace.googleFetch(url));
+  }
+  async function getItem({ fileId }) {
+    const url = new URL(`${API}/files/${encodeURIComponent(fileId)}`);
+    url.searchParams.set("supportsAllDrives", "true");
+    url.searchParams.set("fields", ITEM_FIELDS);
     return json(await googleWorkspace.googleFetch(url));
   }
   async function listChildren(input) {
@@ -62,7 +69,7 @@ export function createGoogleDriveProvider(googleWorkspace) {
     const properties = { ...appProperties };
     if (estimateId) properties.quotesuiteEstimateId = estimateId;
     if (logicalKey) properties.quotesuiteLogicalKey = logicalKey;
-    return json(await googleWorkspace.googleFetch(`${API}/files?fields=id,name,parents,appProperties`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, mimeType: "application/vnd.google-apps.folder", parents: [parentId], appProperties: properties }) }));
+    return json(await googleWorkspace.googleFetch(`${API}/files?supportsAllDrives=true&fields=id,name,parents,appProperties`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, mimeType: "application/vnd.google-apps.folder", parents: [parentId], appProperties: properties }) }));
   }
   async function ensureFolder(input) {
     const canonical = await findFolder(input);
@@ -82,5 +89,5 @@ export function createGoogleDriveProvider(googleWorkspace) {
     const body = Buffer.concat([Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: ${mediaType}\r\n\r\n`), Buffer.from(bytes), Buffer.from(`\r\n--${boundary}--`)]);
     return json(await googleWorkspace.googleFetch(`${UPLOAD_API}/files?uploadType=multipart&supportsAllDrives=true&fields=id,name,mimeType,parents,size,createdTime,modifiedTime,version,md5Checksum,trashed,appProperties,webViewLink,driveId`, { method: "POST", headers: { "Content-Type": `multipart/related; boundary=${boundary}` }, body }));
   }
-  return { listChildrenPage, listChildren, findFolder, findFolderByName, findProjectFolderByEstimateReference, createFolder, ensureFolder, uploadFile };
+  return { getItem, listChildrenPage, listChildren, findFolder, findFolderByName, findProjectFolderByEstimateReference, createFolder, ensureFolder, uploadFile };
 }

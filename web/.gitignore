@@ -61,3 +61,4 @@ web/.env*
 .tmp-edge-acceptance/
 .tmp-chrome-acceptance*/
 test-output/
+.quotesuite-acceptance/

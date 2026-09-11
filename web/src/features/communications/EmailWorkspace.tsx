@@ -1069,21 +1069,18 @@ export function AssignmentDialog({
                 aria-live="polite"
               >
                 <strong>{feedback.message}</strong>
-                {feedback.details?.fileName ? (
-                  <span>File: {feedback.details.fileName}</span>
-                ) : null}
-                {feedback.details?.folderPath ? (
-                  <span>Destination: {feedback.details.folderPath}</span>
-                ) : null}
-                {feedback.details?.eligibleFileNames?.length ? (
-                  <span>
-                    Eligible now: {feedback.details.eligibleFileNames.join(", ")}
-                  </span>
+                {feedback.details?.fileName || feedback.details?.folderPath || feedback.details?.eligibleFileNames?.length ? (
+                  <details>
+                    <summary>View details</summary>
+                    {feedback.details?.fileName ? <span>File: {feedback.details.fileName}</span> : null}
+                    {feedback.details?.folderPath ? <span>Destination: {feedback.details.folderPath}</span> : null}
+                    {feedback.details?.eligibleFileNames?.length ? <span>Eligible documents: {feedback.details.eligibleFileNames.join(", ")}</span> : null}
+                  </details>
                 ) : null}
                 {feedback.state === "partial" ? (
                   <span>
-                    The provider file is preserved. Retry will reuse it and will
-                    not create another copy.
+                    The saved file is preserved. Retry will reuse it and will not
+                    create another copy.
                   </span>
                 ) : feedback.state === "failed" ? (
                   <span>No successful filing was confirmed. It is safe to retry.</span>
@@ -1707,7 +1704,7 @@ export default function EmailWorkspace({
       setAssignmentFeedback({
         state: partial ? "partial" : "failed",
         message: partial
-          ? "The document reached the provider, but QuoteSuite could not finish linking it."
+          ? "The document was saved, but QuoteSuite could not finish linking it."
           : reason instanceof Error
             ? reason.message
             : "The supplier document could not be filed.",

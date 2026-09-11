@@ -113,6 +113,13 @@ const statements = [
     FOREIGN KEY(recipient_portal_contact_id) REFERENCES portal_contacts(id) ON DELETE SET NULL,
     FOREIGN KEY(document_id) REFERENCES customer_quotation_documents(id) ON DELETE RESTRICT
   )`,
+  `CREATE TABLE IF NOT EXISTS estimate_archives (
+    estimate_id TEXT PRIMARY KEY,
+    reason TEXT NOT NULL DEFAULT '',
+    archived_by TEXT NOT NULL,
+    archived_at TEXT NOT NULL,
+    FOREIGN KEY(estimate_id) REFERENCES estimates(id) ON DELETE RESTRICT
+  )`,
   `CREATE TABLE IF NOT EXISTS estimate_revision_lineage (
     id TEXT PRIMARY KEY,
     source_release_id TEXT NOT NULL UNIQUE,

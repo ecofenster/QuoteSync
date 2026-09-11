@@ -229,7 +229,7 @@ async function run() {
   await evaluate("(()=>{const button=[...document.querySelectorAll('button')].find(item=>item.textContent.trim()==='File selected document');button.click();button.click();return true})()");
   await waitFor(() => evaluate("document.querySelector('.email-assignment__feedback')?.textContent.includes('Saving document')"), "Immediate saving feedback was not visible");
   assert.equal(await evaluate("[...document.querySelectorAll('button')].find(item=>item.textContent.includes('Saving document'))?.disabled"), true);
-  await waitFor(() => evaluate("document.querySelector('.email-assignment__feedback')?.textContent.includes('provider file is preserved')"), "Partial-success recovery guidance was not visible");
+  await waitFor(() => evaluate("document.querySelector('.email-assignment__feedback')?.textContent.includes('saved file is preserved')"), "Partial-success recovery guidance was not visible");
   assert.equal(assignmentSubmissions, 1, "Double-click submitted the first filing twice");
   assert.deepEqual(assignmentPayloads[0], { clientId: "client-1", projectId: "project-1", estimateId: "estimate-1", supplierId: "ZYLE", attachmentId: "local-message-1_attachment_stable-part-1", conflictsReviewed: false }, "Picker did not submit the exact offered canonical attachment identity and path");
   await evaluate("[...document.querySelectorAll('button')].find(item=>item.textContent.trim()==='Retry filing').click()");

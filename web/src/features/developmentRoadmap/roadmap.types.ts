@@ -1,4 +1,4 @@
-export type RoadmapStatus = "complete" | "in_progress" | "not_started" | "legacy";
+export type RoadmapStatus = "complete" | "in_progress" | "not_started" | "blocked" | "legacy";
 
 export type RoadmapPlatform =
   | "all"
@@ -49,6 +49,9 @@ export type RoadmapItem = {
   completedDate?: string;
   checkpointSha?: string;
   validationStatus?: string;
+  implementationStatus?: string;
+  technicalVerificationStatus?: string;
+  userAcceptanceStatus?: string;
   dependencies: string[];
   blockers: string[];
   canonicalModules: string[];

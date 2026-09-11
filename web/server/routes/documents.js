@@ -9,7 +9,7 @@ export function createDocumentsRouter({ databasePromise = dbPromise, driveServic
   const router = express.Router();
   router.get("/", async (req, res) => {
     try {
-      const service = createDocumentRecordsService(await databasePromise);
+      const service = createDocumentRecordsService(await databasePromise, driveServiceOptions);
       res.json(await service.list({
         enquiryId: String(req.query.enquiry_id || "").trim() || null,
         clientId: String(req.query.client_id || "").trim() || null,

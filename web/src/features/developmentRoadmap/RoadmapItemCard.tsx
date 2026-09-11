@@ -17,6 +17,9 @@ export default function RoadmapItemCard({ item, depth = 0 }: { item: RoadmapItem
           <Detail label="Canonical modules" values={item.canonicalModules} />
           <Detail label="Dependencies" values={item.dependencies} />
           <Detail label="Blockers" values={item.blockers} />
+          {item.implementationStatus ? <div><dt>Implementation</dt><dd>{item.implementationStatus}</dd></div> : null}
+          {item.technicalVerificationStatus ? <div><dt>Technical verification</dt><dd>{item.technicalVerificationStatus}</dd></div> : null}
+          {item.userAcceptanceStatus ? <div><dt>User acceptance</dt><dd>{item.userAcceptanceStatus}</dd></div> : null}
           {item.nextAction ? <div><dt>Next action</dt><dd>{item.nextAction}</dd></div> : null}
           <Detail label="Technical debt" values={item.technicalDebt} />
           <Detail label="Notes" values={item.notes} />

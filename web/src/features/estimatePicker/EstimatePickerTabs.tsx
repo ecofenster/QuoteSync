@@ -72,6 +72,7 @@ type Props = {
   copyEstimateForClient: (client: Client, sourceEstimateId: EstimateId) => void;
   deletedEstimatesForClient: { estimate: Client["estimates"][number]; deletedAt: string }[];
   deleteEstimatesForClient: (clientId: ClientId, estimateIds: EstimateId[]) => void;
+  archiveEstimateForClient: (clientId: ClientId, estimateId: EstimateId) => void;
   restoreDeletedEstimatesForClient: (clientId: ClientId, estimateIds: EstimateId[]) => void;
   purgeDeletedEstimatesForClient: (clientId: ClientId, estimateIds?: EstimateId[]) => void;
   setEstimateInstaller: (clientId: ClientId, estimateId: EstimateId, installerId: string) => void;
@@ -417,6 +418,7 @@ export default function EstimatePickerTabs(props: Props) {
     copyEstimateForClient,
     deletedEstimatesForClient,
     deleteEstimatesForClient,
+    archiveEstimateForClient,
     restoreDeletedEstimatesForClient,
     purgeDeletedEstimatesForClient,
     setEstimateInstaller,
@@ -652,6 +654,11 @@ export default function EstimatePickerTabs(props: Props) {
   function confirmDeleteEstimate(estimateId: EstimateId) {
     const estimate = activePickerClient.estimates.find((x) => x.id === estimateId);
     if (!estimate) return;
+    if (estimate.deletionRestricted) {
+      const archive = window.confirm(`${estimate.estimateRef} is issued and cannot be deleted. Archive it from active lists while preserving its issued evidence and relationships?`);
+      if (archive) archiveEstimateForClient(activePickerClient.id, estimateId);
+      return;
+    }
     const ok = window.confirm(`Send estimate ${estimate.estimateRef} to recycle bin?`);
     if (!ok) return;
     if (expandedEstimateId === estimateId) {

@@ -12,7 +12,7 @@ test("roadmap typed data is complete, unique and deterministically countable", (
   assert.ok(all.length >= 100);
   const counts = roadmapStatusCounts(ROADMAP_ITEMS);
   assert.equal(Object.values(counts).reduce((sum, value) => sum + value, 0), all.length);
-  assert.ok(counts.complete > 0 && counts.in_progress > 0 && counts.not_started > 0 && counts.legacy > 0);
+  assert.deepEqual(counts, { complete: 23, in_progress: 73, not_started: 142, blocked: 3, legacy: 10 });
 });
 
 test("Administration exposes Development and the QuoteSuite Roadmap workspace", async () => {
@@ -27,18 +27,41 @@ test("Administration exposes Development and the QuoteSuite Roadmap workspace", 
 
 test("status rendering uses accessible text as well as colour", async () => {
   const status = await read("src/features/developmentRoadmap/RoadmapStatusBadge.tsx");
-  for (const label of ["Complete", "In progress", "Not started", "Legacy / deferred"]) assert.match(status, new RegExp(label.replace("/", "\\/")));
+  for (const label of ["Complete", "In progress", "Not started", "Blocked", "Superseded / legacy"]) assert.match(status, new RegExp(label.replace("/", "\\/")));
   assert.match(status, /aria-label/);
   assert.match(status, /✓/);
   assert.match(status, /✕/);
 });
 
 test("chronology remains ordered and displays the current checkpoint", () => {
-  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 135 }, (_, index) => index + 1));
+  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 143 }, (_, index) => index + 1));
   assert.equal([...ROADMAP_CHRONOLOGY].reverse().find((entry) => entry.checkpointSha)?.checkpointSha, ROADMAP_CHECKPOINT_SHA);
   assert.equal(ROADMAP_CHRONOLOGY.find((entry) => entry.title === "Browser automation process-lifecycle hardening")?.sequence, 75);
-  assert.equal(ROADMAP_CHRONOLOGY.at(-1)?.title, "Supplier filing outcome, review handoff and mailbox read-state feedback");
+  assert.equal(ROADMAP_CHRONOLOGY.at(-1)?.title, "Live EF-CL-028 filing-state reconciliation");
   assert.equal(ROADMAP_CHECKPOINT_SHA, "5dc75f996a52a213e6bb10121b730a401f4f2df8");
+});
+
+test("Email intake conflict review and permanent workflow feedback remain explicit unimplemented requirements", () => {
+  const entry = ROADMAP_CHRONOLOGY.find((item)=>item.title === "Email intake identity, file-conflict and outcome-feedback requirement"), communications = all.find((item) => item.id === "communications"), workflow = all.find((item) => item.id === "workflow-orchestration");
+  assert.equal(entry?.resultingStatus, "not_started");
+  assert.match(entry?.objective ?? "", /existing-record matches.*explicit link-or-create decision/i);
+  assert.match(entry?.objective ?? "", /prior filing identity.*verified content identity.*same-name unverified\/different content/i);
+  assert.match(entry?.validation ?? "", /save-as-new-revision.*partial completion preservation.*idempotent retry/i);
+  assert.match((communications?.notes ?? []).join(" "), /Filename equality alone|filename equality as proof/i);
+  assert.match((communications?.notes ?? []).join(" "), /what was created, reused, linked or saved.*safe idempotent continuation/i);
+  assert.match((workflow?.notes ?? []).join(" "), /Permanent workflow feedback rule.*complete\/partial\/failed.*safe next action/i);
+});
+
+test("guided UX is permanent governance with a bounded unaccepted workspace review", async () => {
+  const agents=await read("AGENTS.md"), review=all.find((item)=>item.id==="guided-ux-staged-review"), entry=ROADMAP_CHRONOLOGY.find(item=>item.title==="Guided user experience governance and staged review");
+  assert.match(agents,/## Guided user experience and outcome feedback/);
+  assert.match(agents,/one clear primary action.*meaningful decision.*immediate progress/s);
+  assert.match(agents,/ordinary user can complete the task without developer guidance/);
+  assert.equal(review?.status,"in_progress");
+  assert.deepEqual(review?.children?.map(item=>item.title),["Email intake and filing","Clients and Projects","Files","Estimates","Comparisons","Portal","Orders"]);
+  assert.match((review?.notes??[]).join(" "),/one named workflow stage at a time.*not.*cross-application redesign/i);
+  assert.equal(entry?.resultingStatus,"not_started");
+  assert.equal(review?.children?.find(item=>item.id==="guided-ux-staged-review-2")?.status,"in_progress");
 });
 
 test("Drive provisioning ownership and the two separate PDF deliverables remain explicit", () => {
@@ -252,7 +275,27 @@ test("roadmap is static and has no database or production Client mutation depend
   ].map((file) => read(`src/features/developmentRoadmap/${file}`)));
   const combined = sources.join("\n");
   assert.doesNotMatch(combined, /apiFetch|fetch\(|sqlite|\/api\/clients|INSERT INTO|UPDATE clients|DELETE FROM/);
-  assert.match(combined, /Protected EF-CL-001 through EF-CL-008/);
+  assert.match(combined, /All 29 Client rows already present in Ecofenster's workspace are protected by immutable canonical ID/);
+  assert.doesNotMatch(combined, /Protected EF-CL-001 through EF-CL-008/);
+});
+
+test("Ecofenster clean provisioning and tenant isolation are separate release gates", async () => {
+  const agents=await read("AGENTS.md"),clean=all.find(item=>item.id==="saas-clean-customer-provisioning"),isolation=all.find(item=>item.id==="saas-tenant-isolation-acceptance");
+  assert.equal(clean?.status,"in_progress");assert.equal(isolation?.status,"blocked");
+  assert.match(agents,/Every Client currently present in Ecofenster's workspace is protected by its immutable canonical Client ID/);
+  assert.match(agents,/no Ecofenster business records.*OAuth tokens.*private branding\/assets/s);
+  assert.match(clean?.technicalVerificationStatus??"",/Database\/storage inventory passed.*build\/package content audit found/i);
+  assert.match(isolation?.blockers.join(" ")??"",/Core Client\/Project\/Estimate\/Order\/Communication\/Document tenant ownership/);
+});
+
+test("Operations Dashboard CRM review updates existing programmes without claiming acceptance", () => {
+  const entry=ROADMAP_CHRONOLOGY.find(item=>item.title==="Operations Dashboard and core CRM usability review"),lifecycle=all.find(item=>item.id==="crm-lifecycle"),pipeline=all.find(item=>item.id==="crm-pipeline"),guided=all.find(item=>item.id==="guided-ux-staged-review-2");
+  assert.equal(entry?.resultingStatus,"in_progress");
+  assert.match(entry?.objective??"",/Dashboard.*Enquiries.*Client\/Project context.*Email.*Follow Ups.*pipeline.*history.*search.*ownership.*handover/i);
+  assert.match(pipeline?.implementationStatus??"",/browser-local follow-up\/outcome data.*synthetic stage labels/i);
+  assert.match(pipeline?.userAcceptanceStatus??"",/Not accepted/);
+  assert.match(lifecycle?.nextAction??"",/likely matches.*owner\/team assignment.*linked follow-up/i);
+  assert.equal(guided?.status,"in_progress");assert.match(guided?.userAcceptanceStatus??"",/Not accepted/);
 });
 
 

@@ -14,6 +14,7 @@ import { GOOGLE_DRIVE_FOLDER_MIME_TYPE } from "../server/features/documents/goog
 import { initializeLifecycleSchema } from "../server/features/lifecycle/lifecycleSchema.js";
 import { createCommunicationRepository } from "../server/features/communications/communicationRepository.js";
 import { createCommunicationsService } from "../server/features/communications/communicationsService.js";
+import { ECOFENSTER_PROTECTED_CLIENT_IDS, ECOFENSTER_WORKSPACE_OWNER } from "../server/features/commercialIdentity/ecofensterProtectedClientIds.js";
 
 const now = () => new Date("2026-08-27T10:00:00.000Z");
 const backup = { verified: true, backupId: "fixture-backup", sha256: "a".repeat(64) };
@@ -24,6 +25,20 @@ test("Project folder action uses plain-language creation and reuse wording", asy
   assert.match(source, /Creates missing folders in your connected storage\. Existing folders are reused\./);
   assert.match(source, /Creating folders…/);
   assert.doesNotMatch(source, />Provision Files</);
+});
+
+test("Ecofenster protection uses the 29 actual canonical Client IDs without seeding a clean workspace", async (t) => {
+  assert.equal(ECOFENSTER_PROTECTED_CLIENT_IDS.length, 29);
+  assert.equal(new Set(ECOFENSTER_PROTECTED_CLIENT_IDS).size, 29);
+  const clean = await fixture(t);
+  assert.equal((await clean.get("SELECT COUNT(*) count FROM clients")).count, 0);
+  assert.equal((await clean.get("SELECT COUNT(*) count FROM protected_client_identities")).count, 0);
+
+  const populated = await fixture(t, ECOFENSTER_PROTECTED_CLIENT_IDS.map((id, index) => ({ id, name: `Ecofenster protected ${index + 1}`, ref: `AUDIT-${String(index + 1).padStart(3, "0")}` })));
+  const protectedRows = await populated.all("SELECT client_id,workspace_owner FROM protected_client_identities ORDER BY client_id");
+  assert.equal(protectedRows.length, 29);
+  assert.deepEqual(protectedRows.map((row) => row.client_id), [...ECOFENSTER_PROTECTED_CLIENT_IDS].sort());
+  assert.ok(protectedRows.every((row) => row.workspace_owner === ECOFENSTER_WORKSPACE_OWNER));
 });
 
 async function fixture(t, seed = []) {
@@ -170,7 +185,8 @@ test("canonical Drive provisioning is Year → Client → Project → Estimates 
   const provider = {
     async listChildren({ parentId }) { return structuredClone(children.get(parentId) || []); },
     async findFolderByName({ parentId, name }) { return (children.get(parentId) || []).find((item) => item.name === name) || null; },
-    async createFolder({ parentId, name, appProperties }) { const item = { id: `folder-${++next}`, name, mimeType: GOOGLE_DRIVE_FOLDER_MIME_TYPE, appProperties }; children.set(parentId, [...(children.get(parentId) || []), item]); children.set(item.id, []); parent.set(item.id, parentId); return item; },
+    async getItem({ fileId }) { const item = [...children.values()].flat().find((candidate) => candidate.id === fileId); if (!item) throw Object.assign(new Error("Not found"), { status: 404 }); return structuredClone(item); },
+    async createFolder({ parentId, name, appProperties }) { const item = { id: `folder-${++next}`, name, parents: [parentId], mimeType: GOOGLE_DRIVE_FOLDER_MIME_TYPE, trashed: false, appProperties }; children.set(parentId, [...(children.get(parentId) || []), item]); children.set(item.id, []); parent.set(item.id, parentId); return item; },
   };
   const workspace = { async status() { return { connected: true, estimatesRootFolderId: "estimates-root", capabilities: { drive: { available: true } }, account: { id: "account" } }; }, async resolvedConfig() { return { stored: { folder_template_json: "{}" } }; } };
   const drive = createCommercialDriveService(db, { provider, workspace, now });
@@ -189,6 +205,33 @@ test("canonical Drive provisioning is Year → Client → Project → Estimates 
   assert.ok(paths.includes("2026/EF-CL-025 - John Wingfield/Cairnpark/Estimates/EF-EST-2026-001"));
   assert.equal((await db.get("SELECT COUNT(*) count FROM canonical_drive_folders")).count, 9);
   assert.equal(parent.get(first.folder.provider_folder_id), (await db.get("SELECT provider_folder_id FROM canonical_drive_folders WHERE entity_kind='project' AND entity_id=? AND logical_key='estimates'", project.id)).provider_folder_id);
+
+  const clientMapping = await db.get("SELECT * FROM canonical_drive_folders WHERE entity_kind='project' AND entity_id='project' AND logical_key='client'");
+  const projectMapping = await db.get("SELECT * FROM canonical_drive_folders WHERE entity_kind='project' AND entity_id='project' AND logical_key='project'");
+  const clientItem = children.get("folder-1").find((item) => item.id === clientMapping.provider_folder_id);
+  clientItem.name = "EF-CL-025 - John Wingfield renamed";
+  await db.run(`INSERT INTO canonical_documents(id,provider,provider_account_id,provider_file_id,provider_folder_id,enquiry_id,client_id,project_id,estimate_id,order_id,supplier_id,supplier_quotation_id,document_type,file_name,mime_type,size_bytes,folder_path,trashed,removed_at,discovered_at,last_seen_at,updated_at)
+    VALUES('linked-document','google_drive','account','provider-document',?,NULL,'client','project','estimate',NULL,NULL,NULL,'estimate_document','Evidence.pdf','application/pdf',42,?,0,NULL,?,?,?)`, first.folder.provider_folder_id, first.folder.folder_path, now().toISOString(), now().toISOString(), now().toISOString());
+  const renamed = await drive.refreshScopeFolderMetadata({ estimateId: "estimate" });
+  assert.equal(renamed.status, "refreshed");
+  assert.match((await db.get("SELECT folder_path FROM canonical_documents WHERE id='linked-document'")).folder_path, /EF-CL-025 - John Wingfield renamed/);
+  assert.equal((await db.get("SELECT name FROM clients WHERE id='client'")).name, "John Wingfield");
+
+  const yearItems = children.get("folder-1"), oldIndex = yearItems.findIndex((item) => item.id === clientMapping.provider_folder_id);
+  yearItems[oldIndex].trashed = true;
+  const replacement = { id: "replacement-client-folder", name: "EF-CL-025 - John Wingfield corrected", parents: ["folder-1"], mimeType: GOOGLE_DRIVE_FOLDER_MIME_TYPE, trashed: false };
+  yearItems.push(replacement); children.set(replacement.id, []);
+  const oldClientChildren = children.get(clientMapping.provider_folder_id), projectIndex = oldClientChildren.findIndex((item) => item.id === projectMapping.provider_folder_id), movedProject = oldClientChildren.splice(projectIndex, 1)[0];
+  movedProject.parents = [replacement.id]; children.get(replacement.id).push(movedProject);
+  const createsBeforeRebind = next, folderCountBeforeRebind = (await db.get("SELECT COUNT(*) count FROM canonical_drive_folders")).count;
+  const rebound = await drive.refreshScopeFolderMetadata({ projectId: "project" });
+  const currentClientMapping = await db.get("SELECT provider_folder_id,name,folder_path FROM canonical_drive_folders WHERE entity_kind='project' AND entity_id='project' AND logical_key='client'");
+  assert.equal(rebound.rebound, 1);
+  assert.deepEqual(currentClientMapping, { provider_folder_id: replacement.id, name: replacement.name, folder_path: `2026/${replacement.name}` });
+  assert.equal((await db.get("SELECT provider_folder_id FROM canonical_drive_folders WHERE entity_kind='project' AND entity_id='project' AND logical_key='project'")).provider_folder_id, projectMapping.provider_folder_id);
+  assert.equal((await db.get("SELECT provider_file_id,provider_folder_id FROM canonical_documents WHERE id='linked-document'")).provider_file_id, "provider-document");
+  assert.equal(next, createsBeforeRebind);
+  assert.equal((await db.get("SELECT COUNT(*) count FROM canonical_drive_folders")).count, folderCountBeforeRebind);
 });
 
 test("Enquiry Drive identity uses the configured Enquiries root without a year folder", async (t) => {

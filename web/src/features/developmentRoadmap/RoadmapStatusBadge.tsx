@@ -4,7 +4,8 @@ const STATUS: Record<RoadmapStatus, { icon: string; label: string }> = {
   complete: { icon: "✓", label: "Complete" },
   in_progress: { icon: "●", label: "In progress" },
   not_started: { icon: "✕", label: "Not started" },
-  legacy: { icon: "—", label: "Legacy / deferred" },
+  blocked: { icon: "!", label: "Blocked" },
+  legacy: { icon: "—", label: "Superseded / legacy" },
 };
 
 export default function RoadmapStatusBadge({ status }: { status: RoadmapStatus }) {

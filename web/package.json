@@ -9,6 +9,7 @@
     "dev": "vite",
     "dev:quotesuite": "node scripts/run-development-workspace.mjs",
     "dev:test-journey": "node scripts/run-test-journey-workspace.mjs",
+    "dev:acceptance": "node scripts/run-acceptance-workspace.mjs",
     "configure:integration-key": "node scripts/ensure-local-integration-key.mjs",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --noEmit",

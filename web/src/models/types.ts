@@ -99,6 +99,8 @@ export type Client = {
   contactPerson?: string;
   commercialLifecycle?: "prospect" | "customer" | "lost_inactive_prospect" | "repeat_customer" | "unknown_review";
   referenceNamespace?: "live" | "demo" | "test" | "migration";
+  isProtected?: boolean;
+  protectionWorkspace?: string | null;
 
   estimates: Estimate[];
 };
@@ -202,6 +204,13 @@ export type Estimate = {
   createdByUserId?: string;
   createdByName?: string;
   createdByRole?: UserRole;
+  deletionRestricted?: boolean;
+  deletionReason?: string | null;
+  displayStatus?: string;
+  statusExplanation?: string | null;
+  issuedReleaseId?: string | null;
+  issuedReleasedAt?: string | null;
+  archivedAt?: string | null;
 
   outcome?: EstimateOutcome;
   estimatedOrderMonth: string;

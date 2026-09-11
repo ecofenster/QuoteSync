@@ -12,7 +12,7 @@ export function roadmapStatusCounts(items: RoadmapItem[]): Record<RoadmapStatus,
   return flattenRoadmapItems(items).reduce<Record<RoadmapStatus, number>>((counts, item) => {
     counts[item.status] += 1;
     return counts;
-  }, { complete: 0, in_progress: 0, not_started: 0, legacy: 0 });
+  }, { complete: 0, in_progress: 0, not_started: 0, blocked: 0, legacy: 0 });
 }
 
 export function validateRoadmapData(items: RoadmapItem[]) {

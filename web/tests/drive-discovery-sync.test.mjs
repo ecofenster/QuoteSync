@@ -214,7 +214,7 @@ test("Client sync persists explicit folder-not-matched, no-files and failed cach
   assert.equal(cached.sync.state, "failed");
 });
 
-test("Files UI renders cached records without automatic provider mutation and exposes explicit Sync", async () => {
+test("Files UI refreshes provider-ID folder metadata on open without automatic content sync and exposes explicit Sync", async () => {
   const [source, api] = await Promise.all([
     readFile("src/features/documents/CanonicalDocumentsPanel.tsx", "utf8"),
     readFile("src/services/documents/documentRecordsApi.ts", "utf8"),
@@ -223,6 +223,8 @@ test("Files UI renders cached records without automatic provider mutation and ex
   assert.ok(cachedIndex >= 0);
   const effect=source.slice(source.indexOf("useEffect(() => { let active"),source.indexOf("const types"));
   assert.doesNotMatch(effect,/syncDrive/);
+  assert.match(source, /Folder names and display paths refresh from their provider IDs when Files opens/);
+  assert.match(source, /Folder names could not be refreshed/);
   assert.match(source, /Syncing…/);
   assert.match(source, /Sync failed — showing cached files/);
   assert.match(source, /Synced — no files found/);
@@ -250,4 +252,15 @@ test("Google Drive child enumeration is read-only, paginated and Shared Drive co
   assert.equal(requests[0].searchParams.get("includeItemsFromAllDrives"), "true");
   assert.match(requests[0].searchParams.get("q"), /trashed=false/);
   assert.equal(requests[1].searchParams.get("pageToken"), "page-2");
+});
+
+test("Google Drive item metadata resolves a folder directly by provider ID", async () => {
+  let request;
+  const workspace = { async googleFetch(url) { request = new URL(url); return new Response(JSON.stringify(folder("folder-id", "Renamed folder", "parent-id")), { status: 200, headers: { "Content-Type": "application/json" } }); } };
+  const item = await createGoogleDriveProvider(workspace).getItem({ fileId: "folder-id" });
+  assert.equal(item.id, "folder-id");
+  assert.equal(item.name, "Renamed folder");
+  assert.equal(request.pathname, "/drive/v3/files/folder-id");
+  assert.equal(request.searchParams.get("supportsAllDrives"), "true");
+  assert.match(request.searchParams.get("fields"), /parents/);
 });

@@ -136,10 +136,11 @@ export default function EstimateCollectionActions(props: Props) {
       </div>
 
       <div className="ep-estimate-action-group">
-        <div className="ep-estimate-action-label">Delete estimate</div>
-        <Button variant="danger" onClick={() => confirmDeleteEstimate(item.id)}>
-          Delete
+        <div className="ep-estimate-action-label">{item.deletionRestricted ? "Issued Estimate" : "Delete estimate"}</div>
+        <Button variant={item.deletionRestricted ? "outline" : "danger"} onClick={() => confirmDeleteEstimate(item.id)}>
+          {item.deletionRestricted ? "Archive" : "Delete"}
         </Button>
+        {item.deletionRestricted ? <small>{item.deletionReason || "This issued revision cannot be deleted."} Archive removes it from active lists and preserves its evidence.</small> : null}
       </div>
 
       <div className="ep-estimate-action-group">

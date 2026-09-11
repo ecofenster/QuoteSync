@@ -1,4 +1,5 @@
 import { createGoogleWorkspaceService } from "../integrations/googleWorkspaceService.js";
+import { createCommercialDriveService } from "./commercialDriveService.js";
 
 const managedProvider = "quotesuite_managed";
 
@@ -29,6 +30,15 @@ export function createDocumentRecordsService(db, options = {}) {
     const canonicalScope = canonicalDocumentScope(input);
     const legacyScope = legacyEstimateScope(input);
     const account = await db.get("SELECT account_id,scopes_json,status FROM integration_oauth_connections WHERE provider='google_workspace' AND status='connected'"),workspace=options.workspace||createGoogleWorkspaceService(db,options.workspaceOptions||{}),workspaceStatus=await workspace.status().catch(()=>null);
+    let folderMetadata = { status:"skipped", changed:0, rebound:0, error:null };
+    if (workspaceStatus?.connected && workspaceStatus?.capabilities?.drive?.available) {
+      try {
+        const drive = options.commercialDrive || createCommercialDriveService(db, { ...options, workspace });
+        folderMetadata = { ...(await drive.refreshScopeFolderMetadata(input)), error:null };
+      } catch (cause) {
+        folderMetadata = { status:"failed", changed:0, rebound:0, error:cause instanceof Error ? cause.message : "Drive folder names could not be refreshed." };
+      }
+    }
     let grantedScopes = []; try { grantedScopes = JSON.parse(account?.scopes_json || "[]"); } catch { grantedScopes = []; }
     const driveWritable = account?.status === "connected" && grantedScopes.includes("https://www.googleapis.com/auth/drive") && workspaceStatus?.connected && workspaceStatus?.capabilities?.drive?.available;
     const uploadStateFor=(row,providerAccountId)=>row.removed_at?"absent":row.provider!=="google_drive"?"read_only":!workspaceStatus||!workspaceStatus.connected?"disconnected":providerAccountId!==account?.account_id||!grantedScopes.includes("https://www.googleapis.com/auth/drive")||!workspaceStatus.capabilities?.drive?.available?"read_only":"writable";
@@ -93,7 +103,7 @@ export function createDocumentRecordsService(db, options = {}) {
       scope: responseScope(input),
       documents: [...supplierDocuments, ...quotationDocuments, ...discoveredDocuments, ...canonicalDocuments].sort((a, b) => String(b.modifiedAt).localeCompare(String(a.modifiedAt))),
       folders: [...new Map([...legacyFolderRows, ...canonicalFolderRows].map((row) => [`${row.provider}:${row.provider_account_id || account?.account_id || ""}:${row.provider_folder_id}`, row])).values()].map((row) => { const providerAccountId = row.provider_account_id ?? account?.account_id ?? null,uploadState=uploadStateFor(row,providerAccountId); return { id: row.id, provider: row.provider, providerAccountId, providerFolderId: row.provider_folder_id, providerParentFolderId: row.provider_parent_folder_id || null, entityKind: row.entity_kind || "estimate", entityId: row.entity_id || row.estimate_id || null, parentLogicalKey: row.parent_logical_key, logicalKey: row.logical_key, name: row.name, clientId: row.client_id, projectId: row.project_id || null, estimateId: row.estimate_id || null, estimateRef: row.estimate_ref || "", projectName: row.project_name || row.estimate_ref || "", provenance: row.provenance || "legacy", modifiedAt: row.last_seen_at || row.updated_at, folderPath: row.folder_path || row.name, removedAt: row.removed_at || null, openUrl: row.provider === "google_drive" ? `https://drive.google.com/drive/folders/${encodeURIComponent(row.provider_folder_id)}` : null, capabilities:{ upload:uploadState==="writable"&&driveWritable,uploadState } }; }),
-      sync: { state: canonicalSync?.status || (syncing ? "syncing" : failedSync ? "failed" : lastSuccessAt ? "synced" : "idle"), strategy: canonicalSync?.strategy || syncRows[0]?.strategy || "full_enumeration", lastAttemptAt: canonicalSync?.last_attempt_at || syncRows[0]?.last_attempt_at || null, lastSuccessAt: canonicalSync?.last_success_at || lastSuccessAt, error: canonicalSync?.error_message || failedSync?.error_message || null, details: canonicalSync?.details_json ? JSON.parse(canonicalSync.details_json) : null, cached: true },
+      sync: { state: canonicalSync?.status || (syncing ? "syncing" : failedSync ? "failed" : lastSuccessAt ? "synced" : "idle"), strategy: canonicalSync?.strategy || syncRows[0]?.strategy || "full_enumeration", lastAttemptAt: canonicalSync?.last_attempt_at || syncRows[0]?.last_attempt_at || null, lastSuccessAt: canonicalSync?.last_success_at || lastSuccessAt, error: canonicalSync?.error_message || failedSync?.error_message || null, details: { ...(canonicalSync?.details_json ? JSON.parse(canonicalSync.details_json) : {}), folderMetadata }, cached: true },
     };
   }
   return { list };

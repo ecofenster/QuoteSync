@@ -60,9 +60,30 @@ export function createCommercialDriveService(db, options = {}) {
     return mapping(entityKind, entityId, logicalKey);
   }
 
+  const folderPathWithProviderName = (path, providerName) => {
+    const parts = String(path || "").split("/").filter(Boolean);
+    if (!parts.length) return String(providerName || "");
+    parts[parts.length - 1] = String(providerName || parts[parts.length - 1]);
+    return parts.join("/");
+  };
+
+  async function refreshSavedFolder(saved, input) {
+    if (typeof provider.getItem !== "function") return saved;
+    let folder;
+    try {
+      folder = await provider.getItem({ fileId: saved.provider_folder_id });
+    } catch (cause) {
+      if (Number(cause?.status) === 404) throw error("The linked Drive folder is no longer available. Refresh Drive to reconcile its existing provider hierarchy before retrying; QuoteSuite will not create a duplicate folder.", 409, "drive_folder_mapping_unavailable");
+      throw cause;
+    }
+    if (folder?.mimeType !== GOOGLE_DRIVE_FOLDER_MIME_TYPE || folder.trashed) throw error("The linked Drive folder is no longer active. Refresh Drive to reconcile its existing provider hierarchy before retrying; QuoteSuite will not create a duplicate folder.", 409, "drive_folder_mapping_unavailable");
+    if (input.parentId && !folder.parents?.includes(input.parentId)) throw error("The linked Drive folder has moved. Refresh Drive to confirm its current destination before retrying; QuoteSuite will not create a parallel hierarchy.", 409, "drive_folder_parent_changed");
+    return recordFolder({ ...input, folder, path: folderPathWithProviderName(input.path, folder.name), provenance: saved.provenance || "provider_id" });
+  }
+
   async function ensureFolder(input) {
     const saved = await mapping(input.entityKind, input.entityId, input.logicalKey);
-    if (saved) return saved;
+    if (saved) return refreshSavedFolder(saved, input);
     let folder = await provider.findFolderByName({ parentId: input.parentId, name: input.name });
     if (!folder) folder = await provider.createFolder({ parentId: input.parentId, name: input.name, logicalKey: input.logicalKey, appProperties: { quotesuiteEntityKind: input.entityKind, quotesuiteEntityId: input.entityId } });
     return recordFolder({ ...input, folder, provenance: folder.appProperties?.quotesuiteEntityId ? "quotesuite" : "discovered_exact_name" });
@@ -71,7 +92,7 @@ export function createCommercialDriveService(db, options = {}) {
   async function ensureSupplierDocumentsFolder({ accountId, estimateId, estimateFolder }) {
     const logicalKey = "supplier_documents";
     const saved = await mapping("estimate", estimateId, logicalKey);
-    if (saved) return saved;
+    if (saved) return refreshSavedFolder(saved, { accountId, entityKind: "estimate", entityId: estimateId, logicalKey, name: saved.name, parentId: estimateFolder.provider_folder_id, parentLogicalKey: "estimate", path: `${estimateFolder.folder_path}/${saved.name}` });
     const children = await provider.listChildren({ parentId: estimateFolder.provider_folder_id });
     const aliases = children.filter((item) => item.mimeType === GOOGLE_DRIVE_FOLDER_MIME_TYPE && ["supplier", "suppliers"].includes(normalized(item.name)));
     if (aliases.length > 1) throw error("Both Supplier and Suppliers folders exist beneath this Estimate. Review the provider hierarchy before filing.", 409, "supplier_documents_folder_ambiguous");
@@ -137,6 +158,115 @@ export function createCommercialDriveService(db, options = {}) {
 
   async function projectContext(projectId) {
     return db.get(`SELECT p.*,c.client_ref,c.name client_name FROM projects p JOIN clients c ON c.id=p.client_id WHERE p.id=? AND p.deleted_at IS NULL AND c.deleted_at IS NULL`, projectId);
+  }
+
+  async function providerFolderPath(folderId, rootId, cache) {
+    const names = [], seen = new Set();
+    let currentId = folderId;
+    while (currentId && currentId !== rootId) {
+      if (seen.has(currentId) || seen.size >= 32) throw error("Drive folder ancestry could not be resolved safely.", 409, "drive_folder_ancestry_invalid");
+      seen.add(currentId);
+      let item = cache.get(currentId);
+      if (item === undefined) {
+        try { item = await provider.getItem({ fileId: currentId }); }
+        catch (cause) { if (Number(cause?.status) === 404) item = null; else throw cause; }
+        cache.set(currentId, item);
+      }
+      if (!item || item.mimeType !== GOOGLE_DRIVE_FOLDER_MIME_TYPE || item.trashed) return null;
+      names.push(item.name);
+      currentId = item.parents?.[0] || null;
+    }
+    return currentId === rootId ? names.reverse().join("/") : null;
+  }
+
+  async function refreshProjectFolderMetadata(projectId, root) {
+    if (typeof provider.getItem !== "function") return { status: "unsupported", changed: 0, rebound: 0 };
+    const rows = await db.all(`SELECT f.* FROM canonical_drive_folders f
+      WHERE f.provider='google_drive' AND f.removed_at IS NULL AND (
+        (f.entity_kind='project' AND f.entity_id=?) OR
+        (f.entity_kind='estimate' AND f.entity_id IN (SELECT id FROM estimates WHERE project_id=?))
+      ) ORDER BY f.created_at`, projectId, projectId);
+    if (!rows.length) return { status: "unchanged", changed: 0, rebound: 0 };
+    const cache = new Map(), rowItems = new Map();
+    for (const row of rows) {
+      let item = null;
+      try { item = await provider.getItem({ fileId: row.provider_folder_id }); }
+      catch (cause) { if (Number(cause?.status) !== 404) throw cause; }
+      cache.set(row.provider_folder_id, item);
+      rowItems.set(row.id, item);
+    }
+    const projectRow = rows.find((row) => row.entity_kind === "project" && row.logical_key === "project");
+    const clientRow = rows.find((row) => row.entity_kind === "project" && row.logical_key === "client");
+    const yearRow = rows.find((row) => row.entity_kind === "project" && row.logical_key.startsWith("year:"));
+    const projectItem = projectRow ? rowItems.get(projectRow.id) : null;
+    let rebound = 0;
+    if (projectItem && !projectItem.trashed && clientRow && yearRow) {
+      const actualParentId = projectItem.parents?.[0] || null;
+      if (actualParentId && actualParentId !== yearRow.provider_folder_id && actualParentId !== clientRow.provider_folder_id) {
+        let actualClient = cache.get(actualParentId);
+        if (actualClient === undefined) {
+          try { actualClient = await provider.getItem({ fileId: actualParentId }); }
+          catch (cause) { if (Number(cause?.status) === 404) actualClient = null; else throw cause; }
+          cache.set(actualParentId, actualClient);
+        }
+        if (actualClient?.mimeType === GOOGLE_DRIVE_FOLDER_MIME_TYPE && !actualClient.trashed && actualClient.parents?.includes(yearRow.provider_folder_id)) {
+          rowItems.set(clientRow.id, actualClient);
+          rebound = 1;
+        }
+      }
+    }
+    const timestamp = now().toISOString();
+    let changed = 0;
+    for (const row of rows) {
+      const item = rowItems.get(row.id);
+      if (!item || item.mimeType !== GOOGLE_DRIVE_FOLDER_MIME_TYPE || item.trashed) continue;
+      const path = await providerFolderPath(item.id, root.rootId, cache);
+      if (!path) continue;
+      const parentId = item.parents?.[0] || null;
+      const differs = row.provider_folder_id !== item.id || row.provider_parent_folder_id !== parentId || row.name !== item.name || row.folder_path !== path;
+      if (differs) changed += 1;
+      await db.run(`UPDATE canonical_drive_folders SET provider_account_id=?,provider_folder_id=?,provider_parent_folder_id=?,name=?,folder_path=?,provenance=CASE WHEN provider_folder_id<>? THEN 'provider_parent_reconciled' ELSE provenance END,last_seen_at=?,removed_at=NULL,updated_at=? WHERE id=?`, root.workspaceStatus.account?.id || row.provider_account_id || null, item.id, parentId, item.name, path, item.id, timestamp, timestamp, row.id);
+      await db.run("UPDATE canonical_documents SET folder_path=?,updated_at=? WHERE provider='google_drive' AND provider_folder_id=? AND (project_id=? OR estimate_id IN (SELECT id FROM estimates WHERE project_id=?))", path, timestamp, item.id, projectId, projectId);
+      await db.run("UPDATE drive_project_folders SET name=?,provider_parent_folder_id=?,folder_path=?,last_seen_at=?,updated_at=? WHERE provider='google_drive' AND provider_folder_id=? AND estimate_id IN (SELECT id FROM estimates WHERE project_id=?)", item.name, parentId, path, timestamp, timestamp, item.id, projectId).catch(() => {});
+      await db.run("UPDATE drive_discovered_documents SET folder_path=?,updated_at=? WHERE provider='google_drive' AND provider_folder_id=? AND (project_id=? OR estimate_id IN (SELECT id FROM estimates WHERE project_id=?))", path, timestamp, item.id, projectId, projectId).catch(() => {});
+    }
+    return { status: "refreshed", changed, rebound };
+  }
+
+  async function refreshStandaloneFolderMetadata(entityKind, entityId, root) {
+    if (typeof provider.getItem !== "function") return { status: "unsupported", changed: 0, rebound: 0 };
+    const rows = await db.all("SELECT * FROM canonical_drive_folders WHERE provider='google_drive' AND entity_kind=? AND entity_id=? AND removed_at IS NULL ORDER BY created_at", entityKind, entityId);
+    const cache = new Map(), timestamp = now().toISOString();
+    let changed = 0;
+    for (const row of rows) {
+      let item;
+      try { item = await provider.getItem({ fileId: row.provider_folder_id }); }
+      catch (cause) { if (Number(cause?.status) === 404) continue; throw cause; }
+      cache.set(item.id, item);
+      if (item.mimeType !== GOOGLE_DRIVE_FOLDER_MIME_TYPE || item.trashed) continue;
+      const path = await providerFolderPath(item.id, root.rootId, cache);
+      if (!path) continue;
+      const parentId = item.parents?.[0] || null;
+      if (row.provider_parent_folder_id !== parentId || row.name !== item.name || row.folder_path !== path) changed += 1;
+      await db.run("UPDATE canonical_drive_folders SET provider_account_id=?,provider_parent_folder_id=?,name=?,folder_path=?,last_seen_at=?,removed_at=NULL,updated_at=? WHERE id=?", root.workspaceStatus.account?.id || row.provider_account_id || null, parentId, item.name, path, timestamp, timestamp, row.id);
+      const scopeColumn = entityKind === "enquiry" ? "enquiry_id" : "client_id";
+      await db.run(`UPDATE canonical_documents SET folder_path=?,updated_at=? WHERE provider='google_drive' AND provider_folder_id=? AND ${scopeColumn}=?`, path, timestamp, item.id, entityId);
+    }
+    return { status: "refreshed", changed, rebound: 0 };
+  }
+
+  async function refreshScopeFolderMetadata(input = {}) {
+    const kind = input.enquiryId ? "enquiry" : "project", root = await availableRoot(kind);
+    if (!root.rootId) return { status: root.status, changed: 0, rebound: 0 };
+    if (input.enquiryId) return refreshStandaloneFolderMetadata("enquiry", input.enquiryId, root);
+    let projectIds = [];
+    if (input.estimateId) projectIds = (await db.all("SELECT project_id FROM estimates WHERE id=? AND project_id IS NOT NULL", input.estimateId)).map((row) => row.project_id);
+    else if (input.projectId) projectIds = [input.projectId];
+    else if (input.clientId) projectIds = (await db.all("SELECT id FROM projects WHERE client_id=? AND deleted_at IS NULL ORDER BY created_at", input.clientId)).map((row) => row.id);
+    const results = [];
+    for (const projectId of [...new Set(projectIds.filter(Boolean))]) results.push(await refreshProjectFolderMetadata(projectId, root));
+    if (input.clientId) results.push(await refreshStandaloneFolderMetadata("client", input.clientId, root));
+    return { status: results.some((item) => item.status === "refreshed") ? "refreshed" : results[0]?.status || "unchanged", changed: results.reduce((sum, item) => sum + Number(item.changed || 0), 0), rebound: results.reduce((sum, item) => sum + Number(item.rebound || 0), 0) };
   }
 
   async function clientContext(clientId) {
@@ -208,17 +338,18 @@ export function createCommercialDriveService(db, options = {}) {
     const context = await projectContext(projectId);
     if (!context) throw error("Project not found.", 404, "project_not_found");
     if (!safeName(context.name) || /^project\s+\d+$/i.test(context.name)) throw error("A reviewed Project name is required before Drive provisioning.", 422, "project_name_required");
+    await refreshProjectFolderMetadata(projectId, root);
     const year = String(context.context_year || now().getUTCFullYear()), accountId = root.workspaceStatus.account?.id || null;
     const yearFolder = await ensureFolder({ accountId, entityKind: "project", entityId: projectId, logicalKey: `year:${year}`, name: year, parentId: root.rootId, parentLogicalKey: "estimates_root", path: year });
     const clientName = buildCanonicalClientFolderName(context.client_ref, context.client_name);
-    const clientFolder = await ensureFolder({ accountId, entityKind: "project", entityId: projectId, logicalKey: "client", name: clientName, parentId: yearFolder.provider_folder_id, parentLogicalKey: `year:${year}`, path: `${year}/${clientName}` });
+    const clientFolder = await ensureFolder({ accountId, entityKind: "project", entityId: projectId, logicalKey: "client", name: clientName, parentId: yearFolder.provider_folder_id, parentLogicalKey: `year:${year}`, path: `${yearFolder.folder_path}/${clientName}` });
     const projectName = safeName(context.name);
-    const projectFolder = await ensureFolder({ accountId, entityKind: "project", entityId: projectId, logicalKey: "project", name: projectName, parentId: clientFolder.provider_folder_id, parentLogicalKey: "client", path: `${year}/${clientName}/${projectName}` });
+    const projectFolder = await ensureFolder({ accountId, entityKind: "project", entityId: projectId, logicalKey: "project", name: projectName, parentId: clientFolder.provider_folder_id, parentLogicalKey: "client", path: `${clientFolder.folder_path}/${projectName}` });
     const config = (await workspace.resolvedConfig()).stored;
     const template = { ...DEFAULT_PROJECT_FOLDER_NAMES, ...(config?.folder_template_json ? JSON.parse(config.folder_template_json) : {}) };
     const folders = [yearFolder, clientFolder, projectFolder];
     for (const [logicalKey, name] of [["drawings_client", template.drawingsClient], ["drawings_ecofenster", template.drawingsEcofenster], ["estimates", template.supplierEstimates], ["invoices", template.invoices], ["orders", template.orders]]) {
-      folders.push(await ensureFolder({ accountId, entityKind: "project", entityId: projectId, logicalKey, name, parentId: projectFolder.provider_folder_id, parentLogicalKey: "project", path: `${year}/${clientName}/${projectName}/${name}` }));
+      folders.push(await ensureFolder({ accountId, entityKind: "project", entityId: projectId, logicalKey, name, parentId: projectFolder.provider_folder_id, parentLogicalKey: "project", path: `${projectFolder.folder_path}/${name}` }));
     }
     return { status: "provisioned", projectId, folders };
   }
@@ -273,8 +404,7 @@ export function createCommercialDriveService(db, options = {}) {
     const supplierRows = await db.all("SELECT DISTINCT supplier_name FROM supplier_quotes WHERE estimate_id=? AND archived_at IS NULL ORDER BY supplier_name", estimateId).catch(() => []);
     const descriptor = supplierRows.map((row) => clean(row.supplier_name)).filter(Boolean).join(" + ");
     const folderName = buildCanonicalEstimateFolderName(estimate.estimate_ref, descriptor);
-    const year = resolveEstimateYear(estimate.estimate_ref, estimate.created_at);
-    const folder = await ensureFolder({ accountId: projectResult.folders[0]?.provider_account_id || null, entityKind: "estimate", entityId: estimateId, logicalKey: "estimate", name: folderName, parentId: estimatesFolder.provider_folder_id, parentLogicalKey: "estimates", path: `${year}/${projectResult.folders.find((item) => item.logical_key === "client")?.name}/${projectResult.folders.find((item) => item.logical_key === "project")?.name}/${estimatesFolder.name}/${folderName}` });
+    const folder = await ensureFolder({ accountId: projectResult.folders[0]?.provider_account_id || null, entityKind: "estimate", entityId: estimateId, logicalKey: "estimate", name: folderName, parentId: estimatesFolder.provider_folder_id, parentLogicalKey: "estimates", path: `${estimatesFolder.folder_path}/${folderName}` });
     return { status: "provisioned", estimateId, folder };
   }
 
@@ -400,7 +530,7 @@ export function createCommercialDriveService(db, options = {}) {
     return { status: "synced", projectId, provenance: located.provenance, foldersVisited: seen.size, filesDiscovered };
   }
 
-  return { provisionEnquiry, discoverEnquiry, discoverClient, provisionProject, storeReviewedEnquiryAttachments, provisionEstimate, storeCommunicationSupplierDocument, discoverProject, buildCanonicalClientFolderName, buildCanonicalEstimateFolderName };
+  return { provisionEnquiry, discoverEnquiry, discoverClient, provisionProject, storeReviewedEnquiryAttachments, provisionEstimate, storeCommunicationSupplierDocument, discoverProject, refreshScopeFolderMetadata, buildCanonicalClientFolderName, buildCanonicalEstimateFolderName };
 }
 
 const clean = (value) => String(value || "").trim();

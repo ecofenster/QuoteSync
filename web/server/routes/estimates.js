@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { purgeEstimateOwnedGraph } from '../features/estimatePositions/estimatePurgeService.js';
 import { createDriveIntegrationService } from '../features/documents/driveIntegrationService.js';
 import { allocateCanonicalReference } from '../features/commercialIdentity/referenceAllocator.js';
-import { assertEstimateRevisionEditable, isEstimateRevisionImmutableError } from '../features/estimates/estimateRevisionPolicy.js';
+import { archiveIssuedEstimate, assertEstimateRevisionEditable, deleteEstimateBatch, isEstimateRevisionImmutableError } from '../features/estimates/estimateRevisionPolicy.js';
 
 const router = express.Router();
 
@@ -74,6 +74,12 @@ function mapEstimateRow(row) {
     created_by_name: normalizeCreatorField(row.created_by_name, CURRENT_APP_USER.name),
     created_by_role: normalizeCreatorRole(row.created_by_role),
     deleted_at: row.deleted_at ? String(row.deleted_at) : null,
+    archived_at: row.archived_at ? String(row.archived_at) : null,
+    display_status: row.issued_release_id ? 'Issued — locked revision' : String(row.status || 'Draft'),
+    status_explanation: row.issued_release_id ? 'This revision has been issued. Its saved Draft value is historical and does not make the issued evidence editable or deletable.' : null,
+    deletion_restricted: Boolean(row.issued_release_id),
+    deletion_reason: row.issued_release_id ? 'Issued revision evidence is immutable. Archive this Estimate to remove it from active lists while preserving its issued document and relationships.' : null,
+    recommended_removal_action: row.issued_release_id ? 'archive' : 'delete',
   };
 }
 
@@ -83,6 +89,8 @@ router.get('/', async (req, res) => {
     const clientId = String(req.query.client_id || '').trim();
     const includeDeleted = parseFlag(req.query.include_deleted);
     const onlyDeleted = parseFlag(req.query.only_deleted);
+    const includeArchived = parseFlag(req.query.include_archived);
+    const onlyArchived = parseFlag(req.query.only_archived);
 
     if (!clientId) {
       return res.status(400).json({ error: 'client_id is required' });
@@ -94,6 +102,7 @@ router.get('/', async (req, res) => {
     } else if (includeDeleted) {
       deletedFilterSql = '';
     }
+    const archivedFilterSql = onlyArchived ? 'AND ea.estimate_id IS NOT NULL' : includeArchived ? '' : 'AND ea.estimate_id IS NULL';
 
     const estimates = await db.all(
       `
@@ -123,13 +132,19 @@ router.get('/', async (req, res) => {
           e.created_at,
           e.updated_at,
           e.deleted_at
+          ,ea.archived_at
+          ,er.id issued_release_id
+          ,er.released_at issued_released_at
           ,p.name project_name
         FROM estimates e
         INNER JOIN clients c ON c.id = e.client_id
         LEFT JOIN projects p ON p.id=e.project_id
+        LEFT JOIN estimate_archives ea ON ea.estimate_id=e.id
+        LEFT JOIN estimate_revision_releases er ON er.estimate_id=e.id AND er.estimate_revision=e.revision_no
         WHERE e.client_id = ?
           AND c.deleted_at IS NULL
           ${deletedFilterSql}
+          ${archivedFilterSql}
         ORDER BY
           CASE WHEN e.deleted_at IS NULL THEN 0 ELSE 1 END,
           COALESCE(e.deleted_at, e.created_at) DESC,
@@ -508,6 +523,26 @@ router.put('/:id', async (req, res) => {
     if (isEstimateRevisionImmutableError(error)) return res.status(409).json({ error: error.message, code: 'estimate_revision_immutable' });
     console.error('PUT /api/estimates/:id failed', error);
     res.status(500).json({ error: 'Failed to update estimate' });
+  }
+});
+
+router.post('/bulk-delete', async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.estimate_ids) ? req.body.estimate_ids : [];
+    if (!ids.length) return res.status(400).json({ error:'Choose at least one Estimate.', code:'estimate_selection_required' });
+    const result = await deleteEstimateBatch(await dbPromise, ids);
+    res.status(result.status === 'partial_success' ? 207 : result.status === 'failed' ? 409 : 200).json(result);
+  } catch (error) {
+    console.error('POST /api/estimates/bulk-delete failed', error);
+    res.status(500).json({ error:'Selected Estimates could not be processed.', code:'estimate_bulk_delete_failed' });
+  }
+});
+
+router.post('/:id/archive', async (req, res) => {
+  try {
+    res.json(await archiveIssuedEstimate(await dbPromise, req.params.id, { archivedBy:CURRENT_APP_USER.id, reason:req.body?.reason }));
+  } catch (error) {
+    res.status(Number(error?.status) || 500).json({ error:error instanceof Error ? error.message : 'Estimate could not be archived.', code:error?.code || 'estimate_archive_failed' });
   }
 });
 

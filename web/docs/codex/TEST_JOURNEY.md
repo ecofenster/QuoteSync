@@ -10,6 +10,31 @@ Set the values documented in `config/test-journey.example.env` in the developmen
 npm run dev:test-journey
 ```
 
+That command creates a clean temporary database and removes it on exit. For a reusable acceptance workspace whose Clients, Projects, Estimates, files and integration settings survive restarts, run:
+
+```powershell
+npm run dev:acceptance
+```
+
+The persistent workspace is stored under `.quotesuite-acceptance` and is excluded from Git. It never uses the normal QuoteSuite database. Stop it normally and run the same command later to continue where testing stopped. Delete that folder only when its acceptance history is no longer needed.
+
+To initialise it without starting the application, run `npm run dev:acceptance -- --prepare-only`.
+
+## Gmail and Drive in the persistent workspace
+
+1. Start `npm run dev:acceptance`.
+2. Open **Administration → Integrations**.
+3. Connect the designated Google test account once, then select dedicated test Enquiries, Estimates and Orders roots. Do not select live customer roots.
+4. The OAuth connection and selected Drive folder IDs are encrypted and retained in the isolated acceptance database, so they remain available after a restart.
+
+Gmail and Drive still use the normal provider boundaries. Inbox reads use the connected test mailbox; filing writes only to the selected test Drive roots. External provider notifications remain signals and do not replace canonical reconciliation.
+
+## Controlled test delivery
+
+Keep the values from `config/test-journey.example.env` in the ignored `.env.local` file. Use only designated test mailboxes. Merely configuring the customer and factory addresses does not enable sending.
+
+Delivery remains preview-only while `QUOTESUITE_TEST_DELIVERY_ENABLED=0`. Setting it to `1` is effective only when both allowlisted addresses are present, the application is in test-journey mode, and the user explicitly chooses the reviewed **Send now** action. Any different To, CC or BCC recipient fails closed. Production delivery and customer exposure remain separate acceptance gates.
+
 `QUOTESUITE_TEST_CUSTOMER_EMAIL` and `QUOTESUITE_TEST_FACTORY_EMAIL` are the only permitted recipients while test-journey mode is active. Customer Portal test identity must match the configured customer address. CC/BCC and recipient changes outside the allowlist fail closed.
 
 Delivery remains `preview_only` unless `QUOTESUITE_TEST_DELIVERY_ENABLED=1` is also set. Configured addresses do not enable delivery by themselves. Do not enable delivery until both designated test mailboxes have been supplied and the controlled send is explicitly approved.

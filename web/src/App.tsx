@@ -226,23 +226,17 @@ const CLIENT_DB_PREF_KEYS = {
   sortField: "quotesync:sortField:clients",
 } as const;
 
-const PROTECTED_CLIENT_REFS = new Set([
-  "EF-CL-001",
-  "EF-CL-002",
-  "EF-CL-003",
-  "EF-CL-004",
-  "EF-CL-005",
-  "EF-CL-006",
-  "EF-CL-007",
-  "EF-CL-008",
-]);
-
 function isEstimateCollectionViewMode(value: unknown): value is EstimateCollectionViewMode {
   return value === "list" || value === "grid";
 }
 
-function isProtectedClientRef(value: unknown) {
-  return PROTECTED_CLIENT_REFS.has(String(value || "").trim().toUpperCase());
+type EstimateDeleteResult = {estimateId:string;estimateRef?:string;success:boolean;code?:string|null;reason?:string|null;recommendedAction?:"archive"};
+async function deleteEstimateBatchAPI(ids: string[]) {
+  return apiFetch(`/api/estimates/bulk-delete`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({estimate_ids:ids}) }) as Promise<{status:string;succeeded:number;failed:number;results:EstimateDeleteResult[]}>;
+}
+
+async function archiveEstimateAPI(id: string) {
+  return apiFetch(`/api/estimates/${id}/archive`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({reason:"Removed from active Estimate lists after issue"}) });
 }
 
 function usableLocationText(value: unknown) {
@@ -397,6 +391,8 @@ function mapDbClientToClient(row: any): Client {
     contactPerson: type === "Business" ? String(row?.contact_name || "") : undefined,
     commercialLifecycle: String(row?.commercial_lifecycle || "unknown_review") as Client["commercialLifecycle"],
     referenceNamespace: String(row?.reference_namespace || "live") as Client["referenceNamespace"],
+    isProtected: Boolean(row?.is_protected),
+    protectionWorkspace: row?.protection_workspace ? String(row.protection_workspace) : null,
     estimates: [],
   };
 }
@@ -531,6 +527,13 @@ function mapDbEstimateToEstimate(row: any): Estimate {
     createdByUserId: String(row?.created_by_user_id || CURRENT_APP_USER.id),
     createdByName: String(row?.created_by_name || CURRENT_APP_USER.name),
     createdByRole: (String(row?.created_by_role || CURRENT_APP_USER.role).trim().toLowerCase() || CURRENT_APP_USER.role) as Models.UserRole,
+    deletionRestricted: Boolean(row?.deletion_restricted),
+    deletionReason: row?.deletion_reason ? String(row.deletion_reason) : null,
+    displayStatus: row?.display_status ? String(row.display_status) : String(row?.status || "Draft"),
+    statusExplanation: row?.status_explanation ? String(row.status_explanation) : null,
+    issuedReleaseId: row?.issued_release_id ? String(row.issued_release_id) : null,
+    issuedReleasedAt: row?.issued_released_at ? String(row.issued_released_at) : null,
+    archivedAt: row?.archived_at ? String(row.archived_at) : null,
     location: {
       projectAddress,
       projectAddressStructured: projectStructured,
@@ -1438,7 +1441,7 @@ export default function App() {
 
     return {
       clientCount: nextClients.length,
-      protectedClientCount: nextClients.filter((client) => isProtectedClientRef(client.clientRef)).length,
+      protectedClientCount: nextClients.filter((client) => client.isProtected).length,
     };
   }
 
@@ -1449,6 +1452,7 @@ export default function App() {
   const [deletedClientsById, setDeletedClientsById] =
     useState<Record<string, DeletedClientRecord>>({});
   const [recycleOperationError, setRecycleOperationError] = useState("");
+  const [estimateOperationNotice, setEstimateOperationNotice] = useState<{kind:"success"|"warning"|"error";message:string}|null>(null);
 
   useEffect(() => {
     const nextEstimateCounter = Math.max(
@@ -2315,18 +2319,33 @@ async function createEstimateForClient(client: Client, options: { openManufactur
   }
 async function deleteEstimatesForClient(clientId: Models.ClientId, estimateIds: Models.EstimateId[]) {
   if (!estimateIds.length) return;
-
+  setEstimateOperationNotice({kind:"warning",message:`Processing ${estimateIds.length} Estimate${estimateIds.length===1?"":"s"}…`});
   try {
-    await Promise.all(estimateIds.map((estimateId) => deleteEstimateAPI(estimateId)));
-
-    if (selectedClientId === clientId && selectedEstimateId && estimateIds.includes(selectedEstimateId)) {
+    const result = await deleteEstimateBatchAPI(estimateIds);
+    const succeeded = result.results.filter(item=>item.success), failed = result.results.filter(item=>!item.success);
+    if (selectedClientId === clientId && selectedEstimateId && succeeded.some(item=>item.estimateId===selectedEstimateId)) {
       setSelectedEstimateId(null);
     }
-
+    const successText = succeeded.length ? `${succeeded.length} sent to the Recycle Bin` : "No Estimates were deleted";
+    const failureText = failed.length ? ` ${failed.map(item=>`${item.estimateRef||item.estimateId}: ${item.reason||"not deleted"}`).join(" ")}` : "";
+    setEstimateOperationNotice({kind:failed.length?"warning":"success",message:`${successText}.${failureText}`});
     await refreshClientsFromApi();
   } catch (error) {
     console.error("Failed to delete estimates", error);
+    setEstimateOperationNotice({kind:"error",message:error instanceof Error?error.message:"The selected Estimates could not be processed."});
+    await refreshClientsFromApi();
   }
+}
+
+async function archiveEstimateForClient(clientId: Models.ClientId, estimateId: Models.EstimateId) {
+  setEstimateOperationNotice({kind:"warning",message:"Archiving issued Estimate…"});
+  try {
+    const result:any=await archiveEstimateAPI(estimateId);
+    if(selectedClientId===clientId&&selectedEstimateId===estimateId)setSelectedEstimateId(null);
+    setEstimateOperationNotice({kind:"success",message:`${result.estimateRef||"Issued Estimate"} was removed from active lists. Issued revisions, documents, communications, Portal records and Orders were preserved.`});
+  } catch(error) {
+    setEstimateOperationNotice({kind:"error",message:error instanceof Error?error.message:"The issued Estimate could not be archived."});
+  } finally { await refreshClientsFromApi(); }
 }
 
 async function restoreDeletedEstimatesForClient(clientId: Models.ClientId, estimateIds: Models.EstimateId[]) {
@@ -3061,6 +3080,10 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
   function confirmDeleteGlobalEstimate(estimateId: Models.EstimateId) {
     const row = globalEstimateRowById(estimateId);
     if (!row) return;
+    if(row.estimate.deletionRestricted){
+      if(window.confirm(`${row.estimate.estimateRef} is issued and cannot be deleted. Archive it from active lists while preserving its issued evidence and relationships?`))void archiveEstimateForClient(row.client.id,estimateId);
+      return;
+    }
     const ok = window.confirm(`Send estimate ${row.estimate.estimateRef} to recycle bin?`);
     if (!ok) return;
     if (globalExpandedEstimateId === estimateId) {
@@ -3134,7 +3157,7 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
     resolved: ResolvedClientLocation
   ) {
     if (resolved.source === "estimate" || resolved.source === "cache") return;
-    if (isProtectedClientRef(targetClient.clientRef)) return;
+    if (targetClient.isProtected) return;
 
     const currentLat = estimate.latitude == null || !Number.isFinite(Number(estimate.latitude)) ? null : Number(estimate.latitude);
     const currentLng = estimate.longitude == null || !Number.isFinite(Number(estimate.longitude)) ? null : Number(estimate.longitude);
@@ -3269,19 +3292,14 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
     }));
   }
 
-  function deleteSelectedGlobalEstimates(menuKey: "estimates" | "orders" | "lost") {
+  async function deleteSelectedGlobalEstimates(menuKey: "estimates" | "orders" | "lost") {
     const selectedMap = globalSelectedEstimateIdsByMenu[menuKey] ?? {};
     const rows = filteredGlobalRows(menuKey).filter((row) => !!selectedMap[row.estimate.id]);
 
-    const idsByClient = rows.reduce((acc, row) => {
-      const key = row.client.id;
-      acc[key] = [...(acc[key] ?? []), row.estimate.id];
-      return acc;
-    }, {} as Record<string, Models.EstimateId[]>);
-
-    Object.entries(idsByClient).forEach(([clientId, ids]) => {
-      deleteEstimatesForClient(clientId as Models.ClientId, ids);
-    });
+    const restricted=rows.filter(row=>row.estimate.deletionRestricted);
+    const prompt=restricted.length?`${restricted.length} issued Estimate${restricted.length===1?" is":"s are"} archive-only and will be reported as not deleted. Continue with the remaining selected Estimates?`:`Send ${rows.length} selected Estimate${rows.length===1?"":"s"} to the Recycle Bin?`;
+    if(!window.confirm(prompt))return;
+    await deleteEstimatesForClient(rows[0]?.client.id as Models.ClientId,rows.map(row=>row.estimate.id));
 
     setGlobalSelectedEstimateIdsByMenu((prev) => ({
       ...prev,
@@ -4453,6 +4471,7 @@ return (
       ) : (
         <div className="app-workspace-shell">
           <div className="app-workspace-shell__inner">
+        {estimateOperationNotice ? <div className={`ui-status ui-status--${estimateOperationNotice.kind==="error"?"error":estimateOperationNotice.kind==="success"?"success":"warning"}`} role={estimateOperationNotice.kind==="error"?"alert":"status"}>{estimateOperationNotice.message}</div> : null}
         <div className="app-workspace-grid">
           {/* Sidebar */}
           <Card className="qs-migrated-6 app-workspace-sidebar">
@@ -5060,7 +5079,8 @@ return (
 				copyEstimateForClient={copyEstimateForClient}
 				deleteClientToRecycle={deleteClientToRecycle}
 				deletedEstimatesForClient={estimatePickerClientId ? (deletedEstimatesByClientId[estimatePickerClientId] ?? []) : []}
-				deleteEstimatesForClient={deleteEstimatesForClient}
+          deleteEstimatesForClient={deleteEstimatesForClient}
+          archiveEstimateForClient={archiveEstimateForClient}
 				restoreDeletedEstimatesForClient={restoreDeletedEstimatesForClient}
 				purgeDeletedEstimatesForClient={purgeDeletedEstimatesForClient}
 				setEstimateInstaller={setEstimateInstaller}

@@ -1,3 +1,5 @@
+import { ECOFENSTER_PROTECTED_CLIENT_IDS, ECOFENSTER_WORKSPACE_OWNER } from './ecofensterProtectedClientIds.js';
+
 async function ensureColumn(db, table, name, definition) {
   const columns = await db.all(`PRAGMA table_info("${table}")`);
   if (!columns.some((column) => column.name === name)) await db.exec(`ALTER TABLE "${table}" ADD COLUMN "${name}" ${definition}`);
@@ -203,6 +205,7 @@ export async function initializeCommercialIdentitySchema(db) {
   await ensureColumn(db, "estimates", "project_id", "TEXT");
   await ensureColumn(db, "integration_provider_config", "enquiries_root_folder_id", "TEXT");
   await ensureColumn(db, "drive_discovered_documents", "enquiry_id", "TEXT");
+  await ensureColumn(db, "protected_client_identities", "workspace_owner", "TEXT NOT NULL DEFAULT 'legacy_unscoped'");
 
   await db.exec(`
     CREATE INDEX IF NOT EXISTS idx_enquiries_status ON enquiries(status, updated_at DESC);
@@ -225,6 +228,19 @@ export async function initializeCommercialIdentitySchema(db) {
       SELECT id,'Historical live Client protected before controlled reconciliation',?
       FROM clients WHERE UPPER(TRIM(client_ref)) IN ('EF-CL-001','EF-CL-002','EF-CL-003','EF-CL-004','EF-CL-005','EF-CL-006','EF-CL-007','EF-CL-008')`, timestamp);
     await db.run("INSERT INTO commercial_identity_bootstrap_markers(marker,applied_at) VALUES('historical_protected_client_ids_seeded',?)", timestamp);
+  }
+  const ecofensterProtectionMarker = 'ecofenster_canonical_client_ids_protected_2026_09_11';
+  const ecofensterProtectionSeeded = await db.get('SELECT 1 found FROM commercial_identity_bootstrap_markers WHERE marker=?', ecofensterProtectionMarker);
+  if (!ecofensterProtectionSeeded) {
+    for (const clientId of ECOFENSTER_PROTECTED_CLIENT_IDS) {
+      await db.run(`INSERT INTO protected_client_identities(client_id,protection_reason,created_at,workspace_owner)
+        SELECT id,'Ecofenster workspace canonical Client identity',?,?
+        FROM clients WHERE id=?
+        ON CONFLICT(client_id) DO UPDATE SET
+          protection_reason=excluded.protection_reason,
+          workspace_owner=excluded.workspace_owner`, timestamp, ECOFENSTER_WORKSPACE_OWNER, clientId);
+    }
+    await db.run('INSERT INTO commercial_identity_bootstrap_markers(marker,applied_at) VALUES(?,?)', ecofensterProtectionMarker, timestamp);
   }
   await db.run(`INSERT OR IGNORE INTO canonical_reference_registry(reference,reference_kind,entity_id,allocated_at,allocation_reason)
     SELECT UPPER(TRIM(client_ref)),'client',id,COALESCE(created_at,?),'legacy_seed'

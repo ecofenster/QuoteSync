@@ -1,0 +1,50 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import os from "node:os";
+import path from "node:path";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import sqlite3 from "sqlite3";
+import { open } from "sqlite";
+import { archiveIssuedEstimate, deleteEstimateBatch, inspectEstimateRemovalPolicy } from "../server/features/estimates/estimateRevisionPolicy.js";
+
+test("mixed draft and issued removal reports each outcome and archive preserves issued relationships", async (t) => {
+  const root=await mkdtemp(path.join(os.tmpdir(),"qs-estimate-removal-")),db=await open({filename:path.join(root,"test.db"),driver:sqlite3.Database});
+  t.after(async()=>{await db.close();await rm(root,{recursive:true,force:true})});
+  await db.exec(`PRAGMA foreign_keys=ON;
+    CREATE TABLE estimates(id TEXT PRIMARY KEY,estimate_ref TEXT,revision_no INTEGER,deleted_at TEXT);
+    CREATE TABLE issued_quotations(id TEXT PRIMARY KEY,estimate_id TEXT,document_id TEXT,status TEXT);
+    CREATE TABLE estimate_revision_releases(id TEXT PRIMARY KEY,issued_quotation_id TEXT,estimate_id TEXT,estimate_revision INTEGER,document_id TEXT,released_at TEXT);
+    CREATE TABLE estimate_archives(estimate_id TEXT PRIMARY KEY,reason TEXT,archived_by TEXT,archived_at TEXT,FOREIGN KEY(estimate_id) REFERENCES estimates(id) ON DELETE RESTRICT);
+    CREATE TABLE customer_quotation_documents(id TEXT PRIMARY KEY,estimate_id TEXT);
+    CREATE TABLE communication_messages(id TEXT PRIMARY KEY,links_json TEXT);
+    CREATE TABLE portal_resource_releases(id TEXT PRIMARY KEY,resource_id TEXT,status TEXT);
+    CREATE TABLE orders(id TEXT PRIMARY KEY,source_estimate_id TEXT);
+    CREATE TRIGGER immutable_issued_estimate BEFORE UPDATE ON estimates WHEN EXISTS(SELECT 1 FROM estimate_revision_releases r WHERE r.estimate_id=OLD.id AND r.estimate_revision=OLD.revision_no) BEGIN SELECT RAISE(ABORT,'Issued Estimate revision is immutable'); END;
+    INSERT INTO estimates VALUES('draft','TEST-DRAFT',0,NULL),('issued','TEST-ISSUED',0,NULL);
+    INSERT INTO issued_quotations VALUES('issued-quotation','issued','pdf','issued');
+    INSERT INTO estimate_revision_releases VALUES('release','issued-quotation','issued',0,'pdf','2026-09-11T12:00:00.000Z');
+    INSERT INTO customer_quotation_documents VALUES('pdf','issued');
+    INSERT INTO communication_messages VALUES('message','[{"kind":"estimate","id":"issued"}]');
+    INSERT INTO portal_resource_releases VALUES('portal','pdf','released');
+    INSERT INTO orders VALUES('order','issued');`);
+  const result=await deleteEstimateBatch(db,["draft","issued"],{now:()=>new Date("2026-09-11T13:00:00.000Z")});
+  assert.equal(result.status,"partial_success");assert.equal(result.succeeded,1);assert.equal(result.failed,1);
+  assert.deepEqual(result.results.map(item=>[item.estimateRef,item.success,item.recommendedAction||null]),[["TEST-DRAFT",true,null],["TEST-ISSUED",false,"archive"]]);
+  assert.match(result.results[1].reason,/Archive it.*preserving the issued PDF, communications, Portal releases and Orders/i);
+  assert.ok((await db.get("SELECT deleted_at FROM estimates WHERE id='draft'")).deleted_at);assert.equal((await db.get("SELECT deleted_at FROM estimates WHERE id='issued'")).deleted_at,null);
+  const policy=await inspectEstimateRemovalPolicy(db,"issued");assert.equal(policy.restricted,true);assert.equal(policy.release.release_id,"release");
+  await archiveIssuedEstimate(db,"issued",{archivedBy:"tester",now:()=>new Date("2026-09-11T13:05:00.000Z")});
+  assert.ok(await db.get("SELECT archived_at FROM estimate_archives WHERE estimate_id='issued'"));
+  assert.equal((await db.get("SELECT COUNT(*) count FROM estimate_revision_releases WHERE id='release'")).count,1);
+  assert.equal((await db.get("SELECT COUNT(*) count FROM customer_quotation_documents WHERE id='pdf'")).count,1);
+  assert.equal((await db.get("SELECT COUNT(*) count FROM communication_messages WHERE id='message'")).count,1);
+  assert.equal((await db.get("SELECT COUNT(*) count FROM portal_resource_releases WHERE id='portal'")).count,1);
+  assert.equal((await db.get("SELECT COUNT(*) count FROM orders WHERE id='order'")).count,1);
+});
+
+test("Estimate removal UI identifies issued records and reports partial batch completion", async () => {
+  const [app,collection,actions,route]=await Promise.all([readFile("src/App.tsx","utf8"),readFile("src/features/estimateCollection/EstimateCollectionView.tsx","utf8"),readFile("src/features/estimatePicker/components/EstimateActionsBar.tsx","utf8"),readFile("server/routes/estimates.js","utf8")]);
+  assert.match(collection,/Cannot delete · archive only/);assert.match(actions,/issued evidence is preserved/i);assert.match(app,/issued Estimate.*archive-only.*not deleted/is);
+  assert.match(app,/result\.results\.filter\(item=>item\.success\)/);assert.match(app,/await refreshClientsFromApi\(\)/);
+  assert.match(route,/router\.post\('\/bulk-delete'/);assert.match(route,/partial_success.*207/);assert.match(route,/router\.post\('\/:id\/archive'/);
+});

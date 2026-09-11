@@ -50,7 +50,8 @@ export default function EstimateCollectionRow(props: Props) {
         </div>
 
         <div className="ep-estimate-summary-meta">
-          <Small>{item.status}</Small>
+          <div title={item.statusExplanation || undefined}><Small>{item.displayStatus || item.status}</Small></div>
+          {item.deletionRestricted ? <Small>Cannot delete · Archive available</Small> : null}
           <Small>Created by: {item.createdByName || "User"}</Small>
           <Small>{item.positions.length} positions</Small>
           <Small>{formatMeasure(totals.totalSquareMetres)} m²</Small>

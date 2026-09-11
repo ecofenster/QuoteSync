@@ -118,8 +118,9 @@ export default function EstimateActionsBar(props: Props) {
         <Button variant="outline" onClick={() => copyEstimateForClient(pickerClient, e.id)}>Copy</Button>
       </div>
       <div className="ep-estimate-action-group">
-        <div className="ep-estimate-action-label">Delete estimate</div>
-        <Button variant="danger" onClick={() => confirmDeleteEstimate(e.id)}>Delete</Button>
+        <div className="ep-estimate-action-label">{e.deletionRestricted ? "Issued Estimate" : "Delete estimate"}</div>
+        <Button variant={e.deletionRestricted ? "outline" : "danger"} onClick={() => confirmDeleteEstimate(e.id)}>{e.deletionRestricted ? "Archive" : "Delete"}</Button>
+        {e.deletionRestricted ? <small>{e.deletionReason || "This Estimate has been issued and cannot be deleted."} Archive removes it from the active list; issued evidence is preserved.</small> : null}
       </div>
       <div className="ep-estimate-action-group">
         <div className="ep-estimate-action-label">Open estimate</div>

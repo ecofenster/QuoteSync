@@ -75,6 +75,7 @@ type Props = {
   deleteClientToRecycle: (clientId: ClientId) => void;
   deletedEstimatesForClient: { estimate: Client["estimates"][number]; deletedAt: string }[];
   deleteEstimatesForClient: (clientId: ClientId, estimateIds: EstimateId[]) => void;
+  archiveEstimateForClient: (clientId: ClientId, estimateId: EstimateId) => void;
   restoreDeletedEstimatesForClient: (clientId: ClientId, estimateIds: EstimateId[]) => void;
   purgeDeletedEstimatesForClient: (clientId: ClientId, estimateIds?: EstimateId[]) => void;
   setEstimateInstaller: (clientId: ClientId, estimateId: EstimateId, installerId: string) => void;
@@ -154,6 +155,7 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
     deleteClientToRecycle,
     deletedEstimatesForClient,
     deleteEstimatesForClient,
+    archiveEstimateForClient,
     restoreDeletedEstimatesForClient,
     purgeDeletedEstimatesForClient,
     setEstimateInstaller,
@@ -477,6 +479,7 @@ const EstimatePickerFeature = React.forwardRef<EstimatePickerFeatureHandle, Prop
           copyEstimateForClient={copyEstimateForClient}
           deletedEstimatesForClient={deletedEstimatesForClient}
           deleteEstimatesForClient={deleteEstimatesForClient}
+          archiveEstimateForClient={archiveEstimateForClient}
           restoreDeletedEstimatesForClient={restoreDeletedEstimatesForClient}
           purgeDeletedEstimatesForClient={purgeDeletedEstimatesForClient}
           setEstimateInstaller={setEstimateInstaller}
