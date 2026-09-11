@@ -127,6 +127,10 @@ test('a filed canonical supplier document opens one idempotent extraction review
   assert.equal((await db.get("SELECT COUNT(*) count FROM supplier_quote_attachments WHERE source_canonical_document_id='canonical-document'")).count, 1);
   assert.equal((await db.get('SELECT COUNT(*) count FROM project_calculator_estimate_product_rows')).count, 0);
   assert.equal(first.review.documents.length, 1);
+  await db.run("UPDATE supplier_quote_attachments SET source_canonical_document_id=NULL WHERE id=?",first.documents[0].attachmentId);
+  const priorUploadMatch=await supplier.stageCanonicalDocumentForReview({...input,canonicalDocumentId:'canonical-document-from-email'});
+  assert.equal(priorUploadMatch.duplicate,true);assert.equal(priorUploadMatch.matchedBy,'content_sha256');assert.equal(priorUploadMatch.documents[0].attachmentId,first.documents[0].attachmentId);
+  assert.equal((await db.get("SELECT COUNT(*) count FROM supplier_quotes")).count,1);assert.equal((await db.get("SELECT source_canonical_document_id FROM supplier_quote_attachments WHERE id=?",first.documents[0].attachmentId)).source_canonical_document_id,'canonical-document-from-email');
 });
 
 test('canonical supplier evidence persists into Products / Supply and Project Costing idempotently', async (t) => {
