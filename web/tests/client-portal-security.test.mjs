@@ -50,6 +50,7 @@ async function fixture(t,{clockStart=Date.parse("2026-09-06T10:00:00.000Z")}={})
     CREATE TABLE followups(id TEXT PRIMARY KEY,client_id TEXT,estimate_id TEXT,title TEXT,notes TEXT,due_at TEXT,status TEXT,created_at TEXT,updated_at TEXT);
     CREATE TABLE project_calculator_lab_scenarios(id TEXT PRIMARY KEY,estimate_id TEXT,revision_number INTEGER NOT NULL DEFAULT 1,updated_at TEXT);
     CREATE TABLE project_calculator_lab_manual_cost_lines(id TEXT PRIMARY KEY,scenario_id TEXT NOT NULL,label TEXT);
+    CREATE TABLE supplier_commercial_defaults(supplier_code TEXT PRIMARY KEY,supplier_name TEXT,policy_json TEXT DEFAULT '{}',pricing_display_policy_json TEXT DEFAULT '{}',updated_at TEXT,active INTEGER DEFAULT 1);
   `);
   await initializeWorkflowSchema(db);
   await initializeCommercialIdentitySchema(db);
@@ -66,6 +67,7 @@ async function fixture(t,{clockStart=Date.parse("2026-09-06T10:00:00.000Z")}={})
   await db.run("INSERT INTO canonical_documents(id,provider,provider_account_id,provider_file_id,client_id,project_id,document_type,file_name,discovered_at,last_seen_at,updated_at) VALUES('document-unreleased','fixture','account','private','client-a','project-a1','supplier_quotation','Supplier cost.pdf',?,?,?)",now,now,now);
   await db.run("INSERT INTO project_calculator_lab_scenarios(id,estimate_id,revision_number,updated_at) VALUES('scenario-a1','estimate-a1',1,?)",now);
   await db.run("INSERT INTO project_calculator_lab_manual_cost_lines(id,scenario_id,label) VALUES('cost-before','scenario-a1','Before release')");
+  await db.run("INSERT INTO supplier_commercial_defaults(supplier_code,supplier_name,updated_at) VALUES('TEST-SUPPLIER','Example Supplier',?)",now);
   const options={clock:()=>clock,tokenFactory:()=>Buffer.from(`portal-test-token-${++tokenIndex}`.padEnd(32,"x")).toString("base64url"),identityVerifier:async(assertion)=>({provider:"test-oidc-adapter",subject:String(assertion?.subject||"subject-a"),email:String(assertion?.email||"a@example.test")}),documentOptions:{attachmentRoot:path.join(root,"attachments")}};
   const service=createPortalSecurityService(db,options);
   for(const featureKey of CLIENT_PORTAL_FEATURES)await service.setFeatureControl(featureKey,true,"fixture");
@@ -260,12 +262,12 @@ test("supplier revision and factory confirmation checks require exact source-bac
 
 test("supplier enquiry preview and returned evidence stay linked to one canonical Project and working Estimate",async t=>{
   const source=await fixture(t),lifecycle=createLifecycleService(source.db,{portal:source.service,documentOptions:source.options.documentOptions,deliveryPolicy:{publicStatus:()=>({deliveryMode:"preview_only"}),assertRecipient(){throw new Error("no send")}}});
-  const enquiry=await lifecycle.prepareSupplierEnquiry("project-a1",{estimateId:"estimate-a1",recipient:"factory@example.test",subject:"TEST supplier enquiry",bodyText:"Please review the selected Project drawing.",documentIds:["document-safe"],createdBy:"staff-1"});
+  const enquiry=await lifecycle.prepareSupplierEnquiry("project-a1",{estimateId:"estimate-a1",supplierId:"TEST-SUPPLIER",recipient:"factory@example.test",subject:"TEST supplier enquiry",bodyText:"Please review the selected Project drawing.",documentIds:["document-safe"],createdBy:"staff-1"});
   assert.equal(enquiry.status,"draft");assert.deepEqual(enquiry.documents.map(item=>item.id),["document-safe"]);assert.equal((await source.db.get("SELECT COUNT(*) count FROM supplier_enquiry_drafts WHERE project_id='project-a1'")).count,1);
   const linked=await lifecycle.linkManufacturerResponse("project-a1",{estimateId:"estimate-a1",supplierEnquiryId:enquiry.id,communicationMessageId:enquiry.communicationMessageId,canonicalDocumentId:"document-safe",createdBy:"staff-1"});
   assert.equal(linked.status,"ready_for_import");assert.equal(linked.nextAction,"Review with Manufacturer Import");
   const replay=await lifecycle.linkManufacturerResponse("project-a1",{estimateId:"estimate-a1",supplierEnquiryId:enquiry.id,communicationMessageId:enquiry.communicationMessageId,canonicalDocumentId:"document-safe",createdBy:"staff-1"});assert.equal(replay.idempotentReplay,true);
-  await assert.rejects(()=>lifecycle.prepareSupplierEnquiry("project-a2",{recipient:"factory@example.test",subject:"Wrong Project",bodyText:"No",documentIds:["document-safe"],createdBy:"staff-1"}),error=>error.code==="supplier_enquiry_document_invalid");
+  await assert.rejects(()=>lifecycle.prepareSupplierEnquiry("project-a2",{estimateId:"estimate-a2",supplierId:"TEST-SUPPLIER",recipient:"factory@example.test",subject:"Wrong Project",bodyText:"No",documentIds:["document-safe"],createdBy:"staff-1"}),error=>error.code==="supplier_enquiry_document_invalid");
 });
 
 test("HTTP boundary is fail-closed by default and requires authentication plus CSRF when explicitly test-enabled",async t=>{

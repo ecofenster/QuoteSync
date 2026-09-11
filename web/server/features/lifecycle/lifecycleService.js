@@ -78,20 +78,79 @@ export function createLifecycleService(db, options = {}) {
     return { id: request.id, status: request.status, reviewSubmissionId: request.review_submission_id, sourceReleaseId: request.source_release_id, successorEstimateId: request.successor_estimate_id, successorEstimateRef: request.successor_estimate_ref, clientId: request.client_id, clientName: request.client_name, projectId: request.project_id, projectName: request.project_name, recipient: request.recipient, subject: request.subject, bodyText: request.body_text, summary: parse(request.summary_json, {}), documentIds: parse(request.document_ids_json, []), communicationMessageId: request.communication_message_id, returnedDocumentId: request.returned_document_id, returnedSourceKind: request.returned_source_kind, returnedRevision: request.returned_revision, verifiedAt: request.verified_at, checks: await db.all('SELECT * FROM revision_change_checks WHERE supplier_revision_request_id=? ORDER BY change_kind,estimate_position_id,field_key', requestId), supplierDocuments };
   }
 
+  const supplierEnquiryView = (row) => ({
+    id: row.id,
+    projectId: row.project_id,
+    estimateId: row.estimate_id,
+    supplierId: row.supplier_id,
+    supplierName: row.supplier_name || null,
+    recipient: row.recipient,
+    subject: row.subject,
+    bodyText: row.body_text,
+    status: row.status,
+    revisionNo: Number(row.revision_no || 1),
+    supersedesId: row.supersedes_id || null,
+    documentIds: parse(row.document_ids_json, []),
+    documentSnapshot: parse(row.document_snapshot_json, []),
+    communicationMessageId: row.communication_message_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  });
+
+  async function supplierEnquiryContext(projectId, estimateId) {
+    const project = await db.get(`SELECT p.id,p.client_id,p.name,c.name client_name,c.client_ref
+      FROM projects p JOIN clients c ON c.id=p.client_id
+      WHERE p.id=? AND p.deleted_at IS NULL AND c.deleted_at IS NULL`, projectId);
+    if (!project) throw problem('Project was not found.', 404, 'project_not_found');
+    const estimates = await db.all(`SELECT id,estimate_ref,revision_no,status FROM estimates
+      WHERE project_id=? AND deleted_at IS NULL ORDER BY revision_no DESC,updated_at DESC LIMIT 50`, projectId);
+    const selectedEstimateId = text(estimateId) || estimates[0]?.id || '';
+    if (selectedEstimateId && !estimates.some((item) => item.id === selectedEstimateId)) throw problem('Working Estimate must belong to the selected Project.', 422, 'supplier_enquiry_estimate_invalid');
+    const documents = await db.all(`SELECT id,file_name,mime_type,size_bytes,document_type,provider_file_id,provider_revision,checksum,folder_path
+      FROM canonical_documents WHERE project_id=? AND removed_at IS NULL AND trashed=0
+      ORDER BY provider_modified_at DESC,file_name LIMIT 200`, projectId);
+    const suppliers = await db.all(`SELECT supplier_code id,supplier_name name FROM supplier_commercial_defaults
+      WHERE NOT (upper(trim(supplier_name))='ANY' AND upper(trim(supplier_code)) IN ('FACTORY PRICE','1 TO 1 PRICING','STAGED DISCOUNT'))
+      ORDER BY supplier_name,supplier_code`);
+    const enquiries = await db.all(`SELECT se.*,s.supplier_name FROM supplier_enquiry_drafts se
+      LEFT JOIN supplier_commercial_defaults s ON s.supplier_code=se.supplier_id
+      WHERE se.project_id=? AND (?='' OR se.estimate_id=?) ORDER BY se.created_at DESC LIMIT 50`, projectId, selectedEstimateId, selectedEstimateId);
+    return {
+      project: { id: project.id, clientId: project.client_id, clientName: project.client_name, clientReference: project.client_ref, name: project.name },
+      selectedEstimateId: selectedEstimateId || null,
+      estimates: estimates.map((item) => ({ id: item.id, estimateRef: item.estimate_ref, revisionNo: Number(item.revision_no || 1), status: item.status })),
+      suppliers,
+      documents: documents.map((item) => ({ id: item.id, fileName: item.file_name, mediaType: item.mime_type, sizeBytes: Number(item.size_bytes || 0), documentType: item.document_type, providerFileId: item.provider_file_id, providerRevision: item.provider_revision, checksum: item.checksum, folderPath: item.folder_path })),
+      enquiries: enquiries.map(supplierEnquiryView),
+      delivery: delivery.publicStatus(),
+    };
+  }
+
   async function prepareSupplierEnquiry(projectId, input = {}) {
-    const actor=text(input.createdBy),recipient=text(input.recipient),subject=text(input.subject),bodyText=text(input.bodyText),documentIds=[...new Set((input.documentIds||[]).map(text).filter(Boolean))];
+    const actor=text(input.createdBy),recipient=text(input.recipient),subject=text(input.subject),bodyText=text(input.bodyText),estimateId=text(input.estimateId),supplierId=text(input.supplierId),documentIds=[...new Set((input.documentIds||[]).map(text).filter(Boolean))];
     if(!actor||!recipient||!subject||!bodyText)throw problem('Project, factory recipient, subject, message and staff identity are required.');
     const project=await db.get('SELECT p.id,p.client_id,p.name FROM projects p WHERE p.id=? AND p.deleted_at IS NULL',projectId);if(!project)throw problem('Project was not found.',404,'project_not_found');
-    const documents=documentIds.length?await db.all(`SELECT id,file_name,mime_type,size_bytes,provider_file_id FROM canonical_documents WHERE project_id=? AND removed_at IS NULL AND trashed=0 AND id IN (${documentIds.map(()=>'?').join(',')})`,projectId,...documentIds):[];
+    if(!estimateId||!await db.get('SELECT id FROM estimates WHERE id=? AND project_id=? AND deleted_at IS NULL',estimateId,projectId))throw problem('Choose a current working Estimate for this Project.',422,'supplier_enquiry_estimate_invalid');
+    const supplier=await db.get(`SELECT supplier_code,supplier_name FROM supplier_commercial_defaults WHERE supplier_code=?
+      AND NOT (upper(trim(supplier_name))='ANY' AND upper(trim(supplier_code)) IN ('FACTORY PRICE','1 TO 1 PRICING','STAGED DISCOUNT'))`,supplierId);
+    if(!supplier)throw problem('Choose a current supplier from Administration.',422,'supplier_enquiry_supplier_invalid');
+    const documents=documentIds.length?await db.all(`SELECT id,file_name,mime_type,size_bytes,provider_file_id,provider_revision,checksum,folder_path,document_type FROM canonical_documents WHERE project_id=? AND removed_at IS NULL AND trashed=0 AND id IN (${documentIds.map(()=>'?').join(',')})`,projectId,...documentIds):[];
     if(documents.length!==documentIds.length)throw problem('Every selected supplier-enquiry file must be a current canonical document for this Project.',422,'supplier_enquiry_document_invalid');
     if(input.send===true)delivery.assertRecipient(recipient,'factory');
-    const id=randomUUID(),communicationId=randomUUID(),at=stamp();
-    const message={id:communicationId,provider:input.send===true?'google_workspace':'quotesuite_preview',direction:'outbound',folder:input.send===true?'sent':'drafts',status:input.send===true?'sending':'draft',from:[],to:[recipient],cc:[],bcc:[],subject,bodyText,bodyHtml:`<p>${bodyText.replaceAll('&','&amp;').replaceAll('<','&lt;')}</p>`,links:[{kind:'project',id:projectId},...(input.estimateId?[{kind:'estimate',id:text(input.estimateId)}]:[])],attachments:documents.map(document=>({id:randomUUID(),fileName:document.file_name,mediaType:document.mime_type,sizeBytes:Number(document.size_bytes||0),driveFileId:document.provider_file_id}))};
+    const documentSnapshot=documents.map(document=>({id:document.id,fileName:document.file_name,mediaType:document.mime_type,sizeBytes:Number(document.size_bytes||0),providerFileId:document.provider_file_id,providerRevision:document.provider_revision,checksum:document.checksum,folderPath:document.folder_path,documentType:document.document_type}));
+    const contentSha256=hash({projectId,estimateId,supplierId,recipient:normalized(recipient),subject,bodyText,documentSnapshot:documentSnapshot.map(document=>({id:document.id,providerFileId:document.providerFileId,providerRevision:document.providerRevision,checksum:document.checksum}))});
+    const idempotencyKey=text(input.idempotencyKey)||`content:${contentSha256}`;
+    const existing=await db.get('SELECT se.*,s.supplier_name FROM supplier_enquiry_drafts se LEFT JOIN supplier_commercial_defaults s ON s.supplier_code=se.supplier_id WHERE se.idempotency_key=?',idempotencyKey);
+    if(existing){if(existing.content_sha256&&existing.content_sha256!==contentSha256)throw problem('This RFQ retry key belongs to different reviewed content. Close and reopen the RFQ to start a new revision.',409,'supplier_enquiry_idempotency_conflict');return{...supplierEnquiryView(existing),documents:parse(existing.document_snapshot_json,[]),delivery:delivery.publicStatus(),idempotentReplay:true,nextAction:'Review the saved Email draft or wait for the supplier response.'};}
+    const latest=await db.get('SELECT id,COALESCE(MAX(revision_no),0) revision_no FROM supplier_enquiry_drafts WHERE project_id=? AND estimate_id=? AND supplier_id=?',projectId,estimateId,supplierId);
+    const revisionNo=Number(latest?.revision_no||0)+1,id=randomUUID(),communicationId=`supplier-rfq-${createHash('sha256').update(idempotencyKey).digest('hex').slice(0,24)}`,at=stamp();
+    const message={id:communicationId,provider:input.send===true?'google_workspace':'quotesuite_preview',direction:'outbound',folder:input.send===true?'sent':'drafts',status:input.send===true?'sending':'draft',from:[],to:[recipient],cc:[],bcc:[],subject,bodyText,bodyHtml:`<p>${bodyText.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('\n','<br>')}</p>`,links:[{kind:'project',id:projectId},{kind:'estimate',id:estimateId},{kind:'supplier',id:supplierId}],attachments:documents.map(document=>({id:`${communicationId}:${document.id}`,fileName:document.file_name,mediaType:document.mime_type,sizeBytes:Number(document.size_bytes||0),driveFileId:document.provider_file_id,sha256:document.checksum}))};
     const communication=await deliverOrSave(message,input.send);
     const status=input.send===true?'sent':'draft';
-    await db.run(`INSERT INTO supplier_enquiry_drafts(id,project_id,estimate_id,supplier_id,recipient,subject,body_text,document_ids_json,communication_message_id,status,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,id,projectId,text(input.estimateId)||null,text(input.supplierId)||null,recipient,subject,bodyText,JSON.stringify(documentIds),communicationId,status,actor,at,at);
-    await event(input.send===true?'supplier.enquiry.sent':'supplier.enquiry.prepared',id,[{kind:'project',id:projectId},{kind:'communication',id:communicationId},...(input.estimateId?[{kind:'estimate',id:text(input.estimateId)}]:[])]);
-    return{id,projectId,estimateId:text(input.estimateId)||null,status,recipient,subject,bodyText,documents,communicationMessageId:communication.id,delivery:delivery.publicStatus()};
+    try{await db.run(`INSERT INTO supplier_enquiry_drafts(id,project_id,estimate_id,supplier_id,recipient,subject,body_text,document_ids_json,document_snapshot_json,communication_message_id,status,idempotency_key,content_sha256,revision_no,supersedes_id,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,id,projectId,estimateId,supplierId,recipient,subject,bodyText,JSON.stringify(documentIds),JSON.stringify(documentSnapshot),communicationId,status,idempotencyKey,contentSha256,revisionNo,latest?.id||null,actor,at,at);}
+    catch(cause){throw Object.assign(new Error(`${input.send===true?'The RFQ was sent':'The Email draft was saved'}, but QuoteSuite could not finish its RFQ record. Retry with the same RFQ open; completed work will be reused.`),{status:409,code:'supplier_enquiry_partial_success',cause,details:{communicationMessageId:communication.id,idempotencyKey}});}
+    await event(input.send===true?'supplier.enquiry.sent':'supplier.enquiry.prepared',id,[{kind:'project',id:projectId},{kind:'communication',id:communicationId},{kind:'estimate',id:estimateId},{kind:'supplier',id:supplierId}]);
+    return{id,projectId,estimateId,supplierId,supplierName:supplier.supplier_name,status,revisionNo,supersedesId:latest?.id||null,recipient,subject,bodyText,documentIds,documentSnapshot,documents:documentSnapshot,communicationMessageId:communication.id,delivery:delivery.publicStatus(),idempotentReplay:false,nextAction:input.send===true?'Wait for the supplier response, then file and review the returned quotation.':'Review the saved Email draft before sending.'};
   }
 
   async function linkManufacturerResponse(projectId,input={}){
@@ -356,5 +415,5 @@ export function createLifecycleService(db, options = {}) {
     } catch(error){await db.exec('ROLLBACK').catch(()=>{});throw error;}
   }
 
-  return { deliveryStatus: () => delivery.publicStatus(), changesRequestedQueue, changeRequestDetail, supplierRevisionDetail, prepareSupplierEnquiry, linkManufacturerResponse, prepareSupplierRevision, prepareSupplierRevisionCorrespondence, attachSupplierRevisionDocument, verifySupplierRevision, orderJourney, approveOrder, prepareFactoryOrder, recordFactoryConfirmation, releaseFactoryConfirmation, recordReviewedSignedApproval, customerDocuments };
+  return { deliveryStatus: () => delivery.publicStatus(), changesRequestedQueue, changeRequestDetail, supplierRevisionDetail, supplierEnquiryContext, prepareSupplierEnquiry, linkManufacturerResponse, prepareSupplierRevision, prepareSupplierRevisionCorrespondence, attachSupplierRevisionDocument, verifySupplierRevision, orderJourney, approveOrder, prepareFactoryOrder, recordFactoryConfirmation, releaseFactoryConfirmation, recordReviewedSignedApproval, customerDocuments };
 }

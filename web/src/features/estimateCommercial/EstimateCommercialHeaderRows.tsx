@@ -23,6 +23,7 @@ export default function EstimateCommercialHeaderRows({
   creatingRevision,
   onCreateRevision,
   onOpenDocuments,
+  onRequestSupplierQuote,
   canReviewCustomerQuotation,
   onReviewCustomerQuotation,
   estimateId,
@@ -43,6 +44,7 @@ export default function EstimateCommercialHeaderRows({
   creatingRevision: boolean;
   onCreateRevision: () => void;
   onOpenDocuments: () => void;
+  onRequestSupplierQuote?: () => void;
   canReviewCustomerQuotation: boolean;
   onReviewCustomerQuotation: () => void;
   estimateId: string;
@@ -69,6 +71,7 @@ export default function EstimateCommercialHeaderRows({
       <div className="estimate-commercial__next-actions">
         <button type="button" className="ui-button" disabled={!scenarioId || creatingRevision} onClick={onCreateRevision}>{creatingRevision ? "Creating…" : "Create Revision"}</button>
         <button type="button" className="ui-button" onClick={onOpenDocuments}>Files / Documents</button>
+        <button type="button" className="ui-button" disabled={!projectId} onClick={onRequestSupplierQuote}>Request supplier quote</button>
         <button type="button" className="ui-button ui-button--primary" disabled={!canReviewCustomerQuotation} onClick={onReviewCustomerQuotation}>Review Customer Quotation</button>
       </div>
     </aside>

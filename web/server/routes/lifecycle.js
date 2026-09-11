@@ -1,14 +1,15 @@
 import express from 'express';
-import { dbPromise } from '../db.js';
 import { CURRENT_APP_USER } from '../currentUser.js';
 import { createLifecycleService } from '../features/lifecycle/lifecycleService.js';
 
 const fail = (res, error) => res.status(Number(error?.status) || 500).json({ error: error instanceof Error ? error.message : 'Lifecycle request failed.', code: error?.code || 'lifecycle_error' });
-export function createLifecycleRouter({ databasePromise = dbPromise, serviceOptions } = {}) {
+export function createLifecycleRouter({ databasePromise, serviceOptions } = {}) {
+  if (!databasePromise) throw new Error('createLifecycleRouter requires databasePromise.');
   const router = express.Router(), service = async () => createLifecycleService(await databasePromise, serviceOptions);
   router.get('/test-delivery', async (_req,res) => res.json((await service()).deliveryStatus()));
   router.get('/changes-requested', async (_req,res) => { try { res.json(await (await service()).changesRequestedQueue()); } catch (error) { fail(res,error); } });
   router.get('/changes-requested/:reviewId', async (req,res) => { try { res.json(await (await service()).changeRequestDetail(req.params.reviewId)); } catch (error) { fail(res,error); } });
+  router.get('/projects/:projectId/supplier-enquiries',async(req,res)=>{try{res.json(await(await service()).supplierEnquiryContext(req.params.projectId,req.query.estimate_id));}catch(error){fail(res,error);}});
   router.post('/projects/:projectId/supplier-enquiries',async(req,res)=>{try{res.status(201).json(await(await service()).prepareSupplierEnquiry(req.params.projectId,{...req.body,createdBy:CURRENT_APP_USER.id}));}catch(error){fail(res,error);}});
   router.post('/projects/:projectId/manufacturer-responses',async(req,res)=>{try{res.status(201).json(await(await service()).linkManufacturerResponse(req.params.projectId,{...req.body,createdBy:CURRENT_APP_USER.id}));}catch(error){fail(res,error);}});
   router.post('/changes-requested/:reviewId/supplier-revision', async (req,res) => { try { res.status(201).json(await (await service()).prepareSupplierRevision({ ...req.body, reviewSubmissionId:req.params.reviewId, createdBy:CURRENT_APP_USER.id, createdByName:CURRENT_APP_USER.name })); } catch(error){ fail(res,error); } });

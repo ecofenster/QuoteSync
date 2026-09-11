@@ -22,6 +22,7 @@ import type { EstimateCommercialView } from "./EstimateCommercialViewSwitch";
 import type { SupplierCommercialResult } from "../projectCalculatorLab/SupplierCommercialReview";
 import EstimateCommercialHeaderRows from "./EstimateCommercialHeaderRows";
 import { projectCalculatorLabApi } from "../projectCalculatorLab/api/projectCalculatorLabApi";
+import SupplierRfqDialog from "./SupplierRfqDialog";
 
 type CommercialTab = "costing" | "import";
 
@@ -51,6 +52,7 @@ export default function EstimateCommercialWorkspace({
     useState<string | null>(null);
   const [quotationOpen, setQuotationOpen] = useState(false);
   const [documentsOpen, setDocumentsOpen] = useState(false);
+  const [supplierRfqOpen, setSupplierRfqOpen] = useState(false);
   const [handoffMessage, setHandoffMessage] = useState("");
   const [commercialView, setCommercialView] =
     useState<EstimateCommercialView>(initialCommercialView);
@@ -66,7 +68,7 @@ export default function EstimateCommercialWorkspace({
   useEffect(()=>{void apiFetch(`/api/admin/project-calculator-lab/scenarios?estimate_id=${encodeURIComponent(estimateId)}`).then(async rows=>{const first=Array.isArray(rows)?rows[0]:null;if(!first)return;const scenario=await apiFetch(`/api/admin/project-calculator-lab/scenarios/${encodeURIComponent(first.id)}?estimate_id=${encodeURIComponent(estimateId)}`) as CalculatorScenario;setCurrentScenario(scenario);setCustomerValue(deriveProjectCostingCommercialResult(scenario).actualSale)}).catch(()=>{})},[estimateId,positionRevision]);
   useEffect(()=>{const update=(event:Event)=>{const scenario=(event as CustomEvent<CalculatorScenario>).detail;if(!scenario)return;setCurrentScenario(scenario);setCustomerValue(deriveProjectCostingCommercialResult(scenario).actualSale)};window.addEventListener("quotesuite:costing-updated",update);return()=>window.removeEventListener("quotesuite:costing-updated",update)},[]);
   useEffect(()=>{void refreshWorkflow()},[refreshWorkflow,positionRevision]);
-  useEffect(()=>{if(tab!=="import"&&!documentsOpen)return;document.body.classList.add("qs-modal-open");return()=>document.body.classList.remove("qs-modal-open")},[documentsOpen,tab]);
+  useEffect(()=>{if(tab!=="import"&&!documentsOpen&&!supplierRfqOpen)return;document.body.classList.add("qs-modal-open");return()=>document.body.classList.remove("qs-modal-open")},[documentsOpen,supplierRfqOpen,tab]);
   const totals=estimate?estimateTotals(estimate):{totalSquareMetres:0,totalLinearMetres:0,totalQty:0};
   const nextAction=deriveNextAction({manufacturerQuoteImported:workflowState?.manufacturerQuoteImported??Boolean(currentScenario&&currentScenario.origin==="supplier_import"&&currentScenario.products.length),costingReady:workflowState?.costingReady??Boolean(currentScenario?.products.length),quotationReviewed:workflowState?.quotationReviewed??quotationReviewed,quotationPrepared:workflowState?.quotationPrepared,quotationIssued:workflowState?.quotationIssued??false,followUpDue:workflowState?.followUpDue??false,followUpDueDate:workflowState?.followUpDueDate,followUpCompleted:workflowState?.followUpCompleted??false,customerAccepted:workflowState?.customerAccepted??false,orderCreated:workflowState?.orderCreated??false});
   const openImport = useCallback((canonicalDocumentId?: string | null) => {
@@ -124,6 +126,7 @@ export default function EstimateCommercialWorkspace({
         creatingRevision={creatingRevision}
         onCreateRevision={() => void createRevision()}
         onOpenDocuments={() => setDocumentsOpen(true)}
+        onRequestSupplierQuote={estimate?.projectId?()=>setSupplierRfqOpen(true):undefined}
         canReviewCustomerQuotation={Boolean(client && estimate)}
         onReviewCustomerQuotation={reviewCustomerQuotation}
         estimateId={estimateId}
@@ -233,6 +236,7 @@ export default function EstimateCommercialWorkspace({
         />
       ) : null}
       {documentsOpen ? createPortal(<div className="estimate-commercial__modal-scrim" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)setDocumentsOpen(false)}}><section className="estimate-commercial__modal ui-card" role="dialog" aria-modal="true" aria-label="Estimate Files and Documents"><header><div><h2>Files / Documents</h2><p>Canonical documents and retained supplier quotation evidence linked to {estimateRef}.</p></div><button className="ui-button" onClick={()=>setDocumentsOpen(false)}>Close</button></header><CanonicalDocumentsPanel estimateId={estimateId}/><details><summary>Supplier quotation evidence</summary><EstimateSupplierDocuments estimateId={estimateId} estimateRef={estimateRef}/></details></section></div>,document.body) : null}
+      {supplierRfqOpen&&estimate?.projectId?createPortal(<SupplierRfqDialog projectId={String(estimate.projectId)} estimateId={estimateId} estimateRef={estimateRef} onClose={()=>setSupplierRfqOpen(false)}/>,document.body):null}
     </section>
   );
 }

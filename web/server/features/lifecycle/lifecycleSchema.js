@@ -23,7 +23,8 @@ const statements = [
   )`,
   `CREATE TABLE IF NOT EXISTS supplier_enquiry_drafts (
     id TEXT PRIMARY KEY,project_id TEXT NOT NULL,estimate_id TEXT,supplier_id TEXT,recipient TEXT NOT NULL,subject TEXT NOT NULL,body_text TEXT NOT NULL,
-    document_ids_json TEXT NOT NULL DEFAULT '[]',communication_message_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','approved','sent','cancelled')),
+    document_ids_json TEXT NOT NULL DEFAULT '[]',document_snapshot_json TEXT NOT NULL DEFAULT '[]',communication_message_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','approved','sent','cancelled')),
+    idempotency_key TEXT,content_sha256 TEXT,revision_no INTEGER NOT NULL DEFAULT 1,supersedes_id TEXT,
     created_by TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,
     FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE RESTRICT,
     FOREIGN KEY(estimate_id) REFERENCES estimates(id) ON DELETE RESTRICT,
@@ -121,6 +122,13 @@ export async function initializeLifecycleSchema(db) {
   await ensureColumn(db, 'supplier_revision_requests', 'returned_revision', 'TEXT');
   await ensureColumn(db, 'supplier_revision_requests', 'returned_source_kind', "TEXT NOT NULL DEFAULT 'canonical_document' CHECK(returned_source_kind IN ('canonical_document','supplier_quote_attachment'))");
   await ensureColumn(db, 'supplier_revision_requests', 'verified_at', 'TEXT');
+  await ensureColumn(db, 'supplier_enquiry_drafts', 'document_snapshot_json', "TEXT NOT NULL DEFAULT '[]'");
+  await ensureColumn(db, 'supplier_enquiry_drafts', 'idempotency_key', 'TEXT');
+  await ensureColumn(db, 'supplier_enquiry_drafts', 'content_sha256', 'TEXT');
+  await ensureColumn(db, 'supplier_enquiry_drafts', 'revision_no', 'INTEGER NOT NULL DEFAULT 1');
+  await ensureColumn(db, 'supplier_enquiry_drafts', 'supersedes_id', 'TEXT');
+  await db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_supplier_enquiry_idempotency ON supplier_enquiry_drafts(idempotency_key) WHERE idempotency_key IS NOT NULL');
+  await db.exec('CREATE INDEX IF NOT EXISTS idx_supplier_enquiry_project_estimate ON supplier_enquiry_drafts(project_id,estimate_id,created_at DESC)');
   await ensureColumn(db, 'revision_change_checks', 'change_kind', "TEXT NOT NULL DEFAULT 'requested' CHECK(change_kind IN ('requested','unrelated_material_change'))");
   for (const table of immutable) await db.exec(`CREATE TRIGGER IF NOT EXISTS trg_${table}_delete_evidence BEFORE DELETE ON ${table} BEGIN SELECT RAISE(ABORT,'Lifecycle evidence must be superseded, not deleted'); END`);
 }
