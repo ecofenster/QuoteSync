@@ -1,6 +1,6 @@
 import type { PlatformReadiness, RoadmapChronologyEntry, RoadmapItem, RoadmapSection } from "./roadmap.types";
 
-export const ROADMAP_CHECKPOINT_SHA = "5dc75f996a52a213e6bb10121b730a401f4f2df8";
+export const ROADMAP_CHECKPOINT_SHA = "dd2e3f26cb75440195c171b06c65db8b9ff494b2";
 
 export const ROADMAP_SECTIONS: RoadmapSection[] = [
   { id: "overview", label: "Overview", description: "Checkpoint, focus, blockers and readiness." },
