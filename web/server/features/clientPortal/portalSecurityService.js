@@ -260,13 +260,27 @@ export function createPortalSecurityService(db, options = {}) {
   const safePosition = (position) => ({ id: String(position.id || ""), reference: String(position.customerReference || position.reference || position.positionRef || ""), quantity: Number(position.quantity ?? position.qty ?? 0), widthMm: position.widthMm == null ? null : Number(position.widthMm), heightMm: position.heightMm == null ? null : Number(position.heightMm), productSystem: position.productSystem ? String(position.productSystem) : null, description: position.description ? String(position.description) : null, specification: position.specification ? String(position.specification) : null, classification: position.classification ? String(position.classification) : "included" });
   const safeEstimateRelease = (row) => {
     const projection = parseJson(row.customer_projection_json, {}), commercial = parseJson(row.commercial_snapshot_json, {}), snapshot = parseJson(row.estimate_snapshot_json, {});
-    return { releaseId: row.id, estimateId: row.estimate_id, estimateRef: snapshot.estimateRef || projection.estimateReference, revisionNo: Number(row.estimate_revision), issuedAt: row.released_at, immutable: true, status: "issued", document: { id: row.document_id, fileName: `${snapshot.estimateRef || projection.estimateReference || "Estimate"}-Estimate.pdf` }, customer: { projectName: projection.projectName || null, projectAddress: projection.projectAddress || null }, commercial: { supplyOnly: projection.charges?.find?.((item) => /product|supply/i.test(String(item.label)))?.amountGbp ?? null, installation: projection.charges?.find?.((item) => /installation/i.test(String(item.label)))?.amountGbp ?? null, subtotalExVatGbp: commercial.subtotalExVatGbp ?? null, vatGbp: commercial.vatGbp ?? null, totalIncVatGbp: commercial.totalIncVatGbp ?? null, currency: "GBP" }, positions: Array.isArray(projection.positions) ? projection.positions.map(safePosition) : [] };
+    const lifecycleStatus=row.lifecycle_state||"issued";
+    return { releaseId: row.id, estimateId: row.estimate_id, estimateRef: snapshot.estimateRef || projection.estimateReference, revisionNo: Number(row.estimate_revision), issuedAt: row.released_at, immutable: true, status: lifecycleStatus, lifecycle: { status:lifecycleStatus,reason:row.lifecycle_reason||null,changedAt:row.lifecycle_occurred_at||row.released_at,replacementIssuedQuotationId:row.related_issued_quotation_id||null }, document: { id: row.document_id, fileName: `${snapshot.estimateRef || projection.estimateReference || "Estimate"}-Estimate.pdf` }, customer: { projectName: projection.projectName || null, projectAddress: projection.projectAddress || null }, commercial: { supplyOnly: projection.charges?.find?.((item) => /product|supply/i.test(String(item.label)))?.amountGbp ?? null, installation: projection.charges?.find?.((item) => /installation/i.test(String(item.label)))?.amountGbp ?? null, subtotalExVatGbp: commercial.subtotalExVatGbp ?? null, vatGbp: commercial.vatGbp ?? null, totalIncVatGbp: commercial.totalIncVatGbp ?? null, currency: "GBP" }, positions: Array.isArray(projection.positions) ? projection.positions.map(safePosition) : [] };
   };
+
+  async function lifecycleForIssuedQuotation(issuedQuotationId){
+    if(!issuedQuotationId)return null;
+    return db.get("SELECT lifecycle_state,reason,related_issued_quotation_id,occurred_at FROM issued_quotation_lifecycle_events WHERE issued_quotation_id=? ORDER BY occurred_at DESC,rowid DESC LIMIT 1",issuedQuotationId);
+  }
+  async function assertActionableEstimateRelease(releaseId){
+    const release=await db.get("SELECT issued_quotation_id FROM estimate_revision_releases WHERE id=?",releaseId),lifecycle=await lifecycleForIssuedQuotation(release?.issued_quotation_id);
+    const state=lifecycle?.lifecycle_state||"issued";
+    if(state==="superseded")throw portalError(409,"portal_estimate_superseded","A newer Estimate revision has replaced this one. Open the latest Estimate before responding.");
+    if(state==="withdrawn")throw portalError(410,"portal_estimate_withdrawn","This Estimate has been withdrawn and is no longer available for customer action. Contact the project team for the current offer.");
+    return state;
+  }
 
   async function getReleasedEstimate(session, projectId, releaseId) {
     await authorizeReleasedResource(session, { projectId, resourceType: "estimate", resourceId: releaseId });
-    const row = await db.get("SELECT * FROM estimate_revision_releases WHERE id=? AND tenant_id=? AND client_id=? AND project_id=?", releaseId, session.tenantId, session.clientId, projectId);
+    const row = await db.get(`SELECT r.*,le.lifecycle_state,le.reason lifecycle_reason,le.related_issued_quotation_id,le.occurred_at lifecycle_occurred_at FROM estimate_revision_releases r LEFT JOIN issued_quotation_lifecycle_events le ON le.id=(SELECT id FROM issued_quotation_lifecycle_events WHERE issued_quotation_id=r.issued_quotation_id ORDER BY occurred_at DESC,rowid DESC LIMIT 1) WHERE r.id=? AND r.tenant_id=? AND r.client_id=? AND r.project_id=?`, releaseId, session.tenantId, session.clientId, projectId);
     if (!row) await deny(session, projectId, "estimate", releaseId);
+    if(row.lifecycle_state==="withdrawn")throw portalError(410,"portal_estimate_withdrawn","This Estimate has been withdrawn and is no longer available. Contact the project team for the current offer.");
     await audit({ eventType: "estimate.viewed", actorType: "external_contact", actorId: session.portalContactId, clientId: session.clientId, projectId, resourceType: "estimate", resourceId: releaseId, metadata: { revision: row.estimate_revision } });
     return safeEstimateRelease(row);
   }
@@ -274,6 +288,8 @@ export function createPortalSecurityService(db, options = {}) {
   async function getReleasedDocument(session, projectId, documentId) {
     const resource = await authorizeReleasedResource(session, { projectId, resourceType: "document", resourceId: documentId });
     const metadata = parseJson(resource.metadata_json, {});
+    const lifecycle=await lifecycleForIssuedQuotation(metadata.issuedQuotationId);
+    if(lifecycle?.lifecycle_state==="withdrawn")throw portalError(410,"portal_estimate_withdrawn","The withdrawn Estimate document is no longer available. Contact the project team for the current offer.");
     return { id: documentId, revision: resource.resource_revision, documentType: String(metadata.documentType || "approved_customer_document"), fileName: String(metadata.fileName || "Released document"), releasedAt: resource.released_at };
   }
 
@@ -284,8 +300,10 @@ export function createPortalSecurityService(db, options = {}) {
       throw portalError(404, "portal_scope_not_found", "The active Client and Project relationship was not found.");
     }
     const features = await listFeatureControls(), enabled = new Set(features.filter((item) => item.enabled).map((item) => item.featureKey));
-    const releases = enabled.has("estimates") ? await db.all(`SELECT r.* FROM estimate_revision_releases r JOIN portal_resource_releases pr ON pr.resource_id=r.id AND pr.resource_type='estimate' AND pr.status='released' WHERE r.tenant_id=? AND r.client_id=? AND r.project_id=? ORDER BY r.released_at DESC`, tenantId, clientId, projectId) : [];
-    const documentRows = enabled.has("documents") ? await db.all("SELECT * FROM portal_resource_releases WHERE tenant_id=? AND client_id=? AND project_id=? AND resource_type='document' AND status='released' ORDER BY released_at DESC", tenantId, clientId, projectId) : [];
+    const releaseRows = enabled.has("estimates") ? await db.all(`SELECT r.*,le.lifecycle_state,le.reason lifecycle_reason,le.related_issued_quotation_id,le.occurred_at lifecycle_occurred_at FROM estimate_revision_releases r JOIN portal_resource_releases pr ON pr.resource_id=r.id AND pr.resource_type='estimate' AND pr.status='released' LEFT JOIN issued_quotation_lifecycle_events le ON le.id=(SELECT id FROM issued_quotation_lifecycle_events WHERE issued_quotation_id=r.issued_quotation_id ORDER BY occurred_at DESC,rowid DESC LIMIT 1) WHERE r.tenant_id=? AND r.client_id=? AND r.project_id=? ORDER BY r.released_at DESC`, tenantId, clientId, projectId) : [];
+    const releases=internalPreview?releaseRows:releaseRows.filter(row=>row.lifecycle_state!=="withdrawn");
+    const rawDocumentRows = enabled.has("documents") ? await db.all("SELECT * FROM portal_resource_releases WHERE tenant_id=? AND client_id=? AND project_id=? AND resource_type='document' AND status='released' ORDER BY released_at DESC", tenantId, clientId, projectId) : [];
+    const documentRows=[];for(const row of rawDocumentRows){const metadata=parseJson(row.metadata_json,{}),lifecycle=await lifecycleForIssuedQuotation(metadata.issuedQuotationId);if(internalPreview||lifecycle?.lifecycle_state!=="withdrawn")documentRows.push(row)}
     const decisions = enabled.has("rejected") || enabled.has("orders") ? await db.all("SELECT estimate_release_id,decision_type,decline_reason,optional_supplier_name,detail,decided_at FROM portal_estimate_decisions WHERE tenant_id=? AND client_id=? AND project_id=? ORDER BY decided_at DESC", tenantId, clientId, projectId) : [];
     const reviews = enabled.has("review_estimate") ? await db.all("SELECT estimate_release_id,status,submitted_at FROM portal_review_submissions WHERE tenant_id=? AND client_id=? AND project_id=? ORDER BY submitted_at DESC", tenantId, clientId, projectId) : [];
     const orders = enabled.has("orders") ? await db.all(`SELECT o.id,o.order_ref,o.status,o.source_estimate_id,o.source_estimate_revision,o.created_at,o.updated_at
@@ -349,6 +367,7 @@ export function createPortalSecurityService(db, options = {}) {
     const releaseResource = await authorizeReleasedResource(session, { projectId, resourceType: "estimate", resourceId: releaseId });
     const release = await db.get("SELECT * FROM estimate_revision_releases WHERE id=? AND project_id=? AND client_id=?", releaseId, projectId, session.clientId);
     if (!release) await deny(session, projectId, "estimate", releaseId);
+    await assertActionableEstimateRelease(releaseId);
     const positions = Array.isArray(input.positions) ? input.positions : [];
     if (!positions.length) throw portalError(422, "portal_review_positions_required", "At least one Position review response is required.");
     if (positions.some((position) => position.response === "amendment_requested")) await requireFeature(session, projectId, "request_amendments");
@@ -383,6 +402,7 @@ export function createPortalSecurityService(db, options = {}) {
     await authorizeProjectCommand(session, projectId);
     await requireFeature(session, projectId, "review_estimate");
     await authorizeReleasedResource(session, { projectId, resourceType: "estimate", resourceId: releaseId });
+    await assertActionableEstimateRelease(releaseId);
     await db.exec("BEGIN IMMEDIATE");
     try {
       const existing = await db.get("SELECT id,occurred_at FROM portal_audit_events WHERE event_type='estimate.review.started' AND actor_id=? AND project_id=? AND resource_id=? ORDER BY occurred_at DESC LIMIT 1", session.portalContactId, projectId, releaseId);
@@ -401,6 +421,7 @@ export function createPortalSecurityService(db, options = {}) {
     const releaseResource = await authorizeReleasedResource(session, { projectId, resourceType: "estimate", resourceId: releaseId });
     const release = await db.get("SELECT id FROM estimate_revision_releases WHERE id=? AND project_id=? AND client_id=?", releaseId, projectId, session.clientId);
     if (!release) await deny(session, projectId, "estimate", releaseId);
+    await assertActionableEstimateRelease(releaseId);
     if (await db.get("SELECT id FROM portal_estimate_acceptances WHERE estimate_release_id=? AND portal_contact_id=?", releaseId, session.portalContactId)) throw portalError(409, "portal_estimate_already_accepted", "This issued Estimate has already been accepted.");
     const reason = decisionType === "declined" ? String(input.reason || "") : null;
     if (decisionType === "declined" && !PORTAL_DECLINE_REASONS.includes(reason)) throw portalError(422, "portal_decline_reason_invalid", "Choose a valid decline reason.");
@@ -438,6 +459,7 @@ export function createPortalSecurityService(db, options = {}) {
     await authorizeReleasedResource(session, { projectId, resourceType: "estimate", resourceId: releaseId });
     const release = await db.get("SELECT * FROM estimate_revision_releases WHERE id=? AND project_id=? AND client_id=?", releaseId, projectId, session.clientId);
     if (!release) await deny(session, projectId, "estimate", releaseId);
+    await assertActionableEstimateRelease(releaseId);
     const conflictingDecision = await db.get("SELECT decision_type FROM portal_estimate_decisions WHERE estimate_release_id=? AND portal_contact_id=? AND decision_type='declined'", releaseId, session.portalContactId);
     if (conflictingDecision) throw portalError(409, "portal_estimate_decision_conflict", "A declined Estimate cannot be accepted without a new issued revision.");
     const amendmentReview = await db.get(`SELECT r.id FROM portal_review_submissions r WHERE r.estimate_release_id=? AND r.portal_contact_id=? AND EXISTS(SELECT 1 FROM portal_review_position_entries p WHERE p.review_submission_id=r.id AND p.response='amendment_requested')`, releaseId, session.portalContactId);

@@ -18,8 +18,9 @@ export function createIssuedQuotationService(db, options = {}) {
 
   async function mapIssued(row) {
     if (!row) return null;
-    const [document,communication,followUp] = await Promise.all([documents.get(row.document_id),row.communication_message_id ? communications.repository.get(row.communication_message_id) : null,db.get("SELECT id,due_at,status FROM followups WHERE issued_quotation_id=? ORDER BY created_at DESC LIMIT 1",row.id)]);
-    return { id: row.id, status: row.status, clientId: row.client_id, estimateId: row.estimate_id, estimateRevision: row.estimate_revision, quotationRevision: row.quotation_revision, recipient: row.recipient, subject: row.subject, provider: row.provider, providerMessageId: row.provider_message_id, communicationMessageId: row.communication_message_id, preparedAt: row.prepared_at, issuedAt: row.issued_at, failedAt: row.failed_at, failureReason: row.failure_reason, commercialSnapshot: parse(row.commercial_snapshot_json, {}), termsSnapshot: row.terms_snapshot, document: document ? { ...document, downloadUrl: `/api/quotation-workflow/issued/${row.id}/document` } : null, communication, followUp: followUp ? { id:followUp.id,dueDate:followUp.due_at,status:followUp.status } : null };
+    const [document,communication,followUp,lifecycle] = await Promise.all([documents.get(row.document_id),row.communication_message_id ? communications.repository.get(row.communication_message_id) : null,db.get("SELECT id,due_at,status FROM followups WHERE issued_quotation_id=? ORDER BY created_at DESC LIMIT 1",row.id),db.get("SELECT lifecycle_state,reason,related_issued_quotation_id,actor_id,occurred_at FROM issued_quotation_lifecycle_events WHERE issued_quotation_id=? ORDER BY occurred_at DESC,rowid DESC LIMIT 1",row.id)]);
+    const lifecycleStatus=lifecycle?.lifecycle_state||(row.status==="issued"?"issued":null);
+    return { id: row.id, status: row.status, lifecycleStatus, lifecycle: lifecycle ? { status:lifecycle.lifecycle_state,reason:lifecycle.reason,relatedIssuedQuotationId:lifecycle.related_issued_quotation_id,actorId:lifecycle.actor_id,occurredAt:lifecycle.occurred_at } : null, clientId: row.client_id, estimateId: row.estimate_id, estimateRevision: row.estimate_revision, quotationRevision: row.quotation_revision, recipient: row.recipient, subject: row.subject, provider: row.provider, providerMessageId: row.provider_message_id, communicationMessageId: row.communication_message_id, preparedAt: row.prepared_at, issuedAt: row.issued_at, failedAt: row.failed_at, failureReason: row.failure_reason, commercialSnapshot: parse(row.commercial_snapshot_json, {}), termsSnapshot: row.terms_snapshot, document: document ? { ...document, downloadUrl: `/api/quotation-workflow/issued/${row.id}/document` } : null, communication, followUp: followUp ? { id:followUp.id,dueDate:followUp.due_at,status:followUp.status } : null };
   }
   async function get(id) { return mapIssued(await db.get("SELECT * FROM issued_quotations WHERE id=?", id)); }
   async function customerTerms(estimateId){
@@ -81,6 +82,13 @@ export function createIssuedQuotationService(db, options = {}) {
     try {
       await db.run("UPDATE issued_quotations SET status='issued',provider='google_workspace',provider_message_id=?,communication_message_id=?,issued_at=?,failed_at=NULL,failure_reason=NULL,updated_at=? WHERE id=? AND status<>'issued'", communication.providerMessageId, communication.id, issuedAt, issuedAt, row.id);
       await portalSecurity.releaseIssuedEstimate({ issuedQuotationId: row.id, releasedBy: "system" });
+      await db.run(`INSERT INTO issued_quotation_lifecycle_events(id,issued_quotation_id,lifecycle_state,reason,related_issued_quotation_id,actor_id,occurred_at,created_at) VALUES(?,?,'issued',NULL,NULL,'system',?,?) ON CONFLICT(issued_quotation_id,lifecycle_state) DO NOTHING`,`quotation-lifecycle-issued-${row.id}`,row.id,issuedAt,issuedAt);
+      const lineage=await db.get("SELECT client_id,project_id,COALESCE(NULLIF(base_estimate_ref,''),estimate_ref) base_ref FROM estimates WHERE id=?",row.estimate_id);
+      const priorIssued=lineage?await db.all(`SELECT iq.id FROM issued_quotations iq JOIN estimates e ON e.id=iq.estimate_id WHERE iq.status='issued' AND iq.id<>? AND iq.client_id=? AND COALESCE(e.project_id,'')=COALESCE(?, '') AND COALESCE(NULLIF(e.base_estimate_ref,''),e.estimate_ref)=? AND COALESCE((SELECT lifecycle_state FROM issued_quotation_lifecycle_events le WHERE le.issued_quotation_id=iq.id ORDER BY le.occurred_at DESC,le.rowid DESC LIMIT 1),'issued')='issued'`,row.id,lineage.client_id,lineage.project_id,lineage.base_ref):[];
+      for(const prior of priorIssued){
+        await db.run(`INSERT INTO issued_quotation_lifecycle_events(id,issued_quotation_id,lifecycle_state,reason,related_issued_quotation_id,actor_id,occurred_at,created_at) VALUES(?,?,'superseded','A newer Estimate revision was issued.',?,'system',?,?) ON CONFLICT(issued_quotation_id,lifecycle_state) DO NOTHING`,`quotation-lifecycle-superseded-${prior.id}`,prior.id,row.id,issuedAt,issuedAt);
+        await db.run(`INSERT INTO workflow_events(id,event_name,evidence_id,occurred_at,links_json,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(event_name,evidence_id) DO NOTHING`,`quotation-superseded-${prior.id}`,"quotation.superseded",prior.id,issuedAt,JSON.stringify([{kind:"issued_quotation",id:prior.id},{kind:"replacement_issued_quotation",id:row.id}]),issuedAt);
+      }
       await db.run(`INSERT INTO workflow_events(id,event_name,evidence_id,occurred_at,links_json,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(event_name,evidence_id) DO NOTHING`, eventId, "quotation.issued", row.id, issuedAt, JSON.stringify([{ kind: "client", id: row.client_id }, { kind: "estimate", id: row.estimate_id }, { kind: "issued_quotation", id: row.id }]), issuedAt);
       await db.run(`INSERT INTO followups(id,client_id,estimate_id,title,notes,due_at,status,issued_quotation_id,communication_message_id,origin_event_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`, followUpId, row.client_id, row.estimate_id, `Follow up: ${row.subject}`, "Call / email customer regarding issued quotation", plusDays(issuedAt, 3), "pending", row.id, communication.id, eventId, issuedAt, issuedAt);
       await db.exec("COMMIT");
@@ -108,11 +116,33 @@ export function createIssuedQuotationService(db, options = {}) {
     }
   }
 
+  async function withdraw(id,input={}){
+    const actor=requiredText(input.actorId,"Staff identity"),reason=requiredText(input.reason,"Withdrawal reason");
+    if(reason.length>500)throw issueProblem("Keep the withdrawal reason under 500 characters.",400,"quotation_withdrawal_reason_invalid");
+    const row=await db.get("SELECT * FROM issued_quotations WHERE id=?",requiredText(id,"Issued quotation ID"));
+    if(!row)throw issueProblem("Issued Estimate was not found.",404,"issued_quotation_not_found");
+    if(row.status!=="issued")throw issueProblem("Only a provider-confirmed issued Estimate can be withdrawn.",409,"quotation_not_issued");
+    const current=await db.get("SELECT lifecycle_state FROM issued_quotation_lifecycle_events WHERE issued_quotation_id=? ORDER BY occurred_at DESC,rowid DESC LIMIT 1",id);
+    if(current?.lifecycle_state==="withdrawn")return mapIssued(row);
+    if(current?.lifecycle_state==="superseded")throw issueProblem("This Estimate was already superseded by a newer issued revision. Keep it as history; no withdrawal is needed.",409,"quotation_already_superseded");
+    const accepted=await db.get(`SELECT a.id FROM estimate_revision_releases r JOIN portal_estimate_acceptances a ON a.estimate_release_id=r.id WHERE r.issued_quotation_id=? LIMIT 1`,id).catch(()=>null);
+    if(accepted)throw issueProblem("This Estimate has already been accepted. Continue from its Order or use the governed change workflow; it cannot be withdrawn.",409,"quotation_already_accepted");
+    const at=new Date().toISOString();
+    await db.exec("BEGIN IMMEDIATE");
+    try{
+      await db.run(`INSERT INTO issued_quotation_lifecycle_events(id,issued_quotation_id,lifecycle_state,reason,related_issued_quotation_id,actor_id,occurred_at,created_at) VALUES(?,?,'withdrawn',?,NULL,?,?,?) ON CONFLICT(issued_quotation_id,lifecycle_state) DO NOTHING`,`quotation-lifecycle-withdrawn-${id}`,id,reason,actor,at,at);
+      await db.run(`INSERT INTO workflow_events(id,event_name,evidence_id,occurred_at,links_json,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(event_name,evidence_id) DO NOTHING`,`quotation-withdrawn-${id}`,"quotation.withdrawn",id,at,JSON.stringify([{kind:"client",id:row.client_id},{kind:"estimate",id:row.estimate_id},{kind:"issued_quotation",id}]),at);
+      await db.exec("COMMIT");
+    }catch(error){await db.exec("ROLLBACK").catch(()=>{});throw error}
+    return get(id);
+  }
+
   async function estimateState(estimateId) {
     const issue = await db.get("SELECT * FROM issued_quotations WHERE estimate_id=? ORDER BY created_at DESC LIMIT 1", estimateId);
     const followUp = issue ? await db.get("SELECT * FROM followups WHERE issued_quotation_id=? ORDER BY created_at DESC LIMIT 1", issue.id) : null;
     const productCount = (await db.get(`SELECT COUNT(*) count FROM project_calculator_lab_scenarios s JOIN project_calculator_estimate_product_rows p ON p.scenario_id=s.id WHERE s.estimate_id=?`, estimateId))?.count ?? 0;
-    return { estimateId, manufacturerQuoteImported: productCount > 0, costingReady: productCount > 0, quotationReviewed: Boolean(issue), quotationPrepared: issue?.status === "prepared_not_sent" || issue?.status === "failed", quotationStatus: issue?.status ?? null, quotationIssued: issue?.status === "issued", issuedQuotationId: issue?.id ?? null, followUpDue: followUp?.status !== "done" && Boolean(followUp?.due_at), followUpDueDate: followUp?.due_at ?? null, followUpCompleted: followUp?.status === "done", followUpId: followUp?.id ?? null, customerAccepted: false, orderCreated: false };
+    const lifecycle=issue?await db.get("SELECT lifecycle_state FROM issued_quotation_lifecycle_events WHERE issued_quotation_id=? ORDER BY occurred_at DESC,rowid DESC LIMIT 1",issue.id):null;
+    return { estimateId, manufacturerQuoteImported: productCount > 0, costingReady: productCount > 0, quotationReviewed: Boolean(issue), quotationPrepared: issue?.status === "prepared_not_sent" || issue?.status === "failed", quotationStatus: issue?.status ?? null, quotationLifecycleStatus:lifecycle?.lifecycle_state||(issue?.status==="issued"?"issued":null), quotationIssued: issue?.status === "issued", issuedQuotationId: issue?.id ?? null, followUpDue: followUp?.status !== "done" && Boolean(followUp?.due_at), followUpDueDate: followUp?.due_at ?? null, followUpCompleted: followUp?.status === "done", followUpId: followUp?.id ?? null, customerAccepted: false, orderCreated: false };
   }
-  return { prepare, get, send, estimateState, customerTerms, saveCustomerTerms, assertCustomerTerms, documents, communications };
+  return { prepare, get, send, withdraw, estimateState, customerTerms, saveCustomerTerms, assertCustomerTerms, documents, communications };
 }

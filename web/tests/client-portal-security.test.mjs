@@ -87,6 +87,17 @@ test("portal disclosure requires both an enabled feature and an explicit resourc
   await assert.rejects(()=>source.service.getReleasedDocument(auth.session,"project-a1","document-unreleased"),error=>error.code==="portal_resource_unreleased");
 });
 
+test("withdrawn offers remain in staff history but leave external disclosure and customer actions",async t=>{
+  const source=await fixture(t),auth=await authenticated(t,source),issuance=createIssuedQuotationService(source.db,{attachmentRoot:source.options.documentOptions.attachmentRoot,portalSecurityOptions:source.options});
+  const withdrawn=await issuance.withdraw("issued-a1",{actorId:"staff-1",reason:"Scope replaced after customer discussion."});assert.equal(withdrawn.lifecycleStatus,"withdrawn");
+  await assert.rejects(()=>source.service.getReleasedEstimate(auth.session,"project-a1",source.release.id),error=>error.code==="portal_estimate_withdrawn");
+  await assert.rejects(()=>source.service.getReleasedDocument(auth.session,"project-a1","document-issued"),error=>error.code==="portal_estimate_withdrawn");
+  await assert.rejects(()=>source.service.startReview(auth.session,{projectId:"project-a1",estimateReleaseId:source.release.id}),error=>error.code==="portal_estimate_withdrawn");
+  assert.equal((await source.service.getProjectPortal(auth.session,"project-a1")).estimates.length,0);
+  const internal=await source.service.internalProjectPreview("client-a","project-a1");assert.equal(internal.estimates.length,1);assert.equal(internal.estimates[0].status,"withdrawn");assert.match(internal.estimates[0].lifecycle.reason,/Scope replaced/);
+  assert.equal((await source.db.get("SELECT COUNT(*) count FROM estimate_revision_releases WHERE id=?",source.release.id)).count,1);assert.equal((await source.db.get("SELECT status FROM issued_quotations WHERE id='issued-a1'")).status,"issued");
+});
+
 async function authenticated(t,source) {
   const invitation=await source.service.createInvitation({clientId:"client-a",projectId:"project-a1",email:"a@example.test",displayName:"Contact A",createdBy:"staff-1"});
   const accepted=await source.service.acceptInvitation({token:invitation.token,identityAssertion:{subject:"subject-a",email:"a@example.test"}});
@@ -185,7 +196,7 @@ test("customer changes produce a carried-forward working revision, attached chan
   const projection={...issuedProjection,estimateReference:successor.estimate_ref,clientName:"Client A",commercialRevision:1};const issuance=createIssuedQuotationService(source.db,{attachmentRoot:source.options.documentOptions.attachmentRoot,portalSecurityOptions:source.options});
   await assert.rejects(()=>issuance.prepare({estimateId:successor.id,clientId:"client-a",estimateRevision:2,quotationRevision:1,projection,recipient:"a@example.test"}),error=>error.code==="supplier_revision_verification_required");
   const verified=await lifecycle.verifySupplierRevision(request.id,{reviewedBy:"staff-1",checks:[{estimatePositionId:"position-a",fieldKey:"external_finish",requestedChange:"Black",beforeValue:"White",expectedValue:"Black",afterValue:"Black",beforeSourceReference:"Issued Estimate W1",afterSourceReference:"Revision 2 p2"},{estimatePositionId:null,fieldKey:"general_finish_schedule",requestedChange:"Change finish schedule",beforeValue:"Original schedule",expectedValue:"Revised schedule",afterValue:"Revised schedule",beforeSourceReference:"Issued Estimate overview",afterSourceReference:"Revision 2 overview"}],unrelatedChanges:[{estimatePositionId:"position-a",fieldKey:"hardware",requestedChange:"Unrelated material change",beforeValue:"Standard",expectedValue:"Standard",afterValue:"Different",beforeSourceReference:"Issued Estimate W1",afterSourceReference:"Revision 2 p2",approvedDifference:true,resolutionNote:"Reviewed and accepted for the successor offer."}]});
-  assert.equal(verified.issueAllowed,true);const prepared=await issuance.prepare({estimateId:successor.id,clientId:"client-a",estimateRevision:2,quotationRevision:1,projection,recipient:"a@example.test"});assert.equal(prepared.status,"prepared_not_sent");
+  assert.equal(verified.issueAllowed,true);const terms=await issuance.saveCustomerTerms(successor.id,{validityDays:30,terms:["Final dimensions are subject to survey."],exclusions:["Building work by others."],reviewedBy:"staff-1"});projection.commercialTerms={validityDays:terms.validityDays,terms:terms.terms,exclusions:terms.exclusions,reviewed:true,reviewedAt:terms.reviewedAt};const prepared=await issuance.prepare({estimateId:successor.id,clientId:"client-a",estimateRevision:2,quotationRevision:1,projection,recipient:"a@example.test"});assert.equal(prepared.status,"prepared_not_sent");
   assert.equal((await source.db.get("SELECT status FROM estimates WHERE id='estimate-a1'")).status,"Issued");
 });
 

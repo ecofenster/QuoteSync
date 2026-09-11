@@ -164,6 +164,19 @@ const tableStatements = [
     FOREIGN KEY (document_id) REFERENCES customer_quotation_documents(id) ON DELETE RESTRICT,
     FOREIGN KEY (communication_message_id) REFERENCES communication_messages(id) ON DELETE RESTRICT
   )`,
+  `CREATE TABLE IF NOT EXISTS issued_quotation_lifecycle_events (
+    id TEXT PRIMARY KEY,
+    issued_quotation_id TEXT NOT NULL,
+    lifecycle_state TEXT NOT NULL CHECK (lifecycle_state IN ('issued','superseded','withdrawn')),
+    reason TEXT,
+    related_issued_quotation_id TEXT,
+    actor_id TEXT NOT NULL,
+    occurred_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(issued_quotation_id, lifecycle_state),
+    FOREIGN KEY (issued_quotation_id) REFERENCES issued_quotations(id) ON DELETE RESTRICT,
+    FOREIGN KEY (related_issued_quotation_id) REFERENCES issued_quotations(id) ON DELETE RESTRICT
+  )`,
   `CREATE TABLE IF NOT EXISTS workflow_events (
     id TEXT PRIMARY KEY,
     event_name TEXT NOT NULL,
@@ -258,6 +271,7 @@ const tableStatements = [
 
 const indexes = [
   "CREATE INDEX IF NOT EXISTS idx_issued_quotations_estimate ON issued_quotations(estimate_id, created_at DESC)",
+  "CREATE INDEX IF NOT EXISTS idx_issued_quotation_lifecycle ON issued_quotation_lifecycle_events(issued_quotation_id, occurred_at DESC)",
   "CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_quotation_document_revision ON customer_quotation_documents(estimate_id, quotation_revision, projection_sha256)",
   "CREATE INDEX IF NOT EXISTS idx_communications_folder ON communication_messages(folder, updated_at DESC)",
   "CREATE INDEX IF NOT EXISTS idx_communications_provider_thread ON communication_messages(provider, provider_thread_id, sent_at DESC)",
@@ -271,6 +285,8 @@ const triggers = [
   `CREATE TRIGGER trg_customer_quotation_documents_immutable_delete BEFORE DELETE ON customer_quotation_documents WHEN EXISTS(SELECT 1 FROM issued_quotations WHERE document_id=OLD.id AND status='issued') BEGIN SELECT RAISE(ABORT,'Issued customer quotation documents are immutable'); END`,
   `CREATE TRIGGER IF NOT EXISTS trg_issued_quotations_immutable_after_issue BEFORE UPDATE ON issued_quotations WHEN OLD.status='issued' BEGIN SELECT RAISE(ABORT,'Issued quotation evidence is immutable'); END`,
   `CREATE TRIGGER IF NOT EXISTS trg_issued_quotations_no_delete_after_issue BEFORE DELETE ON issued_quotations WHEN OLD.status='issued' BEGIN SELECT RAISE(ABORT,'Issued quotation evidence is immutable'); END`,
+  `CREATE TRIGGER IF NOT EXISTS trg_issued_quotation_lifecycle_immutable_update BEFORE UPDATE ON issued_quotation_lifecycle_events BEGIN SELECT RAISE(ABORT,'Issued quotation lifecycle evidence is immutable'); END`,
+  `CREATE TRIGGER IF NOT EXISTS trg_issued_quotation_lifecycle_immutable_delete BEFORE DELETE ON issued_quotation_lifecycle_events BEGIN SELECT RAISE(ABORT,'Issued quotation lifecycle evidence is immutable'); END`,
 ];
 
 async function ensureColumn(db, table, name, definition) {
@@ -351,6 +367,6 @@ export async function initializeWorkflowSchema(db) {
   await ensureColumn(db, "followups", "communication_message_id", "TEXT");
   await ensureColumn(db, "followups", "origin_event_id", "TEXT");
   for (const statement of indexes) await db.exec(statement);
-  for (const name of ["trg_customer_quotation_documents_immutable_update","trg_customer_quotation_documents_immutable_delete","trg_issued_quotations_immutable_after_issue","trg_issued_quotations_no_delete_after_issue"]) await db.exec(`DROP TRIGGER IF EXISTS ${name}`);
+  for (const name of ["trg_customer_quotation_documents_immutable_update","trg_customer_quotation_documents_immutable_delete","trg_issued_quotations_immutable_after_issue","trg_issued_quotations_no_delete_after_issue","trg_issued_quotation_lifecycle_immutable_update","trg_issued_quotation_lifecycle_immutable_delete"]) await db.exec(`DROP TRIGGER IF EXISTS ${name}`);
   for (const statement of triggers) await db.exec(statement);
 }

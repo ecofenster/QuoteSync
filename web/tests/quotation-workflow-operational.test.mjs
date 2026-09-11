@@ -40,7 +40,7 @@ async function fixture(t,{gmailFailure=false,environment={}}={}){
     const value=String(url);
     if(value==="https://oauth2.googleapis.com/token")return jsonResponse({access_token:accessFixture,refresh_token:refreshFixture,token_type:"Bearer",expires_in:3600,scope:GOOGLE_WORKSPACE_SCOPES.join(" ")});
     if(value==="https://openidconnect.googleapis.com/v1/userinfo")return jsonResponse({sub:"google-account-1",email:"quotes@example.com",name:"QuoteSuite"});
-    if(value.endsWith("/messages/send")){gmailSendCount+=1;return gmailFailure?jsonResponse({error:{message:"Provider rejected message"}},{ok:false,status:503}):jsonResponse({id:"gmail-message-1",threadId:"gmail-thread-1"})}
+    if(value.endsWith("/messages/send")){gmailSendCount+=1;return gmailFailure?jsonResponse({error:{message:"Provider rejected message"}},{ok:false,status:503}):jsonResponse({id:`gmail-message-${gmailSendCount}`,threadId:`gmail-thread-${gmailSendCount}`})}
     throw new Error(`Unexpected Google request: ${value}`);
   };
   const options={fetchImpl,environment,encryptionKey,attachmentRoot:path.join(root,"attachments")};
@@ -106,6 +106,25 @@ test("provider-confirmed send issues once and creates exactly one linked three-d
   const release=await db.get("SELECT * FROM estimate_revision_releases WHERE issued_quotation_id=?",issued.id);assert.equal(release.estimate_revision,2);assert.equal(release.project_id,"project-1");
   const state=await service.estimateState("estimate-1");assert.equal(state.quotationIssued,true);assert.equal(state.followUpDue,true);assert.equal(state.followUpDueDate,followUps[0].due_at);
   assert.equal(issued.followUp.dueDate,followUps[0].due_at);
+});
+
+test("a newer issued revision supersedes the earlier offer without changing its issued evidence",async t=>{
+  const {db,service,gmailSendCount}=await fixture(t);
+  const firstPrepared=await service.prepare({clientId:"client-1",estimateId:"estimate-1",estimateRevision:2,quotationRevision:4,recipient:"ada@example.com",projection:projection("EST-100")}),first=await service.send(firstPrepared.id,{recipient:firstPrepared.recipient,subject:firstPrepared.subject,bodyHtml:firstPrepared.communication.bodyHtml});
+  await db.run("INSERT INTO estimates VALUES(?,?,?,?,?,?,'Draft',?,'1 Test Street','{}','AA1 1AA','',NULL,NULL,?,NULL)","estimate-2","client-1","project-1","EST-100-R3","EST-100",3,JSON.stringify([{id:"p1",positionRef:"W1",qty:1}]),"2026-08-27T09:00:00.000Z");
+  await db.run("INSERT INTO project_calculator_lab_scenarios VALUES(?,?)","scenario-2","estimate-2");await db.run("INSERT INTO project_calculator_estimate_product_rows VALUES(?,?)","product-2","scenario-2");
+  await db.run("INSERT INTO estimate_customer_terms VALUES('estimate-2',30,?,?,'staff-1','2026-08-27T09:00:00.000Z','2026-08-27T09:00:00.000Z')",JSON.stringify(["Final dimensions are subject to survey."]),JSON.stringify(["Building work by others."]));
+  const nextProjection={...projection("EST-100-R3","1250.00"),commercialTerms:{...projection("EST-100-R3").commercialTerms,reviewedAt:"2026-08-27T09:00:00.000Z"}},nextPrepared=await service.prepare({clientId:"client-1",estimateId:"estimate-2",estimateRevision:3,quotationRevision:4,recipient:"ada@example.com",projection:nextProjection}),next=await service.send(nextPrepared.id,{recipient:nextPrepared.recipient,subject:nextPrepared.subject,bodyHtml:nextPrepared.communication.bodyHtml});
+  assert.equal(gmailSendCount(),2);assert.equal((await service.get(first.id)).lifecycleStatus,"superseded");assert.equal((await service.get(first.id)).lifecycle.relatedIssuedQuotationId,next.id);assert.equal(next.lifecycleStatus,"issued");
+  assert.equal((await db.get("SELECT status FROM issued_quotations WHERE id=?",first.id)).status,"issued");assert.equal((await db.get("SELECT COUNT(*) count FROM estimate_revision_releases WHERE issued_quotation_id IN (?,?)",first.id,next.id)).count,2);assert.equal((await db.get("SELECT COUNT(*) count FROM workflow_events WHERE event_name='quotation.superseded' AND evidence_id=?",first.id)).count,1);
+  await assert.rejects(()=>db.run("DELETE FROM issued_quotation_lifecycle_events WHERE issued_quotation_id=?",first.id),/immutable/i);
+});
+
+test("withdrawal is explicit, retry-safe and preserves the issued PDF, release and delivery evidence",async t=>{
+  const {db,service,gmailSendCount}=await fixture(t),prepared=await service.prepare({clientId:"client-1",estimateId:"estimate-1",estimateRevision:2,quotationRevision:4,recipient:"ada@example.com",projection:projection("EST-100")}),issued=await service.send(prepared.id,{recipient:prepared.recipient,subject:prepared.subject,bodyHtml:prepared.communication.bodyHtml});
+  const withdrawn=await service.withdraw(issued.id,{actorId:"staff-1",reason:"Customer scope changed; a replacement revision is required."}),replay=await service.withdraw(issued.id,{actorId:"staff-1",reason:"Safe retry"});
+  assert.equal(withdrawn.lifecycleStatus,"withdrawn");assert.equal(replay.lifecycleStatus,"withdrawn");assert.equal(gmailSendCount(),1);
+  assert.equal((await db.get("SELECT COUNT(*) count FROM issued_quotation_lifecycle_events WHERE issued_quotation_id=? AND lifecycle_state='withdrawn'",issued.id)).count,1);assert.equal((await db.get("SELECT COUNT(*) count FROM customer_quotation_documents WHERE id=?",issued.document.id)).count,1);assert.equal((await db.get("SELECT COUNT(*) count FROM estimate_revision_releases WHERE issued_quotation_id=?",issued.id)).count,1);assert.equal((await db.get("SELECT status FROM issued_quotations WHERE id=?",issued.id)).status,"issued");
 });
 
 test("controlled customer delivery fixes the role address and subject and blocks every other recipient",async t=>{
