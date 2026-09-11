@@ -217,6 +217,7 @@ const tables = [
     document_kind TEXT NOT NULL DEFAULT 'complete_quotation',
     uploaded_by TEXT NOT NULL DEFAULT 'local-admin',
     upload_order INTEGER NOT NULL DEFAULT 0,
+    source_canonical_document_id TEXT,
     UNIQUE (id, estimate_id),
     CHECK ((role = 'derived_artifact' AND derived_from_attachment_id IS NOT NULL AND artifact_type IS NOT NULL) OR (role <> 'derived_artifact' AND artifact_type IS NULL)),
     FOREIGN KEY (revision_id, estimate_id) REFERENCES supplier_quote_revisions(id, estimate_id) ON DELETE CASCADE,
@@ -868,6 +869,7 @@ const indexes = [
   'CREATE INDEX IF NOT EXISTS idx_supplier_revisions_quote ON supplier_quote_revisions(estimate_id, supplier_quote_id, revision_sequence)',
   'CREATE INDEX IF NOT EXISTS idx_supplier_revisions_lifecycle ON supplier_quote_revisions(estimate_id, lifecycle_status)',
   'CREATE INDEX IF NOT EXISTS idx_supplier_attachments_revision ON supplier_quote_attachments(estimate_id, revision_id)',
+  'CREATE UNIQUE INDEX IF NOT EXISTS idx_supplier_attachments_canonical_source ON supplier_quote_attachments(source_canonical_document_id) WHERE source_canonical_document_id IS NOT NULL',
   'CREATE INDEX IF NOT EXISTS idx_supplier_import_runs_revision ON supplier_quote_import_runs(estimate_id, revision_id, started_at)',
   'CREATE INDEX IF NOT EXISTS idx_supplier_import_runs_operation ON supplier_quote_import_runs(operation_id, started_at)',
   'CREATE INDEX IF NOT EXISTS idx_supplier_import_operations_revision ON supplier_quote_import_operations(estimate_id, revision_id, updated_at)',
@@ -961,6 +963,7 @@ export async function initializeSupplierCommercialSchema(db) {
   if(!supplierQuoteAttachmentColumns.some(column=>column.name==='document_kind'))await db.exec("ALTER TABLE supplier_quote_attachments ADD COLUMN document_kind TEXT NOT NULL DEFAULT 'complete_quotation'");
   if(!supplierQuoteAttachmentColumns.some(column=>column.name==='uploaded_by'))await db.exec("ALTER TABLE supplier_quote_attachments ADD COLUMN uploaded_by TEXT NOT NULL DEFAULT 'local-admin'");
   if(!supplierQuoteAttachmentColumns.some(column=>column.name==='upload_order'))await db.exec('ALTER TABLE supplier_quote_attachments ADD COLUMN upload_order INTEGER NOT NULL DEFAULT 0');
+  if(!supplierQuoteAttachmentColumns.some(column=>column.name==='source_canonical_document_id'))await db.exec('ALTER TABLE supplier_quote_attachments ADD COLUMN source_canonical_document_id TEXT');
   const supplierImportRunColumns=await db.all('PRAGMA table_info(supplier_quote_import_runs)');
   for(const [column,definition] of [['operation_id','TEXT'],['confirmation_status','TEXT'],['diagnostics_json',"TEXT NOT NULL DEFAULT '{}'"],['expected_counts_json',"TEXT NOT NULL DEFAULT '{}'"],['pre_state_json',"TEXT NOT NULL DEFAULT '{}'"],['post_state_json',"TEXT NOT NULL DEFAULT '{}'"],['recovery_reason','TEXT'],['currency_decision_json',"TEXT NOT NULL DEFAULT '{}'"]])if(!supplierImportRunColumns.some(item=>item.name===column))await db.exec(`ALTER TABLE supplier_quote_import_runs ADD COLUMN ${column} ${definition}`);
   const calculatorQuoteRevisionColumns=await db.all('PRAGMA table_info(project_calculator_supplier_quote_revisions)');

@@ -18,7 +18,7 @@ export type CommunicationAssignmentOptions = {
   conflicts:Array<{code:string;message:string;blocking:boolean}>;
   proposed:{clientId:string|null;projectId:string|null;estimateId:string|null;supplierId:string|null;attachmentId:string|null};
 };
-export type CommunicationAssignmentResult = {status:"stored";duplicate:boolean;documentId:string;folderPath:string;webViewLink:string|null;links:CommunicationLinkView[];navigation:{clientId:string;projectId:string;estimateId:string;destination:"supplier-documents";openFilesLabel:string;importLabel:string}};
+export type CommunicationAssignmentResult = {status:"stored";duplicate:boolean;documentId:string;providerFileId:string;fileName:string;folderPath:string;webViewLink:string|null;links:CommunicationLinkView[];navigation:{clientId:string;projectId:string;estimateId:string;destination:"supplier-documents";openFilesLabel:string;importLabel:string}};
 export type CommunicationChangeState = { mode:"push"|"bounded_reconciliation";pushConfigured:boolean;projectionVersion:number;watchStatus:string;watchExpirationAt:string|null;lastNotificationAt:string|null;lastReconciledAt:string|null };
 export type GoogleWorkspaceCapability = { available:boolean;missingScopes:string[];rootConfigured?:boolean };
 export type GoogleWorkspaceState = "not_configured"|"configured_encryption_unavailable"|"configured_disconnected"|"connected"|"reconnect_required";

@@ -8,6 +8,7 @@ import { createGmailProvider } from "./gmailProvider.js";
 import { createGoogleWorkspaceService, GMAIL_MODIFY_SCOPE } from "../integrations/googleWorkspaceService.js";
 import { classifyNotification, decodeGmailNotification, resolveNotificationConfiguration, resolveWatchLifecycle } from "./communicationLiveSync.js";
 import { createTestDeliveryPolicy } from "../lifecycle/testDeliveryPolicy.js";
+import { createSupplierQuotesService } from "../supplierQuotes/supplierQuotesService.js";
 
 const MUTATING_MAILBOX_CAPABILITIES = Object.freeze(["archive", "trash", "read_state", "star", "move", "labels"]);
 const COMMAND_CAPABILITIES = Object.freeze({ archive: "archive", trash: "trash", mark_read: "read_state", mark_unread: "read_state", star: "star", unstar: "star", move: "move", label: "labels" });
@@ -304,8 +305,23 @@ export function createCommunicationsService(db, options = {}) {
     const stored = await drive.storeCommunicationSupplierDocument({ clientId, projectId, estimateId, supplierCode, communicationAttachmentId: attachment.id, providerMessageId, providerAttachmentId: attachment.providerAttachmentId, fileName: attachment.fileName, mediaType: attachment.mediaType, sizeBytes: attachment.sizeBytes, bytes });
     if (stored.status !== "stored") throw Object.assign(new Error("The provider folder or document is not available yet; no filing relationship was recorded."), { status: 409, code: stored.status || "communication_assignment_storage_pending", details: stored });
     const message = await repository.findByProviderId("google_workspace", providerMessageId);
-    for (const link of [{ kind: "client", id: clientId }, { kind: "project", id: projectId }, { kind: "estimate", id: estimateId }, { kind: "supplier", id: supplierCode }]) await repository.addLink(message.id, link);
+    try {
+      for (const link of [{ kind: "client", id: clientId }, { kind: "project", id: projectId }, { kind: "estimate", id: estimateId }, { kind: "supplier", id: supplierCode }]) await repository.addLink(message.id, link);
+    } catch (cause) {
+      throw Object.assign(new Error("The provider file was saved, but its QuoteSuite relationships are incomplete. Retry safely to reuse the saved file and finish linking."), { status: 409, code: "communication_assignment_partial_success", cause, details: stored });
+    }
     return { ...stored, links: (await repository.get(message.id)).links, navigation: { clientId, projectId, estimateId, destination: "supplier-documents", openFilesLabel: "Open Files", importLabel: "Import Manufacturer Estimate" } };
+  }
+
+  async function prepareAssignedDocumentImport(documentId, estimateId) {
+    const status = await workspace.status();
+    if (!status.connected || !status.capabilities?.drive?.available) throw Object.assign(new Error("Google Drive is unavailable. The filed document remains saved; reconnect and retry the import handoff."), { status: 409, code: "provider_disconnected" });
+    const document = await db.get("SELECT * FROM canonical_documents WHERE id=? AND estimate_id=? AND document_type='supplier_quotation' AND removed_at IS NULL AND trashed=0", String(documentId || ""), String(estimateId || ""));
+    if (!document) throw Object.assign(new Error("The saved supplier document is not available against the selected working Estimate."), { status: 404, code: "canonical_supplier_document_not_found" });
+    const response = await workspace.googleFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(document.provider_file_id)}?alt=media&supportsAllDrives=true`);
+    if (!response.ok) throw Object.assign(new Error("The saved provider document could not be read. It remains filed; retry after checking the Drive connection."), { status: response.status >= 500 ? 502 : response.status, code: "canonical_supplier_document_read_failed" });
+    const supplierQuotes = options.supplierQuotes || createSupplierQuotesService(db, { attachmentRoot, ...(options.supplierServiceOptions || {}) });
+    return supplierQuotes.stageCanonicalDocumentForReview({ canonicalDocumentId: document.id, estimateId: document.estimate_id, supplierCode: document.supplier_id, fileName: document.file_name, mediaType: document.mime_type, sizeBytes: document.size_bytes, bytes: Buffer.from(await response.arrayBuffer()) });
   }
 
   async function changeState() {
@@ -435,5 +451,5 @@ export function createCommunicationsService(db, options = {}) {
     return { enquiryId: enquiry.id, enquiryRef: enquiry.enquiryRef, idempotentReplay: false, selectedAttachmentCount: attachments.length, storageStatus: attachments.length ? "pending_reviewed_storage" : "no_attachments_selected", driveStatus: enquiry.driveTransitionStatus };
   }
 
-  return { status: workspace.status, mailbox, listMailbox, syncMailbox, readMessage, readThread, relationshipContext, linkRelationship, unlinkRelationship, assignmentOptions, assignSupplierDocument, changeState, maintainWatch, stopWatch, receiveNotification, command, createDraft, sendMessage, reply, forward, readAttachment, enquiryIntake, createEnquiryFromMessage, repository };
+  return { status: workspace.status, mailbox, listMailbox, syncMailbox, readMessage, readThread, relationshipContext, linkRelationship, unlinkRelationship, assignmentOptions, assignSupplierDocument, prepareAssignedDocumentImport, changeState, maintainWatch, stopWatch, receiveNotification, command, createDraft, sendMessage, reply, forward, readAttachment, enquiryIntake, createEnquiryFromMessage, repository };
 }

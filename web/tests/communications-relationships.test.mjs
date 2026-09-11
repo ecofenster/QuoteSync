@@ -90,12 +90,24 @@ test("Link existing resolves EF-CL reference, exposes the full picker without a 
   const db=await fixture(t),message={...providerMessage(),from:["Viktorija <info@zylefenster.com>"],subject:"Ats.: EF-CL-028: Stuart Gilks",bodyText:"Please see attached.",attachments:[{fileName:"EcoTherm Aluminium Clad Casement window.pdf",mediaType:"application/pdf",sizeBytes:7,providerAttachmentId:"provider-document",inline:false}]};
   const workspace={async status(){return{connected:true,scopes:[],capabilities:{gmail:{available:true},drive:{available:true}}}}};
   let filed=null;
-  const drive={async storeCommunicationSupplierDocument(input){filed=input;return{status:"stored",duplicate:false,documentId:"document-1",folderPath:"2026/EF-CL-028 - Exact Client/Exact Project/Estimates/EF-EST-2026-041/Supplier/Zyle Fenster",webViewLink:"https://drive.invalid/document-1"}}};
+  const drive={async storeCommunicationSupplierDocument(input){filed=input;return{status:"stored",duplicate:false,documentId:"document-1",providerFileId:"provider-file-1",fileName:"EcoTherm Aluminium Clad Casement window.pdf",folderPath:"2026/EF-CL-028 - Exact Client/Exact Project/Estimates/EF-EST-2026-041/Suppliers/Zyle Fenster",webViewLink:"https://drive.invalid/document-1"}}};
   const service=createCommunicationsService(db,{workspace,gmail:{async readMessage(){return message},async attachment(messageId,attachmentId){assert.equal(messageId,"provider-message-1");assert.equal(attachmentId,"provider-document");return Buffer.from("genuine")}},drive,environment:{}});
   const options=await service.assignmentOptions("provider-message-1");
   assert.equal(options.reference,"EF-CL-028");assert.equal(options.proposed.clientId,"client-1");assert.equal(options.proposed.projectId,"project-1");assert.equal(options.proposed.estimateId,"estimate-1");assert.equal(options.proposed.supplierId,"ZYLE");assert.equal(options.proposed.attachmentId,options.attachments[0].id);assert.ok(options.conflicts.some(item=>item.code==="client_name_variance"));
   await assert.rejects(()=>service.assignSupplierDocument("provider-message-1",{...options.proposed,supplierId:"ZYLE",attachmentId:options.attachments[0].id}),/review the reference conflict/i);
   const result=await service.assignSupplierDocument("provider-message-1",{...options.proposed,supplierId:"ZYLE",attachmentId:options.attachments[0].id,conflictsReviewed:true});
-  assert.equal(Buffer.from(filed.bytes).toString(),"genuine");assert.equal(result.navigation.openFilesLabel,"Open Files");assert.equal(result.navigation.importLabel,"Import Manufacturer Estimate");
+  assert.equal(Buffer.from(filed.bytes).toString(),"genuine");assert.equal(result.fileName,"EcoTherm Aluminium Clad Casement window.pdf");assert.equal(result.providerFileId,"provider-file-1");assert.equal(result.navigation.openFilesLabel,"Open Files");assert.equal(result.navigation.importLabel,"Import Manufacturer Estimate");
   assert.deepEqual(new Set(result.links.map(item=>item.kind)),new Set(["client","project","estimate","supplier"]));
+});
+
+test("saved communication documents hand off the exact provider file to the selected working Estimate review",async t=>{
+  const db=await fixture(t);
+  await db.exec("CREATE TABLE canonical_documents(id TEXT PRIMARY KEY,provider_file_id TEXT,estimate_id TEXT,supplier_id TEXT,file_name TEXT,mime_type TEXT,size_bytes INTEGER,document_type TEXT,removed_at TEXT,trashed INTEGER)");
+  await db.run("INSERT INTO canonical_documents VALUES('document-1','provider-file-1','estimate-1','ZYLE','Zyle quotation.pdf','application/pdf',17,'supplier_quotation',NULL,0)");
+  let staged=null,providerReads=0;
+  const workspace={async status(){return{connected:true,capabilities:{drive:{available:true}}}},async googleFetch(url){providerReads+=1;assert.match(String(url),/provider-file-1.*alt=media/);return new Response(Buffer.from('%PDF-1.4\nfixture'),{status:200})}};
+  const supplierQuotes={async stageCanonicalDocumentForReview(input){staged=input;return{review:{documents:[{attachmentId:"attachment-1"}]}}}};
+  const service=createCommunicationsService(db,{workspace,supplierQuotes,environment:{}}),result=await service.prepareAssignedDocumentImport("document-1","estimate-1");
+  assert.equal(providerReads,1);assert.equal(staged.canonicalDocumentId,"document-1");assert.equal(staged.estimateId,"estimate-1");assert.equal(staged.supplierCode,"ZYLE");assert.equal(staged.fileName,"Zyle quotation.pdf");assert.equal(Buffer.from(staged.bytes).toString(),'%PDF-1.4\nfixture');assert.equal(result.review.documents[0].attachmentId,"attachment-1");
+  await assert.rejects(()=>service.prepareAssignedDocumentImport("document-1","other-estimate"),error=>error.code==="canonical_supplier_document_not_found");
 });

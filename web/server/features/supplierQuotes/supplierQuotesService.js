@@ -1,9 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { extractSupplierDocument, EXTRACTOR_VERSION } from '../supplierImportLab/documentExtraction.js';
 import { parseCommercialFields, FIELD_PARSER_VERSION } from '../supplierImportLab/commercialFieldParser.js';
 import { parseCommercialSummary, SUMMARY_PARSER_VERSION } from '../supplierImportLab/commercialSummaryParser.js';
-import { readFileIntegrity, resolveAttachmentRoot, resolveManagedPath } from './managedAttachmentStorage.js';
+import { ensureManagedParent, generateManagedStorageKey, readFileIntegrity, resolveAttachmentRoot, resolveManagedPath } from './managedAttachmentStorage.js';
+import { validateSupplierDocumentFile } from './fileTypeValidation.js';
+import { SUPPLIER_UPLOAD_LIMITS } from '../../config/supplierUploadLimits.js';
 import { linkSupplierPositionToEstimate, syncEstimatePositionProjections } from '../estimatePositions/canonicalEstimatePositions.js';
 import { createDriveIntegrationService } from '../documents/driveIntegrationService.js';
 import { createSupplierImportDiagnostics } from '../supplierImportLab/supplierImportDiagnostics.js';
@@ -22,7 +25,7 @@ function nowIso() { return new Date().toISOString(); }
 function mapQuote(row) { return { id: row.id, estimateId: row.estimate_id, supplierCode: row.supplier_code, supplierName: row.supplier_name, createdAt: row.created_at, updatedAt: row.updated_at, archivedAt: row.archived_at }; }
 function money(amount, currency) { return amount == null ? null : { amount: String(amount), currency }; }
 function mapRevision(row) { const intended=JSON.parse(row.confirmation_intended_counts_json||'{}'),expected=Number(intended.validCanonicalPositions||0),current={supplierPositions:Number(row.current_supplier_positions||0),productsSupplyRows:Number(row.current_products_supply_rows||0),projectCostingRows:Number(row.current_project_costing_rows||0)},projectionDrift=row.confirmation_status==='confirmed'&&expected>0&&Object.values(current).some((count)=>count!==expected);return { id: row.id, supplierQuoteId: row.supplier_quote_id, estimateId: row.estimate_id, revisionSequence: row.revision_sequence, supplierQuotationNumber: row.supplier_quotation_number, supplierRevision: row.supplier_revision, fullQuotationReference: row.full_quotation_reference, quotationDate: row.quotation_date, customerReference: row.customer_reference, currency: row.currency, vatStatus: row.vat_status, productSubtotal: money(row.product_subtotal_amount, row.currency), extrasTotal: money(row.extras_total_amount, row.currency), deliveryTotal: money(row.delivery_total_amount, row.currency), vatTotal: money(row.vat_total_amount, row.currency), finalSupplierTotal: money(row.final_supplier_total_amount, row.currency), comparisonTotals:JSON.parse(row.comparison_totals_json||'[]'), lifecycleStatus: row.lifecycle_status, confirmationStatus: row.confirmation_status || null, confirmationOperationId: row.confirmation_operation_id || null, confirmationUpdatedAt: row.confirmation_updated_at || null,projectionStatus:row.confirmation_status==='confirmed'?(projectionDrift?'projection_drift':'current'):null,projectionCounts:row.confirmation_status==='confirmed'?{expected,...current}:null,isLatest: !row.superseded_by_revision_id && row.lifecycle_status !== 'archived', createdAt: row.created_at, supersededAt: row.superseded_at, supersededByRevisionId: row.superseded_by_revision_id }; }
-function mapAttachment(row) { return { id: row.id, estimateId: row.estimate_id, revisionId: row.revision_id, role: row.role, documentKind: row.document_kind || 'complete_quotation', originalFileName: row.original_file_name, mediaType: row.media_type, sizeBytes: row.size_bytes, sha256: row.sha256, parserEligible: Boolean(row.parser_eligible), uploadedBy: row.uploaded_by || 'local-admin', uploadOrder: Number(row.upload_order || 0), createdAt: row.created_at, derivedFromAttachmentId: row.derived_from_attachment_id, artifactType: row.artifact_type, extractorVersion: row.extractor_version }; }
+function mapAttachment(row) { return { id: row.id, estimateId: row.estimate_id, revisionId: row.revision_id, role: row.role, documentKind: row.document_kind || 'complete_quotation', originalFileName: row.original_file_name, mediaType: row.media_type, sizeBytes: row.size_bytes, sha256: row.sha256, parserEligible: Boolean(row.parser_eligible), uploadedBy: row.uploaded_by || 'local-admin', uploadOrder: Number(row.upload_order || 0), sourceCanonicalDocumentId: row.source_canonical_document_id || null, createdAt: row.created_at, derivedFromAttachmentId: row.derived_from_attachment_id, artifactType: row.artifact_type, extractorVersion: row.extractor_version }; }
 
 const stableRevisionEvidenceId = (kind, revisionId, key) => `${kind}-${createHash('sha256').update(`${revisionId}:${key}`).digest('hex')}`;
 const normalizeReference = (value) => String(value || '').trim().replace(/\s+/g, ' ').toUpperCase();
@@ -260,9 +263,36 @@ export function createSupplierQuotesService(db, { attachmentRoot = resolveAttach
     try {
       if (!(await revisionRow(estimateId, quoteId, revisionId))) throw Object.assign(new Error('Revision not found.'), { code: 'revision_not_found' });
       const nextOrder=Number((await db.get('SELECT COALESCE(MAX(upload_order),-1)+1 value FROM supplier_quote_attachments WHERE estimate_id=? AND revision_id=?',estimateId,revisionId)).value);
-      for (const [offset,item] of attachments.entries()) await db.run(`INSERT INTO supplier_quote_attachments(id,estimate_id,revision_id,role,original_file_name,media_type,size_bytes,sha256,storage_key,parser_eligible,created_at,derived_from_attachment_id,artifact_type,extractor_version,document_kind,uploaded_by,upload_order) VALUES(?,?,?,?,?,?,?,?,?,?,?,NULL,NULL,NULL,?,?,?)`, item.id, estimateId, revisionId, item.role, item.originalFileName, item.mediaType, item.sizeBytes, item.sha256, item.storageKey, item.parserEligible ? 1 : 0, item.createdAt,item.documentKind||'complete_quotation',item.uploadedBy||'local-admin',nextOrder+offset);
+      for (const [offset,item] of attachments.entries()) await db.run(`INSERT INTO supplier_quote_attachments(id,estimate_id,revision_id,role,original_file_name,media_type,size_bytes,sha256,storage_key,parser_eligible,created_at,derived_from_attachment_id,artifact_type,extractor_version,document_kind,uploaded_by,upload_order,source_canonical_document_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,NULL,NULL,NULL,?,?,?,?)`, item.id, estimateId, revisionId, item.role, item.originalFileName, item.mediaType, item.sizeBytes, item.sha256, item.storageKey, item.parserEligible ? 1 : 0, item.createdAt,item.documentKind||'complete_quotation',item.uploadedBy||'local-admin',nextOrder+offset,item.sourceCanonicalDocumentId||null);
       await db.exec('COMMIT'); return attachments.map(({ storageKey: _storageKey, ...item }) => item);
     } catch (error) { try { await db.exec('ROLLBACK'); } catch {} throw error; }
+  }
+  async function stageCanonicalDocumentForReview(input) {
+    const estimateId=String(input.estimateId||''),canonicalDocumentId=String(input.canonicalDocumentId||'');
+    if(!(await estimateExists(estimateId)))return null;
+    const existing=await db.get(`SELECT attachment.*,revision.supplier_quote_id FROM supplier_quote_attachments attachment JOIN supplier_quote_revisions revision ON revision.id=attachment.revision_id AND revision.estimate_id=attachment.estimate_id WHERE attachment.source_canonical_document_id=? AND attachment.estimate_id=?`,canonicalDocumentId,estimateId);
+    if(existing){const documents=[{quoteId:existing.supplier_quote_id,revisionId:existing.revision_id,attachmentId:existing.id}],quote=await getQuote(estimateId,existing.supplier_quote_id),revision=await getRevision(estimateId,existing.supplier_quote_id,existing.revision_id);return{duplicate:true,quote,revision,attachments:[mapAttachment(existing)],documents,review:await prepareImportReview(estimateId,documents)}}
+    const bytes=Buffer.from(input.bytes||[]),fileName=String(input.fileName||'').trim(),mediaType=String(input.mediaType||'').trim();
+    if(!bytes.length)throw Object.assign(new Error('The saved provider document has no readable content.'),{code:'empty_file'});
+    if(bytes.length>SUPPLIER_UPLOAD_LIMITS.maxFileBytes)throw Object.assign(new Error('The saved provider document exceeds the manufacturer import limit.'),{code:'file_too_large'});
+    const supplier=await db.get(`SELECT supplier_code,supplier_name FROM supplier_commercial_defaults WHERE supplier_code=? AND NOT (upper(trim(supplier_name))='ANY' AND upper(trim(supplier_code)) IN ('FACTORY PRICE','1 TO 1 PRICING','STAGED DISCOUNT'))`,String(input.supplierCode||''));
+    if(!supplier)throw Object.assign(new Error('The filed document no longer resolves to a configured commercial Supplier.'),{code:'supplier_not_configured'});
+    const quoteId=randomUUID(),revisionId=randomUUID(),attachmentId=randomUUID(),storageKey=generateManagedStorageKey({estimateId,revisionId,attachmentId}),target=await ensureManagedParent(storageKey,attachmentRoot),createdAt=nowIso();
+    await writeFile(target,bytes,{flag:'wx'});let retained=false;
+    try{
+      const validated=await validateSupplierDocumentFile({filename:target,originalFileName:fileName,declaredMimeType:mediaType,sizeBytes:bytes.length,maxFileNameLength:SUPPLIER_UPLOAD_LIMITS.maxOriginalFileNameLength});
+      if(!validated.valid)throw Object.assign(new Error('The saved provider document is not an eligible PDF or DOCX manufacturer quotation.'),{code:validated.code});
+      const sha256=createHash('sha256').update(bytes).digest('hex');
+      await db.exec('BEGIN IMMEDIATE');
+      try{
+        await db.run('INSERT INTO supplier_quotes(id,estimate_id,supplier_code,supplier_name,created_at,updated_at,archived_at) VALUES(?,?,?,?,?,?,NULL)',quoteId,estimateId,supplier.supplier_code,supplier.supplier_name,createdAt,createdAt);
+        await db.run(`INSERT INTO supplier_quote_revisions(id,supplier_quote_id,estimate_id,revision_sequence,supplier_quotation_number,supplier_revision,full_quotation_reference,quotation_date,customer_reference,currency,vat_status,lifecycle_status,created_at,superseded_at,superseded_by_revision_id) VALUES(?,?,?,0,'',NULL,?,NULL,NULL,'XXX','unknown','uploaded',?,NULL,NULL)`,revisionId,quoteId,estimateId,`Analysis pending · ${validated.displayName}`,createdAt);
+        await db.run(`INSERT INTO supplier_quote_attachments(id,estimate_id,revision_id,role,original_file_name,media_type,size_bytes,sha256,storage_key,parser_eligible,created_at,derived_from_attachment_id,artifact_type,extractor_version,document_kind,uploaded_by,upload_order,source_canonical_document_id) VALUES(?,?,?,'original_quote',?,?,?,?,?,1,?,NULL,NULL,NULL,'complete_quotation','email-filing',0,?)`,attachmentId,estimateId,revisionId,validated.displayName,validated.mediaType,bytes.length,sha256,storageKey,createdAt,canonicalDocumentId);
+        await db.exec('COMMIT');retained=true;
+      }catch(error){try{await db.exec('ROLLBACK')}catch{}throw error}
+      const documents=[{quoteId,revisionId,attachmentId}],quote=await getQuote(estimateId,quoteId),revision=await getRevision(estimateId,quoteId,revisionId),attachment=(await listAttachments(estimateId,quoteId,revisionId))[0];
+      return{duplicate:false,quote,revision,attachments:[attachment],documents,review:await prepareImportReview(estimateId,documents)};
+    }catch(error){if(!retained)await unlink(target).catch(()=>{});throw error}
   }
   async function createImportRuns(estimateId, documents) {
     if (!(await estimateExists(estimateId))) return null;
@@ -800,5 +830,5 @@ export function createSupplierQuotesService(db, { attachmentRoot = resolveAttach
     return Boolean(row);
   }
   async function deleteAttachmentMetadata(estimateId, quoteId, revisionId, attachmentId) { const row = await attachmentRow(estimateId, quoteId, revisionId, attachmentId); if (!row) return null; if (await attachmentIsInUse(estimateId, attachmentId)) throw Object.assign(new Error('Attachment is referenced by supplier evidence.'), { code: 'attachment_in_use' }); const result = await db.run('DELETE FROM supplier_quote_attachments WHERE id=? AND estimate_id=? AND revision_id=?', attachmentId, estimateId, revisionId); return result.changes ? { storageKey: row.storage_key } : null; }
-  return { estimateExists, createQuote, listQuotes, getQuote, createRevision, listRevisions, getRevision, listAttachments, getAttachment, insertAttachments, createImportRuns, prepareImportReview, regenerateManufacturerVisuals, inspectManufacturerEvidenceRefresh, inspectManufacturerEvidenceRefreshRuntime, refreshManufacturerEvidence, extractAndLoadSupplierCosts, deleteAttachmentMetadata };
+  return { estimateExists, createQuote, listQuotes, getQuote, createRevision, listRevisions, getRevision, listAttachments, getAttachment, insertAttachments, stageCanonicalDocumentForReview, createImportRuns, prepareImportReview, regenerateManufacturerVisuals, inspectManufacturerEvidenceRefresh, inspectManufacturerEvidenceRefreshRuntime, refreshManufacturerEvidence, extractAndLoadSupplierCosts, deleteAttachmentMetadata };
 }

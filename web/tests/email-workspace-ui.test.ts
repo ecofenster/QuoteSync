@@ -100,7 +100,8 @@ test("relationship suggestions use exact evidence but never auto-link provider l
 test("Email UI exposes dense accessible state, threads, pagination, menus, selection and mobile equivalent",async()=>{
   const [ui,css,api]=await Promise.all([readFile("src/features/communications/EmailWorkspace.tsx","utf8"),readFile("src/features/communications/emailWorkspace.css","utf8"),readFile("src/services/communications/communicationsApi.ts","utf8")]);
   for(const phrase of ["Mailbox navigation","Starred","Drafts","Categories","QuoteSuite","aria-multiselectable","onContextMenu","preventDefault","ArrowDown","Escape","Reply all","Save Draft","BCC","nextPageToken","pageHistory","sandbox=\"\"","Remote images are hidden","Unlinked — choose","Confirm relationship","More conversation actions","configuration is retained","recover automatically when the server encryption service is restored"])assert.match(ui,new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),"i"));
-  for(const state of ["border-bottom:1px solid var(--qs-border-standard)",".email-message-row.is-unread",".email-message-row.is-selected",".email-message-row.is-selected.is-unread",".email-message-row:hover",".email-message-row:focus-visible","@media(max-width:560px)"])assert.ok(css.includes(state));
+  for(const state of ["border-bottom:1px solid var(--qs-border-standard)",".email-message-row.is-unread",".email-message-row.is-selected",".email-message-row:hover",".email-message-row:focus-visible","@media(max-width:560px)"])assert.ok(css.includes(state));
+  assert.doesNotMatch(css,/\.email-message-row\.is-selected\.is-unread\{/);
   assert.match(api,/page_token/);assert.match(api,/\/threads\//);assert.match(api,/\/commands/);assert.match(api,/\/links/);assert.match(ui,/communicationsApi\.link/);assert.doesNotMatch(ui,/gmail\.googleapis\.com|access_token|refresh_token/);
   assert.match(ui,/unreadOnly\s*\?\s*"is:unread"/);assert.match(ui,/aria-pressed=\{unreadOnly\}/);assert.match(ui,/Unread · Show All/);
 });
@@ -173,6 +174,40 @@ test("Email defaults to the exact selected message, remembers optional conversat
   assert.match(ui,/mailboxMemoryCache\.get\("inbox\|\|"\)/);assert.doesNotMatch(api,/MailboxListMode|[?&]mode=/);
   const loadBoundary=ui.slice(ui.indexOf("const load = useCallback"),ui.indexOf("const loadRef = useRef")),modeBoundary=ui.slice(ui.indexOf("const changeReadingMode"),ui.indexOf("const beginResize"));
   assert.doesNotMatch(loadBoundary,/readingMode/);assert.doesNotMatch(modeBoundary,/setPageToken|setPageHistory|communicationsApi\.(?:list|sync)/);assert.match(ui,/aria-label="Select all messages"/);assert.match(ui,/aria-label=\{`\$\{folderLabel\} messages`\}/);
+});
+
+test("mailbox unread emphasis, assignment feedback and saved-document review handoff remain explicit",async()=>{
+  const [ui,css,app,workspace,control,api,routes,drive]=await Promise.all([
+    readFile("src/features/communications/EmailWorkspace.tsx","utf8"),
+    readFile("src/features/communications/emailWorkspace.css","utf8"),
+    readFile("src/App.tsx","utf8"),
+    readFile("src/features/estimateCommercial/EstimateCommercialWorkspace.tsx","utf8"),
+    readFile("src/features/estimateCommercial/EstimateSupplierCostImportControl.tsx","utf8"),
+    readFile("src/features/supplierQuotes/api/supplierQuotesApi.ts","utf8"),
+    readFile("server/routes/communications.js","utf8"),
+    readFile("server/features/documents/commercialDriveService.js","utf8"),
+  ]);
+  assert.match(css,/\.email-message-row__sender\{[^}]*font-weight:400/);
+  assert.match(css,/\.email-message-row__content strong\{[^}]*font-weight:400/);
+  assert.match(css,/\.email-message-row__content small\{[^}]*font-weight:400/);
+  assert.match(css,/\.email-message-row time\{[^}]*font-weight:400/);
+  assert.match(css,/\.email-message-row\.is-unread \.email-message-row__sender,[\s\S]*?\.email-message-row\.is-unread time\{font-weight:600\}/);
+  assert.doesNotMatch(css,/is-preview-selected \.email-message-row__content strong\{font-weight/);
+  assert.match(ui,/communicationsApi\.command\(\[exact\.threadId\], "mark_read"\)/);
+  assert.match(ui,/message: "Saving document…"/);
+  assert.match(ui,/assignmentSubmitting\.current/);
+  assert.match(ui,/communication_assignment_partial_success/);
+  assert.match(ui,/Retry filing/);
+  assert.match(ui,/result\.fileName/);
+  assert.match(app,/canonicalDocumentId:documentId/);
+  assert.match(workspace,/canonicalDocumentId=\{importCanonicalDocumentId\}/);
+  assert.match(control,/prepareCanonicalDocumentForReview/);
+  assert.match(control,/Project Costing has not been changed/);
+  assert.match(api,/manufacturer-import-review/);
+  assert.match(routes,/prepareAssignedDocumentImport/);
+  assert.match(drive,/\["supplier", "suppliers"\]/);
+  assert.match(drive,/name: "Suppliers"/);
+  assert.match(drive,/supplier_documents_folder_ambiguous/);
 });
 
 test("Email and Files use QuoteSuite typography tokens and normal control hit targets",async()=>{

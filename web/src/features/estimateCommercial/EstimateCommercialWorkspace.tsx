@@ -47,6 +47,8 @@ export default function EstimateCommercialWorkspace({
   const [positionRevision, setPositionRevision] = useState(0);
   const addPositionRequest = 0;
   const [scenarioId, setScenarioId] = useState("");
+  const [importCanonicalDocumentId, setImportCanonicalDocumentId] =
+    useState<string | null>(null);
   const [quotationOpen, setQuotationOpen] = useState(false);
   const [documentsOpen, setDocumentsOpen] = useState(false);
   const [handoffMessage, setHandoffMessage] = useState("");
@@ -67,14 +69,19 @@ export default function EstimateCommercialWorkspace({
   useEffect(()=>{if(tab!=="import"&&!documentsOpen)return;document.body.classList.add("qs-modal-open");return()=>document.body.classList.remove("qs-modal-open")},[documentsOpen,tab]);
   const totals=estimate?estimateTotals(estimate):{totalSquareMetres:0,totalLinearMetres:0,totalQty:0};
   const nextAction=deriveNextAction({manufacturerQuoteImported:workflowState?.manufacturerQuoteImported??Boolean(currentScenario&&currentScenario.origin==="supplier_import"&&currentScenario.products.length),costingReady:workflowState?.costingReady??Boolean(currentScenario?.products.length),quotationReviewed:workflowState?.quotationReviewed??quotationReviewed,quotationPrepared:workflowState?.quotationPrepared,quotationIssued:workflowState?.quotationIssued??false,followUpDue:workflowState?.followUpDue??false,followUpDueDate:workflowState?.followUpDueDate,followUpCompleted:workflowState?.followUpCompleted??false,customerAccepted:workflowState?.customerAccepted??false,orderCreated:workflowState?.orderCreated??false});
-  const openImport = useCallback(() => {
+  const openImport = useCallback((canonicalDocumentId?: string | null) => {
+    setImportCanonicalDocumentId(canonicalDocumentId || null);
     setTab("import");
     void ensureEstimateCosting(estimateId, estimateRef).then((scenario) =>
       setScenarioId(scenario.id),
     );
   }, [estimateId, estimateRef]);
   useEffect(() => {
-    const handleOpenImport = () => openImport();
+    const handleOpenImport = (event: Event) =>
+      openImport(
+        (event as CustomEvent<{ canonicalDocumentId?: string }>).detail
+          ?.canonicalDocumentId,
+      );
     const handleOpenDocuments = () => setDocumentsOpen(true);
     window.addEventListener(
       "quotesuite:import-manufacturer-quote",
@@ -171,7 +178,10 @@ export default function EstimateCommercialWorkspace({
           className="estimate-commercial__modal-scrim"
           role="presentation"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setTab("costing");
+            if (event.target === event.currentTarget) {
+              setTab("costing");
+              setImportCanonicalDocumentId(null);
+            }
           }}
         >
           <section
@@ -187,7 +197,10 @@ export default function EstimateCommercialWorkspace({
                 </h2>
                 <p>Upload once, confirm the detected quotation identity, review extraction, then approve the Project Costing import.</p>
               </div>
-              <button className="ui-button" onClick={() => setTab("costing")}>
+              <button className="ui-button" onClick={() => {
+                setTab("costing");
+                setImportCanonicalDocumentId(null);
+              }}>
                 Close
               </button>
             </header>
@@ -195,12 +208,14 @@ export default function EstimateCommercialWorkspace({
               <EstimateSupplierCostImportControl
                 estimateId={estimateId}
                 scenarioId={scenarioId}
+                canonicalDocumentId={importCanonicalDocumentId}
                 onLoaded={(message) => {
                   setHandoffMessage(
                     message ??
                       "Manufacturer quotation loaded to Products / Supply Only.",
                   );
                   setTab("costing");
+                  setImportCanonicalDocumentId(null);
                   setPositionRevision((value) => value + 1);
                 }}
               />

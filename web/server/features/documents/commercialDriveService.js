@@ -68,6 +68,17 @@ export function createCommercialDriveService(db, options = {}) {
     return recordFolder({ ...input, folder, provenance: folder.appProperties?.quotesuiteEntityId ? "quotesuite" : "discovered_exact_name" });
   }
 
+  async function ensureSupplierDocumentsFolder({ accountId, estimateId, estimateFolder }) {
+    const logicalKey = "supplier_documents";
+    const saved = await mapping("estimate", estimateId, logicalKey);
+    if (saved) return saved;
+    const children = await provider.listChildren({ parentId: estimateFolder.provider_folder_id });
+    const aliases = children.filter((item) => item.mimeType === GOOGLE_DRIVE_FOLDER_MIME_TYPE && ["supplier", "suppliers"].includes(normalized(item.name)));
+    if (aliases.length > 1) throw error("Both Supplier and Suppliers folders exist beneath this Estimate. Review the provider hierarchy before filing.", 409, "supplier_documents_folder_ambiguous");
+    if (aliases.length === 1) return recordFolder({ accountId, entityKind: "estimate", entityId: estimateId, logicalKey, name: aliases[0].name, parentLogicalKey: "estimate", folder: aliases[0], parentId: estimateFolder.provider_folder_id, path: `${estimateFolder.folder_path}/${aliases[0].name}`, provenance: "discovered_supplier_alias" });
+    return ensureFolder({ accountId, entityKind: "estimate", entityId: estimateId, logicalKey, name: "Suppliers", parentId: estimateFolder.provider_folder_id, parentLogicalKey: "estimate", path: `${estimateFolder.folder_path}/Suppliers` });
+  }
+
   async function availableRoot(kind) {
     const status = await workspace.status();
     if (!status.connected || !status.capabilities?.drive?.available) return { status: "pending_provider_connection", workspaceStatus: status, rootId: null };
@@ -279,8 +290,8 @@ export function createCommercialDriveService(db, options = {}) {
     if (!sourceAttachmentId || !input.providerMessageId || !input.providerAttachmentId) throw error("Choose a retained email document before filing.", 422, "communication_assignment_attachment_required");
     const provisioned = await provisionEstimate(estimateId);
     if (provisioned.status !== "provisioned") return { ...provisioned, stored: false };
-    const accountId = provisioned.folder.provider_account_id || null, supplierRootName = "Supplier", supplierName = safeName(supplier.supplier_name);
-    const supplierRoot = await ensureFolder({ accountId, entityKind: "estimate", entityId: estimateId, logicalKey: "supplier_documents", name: supplierRootName, parentId: provisioned.folder.provider_folder_id, parentLogicalKey: "estimate", path: `${provisioned.folder.folder_path}/${supplierRootName}` });
+    const accountId = provisioned.folder.provider_account_id || null, supplierName = safeName(supplier.supplier_name);
+    const supplierRoot = await ensureSupplierDocumentsFolder({ accountId, estimateId, estimateFolder: provisioned.folder });
     const supplierFolder = await ensureFolder({ accountId, entityKind: "estimate", entityId: estimateId, logicalKey: `supplier:${supplier.supplier_code}`, name: supplierName, parentId: supplierRoot.provider_folder_id, parentLogicalKey: "supplier_documents", path: `${supplierRoot.folder_path}/${supplierName}` });
     const existingFiles = await provider.listChildren({ parentId: supplierFolder.provider_folder_id });
     let uploaded = existingFiles.find((file) => file.appProperties?.quotesuiteCommunicationAttachmentId === sourceAttachmentId);
@@ -291,12 +302,16 @@ export function createCommercialDriveService(db, options = {}) {
       uploaded = await provider.uploadFile({ parentId: supplierFolder.provider_folder_id, fileName: safeName(input.fileName) || "Supplier document", mediaType: input.mediaType || "application/octet-stream", bytes, appProperties: { quotesuiteCommunicationAttachmentId: sourceAttachmentId, quotesuiteEstimateId: estimateId, quotesuiteSupplierCode: supplier.supplier_code } });
     }
     const timestamp = now().toISOString(), documentId = randomUUID();
-    await db.run(`INSERT INTO canonical_documents(id,provider,provider_account_id,provider_file_id,provider_folder_id,enquiry_id,client_id,project_id,estimate_id,order_id,supplier_id,supplier_quotation_id,document_type,file_name,mime_type,size_bytes,provider_created_at,provider_modified_at,provider_version,provider_revision,checksum,web_view_link,folder_path,trashed,removed_at,discovered_at,last_seen_at,updated_at)
-      VALUES(?,'google_drive',?,?,?,NULL,?,?,?,NULL,?,NULL,'supplier_quotation',?,?,?,?,?,?,?,?,?,?,0,NULL,?,?,?)
-      ON CONFLICT(provider,provider_account_id,provider_file_id) DO UPDATE SET provider_folder_id=excluded.provider_folder_id,client_id=excluded.client_id,project_id=excluded.project_id,estimate_id=excluded.estimate_id,supplier_id=excluded.supplier_id,document_type='supplier_quotation',file_name=excluded.file_name,mime_type=excluded.mime_type,size_bytes=excluded.size_bytes,provider_modified_at=excluded.provider_modified_at,provider_version=excluded.provider_version,provider_revision=excluded.provider_revision,checksum=excluded.checksum,web_view_link=excluded.web_view_link,folder_path=excluded.folder_path,trashed=0,removed_at=NULL,last_seen_at=excluded.last_seen_at,updated_at=excluded.updated_at`,
-      documentId,accountId || "",uploaded.id,supplierFolder.provider_folder_id,clientId,projectId,estimateId,supplier.supplier_code,uploaded.name || input.fileName,uploaded.mimeType || input.mediaType || "application/octet-stream",Number(uploaded.size || input.sizeBytes || 0),uploaded.createdTime || timestamp,uploaded.modifiedTime || timestamp,uploaded.version == null ? null : String(uploaded.version),uploaded.version == null ? null : String(uploaded.version),uploaded.md5Checksum || null,uploaded.webViewLink || null,supplierFolder.folder_path,timestamp,timestamp,timestamp);
+    try {
+      await db.run(`INSERT INTO canonical_documents(id,provider,provider_account_id,provider_file_id,provider_folder_id,enquiry_id,client_id,project_id,estimate_id,order_id,supplier_id,supplier_quotation_id,document_type,file_name,mime_type,size_bytes,provider_created_at,provider_modified_at,provider_version,provider_revision,checksum,web_view_link,folder_path,trashed,removed_at,discovered_at,last_seen_at,updated_at)
+        VALUES(?,'google_drive',?,?,?,NULL,?,?,?,NULL,?,NULL,'supplier_quotation',?,?,?,?,?,?,?,?,?,?,0,NULL,?,?,?)
+        ON CONFLICT(provider,provider_account_id,provider_file_id) DO UPDATE SET provider_folder_id=excluded.provider_folder_id,client_id=excluded.client_id,project_id=excluded.project_id,estimate_id=excluded.estimate_id,supplier_id=excluded.supplier_id,document_type='supplier_quotation',file_name=excluded.file_name,mime_type=excluded.mime_type,size_bytes=excluded.size_bytes,provider_modified_at=excluded.provider_modified_at,provider_version=excluded.provider_version,provider_revision=excluded.provider_revision,checksum=excluded.checksum,web_view_link=excluded.web_view_link,folder_path=excluded.folder_path,trashed=0,removed_at=NULL,last_seen_at=excluded.last_seen_at,updated_at=excluded.updated_at`,
+        documentId,accountId || "",uploaded.id,supplierFolder.provider_folder_id,clientId,projectId,estimateId,supplier.supplier_code,uploaded.name || input.fileName,uploaded.mimeType || input.mediaType || "application/octet-stream",Number(uploaded.size || input.sizeBytes || 0),uploaded.createdTime || timestamp,uploaded.modifiedTime || timestamp,uploaded.version == null ? null : String(uploaded.version),uploaded.version == null ? null : String(uploaded.version),uploaded.md5Checksum || null,uploaded.webViewLink || null,supplierFolder.folder_path,timestamp,timestamp,timestamp);
+    } catch (cause) {
+      throw Object.assign(new Error("The provider file was saved, but QuoteSuite could not finish its canonical document record. Retry safely to reuse the same provider file."), { status: 409, code: "communication_assignment_partial_success", cause, details: { providerFileId: uploaded.id, webViewLink: uploaded.webViewLink || null, folderPath: supplierFolder.folder_path, fileName: uploaded.name || input.fileName } });
+    }
     const document = await db.get("SELECT * FROM canonical_documents WHERE provider='google_drive' AND provider_account_id=? AND provider_file_id=?", accountId || "", uploaded.id);
-    return { status: "stored", stored: true, duplicate, documentId: document.id, providerFileId: uploaded.id, webViewLink: uploaded.webViewLink || null, folderPath: supplierFolder.folder_path, clientId, projectId, estimateId, supplierCode: supplier.supplier_code, supplierName: supplier.supplier_name };
+    return { status: "stored", stored: true, duplicate, documentId: document.id, providerFileId: uploaded.id, fileName: document.file_name, webViewLink: uploaded.webViewLink || null, folderPath: supplierFolder.folder_path, clientId, projectId, estimateId, supplierCode: supplier.supplier_code, supplierName: supplier.supplier_name };
   }
 
   async function locateProjectFolder(context, rootId) {

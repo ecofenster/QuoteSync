@@ -4,7 +4,7 @@ import { createCommunicationsService } from "../features/communications/communic
 
 export function createCommunicationsRouter({ databasePromise = dbPromise, serviceOptions } = {}) {
   const router = express.Router(), service = async () => createCommunicationsService(await databasePromise, serviceOptions);
-  const fail = (res, error) => res.status(Number(error?.status) || 500).json({ error: error instanceof Error ? error.message : "Communications operation failed." });
+  const fail = (res, error) => res.status(Number(error?.status) || 500).json({ error: error instanceof Error ? error.message : "Communications operation failed.", ...(error?.code ? { code: error.code } : {}), ...(error?.details ? { details: error.details } : {}) });
   router.get("/status", async (_req, res) => { try { res.json(await (await service()).status()); } catch (error) { fail(res, error); } });
   router.get("/mailbox", async (_req, res) => { try { res.json(await (await service()).mailbox()); } catch (error) { fail(res, error); } });
   router.get("/messages", async (req, res) => { try { res.json(await (await service()).listMailbox({ folder: String(req.query.folder || "inbox"), query: String(req.query.q || ""), pageToken: req.query.page_token ? String(req.query.page_token) : null })); } catch (error) { fail(res, error); } });
@@ -13,6 +13,7 @@ export function createCommunicationsRouter({ databasePromise = dbPromise, servic
   router.get("/messages/:providerMessageId/context", async (req, res) => { try { res.json(await (await service()).relationshipContext(req.params.providerMessageId)); } catch (error) { fail(res, error); } });
   router.get("/messages/:providerMessageId/assignment", async (req, res) => { try { res.json(await (await service()).assignmentOptions(req.params.providerMessageId)); } catch (error) { fail(res, error); } });
   router.post("/messages/:providerMessageId/assignment", async (req, res) => { try { res.status(201).json(await (await service()).assignSupplierDocument(req.params.providerMessageId, req.body || {})); } catch (error) { fail(res, error); } });
+  router.post("/documents/:documentId/manufacturer-import-review", async (req, res) => { try { res.json(await (await service()).prepareAssignedDocumentImport(req.params.documentId, req.body?.estimateId)); } catch (error) { fail(res, error); } });
   router.get("/messages/:providerMessageId/enquiry-intake", async (req,res)=>{try{res.json(await(await service()).enquiryIntake(req.params.providerMessageId));}catch(error){fail(res,error);}});
   router.post("/messages/:providerMessageId/enquiry-intake", async (req,res)=>{try{res.status(201).json(await(await service()).createEnquiryFromMessage(req.params.providerMessageId,{...req.body,createdBy:"user-1"}));}catch(error){fail(res,error);}});
   router.post("/messages/:providerMessageId/links", async (req, res) => { try { res.json(await (await service()).linkRelationship(req.params.providerMessageId, req.body || {})); } catch (error) { fail(res, error); } });

@@ -108,6 +108,27 @@ test('import diagnostics distinguish extraction, persistence and Products / Supp
   assert.equal(createSupplierImportDiagnostics({ textAvailable: true, parsedPositions: 2, validCanonicalPositions: 2, persistedPositions: 2, productsSupplyRows: 2, projectCostingRows: 2 }).status, 'quotation_extracted_successfully');
 });
 
+test('a filed canonical supplier document opens one idempotent extraction review without changing Project Costing', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'qs-filed-review-'));
+  const db = await open({ filename: path.join(root, 'test.sqlite'), driver: sqlite3.Database });
+  t.after(async () => { await db.close(); await fs.rm(root, { recursive: true, force: true }); });
+  await db.exec("PRAGMA foreign_keys=ON;CREATE TABLE clients(id TEXT PRIMARY KEY,client_ref TEXT,name TEXT,created_at TEXT,updated_at TEXT);CREATE TABLE estimates(id TEXT PRIMARY KEY,estimate_ref TEXT,client_id TEXT,status TEXT,positions_json TEXT,created_at TEXT,updated_at TEXT,deleted_at TEXT);INSERT INTO clients VALUES('client','EF-CL-928','Disposable Client',datetime('now'),datetime('now'));INSERT INTO estimates VALUES('estimate','EF-EST-2026-957','client','draft','[]',datetime('now'),datetime('now'),NULL);");
+  await initializeSupplierCommercialSchema(db);
+  const calculator = createProjectCalculatorLabService(db, { exchangeRateProvider: async () => ({ provider: 'fixture', quotedAt: new Date().toISOString(), rawRate: '1' }) });
+  await calculator.saveSupplierCommercialDefault({ supplierCode: 'ZYLE', supplierName: 'Zyle Fenster', policy: { pricingMethod: 'parity_1_to_1', pricingBasis: 'parity_1_to_1', paidInQuotedCurrency: true, settlementCurrency: 'GBP' }, pricingDisplayPolicy: {} });
+  const sourceRow = { ordinal: 0, displayReference: 'W1', originalReferenceText: 'W1', supplierReferenceTokens: ['W1'], quantity: 1, widthMm: 1200, heightMm: 900, unitPrice: '500.00', totalPrice: '500.00', currency: 'GBP', classification: 'standard', includedInSupplierTotal: true, alternativeTo: null, classificationEvidence: null, sourcePages: [1], sourceTrace: [{ pageNumber: 1, boundingBox: { x: 1, y: 1, width: 2, height: 2 } }], confidence: '0.96', warnings: [], status: 'extracted', manufacturerEvidence: { product: 'Window', productSystem: 'EcoTherm', sourceVisual: { status: 'unavailable' } } };
+  const supplier = createSupplierQuotesService(db, { attachmentRoot: root, extractDocument: async () => ({ textAvailable: true, warnings: [], pages: [{ blocks: [block('Zyle Fenster quotation Q-957', 0)] }] }), parseFields: () => ({ adapter: 'fixture', recognizedSupplier: { code: 'ZYLE', name: 'Zyle Fenster' }, quotation: { fullQuotationReference: 'Q-957', quotationDate: '2026-09-11', currency: 'GBP' }, rows: [sourceRow], warnings: [] }), parseSummary: () => ({ summary: { productSubtotal: '500.00', additionalItemsSubtotal: null, deliveryTotal: null, vatTotal: null, finalSupplierTotal: '500.00', comparisonTotals: [] }, additionalItems: [], warnings: [] }) });
+  const input = { canonicalDocumentId: 'canonical-document', estimateId: 'estimate', supplierCode: 'ZYLE', fileName: 'Zyle quotation.pdf', mediaType: 'application/pdf', bytes: Buffer.from('%PDF-1.4\nfixture') };
+  const first = await supplier.stageCanonicalDocumentForReview(input);
+  const repeated = await supplier.stageCanonicalDocumentForReview(input);
+  assert.equal(first.duplicate, false);
+  assert.equal(repeated.duplicate, true);
+  assert.equal(repeated.documents[0].attachmentId, first.documents[0].attachmentId);
+  assert.equal((await db.get("SELECT COUNT(*) count FROM supplier_quote_attachments WHERE source_canonical_document_id='canonical-document'")).count, 1);
+  assert.equal((await db.get('SELECT COUNT(*) count FROM project_calculator_estimate_product_rows')).count, 0);
+  assert.equal(first.review.documents.length, 1);
+});
+
 test('canonical supplier evidence persists into Products / Supply and Project Costing idempotently', async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'qs-multiformat-'));
   const db = await open({ filename: path.join(root, 'test.sqlite'), driver: sqlite3.Database });

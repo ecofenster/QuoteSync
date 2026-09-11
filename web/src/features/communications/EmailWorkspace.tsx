@@ -12,6 +12,7 @@ import {
   type MailboxLabelView,
   type MailboxMetadata,
 } from "../../services/communications/communicationsApi";
+import { ApiRequestError } from "../../services/api/apiClient";
 import {
   buildContextActions,
   deriveMailboxNavigation,
@@ -24,6 +25,15 @@ import {
 import "./emailWorkspace.css";
 
 type ComposeMode = "compose" | "reply" | "reply_all" | "forward";
+type AssignmentFeedback = {
+  state: "saving" | "failed" | "partial";
+  message: string;
+  details?: {
+    fileName?: string;
+    folderPath?: string;
+    webViewLink?: string | null;
+  };
+};
 type Composer = {
   mode: ComposeMode;
   providerMessageId?: string;
@@ -935,10 +945,11 @@ function EnquiryIntakeDialog({
   );
 }
 
-function AssignmentDialog({
+export function AssignmentDialog({
   options,
   result,
-  busy,
+  saving,
+  feedback,
   onClose,
   onSubmit,
   onOpenFiles,
@@ -946,7 +957,8 @@ function AssignmentDialog({
 }: {
   options: CommunicationAssignmentOptions;
   result: CommunicationAssignmentResult | null;
-  busy: boolean;
+  saving: boolean;
+  feedback: AssignmentFeedback | null;
   onClose: () => void;
   onSubmit: (value: {
     clientId: string;
@@ -993,6 +1005,7 @@ function AssignmentDialog({
           <button
             type="button"
             className="ui-button ui-button--ghost"
+            disabled={saving}
             onClick={onClose}
           >
             Close
@@ -1006,7 +1019,12 @@ function AssignmentDialog({
                 : "The retained document was filed successfully."}
             </p>
             <p>
-              <strong>Folder</strong>
+              <strong>Filename</strong>
+              <br />
+              {result.fileName}
+            </p>
+            <p>
+              <strong>Destination</strong>
               <br />
               {result.folderPath}
             </p>
@@ -1025,16 +1043,54 @@ function AssignmentDialog({
               >
                 Import Manufacturer Estimate
               </button>
+              {result.webViewLink ? (
+                <a
+                  className="ui-button ui-button--ghost"
+                  href={result.webViewLink}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open saved file
+                </a>
+              ) : null}
             </div>
           </div>
         ) : (
           <>
+            {feedback ? (
+              <div
+                className={`email-assignment__feedback ui-status${
+                  feedback.state === "saving"
+                    ? ""
+                    : " ui-status--error"
+                }`}
+                role={feedback.state === "saving" ? "status" : "alert"}
+                aria-live="polite"
+              >
+                <strong>{feedback.message}</strong>
+                {feedback.details?.fileName ? (
+                  <span>File: {feedback.details.fileName}</span>
+                ) : null}
+                {feedback.details?.folderPath ? (
+                  <span>Destination: {feedback.details.folderPath}</span>
+                ) : null}
+                {feedback.state === "partial" ? (
+                  <span>
+                    The provider file is preserved. Retry will reuse it and will
+                    not create another copy.
+                  </span>
+                ) : feedback.state === "failed" ? (
+                  <span>No successful filing was confirmed. It is safe to retry.</span>
+                ) : null}
+              </div>
+            ) : null}
             <div className="email-assignment__grid">
               <label>
                 Client
                 <select
                   className="ui-input"
                   value={clientId}
+                  disabled={saving}
                   onChange={(event) => {
                     setClientId(event.currentTarget.value);
                     setProjectId("");
@@ -1054,7 +1110,7 @@ function AssignmentDialog({
                 <select
                   className="ui-input"
                   value={projectId}
-                  disabled={!clientId}
+                  disabled={saving || !clientId}
                   onChange={(event) => {
                     setProjectId(event.currentTarget.value);
                     setEstimateId("");
@@ -1073,7 +1129,7 @@ function AssignmentDialog({
                 <select
                   className="ui-input"
                   value={estimateId}
-                  disabled={!projectId}
+                  disabled={saving || !projectId}
                   onChange={(event) => setEstimateId(event.currentTarget.value)}
                 >
                   <option value="">Choose Estimate</option>
@@ -1089,6 +1145,7 @@ function AssignmentDialog({
                 <select
                   className="ui-input"
                   value={supplierId}
+                  disabled={saving}
                   onChange={(event) => setSupplierId(event.currentTarget.value)}
                 >
                   <option value="">Choose Supplier</option>
@@ -1104,6 +1161,7 @@ function AssignmentDialog({
                 <select
                   className="ui-input"
                   value={attachmentId}
+                  disabled={saving}
                   onChange={(event) =>
                     setAttachmentId(event.currentTarget.value)
                   }
@@ -1137,6 +1195,7 @@ function AssignmentDialog({
                   <input
                     type="checkbox"
                     checked={conflictsReviewed}
+                    disabled={saving}
                     onChange={(event) =>
                       setConflictsReviewed(event.currentTarget.checked)
                     }
@@ -1149,6 +1208,7 @@ function AssignmentDialog({
               <button
                 type="button"
                 className="ui-button ui-button--ghost"
+                disabled={saving}
                 onClick={onClose}
               >
                 Cancel
@@ -1157,7 +1217,7 @@ function AssignmentDialog({
                 type="button"
                 className="ui-button ui-button--primary"
                 disabled={
-                  busy ||
+                  saving ||
                   hasBlockingConflict ||
                   !clientId ||
                   !projectId ||
@@ -1177,7 +1237,11 @@ function AssignmentDialog({
                   })
                 }
               >
-                {busy ? "Filing document…" : "File selected document"}
+                {saving
+                  ? "Saving document…"
+                  : feedback
+                    ? "Retry filing"
+                    : "File selected document"}
               </button>
             </footer>
           </>
@@ -1196,7 +1260,11 @@ export default function EmailWorkspace({
   onOpenIntegrations: () => void;
   onOpenFollowUps?: () => void;
   onOpenEstimateFiles?: (clientId: string, estimateId: string) => void;
-  onImportManufacturerEstimate?: (clientId: string, estimateId: string) => void;
+  onImportManufacturerEstimate?: (
+    clientId: string,
+    estimateId: string,
+    documentId: string,
+  ) => void;
 }) {
   const initialCached = mailboxMemoryCache.get("inbox||");
   const [status, setStatus] = useState<GoogleWorkspaceStatus | null>(null),
@@ -1220,6 +1288,9 @@ export default function EmailWorkspace({
       useState<CommunicationAssignmentOptions | null>(null),
     [assignmentResult, setAssignmentResult] =
       useState<CommunicationAssignmentResult | null>(null),
+    [assignmentFeedback, setAssignmentFeedback] =
+      useState<AssignmentFeedback | null>(null),
+    [assignmentSaving, setAssignmentSaving] = useState(false),
     [busy, setBusy] = useState(false),
     [mailboxLoading, setMailboxLoading] = useState(
       !initialCached?.messages.length,
@@ -1258,7 +1329,8 @@ export default function EmailWorkspace({
     latestBottomSize = useRef(bottomSize),
     queryRef = useRef(query),
     backgroundSyncing = useRef(false),
-    projectionVersion = useRef(0);
+    projectionVersion = useRef(0),
+    assignmentSubmitting = useRef(false);
   latestRightSize.current = rightSize;
   latestBottomSize.current = bottomSize;
   queryRef.current = query;
@@ -1496,10 +1568,34 @@ export default function EmailWorkspace({
       const exact = message.providerMessageId
         ? await communicationsApi.read(message.providerMessageId)
         : message;
-      setSelectedMessage(enrich(exact));
+      let openedMessage = exact;
+      if (
+        exact.unread &&
+        exact.threadId &&
+        (mailbox?.capabilities || []).some(
+          (capability) => capability.id === "read_state" && capability.available,
+        )
+      ) {
+        try {
+          await communicationsApi.command([exact.threadId], "mark_read");
+          openedMessage = { ...exact, unread: false };
+          setMessages((current) =>
+            current.map((item) =>
+              item.threadId === exact.threadId ? { ...item, unread: false } : item,
+            ),
+          );
+        } catch (reason) {
+          setError(
+            `Message opened, but it could not be marked read. ${
+              reason instanceof Error ? reason.message : "Provider request failed."
+            }`,
+          );
+        }
+      }
+      setSelectedMessage(enrich(openedMessage));
       if (readingMode === "conversation" && message.threadId)
         setThread(enrich(await communicationsApi.thread(message.threadId)));
-      else setThread(enrich(exact));
+      else setThread(enrich(openedMessage));
       if (exact.providerMessageId)
         setRelationship(
           await communicationsApi.context(exact.providerMessageId),
@@ -1542,6 +1638,7 @@ export default function EmailWorkspace({
     setBusy(true);
     setError("");
     setAssignmentResult(null);
+    setAssignmentFeedback(null);
     try {
       setAssignment(
         await communicationsApi.assignmentOptions(providerMessageId),
@@ -1565,8 +1662,13 @@ export default function EmailWorkspace({
     conflictsReviewed: boolean;
   }) => {
     const providerMessageId = activeMessage?.providerMessageId;
-    if (!providerMessageId) return;
-    setBusy(true);
+    if (!providerMessageId || assignmentSubmitting.current) return;
+    assignmentSubmitting.current = true;
+    setAssignmentSaving(true);
+    setAssignmentFeedback({
+      state: "saving",
+      message: "Saving document…",
+    });
     setError("");
     try {
       const result = await communicationsApi.assignDocument(
@@ -1581,13 +1683,33 @@ export default function EmailWorkspace({
           : "Supplier document filed and linked to the selected canonical records.",
       );
     } catch (reason) {
-      setError(
-        reason instanceof Error
-          ? reason.message
-          : "The supplier document could not be filed.",
-      );
+      let code = "",
+        details: AssignmentFeedback["details"];
+      if (reason instanceof ApiRequestError && reason.body) {
+        try {
+          const parsed = JSON.parse(reason.body);
+          code = typeof parsed?.code === "string" ? parsed.code : "";
+          details =
+            parsed?.details && typeof parsed.details === "object"
+              ? parsed.details
+              : undefined;
+        } catch {
+          // The ordinary error message below remains safe for non-JSON responses.
+        }
+      }
+      const partial = code === "communication_assignment_partial_success";
+      setAssignmentFeedback({
+        state: partial ? "partial" : "failed",
+        message: partial
+          ? "The document reached the provider, but QuoteSuite could not finish linking it."
+          : reason instanceof Error
+            ? reason.message
+            : "The supplier document could not be filed.",
+        details,
+      });
     } finally {
-      setBusy(false);
+      assignmentSubmitting.current = false;
+      setAssignmentSaving(false);
     }
   };
   const submitEnquiryIntake = async (
@@ -2572,10 +2694,12 @@ export default function EmailWorkspace({
         <AssignmentDialog
           options={assignment}
           result={assignmentResult}
-          busy={busy}
+          saving={assignmentSaving}
+          feedback={assignmentFeedback}
           onClose={() => {
             setAssignment(null);
             setAssignmentResult(null);
+            setAssignmentFeedback(null);
           }}
           onSubmit={(value) => void submitAssignment(value)}
           onOpenFiles={(result) => {
@@ -2590,6 +2714,7 @@ export default function EmailWorkspace({
             onImportManufacturerEstimate?.(
               result.navigation.clientId,
               result.navigation.estimateId,
+              result.documentId,
             );
           }}
         />
