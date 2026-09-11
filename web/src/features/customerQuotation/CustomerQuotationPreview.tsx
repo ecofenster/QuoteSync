@@ -2,6 +2,7 @@ import {
   useEffect,
   Fragment,
   useMemo,
+  useRef,
   useState,
   type ComponentType,
   type CSSProperties,
@@ -143,11 +144,13 @@ export default function CustomerQuotationPreview({
     useState<CustomerQuotationProjection | null>(null);
   const [error, setError] = useState("");
   const [issuePreparation, setIssuePreparation] = useState<IssuedQuotationView | null>(null);
-  const [issueBusy,setIssueBusy]=useState(false);
+  const [activeAction,setActiveAction]=useState<"download"|"prepare"|"send"|null>(null);
   const [issueError,setIssueError]=useState("");
+  const [downloadResult,setDownloadResult]=useState<{fileName:string;sizeBytes:number}|null>(null);
   const [issueRecipient,setIssueRecipient]=useState("");
   const [issueSubject,setIssueSubject]=useState("");
   const [issueBody,setIssueBody]=useState("");
+  const actionInFlight=useRef(false);
   const [options, setOptions] = useState<CustomerQuotationDisplayOptions>(
     DEFAULT_CUSTOMER_QUOTATION_DISPLAY_OPTIONS,
   );
@@ -201,22 +204,23 @@ export default function CustomerQuotationPreview({
       } as CSSProperties)
     : undefined;
   const prepareForSend=async()=>{
-    if(!projection)return;
-    setIssueBusy(true);setIssueError("");
+    if(!projection||actionInFlight.current)return;actionInFlight.current=true;
+    setActiveAction("prepare");setIssueError("");setDownloadResult(null);
     try{
       const prepared=await quotationWorkflowApi.prepare({estimateId:String(estimate.id),clientId:String(client.id),estimateRevision:estimate.revisionNo,quotationRevision:projection.commercialRevision,projection,recipient:client.email});
       setIssuePreparation(prepared);setIssueRecipient(prepared.recipient);setIssueSubject(prepared.subject);setIssueBody(prepared.communication?.bodyHtml||"");onWorkflowChanged?.();
     }catch(reason){setIssueError(reason instanceof Error?reason.message:"Quotation email could not be prepared.")}
-    finally{setIssueBusy(false)}
+    finally{actionInFlight.current=false;setActiveAction(null)}
   };
   const sendPrepared=async()=>{
-    if(!issuePreparation)return;
-    setIssueBusy(true);setIssueError("");
+    if(!issuePreparation||actionInFlight.current)return;actionInFlight.current=true;
+    setActiveAction("send");setIssueError("");
     try{const issued=await quotationWorkflowApi.send(issuePreparation.id,{recipient:issueRecipient,subject:issueSubject,bodyHtml:issueBody});setIssuePreparation(issued);onWorkflowChanged?.()}
     catch(reason){setIssueError(reason instanceof Error?reason.message:"The provider did not send the quotation.");try{setIssuePreparation(await quotationWorkflowApi.get(issuePreparation.id))}catch{/* retain current preparation */}onWorkflowChanged?.()}
-    finally{setIssueBusy(false)}
+    finally{actionInFlight.current=false;setActiveAction(null)}
   };
-  const downloadProductionPdf=async()=>{if(!projection)return;setIssueBusy(true);setIssueError("");try{await quotationWorkflowApi.downloadPreview(projection)}catch(reason){setIssueError(reason instanceof Error?reason.message:"Estimate PDF could not be generated.")}finally{setIssueBusy(false)}};
+  const downloadProductionPdf=async()=>{if(!projection||actionInFlight.current)return;actionInFlight.current=true;setActiveAction("download");setIssueError("");setDownloadResult(null);try{setDownloadResult(await quotationWorkflowApi.downloadPreview(projection))}catch(reason){setIssueError(reason instanceof Error?reason.message:"Estimate PDF could not be generated. Check the Estimate and try again.")}finally{actionInFlight.current=false;setActiveAction(null)}};
+  const issueBusy=activeAction!==null;
   const summary = projection ? (
     <section className="customer-quotation-page customer-quotation-page--summary">
       <PageHeader projection={projection} />
@@ -333,21 +337,22 @@ export default function CustomerQuotationPreview({
             </button>
             <button
               className="ui-button"
-              disabled={!projection}
+              disabled={!projection||issueBusy}
               onClick={() => void prepareForSend()}
             >
-              {issueBusy?"Preparing…":"Send to Client"}
+              {activeAction==="prepare"?"Preparing Email…":"Send to Client"}
             </button>
             <button
               className="ui-button ui-button--primary"
-              disabled={!projection}
+              disabled={!projection||issueBusy}
               onClick={() => void downloadProductionPdf()}
             >
-              {issueBusy ? "Preparing PDF…" : "Download PDF"}
+              {activeAction==="download" ? "Preparing PDF…" : "Download PDF"}
             </button>
           </div>
         </div>
-        {issuePreparation ? <section className="customer-quotation__issue-preparation customer-quotation__email-composer no-print" role="status"><div className="customer-quotation__email-evidence"><strong>{issuePreparation.status==="issued"?"Quotation issued":issuePreparation.status==="failed"?"Send failed — review and retry":"QuoteSuite Email composer · prepared, not sent"}</strong><span>Immutable Estimate revision {issuePreparation.estimateRevision} · quotation revision {issuePreparation.quotationRevision}</span>{issuePreparation.document?<a href={issuePreparation.document.downloadUrl} target="_blank" rel="noreferrer">{issuePreparation.document.fileName} · {Math.ceil(issuePreparation.document.sizeBytes/1024)} KB · exact issued-document candidate</a>:null}{issuePreparation.issuedAt?<span>Provider confirmed send at {new Date(issuePreparation.issuedAt).toLocaleString()} · message {issuePreparation.providerMessageId}</span>:<span>Opening this composer does not issue the quotation. Review all fields, then send.</span>}</div>{issuePreparation.status!=="issued"?<div className="customer-quotation__email-fields"><label>To<input className="ui-input" type="email" value={issueRecipient} onChange={event=>setIssueRecipient(event.currentTarget.value)}/></label><label>Subject<input className="ui-input" value={issueSubject} onChange={event=>setIssueSubject(event.currentTarget.value)}/></label><label>Formatted message<textarea className="ui-input" rows={8} value={issueBody} onChange={event=>setIssueBody(event.currentTarget.value)}/></label><div className="ui-action-row"><button type="button" className="ui-button" disabled={issueBusy} onClick={()=>setIssuePreparation(null)}>Close composer</button><button type="button" className="ui-button ui-button--primary" disabled={issueBusy||!issueRecipient.trim()||!issueSubject.trim()||!issueBody.trim()} onClick={()=>void sendPrepared()}>{issueBusy?"Sending…":"Review complete · Send"}</button></div></div>:null}</section> : null}
+        {downloadResult?<section className="customer-quotation__result no-print" role="status"><strong>PDF downloaded</strong><span>{downloadResult.fileName} · {Math.ceil(downloadResult.sizeBytes/1024)} KB</span><span>Next: review the saved PDF. This download did not issue or Email the Estimate.</span></section>:null}
+        {issuePreparation ? <section className="customer-quotation__issue-preparation customer-quotation__email-composer no-print" role="status"><div className="customer-quotation__email-evidence"><strong>{issuePreparation.status==="issued"?"Estimate sent successfully":issuePreparation.status==="failed"?"Estimate was not sent":"Email ready to review"}</strong>{issuePreparation.status==="issued"?<span>{issuePreparation.document?.fileName||"Estimate PDF"} was sent to {issuePreparation.recipient}.{issuePreparation.followUp?` Follow Up is due ${new Date(`${issuePreparation.followUp.dueDate}T00:00:00`).toLocaleDateString("en-GB")}.`:""}</span>:issuePreparation.status==="failed"?<span>The PDF and Email draft are still saved. Review the error, correct the details and retry safely.</span>:<span>Nothing has been sent. Check the recipient, subject, message and PDF, then use the primary Send action.</span>}{issuePreparation.document?<a href={issuePreparation.document.downloadUrl} target="_blank" rel="noreferrer">Open {issuePreparation.document.fileName}</a>:null}<details><summary>View details</summary><span>Estimate revision {issuePreparation.estimateRevision} · quotation revision {issuePreparation.quotationRevision}</span>{issuePreparation.issuedAt?<span>Provider confirmed {new Date(issuePreparation.issuedAt).toLocaleString()} · message {issuePreparation.providerMessageId}</span>:null}</details></div>{issuePreparation.status!=="issued"?<div className="customer-quotation__email-fields"><label>To<input className="ui-input" type="email" value={issueRecipient} disabled={issueBusy} onChange={event=>setIssueRecipient(event.currentTarget.value)}/></label><label>Subject<input className="ui-input" value={issueSubject} disabled={issueBusy} onChange={event=>setIssueSubject(event.currentTarget.value)}/></label><label>Message<textarea className="ui-input" rows={8} value={issueBody} disabled={issueBusy} onChange={event=>setIssueBody(event.currentTarget.value)}/></label><div className="ui-action-row"><button type="button" className="ui-button" disabled={issueBusy} onClick={()=>setIssuePreparation(null)}>Close</button><button type="button" className="ui-button ui-button--primary" disabled={issueBusy||!issueRecipient.trim()||!issueSubject.trim()||!issueBody.trim()} onClick={()=>void sendPrepared()}>{activeAction==="send"?"Sending Estimate…":"Send Estimate"}</button></div></div>:null}</section> : null}
         {issueError?<p role="alert" className="customer-quotation__error no-print">{issueError}</p>:null}
         {error ? (
           <p role="alert" className="customer-quotation__error">

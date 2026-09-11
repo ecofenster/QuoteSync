@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { createCustomerQuotationDocumentService } from "./customerQuotationDocumentService.js";
 import { createCommunicationsService } from "../communications/communicationsService.js";
 import { createPortalSecurityService } from "../clientPortal/portalSecurityService.js";
@@ -8,6 +8,8 @@ const hash = (value) => createHash("sha256").update(value).digest("hex");
 const parse = (value, fallback = null) => { try { return JSON.parse(value || ""); } catch { return fallback; } };
 const plusDays = (value, days) => { const date = new Date(value); date.setUTCDate(date.getUTCDate() + days); return date.toISOString().slice(0, 10); };
 const requiredText = (value, label) => { const text = String(value || "").trim(); if (!text) throw Object.assign(new Error(`${label} is required.`), { status: 400 }); return text; };
+const issueProblem = (message, status, code, details) => Object.assign(new Error(message), { status, code, ...(details ? { details } : {}) });
+const stableId = (prefix, idempotencyKey) => `${prefix}-${idempotencyKey.slice(0, 32)}`;
 
 export function createIssuedQuotationService(db, options = {}) {
   const documents = createCustomerQuotationDocumentService(db, options), communications = createCommunicationsService(db, options), portalSecurity = createPortalSecurityService(db, options.portalSecurityOptions || {}), delivery = options.deliveryPolicy || createTestDeliveryPolicy(options.environment);
@@ -15,8 +17,8 @@ export function createIssuedQuotationService(db, options = {}) {
 
   async function mapIssued(row) {
     if (!row) return null;
-    const document = await documents.get(row.document_id), communication = row.communication_message_id ? await communications.repository.get(row.communication_message_id) : null;
-    return { id: row.id, status: row.status, clientId: row.client_id, estimateId: row.estimate_id, estimateRevision: row.estimate_revision, quotationRevision: row.quotation_revision, recipient: row.recipient, subject: row.subject, provider: row.provider, providerMessageId: row.provider_message_id, communicationMessageId: row.communication_message_id, preparedAt: row.prepared_at, issuedAt: row.issued_at, failedAt: row.failed_at, failureReason: row.failure_reason, commercialSnapshot: parse(row.commercial_snapshot_json, {}), termsSnapshot: row.terms_snapshot, document: document ? { ...document, downloadUrl: `/api/quotation-workflow/issued/${row.id}/document` } : null, communication };
+    const [document,communication,followUp] = await Promise.all([documents.get(row.document_id),row.communication_message_id ? communications.repository.get(row.communication_message_id) : null,db.get("SELECT id,due_at,status FROM followups WHERE issued_quotation_id=? ORDER BY created_at DESC LIMIT 1",row.id)]);
+    return { id: row.id, status: row.status, clientId: row.client_id, estimateId: row.estimate_id, estimateRevision: row.estimate_revision, quotationRevision: row.quotation_revision, recipient: row.recipient, subject: row.subject, provider: row.provider, providerMessageId: row.provider_message_id, communicationMessageId: row.communication_message_id, preparedAt: row.prepared_at, issuedAt: row.issued_at, failedAt: row.failed_at, failureReason: row.failure_reason, commercialSnapshot: parse(row.commercial_snapshot_json, {}), termsSnapshot: row.terms_snapshot, document: document ? { ...document, downloadUrl: `/api/quotation-workflow/issued/${row.id}/document` } : null, communication, followUp: followUp ? { id:followUp.id,dueDate:followUp.due_at,status:followUp.status } : null };
   }
   async function get(id) { return mapIssued(await db.get("SELECT * FROM issued_quotations WHERE id=?", id)); }
 
@@ -40,9 +42,18 @@ export function createIssuedQuotationService(db, options = {}) {
     const commercialSnapshot = { subtotalExVatGbp: String(projection.subtotalExVatGbp), vatRatePercent: String(projection.vatRatePercent), vatGbp: String(projection.vatGbp), totalIncVatGbp: total };
     const idempotencyKey = hash(JSON.stringify({ estimateId, estimateRevision, quotationRevision, projection, recipient, termsSnapshot: input.termsSnapshot ?? null }));
     const existing = await db.get("SELECT * FROM issued_quotations WHERE idempotency_key=?", idempotencyKey); if (existing) return mapIssued(existing);
-    const document = await documents.createImmutablePdf({ estimateId, quotationRevision, projection }), issuedQuotationId = randomUUID(), communicationMessageId = randomUUID(), timestamp = new Date().toISOString();
-    const communication = await communications.repository.save({ id: communicationMessageId, provider: "google_workspace", mailboxId: "me", direction: "outbound", folder: "drafts", status: "draft", from: [], to: [recipient], cc: [], bcc: [], subject, bodyHtml, bodyText: bodyHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(), links: [{ kind: "client", id: clientId }, { kind: "estimate", id: estimateId }, { kind: "issued_quotation", id: issuedQuotationId }], attachments: [{ id: randomUUID(), fileName: document.fileName, mediaType: document.mediaType, sizeBytes: document.sizeBytes, storageKey: document.storageKey, sha256: document.sha256 }] });
-    await db.run(`INSERT INTO issued_quotations(id,idempotency_key,client_id,estimate_id,estimate_revision,quotation_revision,document_id,status,recipient,subject,provider,provider_message_id,communication_message_id,prepared_at,issued_at,failed_at,failure_reason,commercial_snapshot_json,terms_snapshot,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, issuedQuotationId, idempotencyKey, clientId, estimateId, estimateRevision, quotationRevision, document.id, "prepared_not_sent", recipient, subject, null, null, communication.id, timestamp, null, null, null, JSON.stringify(commercialSnapshot), input.termsSnapshot ?? null, timestamp, timestamp);
+    const alreadyIssued = await db.get("SELECT id FROM issued_quotations WHERE estimate_id=? AND estimate_revision=? AND status='issued' ORDER BY issued_at DESC LIMIT 1",estimateId,estimateRevision);
+    if(alreadyIssued)throw issueProblem("This Estimate revision has already been issued. Open the issued Estimate, or create a new revision before sending changed customer information.",409,"estimate_revision_already_issued",{issuedQuotationId:alreadyIssued.id,estimateId,estimateRevision});
+    const issuedQuotationId = stableId("quotation",idempotencyKey), communicationMessageId = stableId("quotation-email",idempotencyKey), timestamp = new Date().toISOString();
+    let document;
+    try{
+      document = await documents.createImmutablePdf({ estimateId, quotationRevision, projection });
+      const communication = await communications.repository.save({ id: communicationMessageId, provider: "google_workspace", mailboxId: "me", direction: "outbound", folder: "drafts", status: "draft", from: [], to: [recipient], cc: [], bcc: [], subject, bodyHtml, bodyText: bodyHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(), links: [{ kind: "client", id: clientId }, { kind: "estimate", id: estimateId }, { kind: "issued_quotation", id: issuedQuotationId }], attachments: [{ id: stableId("quotation-attachment",idempotencyKey), fileName: document.fileName, mediaType: document.mediaType, sizeBytes: document.sizeBytes, storageKey: document.storageKey, sha256: document.sha256 }] });
+      await db.run(`INSERT INTO issued_quotations(id,idempotency_key,client_id,estimate_id,estimate_revision,quotation_revision,document_id,status,recipient,subject,provider,provider_message_id,communication_message_id,prepared_at,issued_at,failed_at,failure_reason,commercial_snapshot_json,terms_snapshot,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, issuedQuotationId, idempotencyKey, clientId, estimateId, estimateRevision, quotationRevision, document.id, "prepared_not_sent", recipient, subject, null, null, communication.id, timestamp, null, null, null, JSON.stringify(commercialSnapshot), input.termsSnapshot ?? null, timestamp, timestamp);
+    }catch(cause){
+      const recovered=await db.get("SELECT * FROM issued_quotations WHERE idempotency_key=?",idempotencyKey);if(recovered)return mapIssued(recovered);
+      throw issueProblem("QuoteSuite could not finish preparing the customer Email. Any completed PDF or draft has been kept; retry the same action to reuse it safely.",409,"quotation_prepare_partial_success",{issuedQuotationId,communicationMessageId,documentId:document?.id||null,cause:cause instanceof Error?cause.message:String(cause)});
+    }
     return get(issuedQuotationId);
   }
 
@@ -62,6 +73,8 @@ export function createIssuedQuotationService(db, options = {}) {
   async function send(id, overrides = {}) {
     const row = await db.get("SELECT * FROM issued_quotations WHERE id=?", id); if (!row) throw Object.assign(new Error("Issued quotation preparation was not found."), { status: 404 });
     if (row.status === "issued") return mapIssued(row);
+    const conflictingIssue=await db.get("SELECT id FROM issued_quotations WHERE estimate_id=? AND estimate_revision=? AND status='issued' AND id<>? ORDER BY issued_at DESC LIMIT 1",row.estimate_id,row.estimate_revision,row.id);
+    if(conflictingIssue)throw issueProblem("This Estimate revision was already issued from another reviewed preparation. Nothing was sent. Open the issued Estimate, or create a new revision for changes.",409,"estimate_revision_already_issued",{issuedQuotationId:conflictingIssue.id,estimateId:row.estimate_id,estimateRevision:row.estimate_revision});
     const existingCommunication = await communications.repository.get(row.communication_message_id);
     if (existingCommunication?.status === "sent" && existingCommunication.providerMessageId) return finalize(row, existingCommunication);
     const document = await documents.get(row.document_id), requestedRecipient = requiredText(overrides.recipient ?? row.recipient, "Recipient"), recipient = delivery.enabled ? delivery.assertRecipient(requestedRecipient, "customer") : requestedRecipient, subject = customerSubject(requiredText(overrides.subject ?? row.subject, "Subject")), bodyHtml = requiredText(overrides.bodyHtml ?? existingCommunication?.bodyHtml, "Email body");

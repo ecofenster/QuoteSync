@@ -53,7 +53,7 @@ async function fixture(t,{gmailFailure=false,environment={}}={}){
 
 test("prepared quotation persists an immutable canonical PDF and commercial evidence",async t=>{
   const {db,root,service}=await fixture(t);
-  const prepared=await service.prepare({clientId:"client-1",estimateId:"estimate-1",estimateRevision:2,quotationRevision:4,recipient:"ada@example.com",projection:projection("EST-100"),termsSnapshot:"Valid for 30 days"});
+  const input={clientId:"client-1",estimateId:"estimate-1",estimateRevision:2,quotationRevision:4,recipient:"ada@example.com",projection:projection("EST-100"),termsSnapshot:"Valid for 30 days"},prepared=await service.prepare(input);
   assert.equal(prepared.status,"prepared_not_sent");
   assert.equal(prepared.document.mediaType,"application/pdf");
   assert.equal(prepared.communication.status,"draft");
@@ -63,9 +63,20 @@ test("prepared quotation persists an immutable canonical PDF and commercial evid
   const bytes=await readFile(path.join(root,"attachments",...document.storage_key.split("/")));
   assert.equal(bytes.subarray(0,5).toString(),"%PDF-");
   assert.equal(JSON.parse(document.projection_json).positions[1].classification,"alternative");
+  const replay=await service.prepare(input);assert.equal(replay.id,prepared.id);assert.equal(replay.communicationMessageId,prepared.communicationMessageId);assert.equal((await db.get("SELECT COUNT(*) count FROM customer_quotation_documents")).count,1);assert.equal((await db.get("SELECT COUNT(*) count FROM communication_messages")).count,1);
   await db.run("UPDATE estimates SET revision_no=3 WHERE id='estimate-1'");
   assert.equal((await service.get(prepared.id)).estimateRevision,2);
   assert.equal(JSON.parse((await db.get("SELECT commercial_snapshot_json value FROM issued_quotations WHERE id=?",prepared.id)).value).totalIncVatGbp,"1200.00");
+});
+
+test("an already issued Estimate revision cannot send a second changed preparation",async t=>{
+  const {service,gmailSendCount}=await fixture(t),common={clientId:"client-1",estimateId:"estimate-1",estimateRevision:2,quotationRevision:4,recipient:"ada@example.com"};
+  const first=await service.prepare({...common,projection:projection("EST-100","1200.00")}),second=await service.prepare({...common,projection:projection("EST-100","1250.00")});
+  const issued=await service.send(first.id,{recipient:first.recipient,subject:first.subject,bodyHtml:first.communication.bodyHtml});assert.equal(issued.status,"issued");assert.equal(gmailSendCount(),1);
+  await assert.rejects(()=>service.send(second.id,{recipient:second.recipient,subject:second.subject,bodyHtml:second.communication.bodyHtml}),error=>error.code==="estimate_revision_already_issued"&&error.details.issuedQuotationId===first.id);
+  await assert.rejects(()=>service.prepare({...common,projection:projection("EST-100","1300.00")}),error=>error.code==="estimate_revision_already_issued");
+  assert.equal(gmailSendCount(),1,"the conflicting preparation must be rejected before the provider call");
+  assert.equal((await service.prepare({...common,projection:projection("EST-100","1200.00")})).id,first.id,"an exact retry reuses the issued evidence");
 });
 
 test("provider-confirmed send issues once and creates exactly one linked three-day Follow Up",async t=>{
@@ -83,6 +94,7 @@ test("provider-confirmed send issues once and creates exactly one linked three-d
   await assert.rejects(()=>db.run("UPDATE estimates SET status='Changed' WHERE id='estimate-1'"),/immutable/);
   const release=await db.get("SELECT * FROM estimate_revision_releases WHERE issued_quotation_id=?",issued.id);assert.equal(release.estimate_revision,2);assert.equal(release.project_id,"project-1");
   const state=await service.estimateState("estimate-1");assert.equal(state.quotationIssued,true);assert.equal(state.followUpDue,true);assert.equal(state.followUpDueDate,followUps[0].due_at);
+  assert.equal(issued.followUp.dueDate,followUps[0].due_at);
 });
 
 test("controlled customer delivery fixes the role address and subject and blocks every other recipient",async t=>{

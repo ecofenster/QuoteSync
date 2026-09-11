@@ -57,7 +57,7 @@ app.use('/api/manufacturer-position-visuals', createManufacturerPositionVisualsR
 app.use('/api/communications', createCommunicationsRouter({ databasePromise: dbPromise }));
 app.use('/api/drive', createDriveRouter());
 app.use('/api/documents', createDocumentsRouter());
-app.use('/api/quotation-workflow', createQuotationWorkflowRouter());
+app.use('/api/quotation-workflow', createQuotationWorkflowRouter({ databasePromise: dbPromise }));
 app.use('/api/quote-comparisons', createQuoteComparisonsRouter());
 app.use('/api/admin/manufacturer-documents', createManufacturerDocumentsRouter());
 const portalTestAdapter = createPortalTestAdapter(process.env);
