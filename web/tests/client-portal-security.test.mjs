@@ -13,6 +13,7 @@ import { initializePortalSecuritySchema } from "../server/features/clientPortal/
 import { createPortalSecurityService } from "../server/features/clientPortal/portalSecurityService.js";
 import { initializeLifecycleSchema } from "../server/features/lifecycle/lifecycleSchema.js";
 import { createLifecycleService, deriveConfirmationCheck, deriveRevisionCheck } from "../server/features/lifecycle/lifecycleService.js";
+import { createCommunicationRepository } from "../server/features/communications/communicationRepository.js";
 import { createTestDeliveryPolicy } from "../server/features/lifecycle/testDeliveryPolicy.js";
 import { createPortalTestAdapter } from "../server/features/clientPortal/portalTestAdapter.js";
 import { createIssuedQuotationService } from "../server/features/customerQuotations/issuedQuotationService.js";
@@ -261,12 +262,15 @@ test("supplier revision and factory confirmation checks require exact source-bac
 });
 
 test("supplier enquiry preview and returned evidence stay linked to one canonical Project and working Estimate",async t=>{
-  const source=await fixture(t),lifecycle=createLifecycleService(source.db,{portal:source.service,documentOptions:source.options.documentOptions,deliveryPolicy:{publicStatus:()=>({deliveryMode:"preview_only"}),assertRecipient(){throw new Error("no send")}}});
+  const source=await fixture(t),communications=createCommunicationRepository(source.db),lifecycle=createLifecycleService(source.db,{portal:source.service,communications,documentOptions:source.options.documentOptions,deliveryPolicy:{publicStatus:()=>({deliveryMode:"preview_only"}),assertRecipient(){throw new Error("no send")}}});
   const enquiry=await lifecycle.prepareSupplierEnquiry("project-a1",{estimateId:"estimate-a1",supplierId:"TEST-SUPPLIER",recipient:"factory@example.test",subject:"TEST supplier enquiry",bodyText:"Please review the selected Project drawing.",documentIds:["document-safe"],createdBy:"staff-1"});
   assert.equal(enquiry.status,"draft");assert.deepEqual(enquiry.documents.map(item=>item.id),["document-safe"]);assert.equal((await source.db.get("SELECT COUNT(*) count FROM supplier_enquiry_drafts WHERE project_id='project-a1'")).count,1);
-  const linked=await lifecycle.linkManufacturerResponse("project-a1",{estimateId:"estimate-a1",supplierEnquiryId:enquiry.id,communicationMessageId:enquiry.communicationMessageId,canonicalDocumentId:"document-safe",createdBy:"staff-1"});
+  const response=await communications.save({id:"supplier-response-a1",provider:"fixture",providerMessageId:"supplier-response-a1",direction:"inbound",folder:"inbox",status:"received",from:["factory@example.test"],to:["sales@example.test"],cc:[],bcc:[],subject:"Re: TEST supplier enquiry",bodyHtml:"",bodyText:"Quotation attached",links:[],attachments:[]});
+  await assert.rejects(()=>lifecycle.linkManufacturerResponse("project-a1",{estimateId:"estimate-a1",supplierEnquiryId:enquiry.id,communicationMessageId:enquiry.communicationMessageId,canonicalDocumentId:"document-safe",createdBy:"staff-1"}),error=>error.code==="manufacturer_response_message_invalid");
+  const linked=await lifecycle.linkManufacturerResponse("project-a1",{estimateId:"estimate-a1",supplierEnquiryId:enquiry.id,communicationMessageId:response.id,canonicalDocumentId:"document-safe",createdBy:"staff-1"});
   assert.equal(linked.status,"ready_for_import");assert.equal(linked.nextAction,"Review with Manufacturer Import");
-  const replay=await lifecycle.linkManufacturerResponse("project-a1",{estimateId:"estimate-a1",supplierEnquiryId:enquiry.id,communicationMessageId:enquiry.communicationMessageId,canonicalDocumentId:"document-safe",createdBy:"staff-1"});assert.equal(replay.idempotentReplay,true);
+  assert.equal((await source.db.get("SELECT COUNT(*) count FROM workflow_events WHERE event_name='supplier.quote_returned'")).count,1);
+  const replay=await lifecycle.linkManufacturerResponse("project-a1",{estimateId:"estimate-a1",supplierEnquiryId:enquiry.id,communicationMessageId:response.id,canonicalDocumentId:"document-safe",createdBy:"staff-1"});assert.equal(replay.idempotentReplay,true);
   await assert.rejects(()=>lifecycle.prepareSupplierEnquiry("project-a2",{estimateId:"estimate-a2",supplierId:"TEST-SUPPLIER",recipient:"factory@example.test",subject:"Wrong Project",bodyText:"No",documentIds:["document-safe"],createdBy:"staff-1"}),error=>error.code==="supplier_enquiry_document_invalid");
 });
 

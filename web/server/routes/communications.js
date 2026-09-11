@@ -1,5 +1,6 @@
 import express from "express";
 import { createCommunicationsService } from "../features/communications/communicationsService.js";
+import { CURRENT_APP_USER } from "../currentUser.js";
 
 export function createCommunicationsRouter({ databasePromise, serviceOptions } = {}) {
   if (!databasePromise) throw new Error("createCommunicationsRouter requires databasePromise.");
@@ -13,7 +14,7 @@ export function createCommunicationsRouter({ databasePromise, serviceOptions } =
   router.get("/messages/:providerMessageId/context", async (req, res) => { try { res.json(await (await service()).relationshipContext(req.params.providerMessageId)); } catch (error) { fail(res, error); } });
   router.get("/messages/:providerMessageId/assignment", async (req, res) => { try { res.json(await (await service()).assignmentOptions(req.params.providerMessageId)); } catch (error) { fail(res, error); } });
   router.post("/messages/:providerMessageId/assignment-review", async (req, res) => { try { res.json(await (await service()).reviewSupplierDocumentAssignment(req.params.providerMessageId, req.body || {})); } catch (error) { fail(res, error); } });
-  router.post("/messages/:providerMessageId/assignment", async (req, res) => { try { res.status(201).json(await (await service()).assignSupplierDocument(req.params.providerMessageId, req.body || {})); } catch (error) { fail(res, error); } });
+  router.post("/messages/:providerMessageId/assignment", async (req, res) => { try { res.status(201).json(await (await service()).assignSupplierDocument(req.params.providerMessageId, { ...(req.body || {}), createdBy:CURRENT_APP_USER.id })); } catch (error) { fail(res, error); } });
   router.post("/documents/:documentId/manufacturer-import-review", async (req, res) => { try { res.json(await (await service()).prepareAssignedDocumentImport(req.params.documentId, req.body?.estimateId)); } catch (error) { fail(res, error); } });
   router.get("/messages/:providerMessageId/enquiry-intake", async (req,res)=>{try{res.json(await(await service()).enquiryIntake(req.params.providerMessageId));}catch(error){fail(res,error);}});
   router.post("/messages/:providerMessageId/enquiry-intake", async (req,res)=>{try{res.status(201).json(await(await service()).createEnquiryFromMessage(req.params.providerMessageId,{...req.body,createdBy:"user-1"}));}catch(error){fail(res,error);}});

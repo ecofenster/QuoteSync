@@ -296,6 +296,9 @@ export function createCommunicationsService(db, options = {}) {
     const referenceClients = reference ? clients.filter((client) => String(client.client_ref).toUpperCase() === reference) : [];
     const selectedClient = referenceClients.length === 1 ? referenceClients[0] : null, clientProjects = selectedClient ? projects.filter((project) => project.client_id === selectedClient.id) : [], projectIds = new Set(clientProjects.map((project) => project.id)), clientEstimates = estimates.filter((estimate) => projectIds.has(estimate.project_id));
     const sender = String(message.from?.[0] || "").toLowerCase(), supplierMatches = suppliers.filter((supplier) => (/zylefenster/.test(sender) && /zyle\s*fenster/i.test(supplier.name)) || sender.includes(String(supplier.name).toLowerCase().replace(/\s+/g, "")));
+    const supplierEnquiries = (await db.all(`SELECT se.id,se.project_id,se.estimate_id,se.supplier_id,se.recipient,se.subject,se.status,se.revision_no,se.created_at,s.supplier_name
+      FROM supplier_enquiry_drafts se LEFT JOIN supplier_commercial_defaults s ON s.supplier_code=se.supplier_id
+      WHERE se.status IN ('draft','approved','sent') ORDER BY se.created_at DESC LIMIT 100`).catch(() => [])).map((item) => ({ id: item.id, projectId: item.project_id, estimateId: item.estimate_id, supplierId: item.supplier_id, supplierName: item.supplier_name || null, recipient: item.recipient, subject: item.subject, status: item.status, revisionNo: Number(item.revision_no || 1), createdAt: item.created_at }));
     const conflicts = [];
     if (reference && referenceClients.length === 0) conflicts.push({ code: "client_reference_unresolved", message: `${reference} does not resolve to an active canonical Client.`, blocking: true });
     if (referenceClients.length > 1) conflicts.push({ code: "client_reference_ambiguous", message: `${reference} resolves to more than one active Client.`, blocking: true });
@@ -303,7 +306,9 @@ export function createCommunicationsService(db, options = {}) {
       const subjectName = String(message.subject || "").split(new RegExp(`${reference}\\s*:\\s*`, "i"))[1]?.trim();
       if (subjectName && subjectName.localeCompare(selectedClient.name, undefined, { sensitivity: "base" }) !== 0) conflicts.push({ code: "client_name_variance", message: `Email reference ${reference} names “${subjectName}”; canonical Client is “${selectedClient.name}”. Review before filing.`, blocking: false });
     }
-    return { providerMessageId, communicationMessageId: message.id, reference, clients, projects, estimates, suppliers, attachments, conflicts, proposed: { clientId: selectedClient?.id || null, projectId: clientProjects.length === 1 ? clientProjects[0].id : null, estimateId: clientEstimates.length === 1 ? clientEstimates[0].id : null, supplierId: supplierMatches.length === 1 ? supplierMatches[0].id : null, attachmentId: attachments.length === 1 ? attachments[0].id : null } };
+    const proposedProjectId = clientProjects.length === 1 ? clientProjects[0].id : null, proposedEstimateId = clientEstimates.length === 1 ? clientEstimates[0].id : null, proposedSupplierId = supplierMatches.length === 1 ? supplierMatches[0].id : null;
+    const relatedSupplierEnquiries = supplierEnquiries.filter((item) => item.projectId === proposedProjectId && item.estimateId === proposedEstimateId && item.supplierId === proposedSupplierId);
+    return { providerMessageId, communicationMessageId: message.id, reference, clients, projects, estimates, suppliers, supplierEnquiries, attachments, conflicts, proposed: { clientId: selectedClient?.id || null, projectId: proposedProjectId, estimateId: proposedEstimateId, supplierId: proposedSupplierId, attachmentId: attachments.length === 1 ? attachments[0].id : null, supplierEnquiryId: relatedSupplierEnquiries.length === 1 ? relatedSupplierEnquiries[0].id : null } };
   }
 
   async function resolveAssignmentSelection(providerMessageId, input = {}) {
@@ -318,9 +323,10 @@ export function createCommunicationsService(db, options = {}) {
         details: { eligibleFileNames: available },
       });
     }
-    const clientId = String(input.clientId || ""), projectId = String(input.projectId || ""), estimateId = String(input.estimateId || ""), supplierCode = String(input.supplierId || "");
+    const clientId = String(input.clientId || ""), projectId = String(input.projectId || ""), estimateId = String(input.estimateId || ""), supplierCode = String(input.supplierId || ""), supplierEnquiryId = String(input.supplierEnquiryId || "") || null;
     if (!optionsView.clients.some((item) => item.id === clientId) || !optionsView.projects.some((item) => item.id === projectId && item.client_id === clientId) || !optionsView.estimates.some((item) => item.id === estimateId && item.project_id === projectId) || !optionsView.suppliers.some((item) => item.id === supplierCode)) throw Object.assign(new Error("Review a canonical Client → Project → Estimate → Supplier filing path."), { status: 422, code: "communication_assignment_path_conflict" });
-    return { optionsView, attachment, clientId, projectId, estimateId, supplierCode };
+    if (supplierEnquiryId && !optionsView.supplierEnquiries.some((item) => item.id === supplierEnquiryId && item.projectId === projectId && item.estimateId === estimateId && item.supplierId === supplierCode)) throw Object.assign(new Error("The selected supplier request does not belong to this Project, Estimate and supplier. Choose the matching request or leave it unlinked."), { status: 422, code: "communication_assignment_supplier_enquiry_conflict" });
+    return { optionsView, attachment, clientId, projectId, estimateId, supplierCode, supplierEnquiryId };
   }
 
   async function reviewSupplierDocumentAssignment(providerMessageId, input = {}) {
@@ -330,18 +336,31 @@ export function createCommunicationsService(db, options = {}) {
   }
 
   async function assignSupplierDocument(providerMessageId, input = {}) {
-    const { optionsView, attachment, clientId, projectId, estimateId, supplierCode } = await resolveAssignmentSelection(providerMessageId, input);
+    const { optionsView, attachment, clientId, projectId, estimateId, supplierCode, supplierEnquiryId } = await resolveAssignmentSelection(providerMessageId, input);
     if (optionsView.conflicts.length && input.conflictsReviewed !== true) throw Object.assign(new Error("Review the reference conflict before filing this document."), { status: 409, code: "communication_assignment_conflict_review_required" });
     const bytes = await gmail.attachment(providerMessageId, attachment.providerAttachmentId), drive = options.drive || createCommercialDriveService(db, options.driveServiceOptions);
     const stored = await drive.storeCommunicationSupplierDocument({ clientId, projectId, estimateId, supplierCode, communicationAttachmentId: attachment.id, providerMessageId, providerAttachmentId: attachment.providerAttachmentId, fileName: attachment.fileName, mediaType: attachment.mediaType, sizeBytes: attachment.sizeBytes, bytes, fileDecision: input.fileDecision });
     if (stored.status !== "stored") throw Object.assign(new Error("The provider folder or document is not available yet; no filing relationship was recorded."), { status: 409, code: stored.status || "communication_assignment_storage_pending", details: stored });
     const message = await repository.findByProviderId("google_workspace", providerMessageId);
+    let manufacturerResponse = null;
     try {
       for (const link of [{ kind: "client", id: clientId }, { kind: "project", id: projectId }, { kind: "estimate", id: estimateId }, { kind: "supplier", id: supplierCode }]) await repository.addLink(message.id, link);
+      if (supplierEnquiryId) {
+        if (message.direction !== "inbound") throw Object.assign(new Error("Only an inbound supplier message can be recorded as a returned quote."), { status: 422, code: "supplier_response_inbound_required" });
+        let response = await db.get("SELECT * FROM manufacturer_response_links WHERE project_id=? AND communication_message_id=? AND canonical_document_id=?", projectId, message.id, stored.documentId);
+        const idempotentReplay = Boolean(response);
+        if (!response) {
+          const id = randomUUID(), at = new Date().toISOString();
+          await db.run("INSERT INTO manufacturer_response_links(id,project_id,estimate_id,supplier_enquiry_id,communication_message_id,canonical_document_id,status,created_by,created_at) VALUES(?,?,?,?,?,?,'ready_for_import',?,?)", id, projectId, estimateId, supplierEnquiryId, message.id, stored.documentId, String(input.createdBy || "user-1"), at);
+          response = await db.get("SELECT * FROM manufacturer_response_links WHERE id=?", id);
+          for (const eventName of ["supplier.response.linked", "supplier.quote_returned"]) await db.run("INSERT INTO workflow_events(id,event_name,evidence_id,occurred_at,links_json,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(event_name,evidence_id) DO NOTHING", randomUUID(), eventName, id, at, JSON.stringify([{ kind: "supplier_enquiry", id: supplierEnquiryId }, { kind: "communication", id: message.id }, { kind: "document", id: stored.documentId }, { kind: "estimate", id: estimateId }]), at);
+        }
+        manufacturerResponse = { id: response.id, supplierEnquiryId, status: "ready_for_import", event: "supplier.quote_returned", nextAction: "Review the saved document with Manufacturer Import", idempotentReplay };
+      }
     } catch (cause) {
-      throw Object.assign(new Error("The provider file was saved, but its QuoteSuite relationships are incomplete. Retry safely to reuse the saved file and finish linking."), { status: 409, code: "communication_assignment_partial_success", cause, details: stored });
+      throw Object.assign(new Error(`The provider file was saved, but ${supplierEnquiryId ? "its supplier-request / Quote Returned evidence" : "its QuoteSuite relationships"} is incomplete. Retry safely to reuse the saved file and finish linking.`), { status: 409, code: "communication_assignment_partial_success", cause, details: stored });
     }
-    return { ...stored, links: (await repository.get(message.id)).links, navigation: { clientId, projectId, estimateId, destination: "supplier-documents", openFilesLabel: "Open Files", importLabel: "Import Manufacturer Estimate" } };
+    return { ...stored, links: (await repository.get(message.id)).links, ...(manufacturerResponse ? { manufacturerResponse } : {}), navigation: { clientId, projectId, estimateId, destination: "supplier-documents", openFilesLabel: "Open Files", importLabel: "Import Manufacturer Estimate" } };
   }
 
   async function prepareAssignedDocumentImport(documentId, estimateId) {

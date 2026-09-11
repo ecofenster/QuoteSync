@@ -994,6 +994,7 @@ export function AssignmentDialog({
     projectId: string;
     estimateId: string;
     supplierId: string;
+    supplierEnquiryId?: string;
     attachmentId: string;
     conflictsReviewed: boolean;
     fileDecision: CommunicationFileDecision;
@@ -1005,6 +1006,7 @@ export function AssignmentDialog({
     [projectId, setProjectId] = useState(options.proposed.projectId || ""),
     [estimateId, setEstimateId] = useState(options.proposed.estimateId || ""),
     [supplierId, setSupplierId] = useState(options.proposed.supplierId || ""),
+    [supplierEnquiryId, setSupplierEnquiryId] = useState(options.proposed.supplierEnquiryId || ""),
     [attachmentId, setAttachmentId] = useState(
       options.proposed.attachmentId || "",
     ),
@@ -1019,6 +1021,7 @@ export function AssignmentDialog({
     estimates = options.estimates.filter(
       (item) => item.project_id === projectId,
     ),
+    supplierEnquiries = options.supplierEnquiries.filter((item) => item.projectId === projectId && item.estimateId === estimateId && item.supplierId === supplierId),
     hasBlockingConflict = options.conflicts.some((item) => item.blocking),
     selectionComplete = Boolean(clientId && projectId && estimateId && supplierId && attachmentId);
   useEffect(() => {
@@ -1096,6 +1099,7 @@ export function AssignmentDialog({
               <br />
               {result.folderPath}
             </p>
+            {result.manufacturerResponse ? <p className="ui-status"><strong>Quote Returned recorded</strong><br />Linked to supplier request revision {options.supplierEnquiries.find(item=>item.id===result.manufacturerResponse?.supplierEnquiryId)?.revisionNo??"current"}. Next: review this saved document with Manufacturer Import.</p> : null}
             <div className="ui-action-row">
               <button
                 type="button"
@@ -1167,6 +1171,7 @@ export function AssignmentDialog({
                     setClientId(event.currentTarget.value);
                     setProjectId("");
                     setEstimateId("");
+                    setSupplierEnquiryId("");
                   }}
                 >
                   <option value="">Choose Client</option>
@@ -1186,6 +1191,7 @@ export function AssignmentDialog({
                   onChange={(event) => {
                     setProjectId(event.currentTarget.value);
                     setEstimateId("");
+                    setSupplierEnquiryId("");
                   }}
                 >
                   <option value="">Choose Project</option>
@@ -1202,7 +1208,7 @@ export function AssignmentDialog({
                   className="ui-input"
                   value={estimateId}
                   disabled={saving || !projectId}
-                  onChange={(event) => setEstimateId(event.currentTarget.value)}
+                  onChange={(event) => { setEstimateId(event.currentTarget.value); setSupplierEnquiryId(""); }}
                 >
                   <option value="">Choose Estimate</option>
                   {estimates.map((item) => (
@@ -1218,7 +1224,7 @@ export function AssignmentDialog({
                   className="ui-input"
                   value={supplierId}
                   disabled={saving}
-                  onChange={(event) => setSupplierId(event.currentTarget.value)}
+                  onChange={(event) => { setSupplierId(event.currentTarget.value); setSupplierEnquiryId(""); }}
                 >
                   <option value="">Choose Supplier</option>
                   {options.suppliers.map((item) => (
@@ -1228,6 +1234,14 @@ export function AssignmentDialog({
                   ))}
                 </select>
               </label>
+              {supplierEnquiries.length ? <label className="email-assignment__wide">
+                Related supplier request
+                <select className="ui-input" value={supplierEnquiryId} disabled={saving} onChange={event=>setSupplierEnquiryId(event.currentTarget.value)}>
+                  <option value="">Not linked to a previous request</option>
+                  {supplierEnquiries.map(item=><option key={item.id} value={item.id}>{item.supplierName||"Supplier"} · revision {item.revisionNo} · {item.subject}</option>)}
+                </select>
+                <small>Choose the request this reply answers. QuoteSuite will record Quote Returned and keep the same working Estimate.</small>
+              </label>:null}
               <label className="email-assignment__wide">
                 Document
                 <select
@@ -1340,6 +1354,7 @@ export function AssignmentDialog({
                     projectId,
                     estimateId,
                     supplierId,
+                    supplierEnquiryId: supplierEnquiryId || undefined,
                     attachmentId,
                     conflictsReviewed,
                     fileDecision,

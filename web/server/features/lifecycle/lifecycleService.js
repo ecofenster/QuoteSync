@@ -154,15 +154,18 @@ export function createLifecycleService(db, options = {}) {
   }
 
   async function linkManufacturerResponse(projectId,input={}){
-    const actor=text(input.createdBy),communicationId=text(input.communicationMessageId),documentId=text(input.canonicalDocumentId)||null,estimateId=text(input.estimateId)||null;
+    const actor=text(input.createdBy),communicationId=text(input.communicationMessageId),documentId=text(input.canonicalDocumentId)||null,estimateId=text(input.estimateId)||null,supplierEnquiryId=text(input.supplierEnquiryId)||null;
     if(!actor||!communicationId)throw problem('Manufacturer response and staff identity are required.');
     const message=await communications.get(communicationId);if(!message)throw problem('Manufacturer response message was not found.',404,'manufacturer_response_not_found');
+    if(message.direction!=='inbound')throw problem('Choose the inbound supplier response message, not the outgoing request.',422,'manufacturer_response_message_invalid');
     if(documentId&&!await db.get('SELECT id FROM canonical_documents WHERE id=? AND project_id=? AND removed_at IS NULL AND trashed=0',documentId,projectId))throw problem('Manufacturer response document must belong to the selected Project.',422,'manufacturer_response_document_invalid');
     if(estimateId&&!await db.get('SELECT id FROM estimates WHERE id=? AND project_id=? AND deleted_at IS NULL',estimateId,projectId))throw problem('Working Estimate must belong to the selected Project.',422,'manufacturer_response_estimate_invalid');
+    if(supplierEnquiryId&&!await db.get('SELECT id FROM supplier_enquiry_drafts WHERE id=? AND project_id=? AND estimate_id IS ?',supplierEnquiryId,projectId,estimateId))throw problem('The selected supplier request does not belong to this Project and working Estimate.',422,'manufacturer_response_supplier_enquiry_invalid');
     const existing=await db.get('SELECT * FROM manufacturer_response_links WHERE project_id=? AND communication_message_id=? AND canonical_document_id IS ?',projectId,communicationId,documentId);if(existing)return{...existing,idempotentReplay:true};
-    const id=randomUUID(),at=stamp();await db.run(`INSERT INTO manufacturer_response_links(id,project_id,estimate_id,supplier_enquiry_id,communication_message_id,canonical_document_id,status,created_by,created_at) VALUES(?,?,?,?,?,?,'ready_for_import',?,?)`,id,projectId,estimateId,text(input.supplierEnquiryId)||null,communicationId,documentId,actor,at);
+    const id=randomUUID(),at=stamp();await db.run(`INSERT INTO manufacturer_response_links(id,project_id,estimate_id,supplier_enquiry_id,communication_message_id,canonical_document_id,status,created_by,created_at) VALUES(?,?,?,?,?,?,'ready_for_import',?,?)`,id,projectId,estimateId,supplierEnquiryId,communicationId,documentId,actor,at);
     await communications.addLink(communicationId,{kind:'project',id:projectId});if(estimateId)await communications.addLink(communicationId,{kind:'estimate',id:estimateId});
     await event('supplier.response.linked',id,[{kind:'project',id:projectId},{kind:'communication',id:communicationId},...(documentId?[{kind:'document',id:documentId}]:[]),...(estimateId?[{kind:'estimate',id:estimateId}]:[])]);
+    await event('supplier.quote_returned',id,[{kind:'project',id:projectId},{kind:'communication',id:communicationId},...(documentId?[{kind:'document',id:documentId}]:[]),...(estimateId?[{kind:'estimate',id:estimateId}]:[]),...(supplierEnquiryId?[{kind:'supplier_enquiry',id:supplierEnquiryId}]:[])]);
     return{id,projectId,estimateId,canonicalDocumentId:documentId,status:'ready_for_import',nextAction:'Review with Manufacturer Import',idempotentReplay:false};
   }
 
