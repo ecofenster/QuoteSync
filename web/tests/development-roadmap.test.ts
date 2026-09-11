@@ -34,11 +34,11 @@ test("status rendering uses accessible text as well as colour", async () => {
 });
 
 test("chronology remains ordered and displays the current checkpoint", () => {
-  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 148 }, (_, index) => index + 1));
+  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 149 }, (_, index) => index + 1));
   assert.equal([...ROADMAP_CHRONOLOGY].reverse().find((entry) => entry.checkpointSha)?.checkpointSha, ROADMAP_CHECKPOINT_SHA);
   assert.equal(ROADMAP_CHRONOLOGY.find((entry) => entry.title === "Browser automation process-lifecycle hardening")?.sequence, 75);
-  assert.equal(ROADMAP_CHRONOLOGY.at(-1)?.title, "Returned supplier quote matching and review handoff");
-  assert.equal(ROADMAP_CHECKPOINT_SHA, "28e92d2");
+  assert.equal(ROADMAP_CHRONOLOGY.at(-1)?.title, "Guided customer Estimate issue and recovery");
+  assert.equal(ROADMAP_CHECKPOINT_SHA, "04d0864");
 });
 
 test("Email intake conflict review and permanent workflow feedback remain explicit unimplemented requirements", () => {
@@ -77,7 +77,8 @@ test("Drive provisioning ownership and the two separate PDF deliverables remain 
   assert.equal(estimateOutput?.parentId, "internal-ecofenster-mvp");
   assert.equal(estimateOutput?.status, "in_progress");
   assert.match(estimateOutput?.summary ?? "", /approved Option C cover grammar.*product showcase and specification overview.*Position pages and Estimate Summary/i);
-  assert.match(estimateOutput?.nextAction ?? "", /standalone approved architectural cover photograph.*browser-review/i);
+  assert.match(estimateOutput?.implementationStatus ?? "", /full-page cover photograph.*tenant branding data/i);
+  assert.match(estimateOutput?.nextAction ?? "", /EF-EST-2026-055 visual checklist.*contaminated decorative section omitted/i);
   assert.notEqual(comparisonPdf?.id, estimateOutput?.id);
 });
 
