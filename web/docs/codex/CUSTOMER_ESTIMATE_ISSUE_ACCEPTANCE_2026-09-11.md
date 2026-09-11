@@ -2,6 +2,8 @@
 
 Implementation checkpoint: `04d0864`
 
+Terms checkpoint: `6f01660`
+
 ## Technically verified
 
 - **Download PDF** shows its own immediate progress and confirms the filename, size and that no Email was sent.
@@ -11,13 +13,15 @@ Implementation checkpoint: `04d0864`
 - A changed second preparation for an already-issued Estimate revision is rejected before any provider call. An exact retry reuses the issued evidence.
 - Disposable normal-route browser verification passed without external delivery. Exact owned Chrome cleanup reported zero processes and zero profiles.
 - The live workspace cover photograph is present as tenant-owned branding data. EF-EST-2026-055 previously passed read-only preview/PDF checks for Ty Clai, corrected product assets, theme-independent headings, omitted contaminated decoration and removed internal wording.
+- Validity, terms and exclusions are reviewed once for the working Estimate. The same wording appears in preview/server PDF and is frozen into issued evidence. Changed wording invalidates an older prepared Email before any provider call.
 
 ## Short user checklist (not yet accepted)
 
 1. Open EF-EST-2026-055 and choose **Review Customer Quotation**.
 2. Confirm Ty Clai, the full-page cover photograph, readable headings, corrected Ecotherm/Europa images and no decorative scenery mock-up.
-3. Choose **Download PDF** and confirm the result says it was downloaded but not issued or Emailed.
-4. In a disposable Estimate, choose **Send to Client** and confirm the Email is clearly prepared but not sent.
-5. Do not send until a separately authorised controlled test-address run. When that run is authorised, confirm success names the recipient and next Follow Up.
+3. Choose **Review terms**, confirm the validity period, terms and exclusions, and verify the same wording appears in the Estimate Summary.
+4. Choose **Download PDF** and confirm the result says it was downloaded but not issued or Emailed; verify the PDF contains the reviewed wording.
+5. In a disposable Estimate, choose **Send to Client** and confirm the Email is clearly prepared but not sent.
+6. Do not send until a separately authorised controlled test-address run. When that run is authorised, confirm success names the recipient and next Follow Up.
 
-Terms, exclusions and validity are the next implementation slice. This checkpoint is not user acceptance and did not send a live Email.
+This checkpoint is not user acceptance and did not send a live Email. Issued supersede/withdraw controls and generic configured drawing coverage remain separate Package 3 gaps.
