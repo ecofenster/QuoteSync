@@ -11,10 +11,13 @@ test("Enquiry and Project UX foundation exposes explicit qualification and Estim
     readFile("src/models/types.ts", "utf8"),
   ]);
   assert.match(enquiries, /New Enquiry/);
-  assert.match(enquiries, /Qualify Enquiry/);
+  assert.match(enquiries, /Connect this Enquiry/);
+  assert.match(enquiries, /Continue to Project/);
   assert.match(enquiries, /existing_client/);
   assert.match(enquiries, /new_client/);
-  assert.match(enquiries, /reviewed Project name/i);
+  assert.match(enquiries, /<span>Project name<\/span>/i);
+  assert.match(enquiries, /Possible existing Clients/);
+  assert.match(enquiries, /Save next action/);
   assert.match(projects, /New Project/);
   assert.match(projects, /One permanent Client may own multiple named Projects/);
   assert.match(app, /createEstimateProjectId/);

@@ -34,10 +34,10 @@ test("status rendering uses accessible text as well as colour", async () => {
 });
 
 test("chronology remains ordered and displays the current checkpoint", () => {
-  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 143 }, (_, index) => index + 1));
+  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 144 }, (_, index) => index + 1));
   assert.equal([...ROADMAP_CHRONOLOGY].reverse().find((entry) => entry.checkpointSha)?.checkpointSha, ROADMAP_CHECKPOINT_SHA);
   assert.equal(ROADMAP_CHRONOLOGY.find((entry) => entry.title === "Browser automation process-lifecycle hardening")?.sequence, 75);
-  assert.equal(ROADMAP_CHRONOLOGY.at(-1)?.title, "Live EF-CL-028 filing-state reconciliation");
+  assert.equal(ROADMAP_CHRONOLOGY.at(-1)?.title, "CRM workday and guided Enquiry foundation");
   assert.equal(ROADMAP_CHECKPOINT_SHA, "dd2e3f26cb75440195c171b06c65db8b9ff494b2");
 });
 
@@ -288,14 +288,15 @@ test("Ecofenster clean provisioning and tenant isolation are separate release ga
   assert.match(isolation?.blockers.join(" ")??"",/Core Client\/Project\/Estimate\/Order\/Communication\/Document tenant ownership/);
 });
 
-test("Operations Dashboard CRM review updates existing programmes without claiming acceptance", () => {
-  const entry=ROADMAP_CHRONOLOGY.find(item=>item.title==="Operations Dashboard and core CRM usability review"),lifecycle=all.find(item=>item.id==="crm-lifecycle"),pipeline=all.find(item=>item.id==="crm-pipeline"),guided=all.find(item=>item.id==="guided-ux-staged-review-2");
-  assert.equal(entry?.resultingStatus,"in_progress");
-  assert.match(entry?.objective??"",/Dashboard.*Enquiries.*Client\/Project context.*Email.*Follow Ups.*pipeline.*history.*search.*ownership.*handover/i);
-  assert.match(pipeline?.implementationStatus??"",/browser-local follow-up\/outcome data.*synthetic stage labels/i);
-  assert.match(pipeline?.userAcceptanceStatus??"",/Not accepted/);
-  assert.match(lifecycle?.nextAction??"",/likely matches.*owner\/team assignment.*linked follow-up/i);
-  assert.equal(guided?.status,"in_progress");assert.match(guided?.userAcceptanceStatus??"",/Not accepted/);
+test("Operations Dashboard review and implementation pass retain honest acceptance status", () => {
+  const review=ROADMAP_CHRONOLOGY.find(item=>item.title==="Operations Dashboard and core CRM usability review"),implementation=ROADMAP_CHRONOLOGY.find(item=>item.title==="CRM workday and guided Enquiry foundation"),lifecycle=all.find(item=>item.id==="crm-lifecycle"),pipeline=all.find(item=>item.id==="crm-pipeline"),guided=all.find(item=>item.id==="guided-ux-staged-review-2");
+  assert.equal(review?.resultingStatus,"in_progress");
+  assert.match(review?.objective??"",/Dashboard.*Enquiries.*Client\/Project context.*Email.*Follow Ups.*pipeline.*history.*search.*ownership.*handover/i);
+  assert.match(implementation?.validation??"",/canonical Dashboard counts.*bounded search.*exact Enquiry\/follow-up navigation/i);
+  assert.match(pipeline?.implementationStatus??"",/bounded canonical API projection.*truthful Estimate\/Order stage counts/i);
+  assert.match(pipeline?.userAcceptanceStatus??"",/not user-accepted/i);
+  assert.match(lifecycle?.nextAction??"",/User-accept.*authenticated user\/team authority/i);
+  assert.equal(guided?.status,"in_progress");assert.match(guided?.userAcceptanceStatus??"",/not user-accepted/i);
 });
 
 

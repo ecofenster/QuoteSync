@@ -26,6 +26,13 @@ export type EnquiryRecord = {
   qualifiedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  ownerUserId: string;
+  ownerName: string;
+  workStage: string;
+  waitingFor: "none" | "staff" | "customer" | "supplier";
+  nextAction: string;
+  nextActionDueAt: string | null;
+  lastContactAt: string | null;
 };
 
 export type ProjectRecord = {
@@ -45,6 +52,7 @@ export type ProjectRecord = {
 };
 
 const json = (path: string, body: unknown) => apiFetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+const put = (path: string, body: unknown) => apiFetch(path, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
 export const commercialIdentityApi = {
   listEnquiries: () => apiFetch("/api/enquiries") as Promise<EnquiryRecord[]>,
@@ -53,4 +61,5 @@ export const commercialIdentityApi = {
   listProjects: (clientId: string) => apiFetch(`/api/projects?client_id=${encodeURIComponent(clientId)}`) as Promise<ProjectRecord[]>,
   createProject: (input: { id?: string; clientId: string; name: string; contextYear: number; siteAddress?: string; siteAddressJson?: Record<string, string>; postcode?: string }) => json("/api/projects", input) as Promise<ProjectRecord>,
   provisionProjectDrive: (projectId: string) => json(`/api/projects/${encodeURIComponent(projectId)}/provision-drive`, {}) as Promise<DriveProvisioningOutcome>,
+  updateWorkState: (recordKind: "enquiry" | "client" | "project" | "estimate" | "order", recordId: string, input: { ownerName?: string; stage?: string; waitingFor?: "none" | "staff" | "customer" | "supplier"; nextAction?: string; dueAt?: string | null; lastContactAt?: string | null }) => put(`/api/crm/work-state/${recordKind}/${encodeURIComponent(recordId)}`, input),
 };

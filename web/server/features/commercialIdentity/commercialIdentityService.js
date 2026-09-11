@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { allocateCanonicalReference } from "./referenceAllocator.js";
+import { CURRENT_APP_USER } from "../../currentUser.js";
 
 const timestamp = (now) => now().toISOString();
 const clean = (value) => String(value || "").trim();
@@ -33,8 +34,15 @@ function mapEnquiry(row) {
     qualificationMode: row.qualification_mode, convertedClientId: row.converted_client_id, convertedProjectId: row.converted_project_id,
     driveTransitionStatus: row.drive_transition_status, qualificationEvidence: JSON.parse(row.conversion_evidence_json || "{}"),
     qualifiedAt: row.qualified_at, createdAt: row.created_at, updatedAt: row.updated_at,
+    ownerUserId: row.owner_user_id || CURRENT_APP_USER.id, ownerName: row.owner_name || CURRENT_APP_USER.name,
+    workStage: row.work_stage || (row.status === "new" ? "new_enquiry" : row.status), waitingFor: row.waiting_for || "none",
+    nextAction: row.next_action || (row.status === "new" ? "Review and qualify enquiry" : ""), nextActionDueAt: row.work_due_at || null,
+    lastContactAt: row.last_contact_at || null,
   };
 }
+
+const enquirySelect = `SELECT e.*,w.owner_user_id,w.owner_name,w.stage work_stage,w.waiting_for,w.next_action,w.due_at work_due_at,w.last_contact_at
+  FROM enquiries e LEFT JOIN crm_record_work_states w ON w.record_kind='enquiry' AND w.record_id=e.id`;
 
 function mapProject(row) {
   if (!row) return null;
@@ -79,7 +87,9 @@ export function createCommercialIdentityService(db, { now = () => new Date(), id
       const enquiryRef = await allocateCanonicalReference(db, { kind: "enquiry", entityId: enquiryId, now: createdAt });
       await db.run(`INSERT INTO enquiries(id,enquiry_ref,status,source,lead_source,display_name,company_name,email,telephone,project_name,site_address,site_address_json,notes,drive_transition_status,conversion_evidence_json,created_at,updated_at)
         VALUES(?,?,'new',?,?,?,?,?,?,?,?,?,?,'pending','{}',?,?)`, enquiryId, enquiryRef, clean(input.source), clean(input.leadSource), displayName, clean(input.companyName), clean(input.email), clean(input.telephone), clean(input.projectName), clean(input.siteAddress), json(input.siteAddressJson), clean(input.notes), createdAt, createdAt);
-      return mapEnquiry(await db.get("SELECT * FROM enquiries WHERE id=?", enquiryId));
+      await db.run(`INSERT INTO crm_record_work_states(record_kind,record_id,owner_user_id,owner_name,stage,waiting_for,next_action,due_at,last_contact_at,created_at,updated_at)
+        VALUES('enquiry',?,?,?,?,'none',?,?,NULL,?,?)`, enquiryId, clean(input.ownerUserId) || CURRENT_APP_USER.id, clean(input.ownerName) || CURRENT_APP_USER.name, "new_enquiry", clean(input.nextAction) || "Review and qualify enquiry", clean(input.nextActionDueAt) || createdAt, createdAt, createdAt);
+      return mapEnquiry(await db.get(`${enquirySelect} WHERE e.id=?`, enquiryId));
     });
     if (driveTransitions?.provisionEnquiry) driveTransitions.provisionEnquiry(enquiryId).then(async (drive) => {
       await db.run("UPDATE enquiries SET drive_transition_status=?,updated_at=? WHERE id=?", drive?.status === "provisioned" || drive?.status === "linked" ? "linked" : "pending", timestamp(now), enquiryId);
@@ -88,7 +98,7 @@ export function createCommercialIdentityService(db, { now = () => new Date(), id
   }
 
   async function listEnquiries({ includeConverted = true } = {}) {
-    const rows = await db.all(`SELECT * FROM enquiries WHERE deleted_at IS NULL ${includeConverted ? "" : "AND status NOT IN ('qualified','converted')"} ORDER BY created_at DESC`);
+    const rows = await db.all(`${enquirySelect} WHERE e.deleted_at IS NULL ${includeConverted ? "" : "AND e.status NOT IN ('qualified','converted')"} ORDER BY e.created_at DESC`);
     return rows.map(mapEnquiry);
   }
 
@@ -148,7 +158,12 @@ export function createCommercialIdentityService(db, { now = () => new Date(), id
         VALUES(?,?,?,?,'active',?,?,?,?,?,?,?, ?,?)`, projectId, client.id, enquiry.id, projectName, Number(input.project?.contextYear) || now().getUTCFullYear(), clean(input.project?.siteAddress || enquiry.site_address), json(input.project?.siteAddressJson || parseJson(enquiry.site_address_json)), clean(input.project?.postcode), clean(input.project?.what3words), Number.isFinite(Number(input.project?.latitude)) ? Number(input.project.latitude) : null, Number.isFinite(Number(input.project?.longitude)) ? Number(input.project.longitude) : null, qualifiedAt, qualifiedAt);
       const evidence = { enquiryRef: enquiry.enquiry_ref, qualificationMode: mode, clientId: client.id, clientRef: client.client_ref, projectId, qualifiedAt };
       await db.run(`UPDATE enquiries SET status='qualified',qualification_mode=?,converted_client_id=?,converted_project_id=?,conversion_evidence_json=?,qualified_at=?,updated_at=? WHERE id=?`, mode, client.id, projectId, JSON.stringify(evidence), qualifiedAt, qualifiedAt, enquiry.id);
-      return { enquiry: mapEnquiry(await db.get("SELECT * FROM enquiries WHERE id=?", enquiry.id)), client: { id: client.id, clientRef: client.client_ref, name: client.name }, project: mapProject(await db.get("SELECT p.*,0 estimate_count,0 order_count FROM projects p WHERE id=?", projectId)) };
+      await db.run(`UPDATE crm_record_work_states SET stage='qualified',waiting_for='none',next_action='Prepare Estimate',due_at=NULL,updated_at=? WHERE record_kind='enquiry' AND record_id=?`, qualifiedAt, enquiry.id);
+      await db.run(`INSERT INTO crm_record_work_states(record_kind,record_id,owner_user_id,owner_name,stage,waiting_for,next_action,due_at,last_contact_at,created_at,updated_at)
+        SELECT 'project',?,owner_user_id,owner_name,'qualified','none','Prepare Estimate',NULL,last_contact_at,?,?
+        FROM crm_record_work_states WHERE record_kind='enquiry' AND record_id=?
+        ON CONFLICT(record_kind,record_id) DO NOTHING`, projectId, qualifiedAt, qualifiedAt, enquiry.id);
+      return { enquiry: mapEnquiry(await db.get(`${enquirySelect} WHERE e.id=?`, enquiry.id)), client: { id: client.id, clientRef: client.client_ref, name: client.name }, project: mapProject(await db.get("SELECT p.*,0 estimate_count,0 order_count FROM projects p WHERE id=?", projectId)) };
     });
     const driveProvisioning = await provisionProjectOutcome(result.project.id);
     const attachmentStorage = driveProvisioning.status === "provisioned" && driveTransitions?.storeReviewedEnquiryAttachments
@@ -164,7 +179,7 @@ export function createCommercialIdentityService(db, { now = () => new Date(), id
     await db.run("UPDATE enquiries SET drive_transition_status=?,updated_at=? WHERE id=?", driveTransitionStatus, timestamp(now), result.enquiry.id);
     return {
       ...result,
-      enquiry: mapEnquiry(await db.get("SELECT * FROM enquiries WHERE id=?", result.enquiry.id)),
+      enquiry: mapEnquiry(await db.get(`${enquirySelect} WHERE e.id=?`, result.enquiry.id)),
       driveProvisioning,
       attachmentStorage,
     };

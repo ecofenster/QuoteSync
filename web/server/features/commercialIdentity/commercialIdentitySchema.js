@@ -67,6 +67,20 @@ export async function initializeCommercialIdentitySchema(db) {
       FOREIGN KEY(client_id) REFERENCES clients(id) ON DELETE RESTRICT,
       FOREIGN KEY(source_enquiry_id) REFERENCES enquiries(id) ON DELETE SET NULL
     );
+    CREATE TABLE IF NOT EXISTS crm_record_work_states (
+      record_kind TEXT NOT NULL CHECK(record_kind IN ('enquiry','client','project','estimate','order')),
+      record_id TEXT NOT NULL,
+      owner_user_id TEXT NOT NULL DEFAULT 'user-1',
+      owner_name TEXT NOT NULL DEFAULT 'User',
+      stage TEXT NOT NULL DEFAULT '',
+      waiting_for TEXT NOT NULL DEFAULT 'none' CHECK(waiting_for IN ('none','staff','customer','supplier')),
+      next_action TEXT NOT NULL DEFAULT '',
+      due_at TEXT,
+      last_contact_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY(record_kind, record_id)
+    );
     CREATE TABLE IF NOT EXISTS orders (
       id TEXT PRIMARY KEY,
       order_ref TEXT NOT NULL UNIQUE,
@@ -210,6 +224,8 @@ export async function initializeCommercialIdentitySchema(db) {
   await db.exec(`
     CREATE INDEX IF NOT EXISTS idx_enquiries_status ON enquiries(status, updated_at DESC);
     CREATE INDEX IF NOT EXISTS idx_projects_client ON projects(client_id, context_year, created_at);
+    CREATE INDEX IF NOT EXISTS idx_crm_work_due ON crm_record_work_states(waiting_for, due_at, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_crm_work_owner ON crm_record_work_states(owner_user_id, updated_at DESC);
     CREATE INDEX IF NOT EXISTS idx_estimates_project ON estimates(project_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_orders_project ON orders(project_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_canonical_documents_client ON canonical_documents(client_id, provider_modified_at DESC);
@@ -220,6 +236,15 @@ export async function initializeCommercialIdentitySchema(db) {
       ON clients(UPPER(TRIM(client_ref)))
       WHERE deleted_at IS NULL AND reference_namespace='live' AND client_ref GLOB 'EF-CL-[0-9][0-9][0-9]';
   `);
+
+  await db.run(`INSERT OR IGNORE INTO crm_record_work_states(
+      record_kind,record_id,owner_user_id,owner_name,stage,waiting_for,next_action,due_at,last_contact_at,created_at,updated_at
+    )
+    SELECT 'enquiry',id,'user-1','User',
+      CASE status WHEN 'new' THEN 'new_enquiry' WHEN 'qualified' THEN 'qualified' ELSE status END,
+      'none',CASE status WHEN 'new' THEN 'Review and qualify enquiry' ELSE '' END,
+      CASE status WHEN 'new' THEN updated_at ELSE NULL END,NULL,created_at,updated_at
+    FROM enquiries WHERE deleted_at IS NULL`);
 
   const timestamp = new Date().toISOString();
   const protectionSeeded = await db.get("SELECT 1 found FROM commercial_identity_bootstrap_markers WHERE marker='historical_protected_client_ids_seeded'");

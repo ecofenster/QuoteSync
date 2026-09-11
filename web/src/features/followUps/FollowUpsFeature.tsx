@@ -229,6 +229,18 @@ export default function FollowUpsFeature({
   }, []);
 
   useEffect(() => {
+    const open = (event: Event) => {
+      const detail = (event as CustomEvent<{ id?: string; dueAt?: string | null }>).detail || {};
+      const id = String(detail.id || "").trim();
+      if (!id) return;
+      setSelectedFollowUpId(id);
+      if (detail.dueAt) setSelectedDateISO(String(detail.dueAt).slice(0, 10));
+    };
+    window.addEventListener("quotesuite:open-followup", open);
+    return () => window.removeEventListener("quotesuite:open-followup", open);
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function loadData() {

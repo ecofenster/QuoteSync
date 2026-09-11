@@ -101,7 +101,7 @@ import {
   makeBlankEstimateDefaults,
 } from "./features/estimateDefaults/defaultEstimateDefaults";
 import FollowUpsFeature from "./features/followUps/FollowUpsFeature";
-import MainDashboard from "./dashboard/main/MainDashboard";
+import MainDashboard, { type CrmRecordTarget } from "./dashboard/main/MainDashboard";
 import Toggle from "./components/Toggle";
 import { ControlToolbar, ControlToolbarGroup } from "./components/ControlToolbar";
 import GoogleMapPanel, { type GoogleMapMarkerItem } from "./components/GoogleMapPanel";
@@ -2201,6 +2201,33 @@ function openEstimateDefaults(clientId: Models.ClientId, estimateId: Models.Esti
   setSelectedEstimateId(estimateId);
   setView("estimate_workspace");
   window.history.replaceState(null, "", `#/estimate/${encodeURIComponent(clientId)}/${encodeURIComponent(estimateId)}`);
+}
+
+function openCrmRecord(target: CrmRecordTarget) {
+  if (target.kind === "followup") {
+    selectMenu("follow_ups");
+    window.setTimeout(() => window.dispatchEvent(new CustomEvent("quotesuite:open-followup", { detail: target })), 0);
+    return;
+  }
+  const estimateId = target.estimateId || (target.kind === "estimate" ? target.id : null);
+  if (estimateId && target.clientId) {
+    openEstimateDefaults(target.clientId as Models.ClientId, estimateId as Models.EstimateId);
+    return;
+  }
+  if (target.kind === "enquiry") {
+    selectMenu("enquiries");
+    window.setTimeout(() => window.dispatchEvent(new CustomEvent("quotesuite:open-enquiry", { detail: target })), 0);
+    return;
+  }
+  if ((target.kind === "client" || target.kind === "project") && target.clientId) {
+    setTopShellPage("app");
+    setActiveTopShellNavKey("home");
+    setMenu("client_database");
+    setEstimatePickerClientId(target.clientId as Models.ClientId);
+    setView("estimate_picker");
+    return;
+  }
+  selectMenu(target.kind === "order" ? "orders" : target.kind === "communication" ? "email" : "client_database");
 }
 
   
@@ -4550,6 +4577,7 @@ return (
                 activeUserName="User"
                 onOpenMenu={(targetMenu) => selectMenu(targetMenu as Models.MenuKey)}
                 onOpenEstimate={(clientId, estimateId) => openEstimateDefaults(clientId, estimateId)}
+                onOpenRecord={openCrmRecord}
               />
             )}
 

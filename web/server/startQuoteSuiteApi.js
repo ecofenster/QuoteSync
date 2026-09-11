@@ -24,6 +24,7 @@ import { createManufacturerDocumentsRouter } from './routes/manufacturerDocument
 import { createClientPortalRouter } from './routes/clientPortal.js';
 import { createEstimateProcurementActionsRouter } from './routes/estimateProcurementActions.js';
 import { createLifecycleRouter } from './routes/lifecycle.js';
+import { createCrmDashboardRouter } from './routes/crmDashboard.js';
 import { fetchCentralExchangeRate } from './features/projectCalculatorLab/exchangeRateProvider.js';
 import { dbPromise } from './db.js';
 import { startApiServer } from './apiServerStartup.js';
@@ -47,6 +48,7 @@ app.use('/api/projects', projectsRoute);
 app.use('/api/client-notes', clientNotesRoute);
 app.use('/api/estimate-notes', estimateNotesRoute);
 app.use('/api/followups', followupsRoute);
+app.use('/api/crm', createCrmDashboardRouter({ databasePromise: dbPromise }));
 app.use('/api/notes', notesRoute);
 app.use('/api/settings', settingsRoute);
 app.use('/api/integrations', integrationsRoute);
