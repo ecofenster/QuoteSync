@@ -81,7 +81,7 @@ function EstimateCover({ projection }: { projection: CustomerQuotationProjection
       <div className="customer-quotation-cover__title"><h1>{projection.documentTitle}</h1><p>{projection.documentSubtitle}</p></div>
       <dl className="customer-quotation-cover__details"><div><dt>Prepared for</dt><dd>{projection.clientName}</dd></div><div><dt>Client reference</dt><dd>{projection.clientReference || "—"}</dd></div><div><dt>Project</dt><dd>{projection.projectName || projection.projectAddress}</dd></div><div><dt>Estimate reference</dt><dd>{projection.estimateReference}</dd></div><div><dt>Issue date</dt><dd>{new Date(projection.previewDate).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</dd></div></dl>
       <p className="customer-quotation-cover__basis">Prepared from the information currently available</p>
-      <img className="customer-quotation-cover__detail" src={projection.architecturalDetailUrl} alt="Architectural window section detail" />
+      {projection.architecturalDetailUrl ? <img className="customer-quotation-cover__detail" src={projection.architecturalDetailUrl} alt="Architectural window section detail" /> : null}
       <p className="customer-quotation-cover__strapline">PEOPLE<br />SPACES<br />A BRIGHTER TOMORROW</p>
     </div>
     {!projection.coverPhotoUrl ? <p className="customer-quotation-cover__asset-note no-print">Approved raw architectural cover photograph required. The document structure is ready; no substitute image has been invented.</p> : null}
@@ -89,7 +89,7 @@ function EstimateCover({ projection }: { projection: CustomerQuotationProjection
 }
 
 function ProductsInEstimate({ projection, page, total }: { projection: CustomerQuotationProjection; page: number; total: number }) {
-  return <section className="customer-quotation-page customer-quotation-page--showcase"><PageHeader projection={projection} /><main><header><span className="customer-quotation-page__kicker">Your selected systems</span><h2>Products in Your Estimate</h2><p>Only product systems included in this Estimate are shown.</p></header><div className="customer-quotation-showcases">{projection.productShowcases.map((showcase) => <article key={showcase.id}><img src={showcase.imageUrl} alt={`${showcase.name} product section`} /><div><h3>{showcase.name}</h3><p>Included for Position{showcase.positionReferences.length === 1 ? "" : "s"} {showcase.positionReferences.join(", ")}.</p><small>{showcase.sourceLabel}</small></div></article>)}</div></main><PageFooter projection={projection} page={page} total={total} /></section>;
+  return <section className="customer-quotation-page customer-quotation-page--showcase"><PageHeader projection={projection} /><main><header><span className="customer-quotation-page__kicker">Your selected systems</span><h2>Products in Your Estimate</h2><p>Only product systems included in this Estimate are shown.</p></header><div className="customer-quotation-showcases">{projection.productShowcases.map((showcase) => <article key={showcase.id}><img src={showcase.imageUrl} alt={`${showcase.name} product section`} /><div><h3>{showcase.name}</h3><p>Included for Position{showcase.positionReferences.length === 1 ? "" : "s"} {showcase.positionReferences.join(", ")}.</p></div></article>)}</div></main><PageFooter projection={projection} page={page} total={total} /></section>;
 }
 
 function SpecificationOverview({ projection, page, total }: { projection: CustomerQuotationProjection; page: number; total: number }) {

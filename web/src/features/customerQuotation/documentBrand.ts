@@ -20,8 +20,10 @@ export const ECOFENSTER_DEVELOPMENT_DOCUMENT_BRAND: CustomerDocumentBrand = Obje
   tradingName: "Ecofenster",
   logoLightUrl: ecofensterLogoDark,
   logoDarkUrl: ecofensterLogoLight,
-  primaryColour: "var(--qs-theme-primary)",
-  accentColour: "var(--qs-theme-secondary)",
+  // Customer documents own a fixed print palette and never inherit the
+  // operator's current application appearance.
+  primaryColour: "#2F6F2F",
+  accentColour: "#77B84A",
   address: "",
   telephone: "",
   email: "",

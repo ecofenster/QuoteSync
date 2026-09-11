@@ -95,7 +95,7 @@ export function sanitizeEmailHtml(input: string, options: { allowRemoteImages?: 
   });
   const remoteImageSources = options.allowRemoteImages ? " https: http:" : "";
   const policy = `default-src 'none'; img-src 'self' data:${remoteImageSources}; style-src 'unsafe-inline'; font-src data:; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; connect-src 'none'; media-src 'none'`;
-  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${policy}"><style>html{color-scheme:light}body{margin:0;padding:16px;background:#fff;color:#202124;font:14px/1.5 Arial,sans-serif;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%;border-collapse:collapse}pre{white-space:pre-wrap}blockquote{margin-left:12px;padding-left:12px;border-left:3px solid #d0d5dd}a{color:#1769aa}</style></head><body>${output}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${policy}"><style>html{color-scheme:light}body{margin:0;padding:16px;background:#fff;color:#202124;font:14px/1.5 Arial,sans-serif;overflow-wrap:anywhere}img{max-width:100%;height:auto}img:not([src]){display:none}table{max-width:100%;border-collapse:collapse}pre{white-space:pre-wrap}blockquote{margin-left:12px;padding-left:12px;border-left:3px solid #d0d5dd}a{color:#1769aa}</style></head><body>${output}</body></html>`;
 }
 
 export function resolveContextMenuAction(action: MailContextAction, labelId?: string): MailContextResolution | null {

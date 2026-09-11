@@ -9,7 +9,6 @@ pdfMake.addVirtualFileSystem(pdfFonts);
 
 const WEB_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const KNOWN_DOCUMENT_ASSETS = new Map([
-  ["4da9b264-6a74-4357-956b-9f1763966a4f.png", path.join(WEB_ROOT, "docs", "QuoteSuite - PDF Print Out", "New", "4da9b264-6a74-4357-956b-9f1763966a4f.png")],
   ["f60e06e3-7b52-45e0-9fad-3a190c0704bb.png", path.join(WEB_ROOT, "docs", "QuoteSuite - PDF Print Out", "New", "f60e06e3-7b52-45e0-9fad-3a190c0704bb.png")],
   ["PHOTO-2020-08-29-07-54-57.jpg", path.join(WEB_ROOT, "docs", "QuoteSuite - PDF Print Out", "New", "PHOTO-2020-08-29-07-54-57.jpg")],
 ]);
@@ -130,7 +129,7 @@ function documentDefinition({ kind, projection, context, assets }) {
 
   if (projection.productShowcases?.length) {
     content.push(pageHeader("Products in your Estimate", reference, brand));
-    for (const showcase of projection.productShowcases) content.push({ columns: [assets.showcases.get(clean(showcase.id)) ? { image: assets.showcases.get(clean(showcase.id)), width: 205, fit: [205, 150] } : { text: "Product image unavailable", width: 205, color: "#68736D" }, { width: "*", stack: [{ text: clean(showcase.name), style: "sectionTitle" }, { text: `Included for Position${showcase.positionReferences.length === 1 ? "" : "s"} ${showcase.positionReferences.join(", ")}`, style: "body" }, { text: clean(showcase.sourceLabel), style: "caption", margin: [0, 7, 0, 0] }] }], columnGap: 18, margin: [0, 0, 0, 20] });
+    for (const showcase of projection.productShowcases) content.push({ columns: [assets.showcases.get(clean(showcase.id)) ? { image: assets.showcases.get(clean(showcase.id)), width: 205, fit: [205, 150] } : { text: "Product image unavailable", width: 205, color: "#68736D" }, { width: "*", stack: [{ text: clean(showcase.name), style: "sectionTitle" }, { text: `Included for Position${showcase.positionReferences.length === 1 ? "" : "s"} ${showcase.positionReferences.join(", ")}`, style: "body" }] }], columnGap: 18, margin: [0, 0, 0, 20] });
     content.push({ text: "", pageBreak: "after" });
   }
   content.push(pageHeader("Your specification at a glance", reference, brand));

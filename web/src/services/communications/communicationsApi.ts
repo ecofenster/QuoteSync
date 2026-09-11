@@ -11,6 +11,14 @@ export type MailboxCapability = { id:"archive"|"trash"|"read_state"|"star"|"move
 export type MailboxMetadata = { provider:"google_workspace"|"microsoft_365";labels:MailboxLabelView[];capabilities:MailboxCapability[] };
 export type CommunicationContextSuggestion = { kind:"enquiry"|"client"|"project"|"estimate"|"order"|"supplier"|"supplier_quotation";id:string;label:string;evidence:string;autoLinkAllowed:false };
 export type CommunicationContextResult = { links:CommunicationLinkView[];suggestions:CommunicationContextSuggestion[] };
+export type CommunicationAssignmentOptions = {
+  providerMessageId:string;communicationMessageId:string;reference:string|null;
+  clients:Array<{id:string;client_ref:string;name:string}>;projects:Array<{id:string;client_id:string;name:string;context_year:number}>;estimates:Array<{id:string;project_id:string;estimate_ref:string;created_at:string}>;suppliers:Array<{id:string;name:string}>;
+  attachments:Array<{id:string;providerAttachmentId:string;fileName:string;mediaType:string;sizeBytes:number}>;
+  conflicts:Array<{code:string;message:string;blocking:boolean}>;
+  proposed:{clientId:string|null;projectId:string|null;estimateId:string|null;supplierId:string|null;attachmentId:string|null};
+};
+export type CommunicationAssignmentResult = {status:"stored";duplicate:boolean;documentId:string;folderPath:string;webViewLink:string|null;links:CommunicationLinkView[];navigation:{clientId:string;projectId:string;estimateId:string;destination:"supplier-documents";openFilesLabel:string;importLabel:string}};
 export type CommunicationChangeState = { mode:"push"|"bounded_reconciliation";pushConfigured:boolean;projectionVersion:number;watchStatus:string;watchExpirationAt:string|null;lastNotificationAt:string|null;lastReconciledAt:string|null };
 export type GoogleWorkspaceCapability = { available:boolean;missingScopes:string[];rootConfigured?:boolean };
 export type GoogleWorkspaceState = "not_configured"|"configured_encryption_unavailable"|"configured_disconnected"|"connected"|"reconnect_required";
@@ -27,6 +35,8 @@ export const communicationsApi = {
   read:(id:string)=>apiFetch(`/api/communications/messages/${encodeURIComponent(id)}`) as Promise<CommunicationMessageView>,
   thread:(id:string)=>apiFetch(`/api/communications/threads/${encodeURIComponent(id)}`) as Promise<CommunicationMessageView>,
   context:(id:string)=>apiFetch(`/api/communications/messages/${encodeURIComponent(id)}/context`) as Promise<CommunicationContextResult>,
+  assignmentOptions:(id:string)=>apiFetch(`/api/communications/messages/${encodeURIComponent(id)}/assignment`) as Promise<CommunicationAssignmentOptions>,
+  assignDocument:(id:string,input:unknown)=>apiFetch(`/api/communications/messages/${encodeURIComponent(id)}/assignment`,{method:"POST",headers:json,body:JSON.stringify(input)}) as Promise<CommunicationAssignmentResult>,
   link:(id:string,input:Pick<CommunicationContextSuggestion,"kind"|"id">)=>apiFetch(`/api/communications/messages/${encodeURIComponent(id)}/links`,{method:"POST",headers:json,body:JSON.stringify(input)}) as Promise<CommunicationContextResult>,
   unlink:(id:string,input:CommunicationLinkView)=>apiFetch(`/api/communications/messages/${encodeURIComponent(id)}/links`,{method:"DELETE",headers:json,body:JSON.stringify(input)}) as Promise<CommunicationContextResult>,
   changeState:()=>apiFetch("/api/communications/change-state") as Promise<CommunicationChangeState>,

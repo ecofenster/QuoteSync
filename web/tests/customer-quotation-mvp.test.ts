@@ -12,7 +12,7 @@ import { manufacturerVisualOrientation, manufacturerVisualOrientationLabel } fro
 import { CUSTOMER_SAFE_MANUFACTURER_SPECIFICATION_POLICY, projectCustomerSafeManufacturerSpecification } from "../src/features/customerQuotation/customerSafeManufacturerSpecification";
 
 const configuredContract = { schemaVersion: 1, source: "b92_configurator", product: { systemCode: "B92" } };
-const estimate = { id: "estimate-1", estimateRef: "EF-EST-MVP-001", projectAddress: "1 Test Street", positions: [
+const estimate = { id: "estimate-1", estimateRef: "EF-EST-MVP-001", projectName: "Canonical Project", projectAddress: "1 Test Street", positions: [
   { id: "position-1", positionRef: "W01", roomName: "Kitchen", configuredContract },
 ] } as any;
 const client = { clientName: "Disposable MVP Customer", clientRef: "TEST-CL-ESTIMATE", projectName: "Estimate Test", projectAddress: "1 Test Street" } as any;
@@ -56,12 +56,18 @@ test("customer Estimate front matter is source-backed and includes only systems 
   assert.equal(quote.documentSubtitle, "Windows & Doors");
   assert.equal(quote.clientReference, "TEST-CL-ESTIMATE");
   assert.deepEqual(quote.productShowcases.map((item) => item.name), ["Europa 92 Alu"]);
+  assert.match(quote.productShowcases[0].imageUrl, /f60e06e3/);
   assert.deepEqual(quote.productShowcases[0].positionReferences, ["W01"]);
+  assert.equal(quote.projectName, "Canonical Project");
   assert.equal(quote.specificationOverview.some((group) => group.positionReferences.includes("W01")), true);
   assert.equal(quote.coverPhotoUrl, null, "an approved raw architectural photo must be supplied rather than reconstructed from the mock-up");
   const configured = buildCustomerQuotationProjection({ scenario: scenario(), client, estimate, coverPhotoUrl: "data:image/jpeg;base64,b3JpZ2luYWw=" });
   assert.equal(configured.coverPhotoUrl, "data:image/jpeg;base64,b3JpZ2luYWw=", "the reviewed original is carried unchanged into the immutable projection");
-  assert.match(quote.architecturalDetailUrl, /4da9b264/);
+  assert.equal(quote.architecturalDetailUrl, null, "the contaminated flattened scenery asset is omitted pending a clean approved section");
+  assert.doesNotMatch(JSON.stringify(quote), /Genuine supplied|product asset/i);
+  const ecoScenario=scenario();ecoScenario.products[0].sourceSnapshot.manufacturerEvidence.product="Ecotherm window";
+  const ecoQuote=buildCustomerQuotationProjection({scenario:ecoScenario,client,estimate});
+  assert.match(ecoQuote.productShowcases.find((item)=>item.name==="Ecotherm")?.imageUrl||"",/PHOTO-2020-08-29-07-54-57/);
 });
 
 test("production renderer accepts only bounded original JPEG or PNG data URLs", async () => {

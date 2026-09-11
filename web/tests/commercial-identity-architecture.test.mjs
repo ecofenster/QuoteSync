@@ -230,6 +230,23 @@ test("reviewed Gmail attachments file once into the qualified Project Drawings (
   assert.equal(stored.document_type,"client_drawing");assert.equal(stored.enquiry_id,enquiry.id);assert.equal(stored.project_id,qualified.project.id);assert.equal(stored.storage_status,"stored");assert.match(stored.folder_path,/Drawings \(Client\)$/);
 });
 
+test("reviewed existing-Client email filing creates Estimate → Supplier → named supplier folders and reuses the genuine document", async (t) => {
+  const db=await fixture(t,[{id:"client",name:"Disposable Stuart",ref:"EF-CL-928"}]);
+  const identity=createCommercialIdentityService(db,{now}),project=await identity.createProject({id:"project",clientId:"client",name:"Disposable Red House",contextYear:2026});
+  await db.run(`INSERT INTO estimates(id,client_id,project_id,estimate_ref,base_estimate_ref,revision_no,status,estimated_order_month,estimated_order_year,defaults_json,positions_json,order_meta_json,outcome,project_address,project_address_json,postcode,what3words,latitude,longitude,created_by_user_id,created_by_name,created_by_role,created_at,updated_at,deleted_at) VALUES('estimate','client','project','EF-EST-2026-957','EF-EST-2026-957',0,'Draft','',2026,'{}','[]','{}','Open','','{}','','',NULL,NULL,'u','User','estimator',?,?,NULL)`,now().toISOString(),now().toISOString());
+  await db.exec("CREATE TABLE supplier_commercial_defaults(supplier_code TEXT PRIMARY KEY,supplier_name TEXT NOT NULL)");
+  await db.run("INSERT INTO supplier_commercial_defaults VALUES('ZYLE','Zyle Fenster')");
+  const children=new Map([["root",[]]]);let folders=0,uploads=0;
+  const provider={async listChildren({parentId}){return structuredClone(children.get(parentId)||[])},async findFolderByName({parentId,name}){return(children.get(parentId)||[]).find(item=>item.name===name)||null},async createFolder({parentId,name,appProperties}){const item={id:`folder-${++folders}`,name,mimeType:GOOGLE_DRIVE_FOLDER_MIME_TYPE,appProperties};children.set(parentId,[...(children.get(parentId)||[]),item]);children.set(item.id,[]);return item},async uploadFile({parentId,fileName,mediaType,bytes,appProperties}){uploads+=1;const item={id:"provider-document",name:fileName,mimeType:mediaType,size:String(bytes.length),version:"1",md5Checksum:"hash",webViewLink:"https://drive.invalid/provider-document",appProperties};children.set(parentId,[...(children.get(parentId)||[]),item]);return item}};
+  const workspace={async status(){return{connected:true,estimatesRootFolderId:"root",capabilities:{drive:{available:true}},account:{id:"account"}}},async resolvedConfig(){return{stored:{folder_template_json:"{}"}}}};
+  const drive=createCommercialDriveService(db,{provider,workspace,now}),input={clientId:"client",projectId:project.id,estimateId:"estimate",supplierCode:"ZYLE",communicationAttachmentId:"disposable-message_document",providerMessageId:"disposable-message",providerAttachmentId:"document",fileName:"Zyle quotation.pdf",mediaType:"application/pdf",bytes:Buffer.from("genuine supplier evidence")};
+  const first=await drive.storeCommunicationSupplierDocument(input),second=await drive.storeCommunicationSupplierDocument(input);
+  assert.equal(first.status,"stored");assert.equal(first.duplicate,false);assert.equal(second.duplicate,true);assert.equal(uploads,1);
+  assert.match(first.folderPath,/EF-CL-928 - Disposable Stuart\/Disposable Red House\/Estimates\/EF-EST-2026-957\/Supplier\/Zyle Fenster$/);
+  const stored=await db.get("SELECT client_id,project_id,estimate_id,supplier_id,document_type,folder_path FROM canonical_documents WHERE provider_file_id='provider-document'");
+  assert.deepEqual({...stored},{client_id:"client",project_id:"project",estimate_id:"estimate",supplier_id:"ZYLE",document_type:"supplier_quotation",folder_path:first.folderPath});
+});
+
 test("canonical Drive discovery understands nested Project/Estimate folders and reconciles files idempotently by provider ID", async (t) => {
   const db = await fixture(t, [{ id: "client", name: "John Wingfield", ref: "EF-CL-025" }]);
   const identity = createCommercialIdentityService(db, { now });

@@ -6,16 +6,16 @@ import { mkdtemp, rm } from "node:fs/promises";
 import sqlite3 from "sqlite3";
 import { open } from "sqlite";
 import { createCommunicationRepository } from "../server/features/communications/communicationRepository.js";
-import { findRelationshipSuggestions, preserveCommunicationLinks, resolveCanonicalRelationship, resolveMailboxCapabilities } from "../server/features/communications/communicationsService.js";
+import { createCommunicationsService, findRelationshipSuggestions, preserveCommunicationLinks, resolveCanonicalRelationship, resolveMailboxCapabilities } from "../server/features/communications/communicationsService.js";
 import { GMAIL_MODIFY_SCOPE } from "../server/features/integrations/googleWorkspaceService.js";
 
 async function fixture(t) {
   const root=await mkdtemp(path.join(os.tmpdir(),"qs-communication-links-")),db=await open({filename:path.join(root,"test.db"),driver:sqlite3.Database});
   await db.exec(`
-    CREATE TABLE clients(id TEXT PRIMARY KEY,name TEXT,email TEXT,deleted_at TEXT);
+    CREATE TABLE clients(id TEXT PRIMARY KEY,name TEXT,email TEXT,deleted_at TEXT,client_ref TEXT);
     CREATE TABLE enquiries(id TEXT PRIMARY KEY,enquiry_ref TEXT,display_name TEXT,email TEXT,status TEXT,deleted_at TEXT);
-    CREATE TABLE projects(id TEXT PRIMARY KEY,client_id TEXT,name TEXT,deleted_at TEXT);
-    CREATE TABLE estimates(id TEXT PRIMARY KEY,client_id TEXT,project_id TEXT,estimate_ref TEXT,outcome TEXT,deleted_at TEXT);
+    CREATE TABLE projects(id TEXT PRIMARY KEY,client_id TEXT,name TEXT,deleted_at TEXT,context_year INTEGER);
+    CREATE TABLE estimates(id TEXT PRIMARY KEY,client_id TEXT,project_id TEXT,estimate_ref TEXT,outcome TEXT,deleted_at TEXT,created_at TEXT);
     CREATE TABLE orders(id TEXT PRIMARY KEY,order_ref TEXT);
     CREATE TABLE supplier_quotes(id TEXT PRIMARY KEY,estimate_id TEXT,supplier_code TEXT,supplier_name TEXT,archived_at TEXT);
     CREATE TABLE supplier_quote_revisions(id TEXT PRIMARY KEY,supplier_quote_id TEXT,estimate_id TEXT,full_quotation_reference TEXT);
@@ -27,10 +27,10 @@ async function fixture(t) {
     );
     CREATE TABLE communication_attachments(id TEXT PRIMARY KEY,communication_message_id TEXT NOT NULL,file_name TEXT NOT NULL,media_type TEXT NOT NULL,size_bytes INTEGER NOT NULL,storage_key TEXT,provider_attachment_id TEXT,drive_file_id TEXT,sha256 TEXT,created_at TEXT NOT NULL,content_id TEXT,is_inline INTEGER NOT NULL DEFAULT 0);
   `);
-  await db.run("INSERT INTO clients VALUES(?,?,?,NULL)","client-1","Exact Client","exact.client@example.test");
+  await db.run("INSERT INTO clients VALUES(?,?,?,NULL,?)","client-1","Exact Client","exact.client@example.test","EF-CL-028");
   await db.run("INSERT INTO enquiries VALUES(?,?,?,?,?,NULL)","enquiry-1","EF-ENQ-012","Exact Enquiry","exact.client@example.test","new");
-  await db.run("INSERT INTO projects VALUES(?,?,?,NULL)","project-1","client-1","Exact Project");
-  await db.run("INSERT INTO estimates VALUES(?,?,?,?,?,NULL)","estimate-1","client-1","project-1","EF-EST-2026-041","Order");
+  await db.run("INSERT INTO projects VALUES(?,?,?,NULL,?)","project-1","client-1","Exact Project",2026);
+  await db.run("INSERT INTO estimates VALUES(?,?,?,?,?,NULL,?)","estimate-1","client-1","project-1","EF-EST-2026-041","Order","2026-08-26T10:00:00.000Z");
   await db.run("INSERT INTO orders VALUES(?,?)","order-1","EF-ORD-2026-003");
   await db.run("INSERT INTO supplier_commercial_defaults VALUES(?,?,0)","ZYLE","Zyle Fenster");
   await db.run("INSERT INTO supplier_commercial_defaults VALUES(?,?,1)","FACTORY PRICE","Any");
@@ -84,4 +84,18 @@ test("mutating mailbox capabilities follow the persisted gmail.modify grant",()=
   assert.deepEqual(before.map(item=>item.id),ids);assert.ok(before.every(item=>item.available===false));
   const after=resolveMailboxCapabilities({connected:true,scopes:["https://www.googleapis.com/auth/gmail.readonly",GMAIL_MODIFY_SCOPE]});assert.ok(after.every(item=>item.available===true));
   const disconnected=resolveMailboxCapabilities({connected:false,scopes:[GMAIL_MODIFY_SCOPE]});assert.ok(disconnected.every(item=>item.available===false));
+});
+
+test("Link existing resolves EF-CL reference, exposes the full picker without a suggestion dependency, and files only after reviewed storage succeeds",async t=>{
+  const db=await fixture(t),message={...providerMessage(),from:["Viktorija <info@zylefenster.com>"],subject:"Ats.: EF-CL-028: Stuart Gilks",bodyText:"Please see attached.",attachments:[{fileName:"EcoTherm Aluminium Clad Casement window.pdf",mediaType:"application/pdf",sizeBytes:7,providerAttachmentId:"provider-document",inline:false}]};
+  const workspace={async status(){return{connected:true,scopes:[],capabilities:{gmail:{available:true},drive:{available:true}}}}};
+  let filed=null;
+  const drive={async storeCommunicationSupplierDocument(input){filed=input;return{status:"stored",duplicate:false,documentId:"document-1",folderPath:"2026/EF-CL-028 - Exact Client/Exact Project/Estimates/EF-EST-2026-041/Supplier/Zyle Fenster",webViewLink:"https://drive.invalid/document-1"}}};
+  const service=createCommunicationsService(db,{workspace,gmail:{async readMessage(){return message},async attachment(messageId,attachmentId){assert.equal(messageId,"provider-message-1");assert.equal(attachmentId,"provider-document");return Buffer.from("genuine")}},drive,environment:{}});
+  const options=await service.assignmentOptions("provider-message-1");
+  assert.equal(options.reference,"EF-CL-028");assert.equal(options.proposed.clientId,"client-1");assert.equal(options.proposed.projectId,"project-1");assert.equal(options.proposed.estimateId,"estimate-1");assert.equal(options.proposed.supplierId,"ZYLE");assert.equal(options.proposed.attachmentId,options.attachments[0].id);assert.ok(options.conflicts.some(item=>item.code==="client_name_variance"));
+  await assert.rejects(()=>service.assignSupplierDocument("provider-message-1",{...options.proposed,supplierId:"ZYLE",attachmentId:options.attachments[0].id}),/review the reference conflict/i);
+  const result=await service.assignSupplierDocument("provider-message-1",{...options.proposed,supplierId:"ZYLE",attachmentId:options.attachments[0].id,conflictsReviewed:true});
+  assert.equal(Buffer.from(filed.bytes).toString(),"genuine");assert.equal(result.navigation.openFilesLabel,"Open Files");assert.equal(result.navigation.importLabel,"Import Manufacturer Estimate");
+  assert.deepEqual(new Set(result.links.map(item=>item.kind)),new Set(["client","project","estimate","supplier"]));
 });

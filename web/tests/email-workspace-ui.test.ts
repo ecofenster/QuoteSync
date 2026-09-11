@@ -82,11 +82,11 @@ test("Move and Label submenu selections resolve to provider-neutral commands",()
 });
 
 test("mailbox command failures remain recoverable and never optimistically rewrite message state",async()=>{
-  const ui=await readFile("src/features/communications/EmailWorkspace.tsx","utf8"),runCommand=ui.match(/const runCommand=async[\s\S]*?;\n {2}const handleContextAction=/)?.[0]||"";
-  assert.match(runCommand,/await communicationsApi\.command\(threadIds,command,labelId\);await load/);
-  assert.match(runCommand,/catch\(reason\).*setError\(`Mailbox action could not be completed\./);
+  const ui=await readFile("src/features/communications/EmailWorkspace.tsx","utf8"),runCommand=ui.match(/const runCommand\s*=\s*async[\s\S]*?const handleContextAction\s*=/)?.[0]||"";
+  assert.match(runCommand,/await communicationsApi\.command\(\s*threadIds,\s*command,\s*labelId,?\s*\);[\s\S]*?await load/);
+  assert.match(runCommand,/catch\s*\(reason\)[\s\S]*?setError\(\s*`Mailbox action could not be completed\./);
   assert.doesNotMatch(runCommand,/setMessages|unread\s*:|starred\s*:/);
-  assert.match(ui,/runCommand\(resolution\.command,new Set\(\[message\.id\]\),resolution\.labelId\)/);
+  assert.match(ui,/runCommand\(\s*resolution\.command,\s*new Set\(\[message\.id\]\),\s*resolution\.labelId,?\s*\)/);
 });
 
 test("relationship suggestions use exact evidence but never auto-link provider labels",()=>{
@@ -99,17 +99,17 @@ test("relationship suggestions use exact evidence but never auto-link provider l
 
 test("Email UI exposes dense accessible state, threads, pagination, menus, selection and mobile equivalent",async()=>{
   const [ui,css,api]=await Promise.all([readFile("src/features/communications/EmailWorkspace.tsx","utf8"),readFile("src/features/communications/emailWorkspace.css","utf8"),readFile("src/services/communications/communicationsApi.ts","utf8")]);
-  for(const phrase of ["Mailbox navigation","Starred","Drafts","Categories","QuoteSuite","aria-multiselectable","onContextMenu","preventDefault","ArrowDown","Escape","Reply all","Save Draft","BCC","nextPageToken","pageHistory","sandbox=\"\"","Remote images are blocked","Unlinked — review","Confirm relationship","More conversation actions","configuration is retained","recover automatically when the server encryption service is restored"])assert.match(ui,new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),"i"));
+  for(const phrase of ["Mailbox navigation","Starred","Drafts","Categories","QuoteSuite","aria-multiselectable","onContextMenu","preventDefault","ArrowDown","Escape","Reply all","Save Draft","BCC","nextPageToken","pageHistory","sandbox=\"\"","Remote images are hidden","Unlinked — choose","Confirm relationship","More conversation actions","configuration is retained","recover automatically when the server encryption service is restored"])assert.match(ui,new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),"i"));
   for(const state of ["border-bottom:1px solid var(--qs-border-standard)",".email-message-row.is-unread",".email-message-row.is-selected",".email-message-row.is-selected.is-unread",".email-message-row:hover",".email-message-row:focus-visible","@media(max-width:560px)"])assert.ok(css.includes(state));
   assert.match(api,/page_token/);assert.match(api,/\/threads\//);assert.match(api,/\/commands/);assert.match(api,/\/links/);assert.match(ui,/communicationsApi\.link/);assert.doesNotMatch(ui,/gmail\.googleapis\.com|access_token|refresh_token/);
-  assert.match(ui,/unreadOnly\?"is:unread"/);assert.match(ui,/aria-pressed=\{unreadOnly\}/);assert.match(ui,/Unread · Show All/);
+  assert.match(ui,/unreadOnly\s*\?\s*"is:unread"/);assert.match(ui,/aria-pressed=\{unreadOnly\}/);assert.match(ui,/Unread · Show All/);
 });
 
 test("controlled form and checkbox updates snapshot DOM values before functional state updates",async()=>{
   const [email,documents]=await Promise.all([readFile("src/features/communications/EmailWorkspace.tsx","utf8"),readFile("src/features/admin/AdminManufacturerDocuments.tsx","utf8")]);
   for(const unsafe of ["if(event.currentTarget.checked)","[field]:event.currentTarget.value","subject:event.currentTarget.value","bodyHtml:event.currentTarget.value"])assert.equal(email.includes(unsafe),false);
-  assert.match(email,/const checked=event\.currentTarget\.checked;setSelected/);
-  assert.match(email,/const value=event\.currentTarget\.value;setComposer/);
+  assert.match(email,/const checked\s*=\s*event\.currentTarget\.checked;[\s\S]*?setSelected/);
+  assert.match(email,/const value\s*=\s*event\.currentTarget\.value;[\s\S]*?setComposer/);
   assert.match(documents,/const updateForm=/);
   assert.doesNotMatch(documents,/setForm\([^\n]*=>[^\n]*event\.currentTarget/);
 });
@@ -130,7 +130,7 @@ test("conversation reader uses non-shrinking content geometry and bounded body p
   assert.match(css,/\.email-attachments__grid\{[^}]*minmax\(min\(100%,28rem\),1fr\)[^}]*min-width:0/);
   assert.match(css,/\.email-reader__reply-actions\{display:flex;flex-wrap:wrap/);
   for(const token of ["--qs-bg-card","--qs-bg-hover","--qs-theme-text-muted","--qs-border-standard","--qs-border-focus"])assert.match(css,new RegExp(token));
-  assert.match(ui,/function ConversationMessage/);assert.match(ui,/expanded\?<div className="email-reader__message-content"/);assert.match(ui,/previewLimit=8/);assert.match(ui,/Show \$\{remaining\} more/);
+  assert.match(ui,/function ConversationMessage/);assert.match(ui,/expanded\s*\?\s*\([\s\S]*?className="email-reader__message-content"/);assert.match(ui,/previewLimit\s*=\s*8/);assert.match(ui,/Show \$\{remaining\} more/);
   for(const presentation of ["email-reader__message-addresses","email-reader__recipients","email-reader__body","email-reader__plain","email-attachments__grid","email-reader__reply-actions","Reply all","Forward"])assert.match(ui,new RegExp(presentation));
   assert.doesNotMatch(css,/\.email-reader__message\{[^}]*overflow:hidden/);
 });
@@ -144,23 +144,32 @@ test("Client and Estimate Files share canonical component and theme-aware design
 
 test("Email is cache-first, refreshes in the background and retains cached mail on provider failure",async()=>{
   const [ui,api,service,repository]=await Promise.all([readFile("src/features/communications/EmailWorkspace.tsx","utf8"),readFile("src/services/communications/communicationsApi.ts","utf8"),readFile("server/features/communications/communicationsService.js","utf8"),readFile("server/features/communications/communicationRepository.js","utf8")]);
-  assert.match(ui,/mailboxMemoryCache/);assert.match(ui,/communicationsApi\.list[\s\S]*communicationsApi\.sync/);assert.match(ui,/Sync delayed — showing cached mail/);assert.match(ui,/Offline — showing mail synced at/);assert.match(ui,/Cached mail remains available/);assert.match(ui,/mailboxLoading&&!messages\.length/);
+  assert.match(ui,/mailboxMemoryCache/);assert.match(ui,/communicationsApi\.list[\s\S]*communicationsApi\.sync/);assert.match(ui,/Sync delayed — showing cached mail/);assert.match(ui,/Offline — showing mail synced at/);assert.match(ui,/Cached mail remains available/);assert.match(ui,/mailboxLoading\s*&&\s*!messages\.length/);
   assert.match(api,/\/api\/communications\/sync/);assert.match(service,/listCachedMailbox/);assert.match(service,/gmail\.listHistory/);assert.match(service,/expired_history_full_sync/);assert.match(repository,/communication_provider_sync_states/);assert.match(repository,/provider_state_json/);
-  assert.match(ui,/setInterval\(\(\)=>void refresh\(\),90000\)/);assert.match(ui,/window\.addEventListener\("online"/);assert.match(ui,/visibilitychange/);assert.match(ui,/communicationsApi\.changeState/);
+  assert.match(ui,/setInterval\(\(\)\s*=>\s*void refresh\(\),\s*90000\)/);assert.match(ui,/window\.addEventListener\("online"/);assert.match(ui,/visibilitychange/);assert.match(ui,/communicationsApi\s*\.changeState/);
 });
 
 test("Email QuoteSuite views and reader relationships include canonical Project without pretending Gmail folders",async()=>{
   const [ui,api,service]=await Promise.all([readFile("src/features/communications/EmailWorkspace.tsx","utf8"),readFile("src/services/communications/communicationsApi.ts","utf8"),readFile("server/features/communications/communicationsService.js","utf8")]);
-  for(const label of ["Clients","Projects","Estimates","Orders","Suppliers","Unlinked","Follow Up"])assert.match(ui,new RegExp(`label:"${label}"`));
-  assert.doesNotMatch(ui,/label:"Linked to Clients"|label:"Linked to Estimates"/);assert.match(service,/projects: "project"/);assert.match(ui,/Add Enquiry/);assert.match(ui,/Link existing/);assert.match(ui,/Confirm relationship/);assert.match(api,/unlink:/);assert.match(api,/method:"DELETE"/);
+  for(const label of ["Clients","Projects","Estimates","Orders","Suppliers","Unlinked","Follow Up"])assert.match(ui,new RegExp(`label:\\s*"${label}"`));
+  assert.doesNotMatch(ui,/label:\s*"Linked to Clients"|label:\s*"Linked to Estimates"/);assert.match(service,/projects: "project"/);assert.match(ui,/Add Enquiry/);assert.match(ui,/Link existing/);assert.match(ui,/Confirm relationship/);assert.match(api,/unlink:/);assert.match(api,/method:\s*"DELETE"/);
 });
 
 test("Email reuses one conversation reader across List, Right and Bottom preview layouts",async()=>{
   const [ui,css]=await Promise.all([readFile("src/features/communications/EmailWorkspace.tsx","utf8"),readFile("src/features/communications/emailWorkspace.css","utf8")]);
-  assert.match(ui,/type EmailLayoutMode="list"\|"right"\|"bottom"/);assert.equal((ui.match(/function ConversationReader/g)||[]).length,1);assert.match(ui,/email-preview-layout--\$\{effectiveLayout\}/);assert.match(ui,/Open full reader/);assert.match(ui,/is-preview-selected/);
-  assert.match(ui,/quotesuite\.email\.layout\.v1/);assert.match(ui,/quotesuite\.email\.right-size\.v1/);assert.match(ui,/quotesuite\.email\.bottom-size\.v1/);assert.match(ui,/beginResize/);assert.match(ui,/Math\.min\(max,Math\.max/);assert.match(ui,/matchMedia\("\(max-width: 760px\)"\)/);
+  assert.match(ui,/type EmailLayoutMode\s*=\s*"list"\s*\|\s*"right"\s*\|\s*"bottom"/);assert.equal((ui.match(/function ConversationReader/g)||[]).length,1);assert.match(ui,/email-preview-layout--\$\{effectiveLayout\}/);assert.match(ui,/Open full reader/);assert.match(ui,/is-preview-selected/);
+  assert.match(ui,/quotesuite\.email\.layout\.v1/);assert.match(ui,/quotesuite\.email\.right-size\.v1/);assert.match(ui,/quotesuite\.email\.bottom-size\.v1/);assert.match(ui,/beginResize/);assert.match(ui,/Math\.min\(\s*max,\s*Math\.max/);assert.match(ui,/matchMedia\("\(max-width: 760px\)"\)/);
   assert.match(css,/email-preview-layout--right/);assert.match(css,/email-preview-layout--bottom/);assert.match(css,/cursor:col-resize/);assert.match(css,/cursor:row-resize/);assert.match(css,/minmax\(320px/);assert.match(css,/@media\(max-width:760px\)/);
   assert.match(css,/email-preview-layout--right \.email-message-row\{[^}]*grid-template-columns:30px 30px minmax\(0,1fr\) auto 32px/);assert.match(css,/grid-template-areas:"select star sender time more" "select star content content more"/);assert.match(css,/email-preview-layout--right \.email-message-row time\{[^}]*white-space:nowrap/);
+});
+
+test("Email defaults to the exact selected message, remembers optional conversation mode, and keeps Context above the body",async()=>{
+  const [ui,css,api]=await Promise.all([readFile("src/features/communications/EmailWorkspace.tsx","utf8"),readFile("src/features/communications/emailWorkspace.css","utf8"),readFile("src/services/communications/communicationsApi.ts","utf8")]);
+  assert.match(ui,/type EmailReadingMode\s*=\s*"message"\s*\|\s*"conversation"/);assert.match(ui,/quotesuite\.email\.reading-mode\.v1/);assert.match(ui,/readPreference\(EMAIL_READING_MODE_KEY,\s*"message"\)/);
+  assert.match(ui,/const exact\s*=\s*message\.providerMessageId[\s\S]*?communicationsApi\.read\(message\.providerMessageId\)/);assert.match(ui,/selectedMessage\s*\|\|\s*thread/);assert.match(ui,/readingMode\s*===\s*"message"[\s\S]*?<SelectedMessage/);
+  assert.ok(ui.indexOf('className="email-context-panel"')<ui.indexOf('<SelectedMessage message={activeMessage}'));
+  for(const label of ["Client","Project","Estimate","Supplier","Document","Open Files","Import Manufacturer Estimate"])assert.match(ui,new RegExp(`>\\s*${label}\\s*<`));
+  assert.match(api,/assignmentOptions/);assert.match(api,/assignDocument/);assert.match(css,/\.email-message-row\.is-preview-selected\{[^}]*box-shadow:inset 5px/);assert.match(css,/\.email-reader__selected-message/);
 });
 
 test("Email and Files use QuoteSuite typography tokens and normal control hit targets",async()=>{

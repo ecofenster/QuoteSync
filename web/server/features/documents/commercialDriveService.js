@@ -267,6 +267,38 @@ export function createCommercialDriveService(db, options = {}) {
     return { status: "provisioned", estimateId, folder };
   }
 
+  async function storeCommunicationSupplierDocument(input) {
+    const clientId = String(input.clientId || ""), projectId = String(input.projectId || ""), estimateId = String(input.estimateId || ""), supplierCode = String(input.supplierCode || ""), sourceAttachmentId = String(input.communicationAttachmentId || "");
+    const context = await db.get(`SELECT e.id estimate_id,e.estimate_ref,e.project_id,p.client_id,p.name project_name,c.client_ref,c.name client_name
+      FROM estimates e JOIN projects p ON p.id=e.project_id JOIN clients c ON c.id=p.client_id
+      WHERE e.id=? AND e.deleted_at IS NULL AND p.id=? AND p.deleted_at IS NULL AND c.id=? AND c.deleted_at IS NULL`, estimateId, projectId, clientId);
+    if (!context) throw error("The selected Client, Project and Estimate do not form a canonical filing path.", 422, "communication_assignment_path_conflict");
+    const supplier = await db.get(`SELECT supplier_code,supplier_name FROM supplier_commercial_defaults WHERE supplier_code=?
+      AND NOT (upper(trim(supplier_name))='ANY' AND upper(trim(supplier_code)) IN ('FACTORY PRICE','1 TO 1 PRICING','STAGED DISCOUNT'))`, supplierCode);
+    if (!supplier) throw error("The selected Supplier is unavailable.", 404, "communication_assignment_supplier_not_found");
+    if (!sourceAttachmentId || !input.providerMessageId || !input.providerAttachmentId) throw error("Choose a retained email document before filing.", 422, "communication_assignment_attachment_required");
+    const provisioned = await provisionEstimate(estimateId);
+    if (provisioned.status !== "provisioned") return { ...provisioned, stored: false };
+    const accountId = provisioned.folder.provider_account_id || null, supplierRootName = "Supplier", supplierName = safeName(supplier.supplier_name);
+    const supplierRoot = await ensureFolder({ accountId, entityKind: "estimate", entityId: estimateId, logicalKey: "supplier_documents", name: supplierRootName, parentId: provisioned.folder.provider_folder_id, parentLogicalKey: "estimate", path: `${provisioned.folder.folder_path}/${supplierRootName}` });
+    const supplierFolder = await ensureFolder({ accountId, entityKind: "estimate", entityId: estimateId, logicalKey: `supplier:${supplier.supplier_code}`, name: supplierName, parentId: supplierRoot.provider_folder_id, parentLogicalKey: "supplier_documents", path: `${supplierRoot.folder_path}/${supplierName}` });
+    const existingFiles = await provider.listChildren({ parentId: supplierFolder.provider_folder_id });
+    let uploaded = existingFiles.find((file) => file.appProperties?.quotesuiteCommunicationAttachmentId === sourceAttachmentId);
+    let duplicate = Boolean(uploaded);
+    if (!uploaded) {
+      const bytes = Buffer.from(input.bytes || []);
+      if (!bytes.length) throw error("The selected email document has no retained content.", 409, "source_attachment_unavailable");
+      uploaded = await provider.uploadFile({ parentId: supplierFolder.provider_folder_id, fileName: safeName(input.fileName) || "Supplier document", mediaType: input.mediaType || "application/octet-stream", bytes, appProperties: { quotesuiteCommunicationAttachmentId: sourceAttachmentId, quotesuiteEstimateId: estimateId, quotesuiteSupplierCode: supplier.supplier_code } });
+    }
+    const timestamp = now().toISOString(), documentId = randomUUID();
+    await db.run(`INSERT INTO canonical_documents(id,provider,provider_account_id,provider_file_id,provider_folder_id,enquiry_id,client_id,project_id,estimate_id,order_id,supplier_id,supplier_quotation_id,document_type,file_name,mime_type,size_bytes,provider_created_at,provider_modified_at,provider_version,provider_revision,checksum,web_view_link,folder_path,trashed,removed_at,discovered_at,last_seen_at,updated_at)
+      VALUES(?,'google_drive',?,?,?,NULL,?,?,?,NULL,?,NULL,'supplier_quotation',?,?,?,?,?,?,?,?,?,?,0,NULL,?,?,?)
+      ON CONFLICT(provider,provider_account_id,provider_file_id) DO UPDATE SET provider_folder_id=excluded.provider_folder_id,client_id=excluded.client_id,project_id=excluded.project_id,estimate_id=excluded.estimate_id,supplier_id=excluded.supplier_id,document_type='supplier_quotation',file_name=excluded.file_name,mime_type=excluded.mime_type,size_bytes=excluded.size_bytes,provider_modified_at=excluded.provider_modified_at,provider_version=excluded.provider_version,provider_revision=excluded.provider_revision,checksum=excluded.checksum,web_view_link=excluded.web_view_link,folder_path=excluded.folder_path,trashed=0,removed_at=NULL,last_seen_at=excluded.last_seen_at,updated_at=excluded.updated_at`,
+      documentId,accountId || "",uploaded.id,supplierFolder.provider_folder_id,clientId,projectId,estimateId,supplier.supplier_code,uploaded.name || input.fileName,uploaded.mimeType || input.mediaType || "application/octet-stream",Number(uploaded.size || input.sizeBytes || 0),uploaded.createdTime || timestamp,uploaded.modifiedTime || timestamp,uploaded.version == null ? null : String(uploaded.version),uploaded.version == null ? null : String(uploaded.version),uploaded.md5Checksum || null,uploaded.webViewLink || null,supplierFolder.folder_path,timestamp,timestamp,timestamp);
+    const document = await db.get("SELECT * FROM canonical_documents WHERE provider='google_drive' AND provider_account_id=? AND provider_file_id=?", accountId || "", uploaded.id);
+    return { status: "stored", stored: true, duplicate, documentId: document.id, providerFileId: uploaded.id, webViewLink: uploaded.webViewLink || null, folderPath: supplierFolder.folder_path, clientId, projectId, estimateId, supplierCode: supplier.supplier_code, supplierName: supplier.supplier_name };
+  }
+
   async function locateProjectFolder(context, rootId) {
     const year = String(context.context_year || now().getUTCFullYear());
     const rootChildren = await provider.listChildren({ parentId: rootId });
@@ -353,7 +385,7 @@ export function createCommercialDriveService(db, options = {}) {
     return { status: "synced", projectId, provenance: located.provenance, foldersVisited: seen.size, filesDiscovered };
   }
 
-  return { provisionEnquiry, discoverEnquiry, discoverClient, provisionProject, storeReviewedEnquiryAttachments, provisionEstimate, discoverProject, buildCanonicalClientFolderName, buildCanonicalEstimateFolderName };
+  return { provisionEnquiry, discoverEnquiry, discoverClient, provisionProject, storeReviewedEnquiryAttachments, provisionEstimate, storeCommunicationSupplierDocument, discoverProject, buildCanonicalClientFolderName, buildCanonicalEstimateFolderName };
 }
 
 const clean = (value) => String(value || "").trim();

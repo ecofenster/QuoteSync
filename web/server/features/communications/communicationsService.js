@@ -57,6 +57,17 @@ export async function findRelationshipSuggestions(db, message) {
     const enquiries = await db.all(`SELECT id,enquiry_ref,display_name,email FROM enquiries WHERE deleted_at IS NULL AND status='new' AND lower(email) IN (${emails.map(() => "?").join(",")})`, ...emails).catch(() => []);
     for (const enquiry of enquiries) suggestions.push({ kind: "enquiry", id: enquiry.id, label: `${enquiry.enquiry_ref} · ${enquiry.display_name}`, evidence: `Exact Enquiry contact email: ${enquiry.email}`, autoLinkAllowed: false });
   }
+  const clientReferences = [...new Set(text.match(/\bEF-CL-\d{3}\b/gi) || [])];
+  if (clientReferences.length) {
+    const clients = await db.all(`SELECT id,client_ref,name FROM clients WHERE deleted_at IS NULL AND upper(client_ref) IN (${clientReferences.map(() => "?").join(",")})`, ...clientReferences.map((value) => value.toUpperCase())).catch(() => []);
+    for (const client of clients) {
+      suggestions.push({ kind: "client", id: client.id, label: `${client.client_ref} · ${client.name}`, evidence: "Exact Client reference", autoLinkAllowed: false });
+      const projects = await db.all("SELECT id,name FROM projects WHERE client_id=? AND deleted_at IS NULL ORDER BY context_year DESC,name,id", client.id).catch(() => []);
+      for (const project of projects) suggestions.push({ kind: "project", id: project.id, label: project.name, evidence: `Canonical Project for exact Client reference ${client.client_ref}; selection required`, autoLinkAllowed: false });
+      const estimates = await db.all("SELECT e.id,e.estimate_ref,e.project_id FROM estimates e JOIN projects p ON p.id=e.project_id WHERE p.client_id=? AND e.deleted_at IS NULL AND p.deleted_at IS NULL ORDER BY e.created_at DESC,e.id", client.id).catch(() => []);
+      for (const estimate of estimates) suggestions.push({ kind: "estimate", id: estimate.id, label: estimate.estimate_ref, evidence: `Canonical Estimate for exact Client reference ${client.client_ref}; selection required`, autoLinkAllowed: false });
+    }
+  }
   const enquiryReferences = [...new Set(text.match(/\bEF-ENQ-\d{3}\b/gi) || [])];
   if (enquiryReferences.length) {
     const enquiries = await db.all(`SELECT id,enquiry_ref,display_name FROM enquiries WHERE deleted_at IS NULL AND upper(enquiry_ref) IN (${enquiryReferences.map(() => "?").join(",")})`, ...enquiryReferences.map((value) => value.toUpperCase())).catch(() => []);
@@ -262,6 +273,41 @@ export function createCommunicationsService(db, options = {}) {
     return { links: updated?.links || [], suggestions: await findRelationshipSuggestions(db, message) };
   }
 
+  async function assignmentOptions(providerMessageId) {
+    await requireGmailCapability();
+    const message = await readMessage(providerMessageId), text = `${message.subject}\n${message.bodyText}`, reference = (text.match(/\bEF-CL-\d{3}\b/i) || [])[0]?.toUpperCase() || null;
+    const clients = await db.all("SELECT id,client_ref,name FROM clients WHERE deleted_at IS NULL ORDER BY client_ref,name");
+    const projects = await db.all("SELECT id,client_id,name,context_year FROM projects WHERE deleted_at IS NULL ORDER BY context_year DESC,name,id").catch(() => []);
+    const estimates = await db.all("SELECT id,project_id,estimate_ref,created_at FROM estimates WHERE deleted_at IS NULL ORDER BY created_at DESC,id");
+    const suppliers = await db.all(`SELECT supplier_code id,supplier_name name FROM supplier_commercial_defaults WHERE NOT (upper(trim(supplier_name))='ANY' AND upper(trim(supplier_code)) IN ('FACTORY PRICE','1 TO 1 PRICING','STAGED DISCOUNT')) ORDER BY supplier_name,supplier_code`);
+    const attachments = (message.attachments || []).filter((item) => !item.inline && item.providerAttachmentId).map((item) => ({ id: item.id, providerAttachmentId: item.providerAttachmentId, fileName: item.fileName, mediaType: item.mediaType, sizeBytes: item.sizeBytes || 0 }));
+    const referenceClients = reference ? clients.filter((client) => String(client.client_ref).toUpperCase() === reference) : [];
+    const selectedClient = referenceClients.length === 1 ? referenceClients[0] : null, clientProjects = selectedClient ? projects.filter((project) => project.client_id === selectedClient.id) : [], projectIds = new Set(clientProjects.map((project) => project.id)), clientEstimates = estimates.filter((estimate) => projectIds.has(estimate.project_id));
+    const sender = String(message.from?.[0] || "").toLowerCase(), supplierMatches = suppliers.filter((supplier) => (/zylefenster/.test(sender) && /zyle\s*fenster/i.test(supplier.name)) || sender.includes(String(supplier.name).toLowerCase().replace(/\s+/g, "")));
+    const conflicts = [];
+    if (reference && referenceClients.length === 0) conflicts.push({ code: "client_reference_unresolved", message: `${reference} does not resolve to an active canonical Client.`, blocking: true });
+    if (referenceClients.length > 1) conflicts.push({ code: "client_reference_ambiguous", message: `${reference} resolves to more than one active Client.`, blocking: true });
+    if (selectedClient) {
+      const subjectName = String(message.subject || "").split(new RegExp(`${reference}\\s*:\\s*`, "i"))[1]?.trim();
+      if (subjectName && subjectName.localeCompare(selectedClient.name, undefined, { sensitivity: "base" }) !== 0) conflicts.push({ code: "client_name_variance", message: `Email reference ${reference} names “${subjectName}”; canonical Client is “${selectedClient.name}”. Review before filing.`, blocking: false });
+    }
+    return { providerMessageId, communicationMessageId: message.id, reference, clients, projects, estimates, suppliers, attachments, conflicts, proposed: { clientId: selectedClient?.id || null, projectId: clientProjects.length === 1 ? clientProjects[0].id : null, estimateId: clientEstimates.length === 1 ? clientEstimates[0].id : null, supplierId: supplierMatches.length === 1 ? supplierMatches[0].id : null, attachmentId: attachments.length === 1 ? attachments[0].id : null } };
+  }
+
+  async function assignSupplierDocument(providerMessageId, input = {}) {
+    const optionsView = await assignmentOptions(providerMessageId), attachment = optionsView.attachments.find((item) => item.id === String(input.attachmentId || ""));
+    if (!attachment) throw Object.assign(new Error("Choose a genuine retained document from the selected message."), { status: 422, code: "communication_assignment_attachment_invalid" });
+    const clientId = String(input.clientId || ""), projectId = String(input.projectId || ""), estimateId = String(input.estimateId || ""), supplierCode = String(input.supplierId || "");
+    if (!optionsView.clients.some((item) => item.id === clientId) || !optionsView.projects.some((item) => item.id === projectId && item.client_id === clientId) || !optionsView.estimates.some((item) => item.id === estimateId && item.project_id === projectId) || !optionsView.suppliers.some((item) => item.id === supplierCode)) throw Object.assign(new Error("Review a canonical Client → Project → Estimate → Supplier filing path."), { status: 422, code: "communication_assignment_path_conflict" });
+    if (optionsView.conflicts.length && input.conflictsReviewed !== true) throw Object.assign(new Error("Review the reference conflict before filing this document."), { status: 409, code: "communication_assignment_conflict_review_required" });
+    const bytes = await gmail.attachment(providerMessageId, attachment.providerAttachmentId), drive = options.drive || createCommercialDriveService(db, options.driveServiceOptions);
+    const stored = await drive.storeCommunicationSupplierDocument({ clientId, projectId, estimateId, supplierCode, communicationAttachmentId: attachment.id, providerMessageId, providerAttachmentId: attachment.providerAttachmentId, fileName: attachment.fileName, mediaType: attachment.mediaType, sizeBytes: attachment.sizeBytes, bytes });
+    if (stored.status !== "stored") throw Object.assign(new Error("The provider folder or document is not available yet; no filing relationship was recorded."), { status: 409, code: stored.status || "communication_assignment_storage_pending", details: stored });
+    const message = await repository.findByProviderId("google_workspace", providerMessageId);
+    for (const link of [{ kind: "client", id: clientId }, { kind: "project", id: projectId }, { kind: "estimate", id: estimateId }, { kind: "supplier", id: supplierCode }]) await repository.addLink(message.id, link);
+    return { ...stored, links: (await repository.get(message.id)).links, navigation: { clientId, projectId, estimateId, destination: "supplier-documents", openFilesLabel: "Open Files", importLabel: "Import Manufacturer Estimate" } };
+  }
+
   async function changeState() {
     const status = await workspace.status(), accountId = String(status.account?.id || status.account?.email || "me"), state = await repository.getWatchState("google_workspace", accountId);
     return { mode: notificationConfig.mode, pushConfigured: notificationConfig.configured, projectionVersion: Number(state?.projection_version || 0), watchStatus: state?.status || "unregistered", watchExpirationAt: state?.watch_expiration_at || null, lastNotificationAt: state?.last_notification_at || null, lastReconciledAt: state?.last_reconciled_at || null };
@@ -389,5 +435,5 @@ export function createCommunicationsService(db, options = {}) {
     return { enquiryId: enquiry.id, enquiryRef: enquiry.enquiryRef, idempotentReplay: false, selectedAttachmentCount: attachments.length, storageStatus: attachments.length ? "pending_reviewed_storage" : "no_attachments_selected", driveStatus: enquiry.driveTransitionStatus };
   }
 
-  return { status: workspace.status, mailbox, listMailbox, syncMailbox, readMessage, readThread, relationshipContext, linkRelationship, unlinkRelationship, changeState, maintainWatch, stopWatch, receiveNotification, command, createDraft, sendMessage, reply, forward, readAttachment, enquiryIntake, createEnquiryFromMessage, repository };
+  return { status: workspace.status, mailbox, listMailbox, syncMailbox, readMessage, readThread, relationshipContext, linkRelationship, unlinkRelationship, assignmentOptions, assignSupplierDocument, changeState, maintainWatch, stopWatch, receiveNotification, command, createDraft, sendMessage, reply, forward, readAttachment, enquiryIntake, createEnquiryFromMessage, repository };
 }

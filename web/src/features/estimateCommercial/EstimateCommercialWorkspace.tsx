@@ -75,15 +75,19 @@ export default function EstimateCommercialWorkspace({
   }, [estimateId, estimateRef]);
   useEffect(() => {
     const handleOpenImport = () => openImport();
+    const handleOpenDocuments = () => setDocumentsOpen(true);
     window.addEventListener(
       "quotesuite:import-manufacturer-quote",
       handleOpenImport,
     );
-    return () =>
+    window.addEventListener("quotesuite:open-estimate-documents", handleOpenDocuments);
+    return () => {
       window.removeEventListener(
         "quotesuite:import-manufacturer-quote",
         handleOpenImport,
       );
+      window.removeEventListener("quotesuite:open-estimate-documents", handleOpenDocuments);
+    };
   }, [openImport]);
   useEffect(() => {
     void ensureEstimateCosting(estimateId, estimateRef).then((scenario) =>

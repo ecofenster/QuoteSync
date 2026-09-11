@@ -44,7 +44,7 @@ export type CustomerQuotationPosition = {
 
 export type CustomerQuotationCharge = { id: string; label: string; amountGbp: string };
 export type CustomerQuotationSupplySummary = { reference: string; description: string; quantity: number; dimensions: string; amountGbp: string | null };
-export type CustomerQuotationProductShowcase = { id: "ecotherm" | "europa-92-alu"; name: string; imageUrl: string; sourceLabel: string; positionReferences: string[] };
+export type CustomerQuotationProductShowcase = { id: "ecotherm" | "europa-92-alu"; name: string; imageUrl: string; positionReferences: string[] };
 export type CustomerQuotationSpecificationOverview = { productSystem: string; positionReferences: string[]; items: Array<{ label: string; values: string[] }> };
 
 export type CustomerQuotationProjection = {
@@ -52,7 +52,7 @@ export type CustomerQuotationProjection = {
   documentTitle: "Estimate";
   documentSubtitle: "Windows & Doors";
   clientReference: string;
-  architecturalDetailUrl: string;
+  architecturalDetailUrl: string | null;
   coverPhotoUrl: string | null;
   productShowcases: CustomerQuotationProductShowcase[];
   specificationOverview: CustomerQuotationSpecificationOverview[];
@@ -123,7 +123,7 @@ function installationInclusions(scenario: ProjectCostingScenarioView) {
 export function buildCustomerQuotationProjection(input: {
   scenario: ProjectCostingScenarioView;
   client: Pick<Client, "clientName" | "clientRef" | "projectName" | "projectAddress">;
-  estimate: Pick<Estimate, "id" | "estimateRef" | "positions" | "projectAddress">;
+  estimate: Pick<Estimate, "id" | "estimateRef" | "positions" | "projectAddress" | "projectName">;
   previewDate?: string;
   brand?: CustomerDocumentBrand;
   coverPhotoUrl?: string | null;
@@ -181,16 +181,17 @@ export function buildCustomerQuotationProjection(input: {
   });
   const alternatives = positions.filter((position) => position.classification === "alternative");
   const includedPositions = positions.filter((position) => position.includedInQuotationTotal);
-  const ecoThermImageUrl = new URL("../../../docs/QuoteSuite - PDF Print Out/New/f60e06e3-7b52-45e0-9fad-3a190c0704bb.png", import.meta.url).href;
-  const europaImageUrl = new URL("../../../docs/QuoteSuite - PDF Print Out/New/PHOTO-2020-08-29-07-54-57.jpg", import.meta.url).href;
-  const architecturalDetailUrl = new URL("../../../docs/QuoteSuite - PDF Print Out/New/4da9b264-6a74-4357-956b-9f1763966a4f.png", import.meta.url).href;
+  // These identities were reviewed against the supplied product images. The
+  // timber/aluminium section is Europa 92 Alu; the white section is Ecotherm.
+  const ecoThermImageUrl = new URL("../../../docs/QuoteSuite - PDF Print Out/New/PHOTO-2020-08-29-07-54-57.jpg", import.meta.url).href;
+  const europaImageUrl = new URL("../../../docs/QuoteSuite - PDF Print Out/New/f60e06e3-7b52-45e0-9fad-3a190c0704bb.png", import.meta.url).href;
   const showcaseDefinitions = [
-    { id: "ecotherm" as const, name: "Ecotherm", imageUrl: ecoThermImageUrl, sourceLabel: "Genuine supplied Ecotherm product asset", matches: (value: string) => /eco\s*therm/i.test(value) },
-    { id: "europa-92-alu" as const, name: "Europa 92 Alu", imageUrl: europaImageUrl, sourceLabel: "Genuine supplied Europa 92 Alu product asset", matches: (value: string) => /(?:europa|92\s*alu)/i.test(value) },
+    { id: "ecotherm" as const, name: "Ecotherm", imageUrl: ecoThermImageUrl, matches: (value: string) => /eco\s*therm/i.test(value) },
+    { id: "europa-92-alu" as const, name: "Europa 92 Alu", imageUrl: europaImageUrl, matches: (value: string) => /(?:europa|92\s*alu)/i.test(value) },
   ];
   const productShowcases = showcaseDefinitions.flatMap((definition) => {
     const matching = includedPositions.filter((position) => definition.matches(`${position.productSystem} ${position.description}`));
-    return matching.length ? [{ id: definition.id, name: definition.name, imageUrl: definition.imageUrl, sourceLabel: definition.sourceLabel, positionReferences: matching.map((position) => position.customerReference) }] : [];
+    return matching.length ? [{ id: definition.id, name: definition.name, imageUrl: definition.imageUrl, positionReferences: matching.map((position) => position.customerReference) }] : [];
   });
   const systemGroups = new Map<string, CustomerQuotationPosition[]>();
   for (const position of includedPositions) {
@@ -227,7 +228,9 @@ export function buildCustomerQuotationProjection(input: {
     documentTitle: "Estimate",
     documentSubtitle: "Windows & Doors",
     clientReference: input.client.clientRef,
-    architecturalDetailUrl,
+    // The only supplied decorative section is flattened over scenery. It is
+    // intentionally omitted until a clean approved standalone asset exists.
+    architecturalDetailUrl: null,
     coverPhotoUrl: input.coverPhotoUrl ?? null,
     productShowcases,
     specificationOverview,
@@ -236,7 +239,7 @@ export function buildCustomerQuotationProjection(input: {
     commercialRevision: input.scenario.revisionNumber,
     previewDate: input.previewDate ?? new Date().toISOString(),
     clientName: input.client.clientName,
-    projectName: input.client.projectName,
+    projectName: input.estimate.projectName || input.client.projectName,
     projectAddress: input.estimate.projectAddress || input.client.projectAddress,
     currency: CUSTOMER_QUOTATION_POLICY.currency,
     positions,
