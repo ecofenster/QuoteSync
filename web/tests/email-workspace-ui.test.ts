@@ -201,6 +201,9 @@ test("mailbox unread emphasis, assignment feedback and saved-document review han
   assert.match(ui,/Retry filing/);
   assert.match(ui,/<summary>View details<\/summary>/);
   assert.match(ui,/The saved file is preserved/);
+  assert.match(ui,/Checking the Drive destination/);
+  assert.match(ui,/Save this attachment as a new revision/);
+  assert.match(ui,/reviewState !== "checked"/);
   assert.match(ui,/result\.fileName/);
   assert.match(app,/canonicalDocumentId:documentId/);
   assert.match(workspace,/canonicalDocumentId=\{importCanonicalDocumentId\}/);
@@ -208,6 +211,9 @@ test("mailbox unread emphasis, assignment feedback and saved-document review han
   assert.match(control,/Project Costing has not been changed/);
   assert.match(api,/manufacturer-import-review/);
   assert.match(routes,/prepareAssignedDocumentImport/);
+  assert.match(routes,/assignment-review/);
+  assert.match(drive,/classifySupplierDocumentConflict/);
+  assert.match(drive,/buildRevisionFileName/);
   assert.match(drive,/\["supplier", "suppliers"\]/);
   assert.match(drive,/name: "Suppliers"/);
   assert.match(drive,/supplier_documents_folder_ambiguous/);

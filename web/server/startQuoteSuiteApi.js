@@ -54,7 +54,7 @@ app.use('/api/settings', settingsRoute);
 app.use('/api/integrations', integrationsRoute);
 app.use('/api/configurator-catalog', configuratorCatalogRoute);
 app.use('/api/manufacturer-position-visuals', createManufacturerPositionVisualsRouter());
-app.use('/api/communications', createCommunicationsRouter());
+app.use('/api/communications', createCommunicationsRouter({ databasePromise: dbPromise }));
 app.use('/api/drive', createDriveRouter());
 app.use('/api/documents', createDocumentsRouter());
 app.use('/api/quotation-workflow', createQuotationWorkflowRouter());

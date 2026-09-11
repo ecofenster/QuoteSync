@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createGoogleWorkspaceService } from "../integrations/googleWorkspaceService.js";
 import { createGoogleDriveProvider, GOOGLE_DRIVE_FOLDER_MIME_TYPE } from "./googleDriveProvider.js";
 import { createGmailProvider } from "../communications/gmailProvider.js";
@@ -34,6 +34,69 @@ export function buildCanonicalEstimateFolderName(estimateRef, descriptor = "") {
   const reference = safeName(estimateRef).toUpperCase(), suffix = safeName(descriptor);
   if (!/^EF-EST-\d{4}-\d{3}(?:-\d{2})?$/.test(reference)) throw error("A canonical Estimate reference is required.", 422, "estimate_drive_identity_required");
   return suffix ? `${reference} - ${suffix}` : reference;
+}
+
+const fileSize = (value) => Number(value || 0);
+const lowerFileName = (value) => safeName(value).toLocaleLowerCase("en-GB");
+
+export function classifySupplierDocumentConflict({ files = [], communicationAttachmentId, fileName, bytes }) {
+  const sourceBytes = Buffer.from(bytes || []);
+  const sourceMd5 = sourceBytes.length ? createHash("md5").update(sourceBytes).digest("hex") : null;
+  const sourceSize = sourceBytes.length;
+  const exactSource = files.find((file) => file.appProperties?.quotesuiteCommunicationAttachmentId === communicationAttachmentId);
+  if (exactSource) return {
+    kind: "already_filed",
+    message: `This exact email attachment is already filed as “${exactSource.name}”.`,
+    evidence: "The saved Drive file carries this retained email attachment identity.",
+    existingFile: exactSource,
+    recommendedDecision: "reuse_existing",
+    decisions: ["reuse_existing"],
+  };
+  const identical = sourceMd5 ? files.find((file) => String(file.md5Checksum || "").toLowerCase() === sourceMd5 && fileSize(file.size) === sourceSize) : null;
+  if (identical) return {
+    kind: "identical_content",
+    message: `Drive already contains byte-identical content as “${identical.name}”.`,
+    evidence: "Provider checksum and file size match the selected retained attachment.",
+    existingFile: identical,
+    recommendedDecision: "reuse_identical",
+    decisions: ["reuse_identical", "save_new_revision"],
+  };
+  const sameName = files.find((file) => lowerFileName(file.name) === lowerFileName(fileName));
+  if (sameName) {
+    const providerChecksum = String(sameName.md5Checksum || "").toLowerCase() || null;
+    const differs = Boolean(sourceMd5 && providerChecksum && (providerChecksum !== sourceMd5 || fileSize(sameName.size) !== sourceSize));
+    return {
+      kind: differs ? "same_name_different_content" : "same_name_unverified",
+      message: differs
+        ? `Drive already contains “${sameName.name}”, but its content differs from the selected attachment.`
+        : `Drive already contains “${sameName.name}”, but identical content cannot be confirmed.`,
+      evidence: differs
+        ? "The provider checksum or file size is different; this may be a supplier revision."
+        : "A matching filename is not proof that supplier content is unchanged.",
+      existingFile: sameName,
+      recommendedDecision: "save_new_revision",
+      decisions: ["save_new_revision"],
+    };
+  }
+  return {
+    kind: "new_file",
+    message: "No matching retained attachment or filename was found in the destination.",
+    evidence: "The selected document can be saved as a new supplier file.",
+    existingFile: null,
+    recommendedDecision: "save",
+    decisions: ["save"],
+  };
+}
+
+export function buildRevisionFileName(fileName, files = []) {
+  const cleaned = safeName(fileName) || "Supplier document";
+  const dot = cleaned.lastIndexOf(".");
+  const base = dot > 0 ? cleaned.slice(0, dot) : cleaned;
+  const extension = dot > 0 ? cleaned.slice(dot) : "";
+  const names = new Set(files.map((file) => lowerFileName(file.name)));
+  let revision = 2;
+  while (names.has(lowerFileName(`${base} (revision ${revision})${extension}`))) revision += 1;
+  return `${base} (revision ${revision})${extension}`;
 }
 
 export function createCommercialDriveService(db, options = {}) {
@@ -408,15 +471,71 @@ export function createCommercialDriveService(db, options = {}) {
     return { status: "provisioned", estimateId, folder };
   }
 
-  async function storeCommunicationSupplierDocument(input) {
-    const clientId = String(input.clientId || ""), projectId = String(input.projectId || ""), estimateId = String(input.estimateId || ""), supplierCode = String(input.supplierCode || ""), sourceAttachmentId = String(input.communicationAttachmentId || "");
-    const context = await db.get(`SELECT e.id estimate_id,e.estimate_ref,e.project_id,p.client_id,p.name project_name,c.client_ref,c.name client_name
+  async function communicationSupplierContext(input) {
+    const clientId = String(input.clientId || ""), projectId = String(input.projectId || ""), estimateId = String(input.estimateId || ""), supplierCode = String(input.supplierCode || "");
+    const context = await db.get(`SELECT e.id estimate_id,e.estimate_ref,e.created_at,e.project_id,p.client_id,p.name project_name,p.context_year,c.client_ref,c.name client_name
       FROM estimates e JOIN projects p ON p.id=e.project_id JOIN clients c ON c.id=p.client_id
       WHERE e.id=? AND e.deleted_at IS NULL AND p.id=? AND p.deleted_at IS NULL AND c.id=? AND c.deleted_at IS NULL`, estimateId, projectId, clientId);
     if (!context) throw error("The selected Client, Project and Estimate do not form a canonical filing path.", 422, "communication_assignment_path_conflict");
     const supplier = await db.get(`SELECT supplier_code,supplier_name FROM supplier_commercial_defaults WHERE supplier_code=?
       AND NOT (upper(trim(supplier_name))='ANY' AND upper(trim(supplier_code)) IN ('FACTORY PRICE','1 TO 1 PRICING','STAGED DISCOUNT'))`, supplierCode);
     if (!supplier) throw error("The selected Supplier is unavailable.", 404, "communication_assignment_supplier_not_found");
+    return { clientId, projectId, estimateId, supplierCode, context, supplier };
+  }
+
+  async function existingSupplierFolder({ projectId, estimateId, supplier }) {
+    await refreshScopeFolderMetadata({ estimateId });
+    const mapped = await mapping("estimate", estimateId, `supplier:${supplier.supplier_code}`);
+    if (mapped) return mapped;
+    const estimateFolder = await mapping("estimate", estimateId, "estimate");
+    if (!estimateFolder) return null;
+    const estimateChildren = await provider.listChildren({ parentId: estimateFolder.provider_folder_id });
+    const roots = estimateChildren.filter((item) => item.mimeType === GOOGLE_DRIVE_FOLDER_MIME_TYPE && ["supplier", "suppliers"].includes(normalized(item.name)));
+    if (roots.length > 1) throw error("Both Supplier and Suppliers folders exist beneath this Estimate. Review the provider hierarchy before filing.", 409, "supplier_documents_folder_ambiguous");
+    if (!roots.length) return null;
+    const matches = (await provider.listChildren({ parentId: roots[0].id })).filter((item) => item.mimeType === GOOGLE_DRIVE_FOLDER_MIME_TYPE && normalized(item.name) === normalized(supplier.supplier_name));
+    if (matches.length > 1) throw error(`More than one ${supplier.supplier_name} folder exists beneath ${roots[0].name}. Review the provider hierarchy before filing.`, 409, "supplier_folder_ambiguous");
+    if (!matches.length) return null;
+    return { provider_folder_id: matches[0].id, provider_account_id: estimateFolder.provider_account_id, folder_path: `${estimateFolder.folder_path}/${roots[0].name}/${matches[0].name}`, name: matches[0].name, discovered: true, projectId };
+  }
+
+  async function reviewCommunicationSupplierDocument(input) {
+    const { clientId, projectId, estimateId, supplierCode, context, supplier } = await communicationSupplierContext(input);
+    if (!input.communicationAttachmentId || !input.providerMessageId || !input.providerAttachmentId) throw error("Choose a retained email document before checking the destination.", 422, "communication_assignment_attachment_required");
+    const bytes = Buffer.from(input.bytes || []);
+    if (!bytes.length) throw error("The selected email document has no retained content.", 409, "source_attachment_unavailable");
+    const folder = await existingSupplierFolder({ projectId, estimateId, supplier });
+    const year = String(context.context_year || resolveEstimateYear(context.estimate_ref, context.created_at));
+    const config = (await workspace.resolvedConfig()).stored;
+    const template = { ...DEFAULT_PROJECT_FOLDER_NAMES, ...(config?.folder_template_json ? JSON.parse(config.folder_template_json) : {}) };
+    const supplierRows = await db.all("SELECT DISTINCT supplier_name FROM supplier_quotes WHERE estimate_id=? AND archived_at IS NULL ORDER BY supplier_name", estimateId).catch(() => []);
+    const descriptor = supplierRows.map((row) => clean(row.supplier_name)).filter(Boolean).join(" + ");
+    const expectedPath = `${year}/${buildCanonicalClientFolderName(context.client_ref, context.client_name)}/${safeName(context.project_name)}/${safeName(template.supplierEstimates)}/${buildCanonicalEstimateFolderName(context.estimate_ref, descriptor)}/Suppliers/${safeName(supplier.supplier_name)}`;
+    const files = folder ? await provider.listChildren({ parentId: folder.provider_folder_id }) : [];
+    const conflict = classifySupplierDocumentConflict({ files, communicationAttachmentId: String(input.communicationAttachmentId), fileName: input.fileName, bytes });
+    return {
+      status: "reviewed",
+      destinationExists: Boolean(folder),
+      folderPath: folder?.folder_path || expectedPath,
+      clientId,
+      projectId,
+      estimateId,
+      supplierCode,
+      supplierName: supplier.supplier_name,
+      fileName: String(input.fileName || "Supplier document"),
+      conflict: {
+        kind: conflict.kind,
+        message: conflict.message,
+        evidence: conflict.evidence,
+        existingFile: conflict.existingFile ? { id: conflict.existingFile.id, name: conflict.existingFile.name, webViewLink: conflict.existingFile.webViewLink || null } : null,
+        recommendedDecision: conflict.recommendedDecision,
+        decisions: conflict.decisions,
+      },
+    };
+  }
+
+  async function storeCommunicationSupplierDocument(input) {
+    const { clientId, projectId, estimateId, supplierCode, supplier } = await communicationSupplierContext(input), sourceAttachmentId = String(input.communicationAttachmentId || "");
     if (!sourceAttachmentId || !input.providerMessageId || !input.providerAttachmentId) throw error("Choose a retained email document before filing.", 422, "communication_assignment_attachment_required");
     const provisioned = await provisionEstimate(estimateId);
     if (provisioned.status !== "provisioned") return { ...provisioned, stored: false };
@@ -424,12 +543,20 @@ export function createCommercialDriveService(db, options = {}) {
     const supplierRoot = await ensureSupplierDocumentsFolder({ accountId, estimateId, estimateFolder: provisioned.folder });
     const supplierFolder = await ensureFolder({ accountId, entityKind: "estimate", entityId: estimateId, logicalKey: `supplier:${supplier.supplier_code}`, name: supplierName, parentId: supplierRoot.provider_folder_id, parentLogicalKey: "supplier_documents", path: `${supplierRoot.folder_path}/${supplierName}` });
     const existingFiles = await provider.listChildren({ parentId: supplierFolder.provider_folder_id });
-    let uploaded = existingFiles.find((file) => file.appProperties?.quotesuiteCommunicationAttachmentId === sourceAttachmentId);
+    const bytes = Buffer.from(input.bytes || []);
+    if (!bytes.length) throw error("The selected email document has no retained content.", 409, "source_attachment_unavailable");
+    const conflict = classifySupplierDocumentConflict({ files: existingFiles, communicationAttachmentId: sourceAttachmentId, fileName: input.fileName, bytes });
+    const decision = String(input.fileDecision || "");
+    if (!conflict.decisions.includes(decision) && !(conflict.kind === "new_file" && !decision) && !(conflict.kind === "already_filed" && !decision)) {
+      throw Object.assign(error("The destination changed or this file choice still needs review. Check the existing file and choose how to continue.", 409, "communication_assignment_file_review_required"), {
+        details: { folderPath: supplierFolder.folder_path, fileName: input.fileName, conflict: { kind: conflict.kind, message: conflict.message, evidence: conflict.evidence, recommendedDecision: conflict.recommendedDecision, decisions: conflict.decisions } },
+      });
+    }
+    let uploaded = conflict.kind === "already_filed" ? conflict.existingFile : conflict.kind === "identical_content" && decision === "reuse_identical" ? conflict.existingFile : null;
     let duplicate = Boolean(uploaded);
     if (!uploaded) {
-      const bytes = Buffer.from(input.bytes || []);
-      if (!bytes.length) throw error("The selected email document has no retained content.", 409, "source_attachment_unavailable");
-      uploaded = await provider.uploadFile({ parentId: supplierFolder.provider_folder_id, fileName: safeName(input.fileName) || "Supplier document", mediaType: input.mediaType || "application/octet-stream", bytes, appProperties: { quotesuiteCommunicationAttachmentId: sourceAttachmentId, quotesuiteEstimateId: estimateId, quotesuiteSupplierCode: supplier.supplier_code } });
+      const uploadName = decision === "save_new_revision" ? buildRevisionFileName(input.fileName, existingFiles) : safeName(input.fileName) || "Supplier document";
+      uploaded = await provider.uploadFile({ parentId: supplierFolder.provider_folder_id, fileName: uploadName, mediaType: input.mediaType || "application/octet-stream", bytes, appProperties: { quotesuiteCommunicationAttachmentId: sourceAttachmentId, quotesuiteEstimateId: estimateId, quotesuiteSupplierCode: supplier.supplier_code } });
     }
     const timestamp = now().toISOString(), documentId = randomUUID();
     try {
@@ -441,7 +568,7 @@ export function createCommercialDriveService(db, options = {}) {
       throw Object.assign(new Error("The provider file was saved, but QuoteSuite could not finish its canonical document record. Retry safely to reuse the same provider file."), { status: 409, code: "communication_assignment_partial_success", cause, details: { providerFileId: uploaded.id, webViewLink: uploaded.webViewLink || null, folderPath: supplierFolder.folder_path, fileName: uploaded.name || input.fileName } });
     }
     const document = await db.get("SELECT * FROM canonical_documents WHERE provider='google_drive' AND provider_account_id=? AND provider_file_id=?", accountId || "", uploaded.id);
-    return { status: "stored", stored: true, duplicate, documentId: document.id, providerFileId: uploaded.id, fileName: document.file_name, webViewLink: uploaded.webViewLink || null, folderPath: supplierFolder.folder_path, clientId, projectId, estimateId, supplierCode: supplier.supplier_code, supplierName: supplier.supplier_name };
+    return { status: "stored", stored: true, duplicate, fileOutcome: conflict.kind, decision: duplicate ? (conflict.kind === "identical_content" ? "reuse_identical" : "reuse_existing") : decision || "save", documentId: document.id, providerFileId: uploaded.id, fileName: document.file_name, webViewLink: uploaded.webViewLink || null, folderPath: supplierFolder.folder_path, clientId, projectId, estimateId, supplierCode: supplier.supplier_code, supplierName: supplier.supplier_name };
   }
 
   async function locateProjectFolder(context, rootId) {
@@ -530,7 +657,7 @@ export function createCommercialDriveService(db, options = {}) {
     return { status: "synced", projectId, provenance: located.provenance, foldersVisited: seen.size, filesDiscovered };
   }
 
-  return { provisionEnquiry, discoverEnquiry, discoverClient, provisionProject, storeReviewedEnquiryAttachments, provisionEstimate, storeCommunicationSupplierDocument, discoverProject, refreshScopeFolderMetadata, buildCanonicalClientFolderName, buildCanonicalEstimateFolderName };
+  return { provisionEnquiry, discoverEnquiry, discoverClient, provisionProject, storeReviewedEnquiryAttachments, provisionEstimate, reviewCommunicationSupplierDocument, storeCommunicationSupplierDocument, discoverProject, refreshScopeFolderMetadata, buildCanonicalClientFolderName, buildCanonicalEstimateFolderName };
 }
 
 const clean = (value) => String(value || "").trim();

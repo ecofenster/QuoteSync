@@ -306,7 +306,7 @@ export function createCommunicationsService(db, options = {}) {
     return { providerMessageId, communicationMessageId: message.id, reference, clients, projects, estimates, suppliers, attachments, conflicts, proposed: { clientId: selectedClient?.id || null, projectId: clientProjects.length === 1 ? clientProjects[0].id : null, estimateId: clientEstimates.length === 1 ? clientEstimates[0].id : null, supplierId: supplierMatches.length === 1 ? supplierMatches[0].id : null, attachmentId: attachments.length === 1 ? attachments[0].id : null } };
   }
 
-  async function assignSupplierDocument(providerMessageId, input = {}) {
+  async function resolveAssignmentSelection(providerMessageId, input = {}) {
     const optionsView = await assignmentOptions(providerMessageId), attachment = optionsView.attachments.find((item) => item.id === String(input.attachmentId || ""));
     if (!attachment) {
       const available = optionsView.attachments.map((item) => item.fileName);
@@ -320,9 +320,20 @@ export function createCommunicationsService(db, options = {}) {
     }
     const clientId = String(input.clientId || ""), projectId = String(input.projectId || ""), estimateId = String(input.estimateId || ""), supplierCode = String(input.supplierId || "");
     if (!optionsView.clients.some((item) => item.id === clientId) || !optionsView.projects.some((item) => item.id === projectId && item.client_id === clientId) || !optionsView.estimates.some((item) => item.id === estimateId && item.project_id === projectId) || !optionsView.suppliers.some((item) => item.id === supplierCode)) throw Object.assign(new Error("Review a canonical Client → Project → Estimate → Supplier filing path."), { status: 422, code: "communication_assignment_path_conflict" });
+    return { optionsView, attachment, clientId, projectId, estimateId, supplierCode };
+  }
+
+  async function reviewSupplierDocumentAssignment(providerMessageId, input = {}) {
+    const selection = await resolveAssignmentSelection(providerMessageId, input);
+    const bytes = await gmail.attachment(providerMessageId, selection.attachment.providerAttachmentId), drive = options.drive || createCommercialDriveService(db, options.driveServiceOptions);
+    return drive.reviewCommunicationSupplierDocument({ clientId: selection.clientId, projectId: selection.projectId, estimateId: selection.estimateId, supplierCode: selection.supplierCode, communicationAttachmentId: selection.attachment.id, providerMessageId, providerAttachmentId: selection.attachment.providerAttachmentId, fileName: selection.attachment.fileName, mediaType: selection.attachment.mediaType, sizeBytes: selection.attachment.sizeBytes, bytes });
+  }
+
+  async function assignSupplierDocument(providerMessageId, input = {}) {
+    const { optionsView, attachment, clientId, projectId, estimateId, supplierCode } = await resolveAssignmentSelection(providerMessageId, input);
     if (optionsView.conflicts.length && input.conflictsReviewed !== true) throw Object.assign(new Error("Review the reference conflict before filing this document."), { status: 409, code: "communication_assignment_conflict_review_required" });
     const bytes = await gmail.attachment(providerMessageId, attachment.providerAttachmentId), drive = options.drive || createCommercialDriveService(db, options.driveServiceOptions);
-    const stored = await drive.storeCommunicationSupplierDocument({ clientId, projectId, estimateId, supplierCode, communicationAttachmentId: attachment.id, providerMessageId, providerAttachmentId: attachment.providerAttachmentId, fileName: attachment.fileName, mediaType: attachment.mediaType, sizeBytes: attachment.sizeBytes, bytes });
+    const stored = await drive.storeCommunicationSupplierDocument({ clientId, projectId, estimateId, supplierCode, communicationAttachmentId: attachment.id, providerMessageId, providerAttachmentId: attachment.providerAttachmentId, fileName: attachment.fileName, mediaType: attachment.mediaType, sizeBytes: attachment.sizeBytes, bytes, fileDecision: input.fileDecision });
     if (stored.status !== "stored") throw Object.assign(new Error("The provider folder or document is not available yet; no filing relationship was recorded."), { status: 409, code: stored.status || "communication_assignment_storage_pending", details: stored });
     const message = await repository.findByProviderId("google_workspace", providerMessageId);
     try {
@@ -471,5 +482,5 @@ export function createCommunicationsService(db, options = {}) {
     return { enquiryId: enquiry.id, enquiryRef: enquiry.enquiryRef, idempotentReplay: false, selectedAttachmentCount: attachments.length, storageStatus: attachments.length ? "pending_reviewed_storage" : "no_attachments_selected", driveStatus: enquiry.driveTransitionStatus };
   }
 
-  return { status: workspace.status, mailbox, listMailbox, syncMailbox, readMessage, readThread, relationshipContext, linkRelationship, unlinkRelationship, assignmentOptions, assignSupplierDocument, prepareAssignedDocumentImport, changeState, maintainWatch, stopWatch, receiveNotification, command, createDraft, sendMessage, reply, forward, readAttachment, enquiryIntake, createEnquiryFromMessage, repository };
+  return { status: workspace.status, mailbox, listMailbox, syncMailbox, readMessage, readThread, relationshipContext, linkRelationship, unlinkRelationship, assignmentOptions, reviewSupplierDocumentAssignment, assignSupplierDocument, prepareAssignedDocumentImport, changeState, maintainWatch, stopWatch, receiveNotification, command, createDraft, sendMessage, reply, forward, readAttachment, enquiryIntake, createEnquiryFromMessage, repository };
 }

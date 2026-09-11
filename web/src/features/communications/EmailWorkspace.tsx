@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   communicationsApi,
   type CommunicationAssignmentOptions,
+  type CommunicationAssignmentReview,
   type CommunicationAssignmentResult,
+  type CommunicationFileDecision,
   type CommunicationAttachmentView,
   type CommunicationContextResult,
   type CommunicationContextSuggestion,
@@ -33,6 +35,7 @@ type AssignmentFeedback = {
     folderPath?: string;
     webViewLink?: string | null;
     eligibleFileNames?: string[];
+    conflict?: { message?: string; evidence?: string; recommendedDecision?: string };
   };
 };
 type Composer = {
@@ -968,6 +971,7 @@ export function AssignmentDialog({
     supplierId: string;
     attachmentId: string;
     conflictsReviewed: boolean;
+    fileDecision: CommunicationFileDecision;
   }) => void;
   onOpenFiles: (result: CommunicationAssignmentResult) => void;
   onImport: (result: CommunicationAssignmentResult) => void;
@@ -979,14 +983,48 @@ export function AssignmentDialog({
     [attachmentId, setAttachmentId] = useState(
       options.proposed.attachmentId || "",
     ),
-    [conflictsReviewed, setConflictsReviewed] = useState(false);
+    [conflictsReviewed, setConflictsReviewed] = useState(false),
+    [review, setReview] = useState<CommunicationAssignmentReview | null>(null),
+    [reviewState, setReviewState] = useState<"idle" | "checking" | "checked" | "failed">("idle"),
+    [reviewError, setReviewError] = useState(""),
+    [fileDecision, setFileDecision] = useState<CommunicationFileDecision | "">("");
   const projects = options.projects.filter(
       (item) => item.client_id === clientId,
     ),
     estimates = options.estimates.filter(
       (item) => item.project_id === projectId,
     ),
-    hasBlockingConflict = options.conflicts.some((item) => item.blocking);
+    hasBlockingConflict = options.conflicts.some((item) => item.blocking),
+    selectionComplete = Boolean(clientId && projectId && estimateId && supplierId && attachmentId);
+  useEffect(() => {
+    if (!selectionComplete || saving || result) {
+      if (!selectionComplete) {
+        setReview(null);
+        setReviewState("idle");
+        setFileDecision("");
+      }
+      return;
+    }
+    let current = true;
+    setReview(null);
+    setReviewState("checking");
+    setReviewError("");
+    setFileDecision("");
+    void communicationsApi.reviewAssignment(options.providerMessageId, { clientId, projectId, estimateId, supplierId, attachmentId })
+      .then((next) => {
+        if (!current) return;
+        setReview(next);
+        setReviewState("checked");
+        const needsChoice = next.conflict.decisions.length > 1 || next.conflict.kind.startsWith("same_name_");
+        setFileDecision(needsChoice ? "" : next.conflict.recommendedDecision);
+      })
+      .catch((reason) => {
+        if (!current) return;
+        setReviewState("failed");
+        setReviewError(reason instanceof Error ? reason.message : "The filing destination could not be checked.");
+      });
+    return () => { current = false; };
+  }, [attachmentId, clientId, estimateId, options.providerMessageId, projectId, result, saving, selectionComplete, supplierId]);
   return (
     <div className="ui-modal-backdrop" role="presentation">
       <section
@@ -1015,9 +1053,13 @@ export function AssignmentDialog({
         {result ? (
           <div className="email-assignment__result">
             <p className="ui-status ui-status--success">
-              {result.duplicate
-                ? "This retained document was already filed; the existing file was reused."
-                : "The retained document was filed successfully."}
+              {result.decision === "reuse_identical"
+                ? "An identical Drive file was reused and linked successfully."
+                : result.duplicate
+                  ? "This exact attachment was already filed; the existing file was reused."
+                  : result.decision === "save_new_revision"
+                    ? "The attachment was saved safely as a new revision."
+                    : "The retained document was filed successfully."}
             </p>
             <p>
               <strong>Filename</strong>
@@ -1069,12 +1111,14 @@ export function AssignmentDialog({
                 aria-live="polite"
               >
                 <strong>{feedback.message}</strong>
-                {feedback.details?.fileName || feedback.details?.folderPath || feedback.details?.eligibleFileNames?.length ? (
+                {feedback.details?.fileName || feedback.details?.folderPath || feedback.details?.eligibleFileNames?.length || feedback.details?.conflict ? (
                   <details>
                     <summary>View details</summary>
                     {feedback.details?.fileName ? <span>File: {feedback.details.fileName}</span> : null}
                     {feedback.details?.folderPath ? <span>Destination: {feedback.details.folderPath}</span> : null}
                     {feedback.details?.eligibleFileNames?.length ? <span>Eligible documents: {feedback.details.eligibleFileNames.join(", ")}</span> : null}
+                    {feedback.details?.conflict?.message ? <span>{feedback.details.conflict.message}</span> : null}
+                    {feedback.details?.conflict?.evidence ? <span>{feedback.details.conflict.evidence}</span> : null}
                   </details>
                 ) : null}
                 {feedback.state === "partial" ? (
@@ -1178,6 +1222,39 @@ export function AssignmentDialog({
                 </select>
               </label>
             </div>
+            {selectionComplete ? (
+              <section className="email-assignment__conflicts" aria-label="File check">
+                <h4>File check</h4>
+                {reviewState === "checking" ? <p className="ui-status" role="status">Checking the Drive destination…</p> : null}
+                {reviewState === "failed" ? (
+                  <p className="ui-status ui-status--error" role="alert">
+                    {reviewError} Nothing has been saved. Change a selection or close and reopen the picker to retry safely.
+                  </p>
+                ) : null}
+                {review ? (
+                  <>
+                    <p className={review.conflict.kind.startsWith("same_name_") ? "ui-status ui-status--error" : "ui-status"}>{review.conflict.message}</p>
+                    <small>{review.conflict.evidence}</small>
+                    <details>
+                      <summary>View details</summary>
+                      <span>Destination: {review.folderPath}</span>
+                      <span>{review.destinationExists ? "The destination folder already exists." : "The destination will be created when you save."}</span>
+                    </details>
+                    {review.conflict.decisions.length > 1 || review.conflict.kind.startsWith("same_name_") ? (
+                      <fieldset className="email-assignment__decisions">
+                        <legend>Choose how to continue</legend>
+                        {review.conflict.decisions.map((decision) => (
+                          <label key={decision}>
+                            <input type="radio" name="file-decision" value={decision} checked={fileDecision === decision} disabled={saving} onChange={() => setFileDecision(decision)} />
+                            <span>{decision === "reuse_identical" ? "Use the existing identical file" : "Save this attachment as a new revision"}</span>
+                          </label>
+                        ))}
+                      </fieldset>
+                    ) : null}
+                  </>
+                ) : null}
+              </section>
+            ) : null}
             {options.conflicts.length ? (
               <section
                 className="email-assignment__conflicts"
@@ -1227,9 +1304,12 @@ export function AssignmentDialog({
                   !estimateId ||
                   !supplierId ||
                   !attachmentId ||
+                  reviewState !== "checked" ||
+                  !fileDecision ||
                   (options.conflicts.length > 0 && !conflictsReviewed)
                 }
-                onClick={() =>
+                onClick={() => {
+                  if (!fileDecision) return;
                   onSubmit({
                     clientId,
                     projectId,
@@ -1237,8 +1317,9 @@ export function AssignmentDialog({
                     supplierId,
                     attachmentId,
                     conflictsReviewed,
-                  })
-                }
+                    fileDecision,
+                  });
+                }}
               >
                 {saving
                   ? "Saving document…"
@@ -1663,6 +1744,7 @@ export default function EmailWorkspace({
     supplierId: string;
     attachmentId: string;
     conflictsReviewed: boolean;
+    fileDecision: CommunicationFileDecision;
   }) => {
     const providerMessageId = activeMessage?.providerMessageId;
     if (!providerMessageId || assignmentSubmitting.current) return;
@@ -1681,9 +1763,13 @@ export default function EmailWorkspace({
       setAssignmentResult(result);
       setRelationship(await communicationsApi.context(providerMessageId));
       setContextNotice(
-        result.duplicate
-          ? "The existing filed document was reused; no duplicate was created."
-          : "Supplier document filed and linked to the selected canonical records.",
+        result.decision === "reuse_identical"
+          ? "The identical Drive file was reused and linked; no duplicate was created."
+          : result.duplicate
+            ? "The exact attachment was already filed and has been linked."
+            : result.decision === "save_new_revision"
+              ? "Supplier document saved as a new revision and linked to the selected records."
+              : "Supplier document filed and linked to the selected canonical records.",
       );
     } catch (reason) {
       let code = "",

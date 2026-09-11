@@ -7,7 +7,7 @@ Grouping does not change delivery status. An entry remains in progress until its
 ## Dependency order
 
 1. **CRM workday and Enquiry intake (5)** — canonical dashboard projection, exact-record navigation, ownership/next-action continuity and Enquiry intake. No external dependency for the internal foundation. Ordinary-user acceptance remains required.
-2. **Email, Files and supplier-document intake (23)** — builds on CRM context. Much of individual-message reading, provider filing and import handoff exists; remaining work is conflict classification, complete error/recovery paths and consolidated browser/user acceptance. Genuine provider acceptance requires configured Gmail/Drive but no live filing is authorised for EF-CL-028.
+2. **Email, Files and supplier-document intake (23)** — builds on CRM context. Individual-message reading, exact selected-attachment ownership, supplier-folder conflict classification, save-as-new-revision, progress/failure/retry feedback and import handoff now have disposable normal-route evidence. Remaining implementation is Email create-record match/conflict review plus the wider RFQ/provider operations represented by this package; the bounded filing walkthrough still needs user acceptance. Genuine provider acceptance requires configured Gmail/Drive, but no live filing is authorised for EF-CL-028.
 3. **Customer Estimate, quotation and release (23)** — reuses manufacturer evidence and the existing document renderer. Remaining work mixes implementation gaps, exact-output verification and user acceptance; production sending remains a controlled external dependency.
 4. **Portal, canonical Order and procurement (7)** — depends on immutable released Estimate evidence. Controlled journey infrastructure exists; production identity, e-signature policy and delivery authority are external blockers and are not weakened.
 5. **Quote comparison and reusable technical documents (4)** — depends on canonical intake plus customer-commercial truth. Existing analysis and document-library foundations are reused; exception review and customer-safe projection remain the joined acceptance gate.
@@ -20,3 +20,8 @@ Grouping does not change delivery status. An entry remains in progress until its
 Each package is completed as one user journey and shared-service pass: remaining implementation → focused service/API tests → normal-route browser verification including failure/recovery → Roadmap evidence update → coherent checkpoint/push → short user-acceptance checklist. Prior evidence is reused unless the package changes its contract.
 
 The first implementation pass starts with: **start the day → see real overdue/today work → search/open the exact Client, Enquiry, Project, Estimate, Order or follow-up → complete work and set the next action**. It replaces browser-local dashboard inference rather than adding another CRM store.
+
+## Current continuation point
+
+- Package 1 is technically verified and awaits its bounded user checklist plus the authenticated multi-user/history dependencies recorded in the Roadmap.
+- Package 2 filing slice is technically verified through selected message → destination check → explicit revision choice → progress/failure/retry → exact result and next actions. Continue at Email create-record existing-match review, then consolidate the package user checklist; do not expand into non-Gmail channels or live EF-CL-028 writes.

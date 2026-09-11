@@ -18,7 +18,9 @@ export type CommunicationAssignmentOptions = {
   conflicts:Array<{code:string;message:string;blocking:boolean}>;
   proposed:{clientId:string|null;projectId:string|null;estimateId:string|null;supplierId:string|null;attachmentId:string|null};
 };
-export type CommunicationAssignmentResult = {status:"stored";duplicate:boolean;documentId:string;providerFileId:string;fileName:string;folderPath:string;webViewLink:string|null;links:CommunicationLinkView[];navigation:{clientId:string;projectId:string;estimateId:string;destination:"supplier-documents";openFilesLabel:string;importLabel:string}};
+export type CommunicationFileDecision = "save"|"reuse_existing"|"reuse_identical"|"save_new_revision";
+export type CommunicationAssignmentReview = {status:"reviewed";destinationExists:boolean;folderPath:string;clientId:string;projectId:string;estimateId:string;supplierCode:string;supplierName:string;fileName:string;conflict:{kind:"already_filed"|"identical_content"|"same_name_different_content"|"same_name_unverified"|"new_file";message:string;evidence:string;existingFile:{id:string;name:string;webViewLink:string|null}|null;recommendedDecision:CommunicationFileDecision;decisions:CommunicationFileDecision[]}};
+export type CommunicationAssignmentResult = {status:"stored";duplicate:boolean;fileOutcome?:CommunicationAssignmentReview["conflict"]["kind"];decision?:CommunicationFileDecision;documentId:string;providerFileId:string;fileName:string;folderPath:string;webViewLink:string|null;links:CommunicationLinkView[];navigation:{clientId:string;projectId:string;estimateId:string;destination:"supplier-documents";openFilesLabel:string;importLabel:string}};
 export type CommunicationChangeState = { mode:"push"|"bounded_reconciliation";pushConfigured:boolean;projectionVersion:number;watchStatus:string;watchExpirationAt:string|null;lastNotificationAt:string|null;lastReconciledAt:string|null };
 export type GoogleWorkspaceCapability = { available:boolean;missingScopes:string[];rootConfigured?:boolean };
 export type GoogleWorkspaceState = "not_configured"|"configured_encryption_unavailable"|"configured_disconnected"|"connected"|"reconnect_required";
@@ -36,6 +38,7 @@ export const communicationsApi = {
   thread:(id:string)=>apiFetch(`/api/communications/threads/${encodeURIComponent(id)}`) as Promise<CommunicationMessageView>,
   context:(id:string)=>apiFetch(`/api/communications/messages/${encodeURIComponent(id)}/context`) as Promise<CommunicationContextResult>,
   assignmentOptions:(id:string)=>apiFetch(`/api/communications/messages/${encodeURIComponent(id)}/assignment`) as Promise<CommunicationAssignmentOptions>,
+  reviewAssignment:(id:string,input:unknown)=>apiFetch(`/api/communications/messages/${encodeURIComponent(id)}/assignment-review`,{method:"POST",headers:json,body:JSON.stringify(input)}) as Promise<CommunicationAssignmentReview>,
   assignDocument:(id:string,input:unknown)=>apiFetch(`/api/communications/messages/${encodeURIComponent(id)}/assignment`,{method:"POST",headers:json,body:JSON.stringify(input)}) as Promise<CommunicationAssignmentResult>,
   link:(id:string,input:Pick<CommunicationContextSuggestion,"kind"|"id">)=>apiFetch(`/api/communications/messages/${encodeURIComponent(id)}/links`,{method:"POST",headers:json,body:JSON.stringify(input)}) as Promise<CommunicationContextResult>,
   unlink:(id:string,input:CommunicationLinkView)=>apiFetch(`/api/communications/messages/${encodeURIComponent(id)}/links`,{method:"DELETE",headers:json,body:JSON.stringify(input)}) as Promise<CommunicationContextResult>,
