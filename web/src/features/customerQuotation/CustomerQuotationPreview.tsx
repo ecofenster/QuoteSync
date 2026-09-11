@@ -21,6 +21,7 @@ import {
 } from "./customerQuotationProjection";
 import CustomerQuotationPositionCard from "./CustomerQuotationPositionCard";
 import { quotationWorkflowApi, type IssuedQuotationView } from "../../services/quotations/quotationWorkflowApi";
+import type { CalculatorScenario } from "../projectCalculatorLab/domain/projectCalculatorLab.types";
 import "./customerQuotation.css";
 import "./customerQuotationBrand.css";
 import { loadDocumentCoverPhoto } from "./documentCoverPhoto";
@@ -150,6 +151,14 @@ export default function CustomerQuotationPreview({
   const [issueRecipient,setIssueRecipient]=useState("");
   const [issueSubject,setIssueSubject]=useState("");
   const [issueBody,setIssueBody]=useState("");
+  const [sourceScenario,setSourceScenario]=useState<CalculatorScenario|null>(null);
+  const [coverPhotoUrl,setCoverPhotoUrl]=useState<string|null>(null);
+  const [termsOpen,setTermsOpen]=useState(false);
+  const [termsBusy,setTermsBusy]=useState(false);
+  const [termsError,setTermsError]=useState("");
+  const [validityDays,setValidityDays]=useState("30");
+  const [termsText,setTermsText]=useState("");
+  const [exclusionsText,setExclusionsText]=useState("");
   const actionInFlight=useRef(false);
   const [options, setOptions] = useState<CustomerQuotationDisplayOptions>(
     DEFAULT_CUSTOMER_QUOTATION_DISPLAY_OPTIONS,
@@ -166,14 +175,17 @@ export default function CustomerQuotationPreview({
           throw new Error(
             "Save Project Costing before previewing the customer quotation.",
           );
-        const [scenario, coverPhoto] = await Promise.all([
+        const [scenario, coverPhoto,commercialTerms] = await Promise.all([
           projectCalculatorLabApi.getScenario(saved.id, String(estimate.id)),
           loadDocumentCoverPhoto().catch(() => null),
+          quotationWorkflowApi.getCustomerTerms(String(estimate.id)),
         ]);
-        if (!cancelled)
+        if (!cancelled){
+          setSourceScenario(scenario);setCoverPhotoUrl(coverPhoto?.dataUrl??null);setValidityDays(String(commercialTerms.validityDays));setTermsText(commercialTerms.terms.join("\n"));setExclusionsText(commercialTerms.exclusions.join("\n"));
           setProjection(
-            buildCustomerQuotationProjection({ scenario, client, estimate, coverPhotoUrl: coverPhoto?.dataUrl ?? null }),
+            buildCustomerQuotationProjection({ scenario, client, estimate, coverPhotoUrl: coverPhoto?.dataUrl ?? null,commercialTerms:{validityDays:commercialTerms.validityDays,terms:commercialTerms.terms,exclusions:commercialTerms.exclusions,reviewed:commercialTerms.reviewed,reviewedAt:commercialTerms.reviewedAt} }),
           );
+        }
       })
       .catch((reason) => {
         if (!cancelled)
@@ -205,6 +217,7 @@ export default function CustomerQuotationPreview({
     : undefined;
   const prepareForSend=async()=>{
     if(!projection||actionInFlight.current)return;actionInFlight.current=true;
+    if(!projection.commercialTerms.reviewed){actionInFlight.current=false;setIssueError("Review validity, terms and exclusions before preparing the customer Email.");setTermsOpen(true);return}
     setActiveAction("prepare");setIssueError("");setDownloadResult(null);
     try{
       const prepared=await quotationWorkflowApi.prepare({estimateId:String(estimate.id),clientId:String(client.id),estimateRevision:estimate.revisionNo,quotationRevision:projection.commercialRevision,projection,recipient:client.email});
@@ -219,7 +232,8 @@ export default function CustomerQuotationPreview({
     catch(reason){setIssueError(reason instanceof Error?reason.message:"The provider did not send the quotation.");try{setIssuePreparation(await quotationWorkflowApi.get(issuePreparation.id))}catch{/* retain current preparation */}onWorkflowChanged?.()}
     finally{actionInFlight.current=false;setActiveAction(null)}
   };
-  const downloadProductionPdf=async()=>{if(!projection||actionInFlight.current)return;actionInFlight.current=true;setActiveAction("download");setIssueError("");setDownloadResult(null);try{setDownloadResult(await quotationWorkflowApi.downloadPreview(projection))}catch(reason){setIssueError(reason instanceof Error?reason.message:"Estimate PDF could not be generated. Check the Estimate and try again.")}finally{actionInFlight.current=false;setActiveAction(null)}};
+  const downloadProductionPdf=async()=>{if(!projection||actionInFlight.current)return;if(!projection.commercialTerms.reviewed){setIssueError("Review validity, terms and exclusions before downloading the customer PDF.");setTermsOpen(true);return}actionInFlight.current=true;setActiveAction("download");setIssueError("");setDownloadResult(null);try{setDownloadResult(await quotationWorkflowApi.downloadPreview(projection,String(estimate.id)))}catch(reason){setIssueError(reason instanceof Error?reason.message:"Estimate PDF could not be generated. Check the Estimate and try again.")}finally{actionInFlight.current=false;setActiveAction(null)}};
+  const saveTerms=async()=>{if(!sourceScenario||termsBusy)return;setTermsBusy(true);setTermsError("");try{const saved=await quotationWorkflowApi.saveCustomerTerms(String(estimate.id),{validityDays:Number(validityDays),terms:termsText.split(/\r?\n/),exclusions:exclusionsText.split(/\r?\n/)});setProjection(buildCustomerQuotationProjection({scenario:sourceScenario,client,estimate,coverPhotoUrl,commercialTerms:{validityDays:saved.validityDays,terms:saved.terms,exclusions:saved.exclusions,reviewed:saved.reviewed,reviewedAt:saved.reviewedAt}}));setIssuePreparation(null);setDownloadResult(null);setTermsOpen(false)}catch(reason){setTermsError(reason instanceof Error?reason.message:"Estimate terms could not be saved. Your entries are still here.")}finally{setTermsBusy(false)}};
   const issueBusy=activeAction!==null;
   const summary = projection ? (
     <section className="customer-quotation-page customer-quotation-page--summary">
@@ -270,6 +284,12 @@ export default function CustomerQuotationPreview({
               <strong>{money(projection.totalIncVatGbp)}</strong>
             </div>
           </div>
+          <section className="customer-quotation__commercial-terms">
+            <h3>Estimate validity, terms and exclusions</h3>
+            <p>This Estimate is valid for {projection.commercialTerms.validityDays} days from its issue date.</p>
+            {projection.commercialTerms.terms.length?<><h4>Terms</h4><ul>{projection.commercialTerms.terms.map((item,index)=><li key={`term-${index}`}>{item}</li>)}</ul></>:null}
+            {projection.commercialTerms.exclusions.length?<><h4>Exclusions</h4><ul>{projection.commercialTerms.exclusions.map((item,index)=><li key={`exclusion-${index}`}>{item}</li>)}</ul></>:null}
+          </section>
         </section>
       </main>
       <PageFooter
@@ -351,6 +371,8 @@ export default function CustomerQuotationPreview({
             </button>
           </div>
         </div>
+        {projection&&!projection.commercialTerms.reviewed?<section className="customer-quotation__terms-notice no-print" role="status"><div><strong>Review validity, terms and exclusions</strong><span>Confirm the customer-facing basis once for this Estimate before downloading or preparing an Email.</span></div><button type="button" className="ui-button ui-button--primary" onClick={()=>setTermsOpen(true)}>Review terms</button></section>:projection?<section className="customer-quotation__terms-notice no-print" role="status"><div><strong>Customer terms reviewed</strong><span>Valid for {projection.commercialTerms.validityDays} days · {projection.commercialTerms.terms.length} term(s) · {projection.commercialTerms.exclusions.length} exclusion(s)</span></div><button type="button" className="ui-button" disabled={issueBusy} onClick={()=>setTermsOpen(true)}>Review terms</button></section>:null}
+        {termsOpen?<section className="customer-quotation__terms-editor no-print" aria-label="Estimate validity, terms and exclusions"><div><strong>Customer Estimate basis</strong><span>Use one line for each term or exclusion. Blank lists are allowed when deliberately confirmed.</span></div><label>Valid for (days)<input className="ui-input" type="number" min="1" max="365" value={validityDays} disabled={termsBusy} onChange={event=>setValidityDays(event.currentTarget.value)}/></label><label>Terms<textarea className="ui-input" rows={4} value={termsText} disabled={termsBusy} onChange={event=>setTermsText(event.currentTarget.value)}/></label><label>Exclusions<textarea className="ui-input" rows={4} value={exclusionsText} disabled={termsBusy} onChange={event=>setExclusionsText(event.currentTarget.value)}/></label>{termsError?<p role="alert" className="customer-quotation__error">{termsError}</p>:null}<div className="ui-action-row"><button type="button" className="ui-button" disabled={termsBusy} onClick={()=>setTermsOpen(false)}>Keep current</button><button type="button" className="ui-button ui-button--primary" disabled={termsBusy} onClick={()=>void saveTerms()}>{termsBusy?"Saving terms…":"Confirm for this Estimate"}</button></div></section>:null}
         {downloadResult?<section className="customer-quotation__result no-print" role="status"><strong>PDF downloaded</strong><span>{downloadResult.fileName} · {Math.ceil(downloadResult.sizeBytes/1024)} KB</span><span>Next: review the saved PDF. This download did not issue or Email the Estimate.</span></section>:null}
         {issuePreparation ? <section className="customer-quotation__issue-preparation customer-quotation__email-composer no-print" role="status"><div className="customer-quotation__email-evidence"><strong>{issuePreparation.status==="issued"?"Estimate sent successfully":issuePreparation.status==="failed"?"Estimate was not sent":"Email ready to review"}</strong>{issuePreparation.status==="issued"?<span>{issuePreparation.document?.fileName||"Estimate PDF"} was sent to {issuePreparation.recipient}.{issuePreparation.followUp?` Follow Up is due ${new Date(`${issuePreparation.followUp.dueDate}T00:00:00`).toLocaleDateString("en-GB")}.`:""}</span>:issuePreparation.status==="failed"?<span>The PDF and Email draft are still saved. Review the error, correct the details and retry safely.</span>:<span>Nothing has been sent. Check the recipient, subject, message and PDF, then use the primary Send action.</span>}{issuePreparation.document?<a href={issuePreparation.document.downloadUrl} target="_blank" rel="noreferrer">Open {issuePreparation.document.fileName}</a>:null}<details><summary>View details</summary><span>Estimate revision {issuePreparation.estimateRevision} · quotation revision {issuePreparation.quotationRevision}</span>{issuePreparation.issuedAt?<span>Provider confirmed {new Date(issuePreparation.issuedAt).toLocaleString()} · message {issuePreparation.providerMessageId}</span>:null}</details></div>{issuePreparation.status!=="issued"?<div className="customer-quotation__email-fields"><label>To<input className="ui-input" type="email" value={issueRecipient} disabled={issueBusy} onChange={event=>setIssueRecipient(event.currentTarget.value)}/></label><label>Subject<input className="ui-input" value={issueSubject} disabled={issueBusy} onChange={event=>setIssueSubject(event.currentTarget.value)}/></label><label>Message<textarea className="ui-input" rows={8} value={issueBody} disabled={issueBusy} onChange={event=>setIssueBody(event.currentTarget.value)}/></label><div className="ui-action-row"><button type="button" className="ui-button" disabled={issueBusy} onClick={()=>setIssuePreparation(null)}>Close</button><button type="button" className="ui-button ui-button--primary" disabled={issueBusy||!issueRecipient.trim()||!issueSubject.trim()||!issueBody.trim()} onClick={()=>void sendPrepared()}>{activeAction==="send"?"Sending Estimate…":"Send Estimate"}</button></div></div>:null}</section> : null}
         {issueError?<p role="alert" className="customer-quotation__error no-print">{issueError}</p>:null}

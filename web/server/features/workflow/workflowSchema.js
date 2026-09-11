@@ -127,6 +127,16 @@ const tableStatements = [
     created_at TEXT NOT NULL,
     FOREIGN KEY (estimate_id) REFERENCES estimates(id) ON DELETE RESTRICT
   )`,
+  `CREATE TABLE IF NOT EXISTS estimate_customer_terms (
+    estimate_id TEXT PRIMARY KEY,
+    validity_days INTEGER NOT NULL CHECK(validity_days BETWEEN 1 AND 365),
+    terms_json TEXT NOT NULL DEFAULT '[]',
+    exclusions_json TEXT NOT NULL DEFAULT '[]',
+    reviewed_by TEXT NOT NULL,
+    reviewed_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (estimate_id) REFERENCES estimates(id) ON DELETE RESTRICT
+  )`,
   `CREATE TABLE IF NOT EXISTS issued_quotations (
     id TEXT PRIMARY KEY,
     idempotency_key TEXT NOT NULL UNIQUE,

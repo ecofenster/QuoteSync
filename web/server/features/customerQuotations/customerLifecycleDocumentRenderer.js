@@ -98,6 +98,11 @@ function summaryTable(projection) {
   return { table: { widths: ["*", 130], body: rows }, layout: { fillColor: (row) => row === rows.length - 1 ? "#E8F2E2" : null, hLineColor: () => "#D7DDD9", vLineWidth: () => 0, paddingLeft: () => 8, paddingRight: () => 8, paddingTop: () => 7, paddingBottom: () => 7 } };
 }
 
+function commercialTermsContent(projection){
+  const terms=projection.commercialTerms||{},validity=Math.max(1,Number(terms.validityDays)||30),termLines=Array.isArray(terms.terms)?terms.terms.map(clean).filter(Boolean):[],exclusions=Array.isArray(terms.exclusions)?terms.exclusions.map(clean).filter(Boolean):[];
+  return [{text:"Estimate validity, terms and exclusions",style:"sectionTitle",margin:[0,20,0,7]},{text:`This Estimate is valid for ${validity} days from its issue date.`,style:"body"},...(termLines.length?[{text:"Terms",style:"bodyStrong",margin:[0,9,0,3]},{ul:termLines,style:"body"}]:[]),...(exclusions.length?[{text:"Exclusions",style:"bodyStrong",margin:[0,9,0,3]},{ul:exclusions,style:"body"}]:[])];
+}
+
 async function projectionAssets(projection, attachmentRoot) {
   const drawings = new Map();
   for (const position of projection.positions || []) drawings.set(clean(position.id), await imageDataUrl(position.drawing?.imageUrl, attachmentRoot));
@@ -142,6 +147,7 @@ function documentDefinition({ kind, projection, context, assets }) {
   });
   content.push({ text: "", pageBreak: "after" }, pageHeader(kind === "estimate" ? "Estimate Summary" : kind === "order" ? "Order Summary" : "Final Confirmation Summary", reference, brand));
   content.push({ text: `${positions.filter((position) => position.includedInQuotationTotal !== false).length} included Position(s) and ${positions.filter((position) => position.classification === "alternative").length} alternative option(s).`, style: "body", margin: [0, 0, 0, 12] }, summaryTable(projection));
+  content.push(...commercialTermsContent(projection));
   if (kind === "order") content.push({ text: "Customer acceptance", style: "sectionTitle", margin: [0, 22, 0, 7] }, { text: `Accepted ${formatDate(context.acceptedAt)} against immutable Estimate ${clean(context.estimateReference || projection.estimateReference)} revision ${number(context.estimateRevision)}.`, style: "body" }, { text: `Staff approval: ${context.staffApprovedAt ? `recorded ${formatDate(context.staffApprovedAt)}` : "Pending"}`, style: context.staffApprovedAt ? "checkOk" : "checkWarn", margin: [0, 6, 0, 0] });
   if (kind === "final_confirmation") content.push({ text: "Customer Position approval", style: "sectionTitle", margin: [0, 22, 0, 7] }, { text: "Each Position shown above must be explicitly approved against this exact confirmation revision. Any changed confirmation invalidates this sign-off and requires renewed review.", style: "notice" }, { table: { widths: ["*", 80], body: [[{ text: "POSITION", style: "fieldLabel" }, { text: "APPROVED", style: "fieldLabel" }], ...positions.filter((position) => position.includedInQuotationTotal !== false).map((position) => [{ text: clean(position.customerReference || position.reference), style: "body" }, { text: "[  ]", alignment: "center", fontSize: 11 }])] }, layout: { hLineColor: () => "#D7DDD9", vLineWidth: () => 0, paddingTop: () => 6, paddingBottom: () => 6 } }, { columns: [{ text: "Overall approval:  [  ]", style: "bodyStrong" }, { text: "Signature: ____________________", style: "bodyStrong" }, { text: "Date: ____________", style: "bodyStrong" }], margin: [0, 18, 0, 0] });
   return {

@@ -84,6 +84,13 @@ test("document cover setting accepts only bounded original JPEG or PNG evidence"
   assert.equal(normaliseDocumentCoverPhoto({...original,dataUrl:"https://example.test/replacement.jpg"}),null);
 });
 
+test("reviewed validity, terms and exclusions use the same preview and server-PDF projection",()=>{
+  const commercialTerms={validityDays:45,terms:["Final dimensions are subject to survey."],exclusions:["Scaffolding by others."],reviewed:true,reviewedAt:"2026-09-11T12:00:00.000Z"},quote=buildCustomerQuotationProjection({scenario:scenario(),client,estimate,commercialTerms});
+  assert.deepEqual(quote.commercialTerms,commercialTerms);
+  const definition=customerLifecycleDocumentRendererInternals.documentDefinition({kind:"estimate",projection:quote,context:{},assets:{cover:null,architectural:null,showcases:new Map(),drawings:new Map()}}),serialized=JSON.stringify(definition.content);
+  assert.match(serialized,/valid for 45 days/i);assert.match(serialized,/Final dimensions are subject to survey/);assert.match(serialized,/Scaffolding by others/);
+});
+
 test("supplier EUR purchase data and internal commercial fields cannot leak into the projection", () => {
   const input = scenario();
   input.supplierCommercialPolicies = [{ pricingMethod: "staged_discount", pricingProvenance: { matchedBandId: "private-band", parityPricingApplied: false }, standardDiscountStages: [{ label: "Discount 1", percentage: "30" }] }];
@@ -381,7 +388,7 @@ test("the canonical entry point and unified server PDF path are present and misl
   assert.doesNotMatch(collectionView, /<th>Actions<\/th>/);
   assert.match(collectionView, /aria-label={`Open \$\{item\.estimateRef\}`}/);
   assert.doesNotMatch(preview, /window\.print\(\)/);
-  assert.match(preview, /quotationWorkflowApi\.downloadPreview\(projection\)/);
+  assert.match(preview, /quotationWorkflowApi\.downloadPreview\(projection,String\(estimate\.id\)\)/);
   assert.match(preview, /Download PDF/);
   assert.match(preview, /PDF downloaded/);
   assert.match(preview, /This download did not issue or Email the Estimate/);

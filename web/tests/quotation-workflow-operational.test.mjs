@@ -13,7 +13,7 @@ import { initializeLifecycleSchema } from "../server/features/lifecycle/lifecycl
 
 const encryptionKey=Buffer.alloc(32,7);
 const jsonResponse=(body,{ok=true,status=200}={})=>({ok,status,json:async()=>body});
-const projection=(reference,total="1200.00")=>({estimateReference:reference,clientName:"Ada Client",projectName:"Garden Room",projectAddress:"1 Test Street",commercialRevision:4,positions:[{id:"p1",reference:"W1",customerReference:"W1",classification:"included",includedInQuotationTotal:true,quantity:1,widthMm:1000,heightMm:1200,productSystem:"Europa 92",totalSellingPriceGbp:"1000.00"},{id:"p2",reference:"W1A",customerReference:"W1A",classification:"alternative",includedInQuotationTotal:false,alternativeToReference:"W1",quantity:1,widthMm:1000,heightMm:1200,productSystem:"Europa 92",totalSellingPriceGbp:"900.00"}],charges:[{id:"products",label:"Products / Supply Only",amountGbp:"1000.00"}],subtotalExVatGbp:"1000.00",vatRatePercent:"20",vatGbp:"200.00",totalIncVatGbp:total});
+const projection=(reference,total="1200.00")=>({estimateReference:reference,clientName:"Ada Client",projectName:"Garden Room",projectAddress:"1 Test Street",commercialRevision:4,commercialTerms:{validityDays:30,terms:["Final dimensions are subject to survey."],exclusions:["Building work by others."],reviewed:true,reviewedAt:"2026-08-26T09:00:00.000Z"},positions:[{id:"p1",reference:"W1",customerReference:"W1",classification:"included",includedInQuotationTotal:true,quantity:1,widthMm:1000,heightMm:1200,productSystem:"Europa 92",totalSellingPriceGbp:"1000.00"},{id:"p2",reference:"W1A",customerReference:"W1A",classification:"alternative",includedInQuotationTotal:false,alternativeToReference:"W1",quantity:1,widthMm:1000,heightMm:1200,productSystem:"Europa 92",totalSellingPriceGbp:"900.00"}],charges:[{id:"products",label:"Products / Supply Only",amountGbp:"1000.00"}],subtotalExVatGbp:"1000.00",vatRatePercent:"20",vatGbp:"200.00",totalIncVatGbp:total});
 
 async function fixture(t,{gmailFailure=false,environment={}}={}){
   const root=await mkdtemp(path.join(os.tmpdir(),"qs-issued-")),db=await open({filename:path.join(root,"test.db"),driver:sqlite3.Database});
@@ -33,6 +33,7 @@ async function fixture(t,{gmailFailure=false,environment={}}={}){
   await db.run("INSERT INTO estimates VALUES(?,?,?,?,?,?,'Draft',?,'1 Test Street','{}','AA1 1AA','',NULL,NULL,?,NULL)","estimate-1","client-1","project-1","EST-100","EST-100",2,JSON.stringify([{id:"p1",positionRef:"W1",qty:1}]),"2026-08-26T09:00:00.000Z");
   await db.run("INSERT INTO project_calculator_lab_scenarios VALUES(?,?)","scenario-1","estimate-1");
   await db.run("INSERT INTO project_calculator_estimate_product_rows VALUES(?,?)","product-1","scenario-1");
+  await db.run("INSERT INTO estimate_customer_terms VALUES('estimate-1',30,?,?,'staff-1','2026-08-26T09:00:00.000Z','2026-08-26T09:00:00.000Z')",JSON.stringify(["Final dimensions are subject to survey."]),JSON.stringify(["Building work by others."]));
   let gmailSendCount=0;
   const accessFixture=Buffer.alloc(24,41).toString("base64url"),refreshFixture=Buffer.alloc(24,42).toString("base64url"),secretFixture=Buffer.alloc(24,43).toString("base64url");
   const fetchImpl=async(url)=>{
@@ -59,6 +60,7 @@ test("prepared quotation persists an immutable canonical PDF and commercial evid
   assert.equal(prepared.communication.status,"draft");
   const workflowState=await service.estimateState("estimate-1");assert.equal(workflowState.quotationReviewed,true);assert.equal(workflowState.quotationPrepared,true);assert.equal(workflowState.quotationIssued,false);
   assert.deepEqual(prepared.commercialSnapshot,{subtotalExVatGbp:"1000.00",vatRatePercent:"20",vatGbp:"200.00",totalIncVatGbp:"1200.00"});
+  assert.equal(JSON.parse(prepared.termsSnapshot).validityDays,30);
   const stored=await db.get("SELECT * FROM issued_quotations WHERE id=?",prepared.id),document=await db.get("SELECT * FROM customer_quotation_documents WHERE id=?",stored.document_id);
   const bytes=await readFile(path.join(root,"attachments",...document.storage_key.split("/")));
   assert.equal(bytes.subarray(0,5).toString(),"%PDF-");
@@ -67,6 +69,15 @@ test("prepared quotation persists an immutable canonical PDF and commercial evid
   await db.run("UPDATE estimates SET revision_no=3 WHERE id='estimate-1'");
   assert.equal((await service.get(prepared.id)).estimateRevision,2);
   assert.equal(JSON.parse((await db.get("SELECT commercial_snapshot_json value FROM issued_quotations WHERE id=?",prepared.id)).value).totalIncVatGbp,"1200.00");
+});
+
+test("customer validity, terms and exclusions require review and become immutable after issue",async t=>{
+  const {db,service,gmailSendCount}=await fixture(t);await db.run("DELETE FROM estimate_customer_terms WHERE estimate_id='estimate-1'");const input={clientId:"client-1",estimateId:"estimate-1",estimateRevision:2,quotationRevision:4,recipient:"ada@example.com",projection:projection("EST-100")};
+  await assert.rejects(()=>service.prepare(input),error=>error.code==="customer_terms_review_required");
+  const reviewed=await service.saveCustomerTerms("estimate-1",{validityDays:45,terms:[" Final survey applies. ",""],exclusions:["Scaffolding by others."],reviewedBy:"staff-1"});assert.equal(reviewed.validityDays,45);assert.deepEqual(reviewed.terms,["Final survey applies."]);
+  input.projection.commercialTerms={validityDays:45,terms:reviewed.terms,exclusions:reviewed.exclusions,reviewed:true,reviewedAt:reviewed.reviewedAt};const stale=await service.prepare(input),changed=await service.saveCustomerTerms("estimate-1",{validityDays:60,terms:["Current terms."],exclusions:[],reviewedBy:"staff-1"});await assert.rejects(()=>service.send(stale.id,{recipient:stale.recipient,subject:stale.subject,bodyHtml:stale.communication.bodyHtml}),error=>error.code==="customer_terms_changed");assert.equal(gmailSendCount(),0);
+  input.projection.commercialTerms={validityDays:changed.validityDays,terms:changed.terms,exclusions:changed.exclusions,reviewed:true,reviewedAt:changed.reviewedAt};const prepared=await service.prepare(input);await service.send(prepared.id,{recipient:prepared.recipient,subject:prepared.subject,bodyHtml:prepared.communication.bodyHtml});
+  await assert.rejects(()=>service.saveCustomerTerms("estimate-1",{validityDays:60,terms:[],exclusions:[],reviewedBy:"staff-1"}),error=>error.code==="estimate_revision_immutable");
 });
 
 test("an already issued Estimate revision cannot send a second changed preparation",async t=>{

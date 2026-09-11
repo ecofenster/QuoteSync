@@ -46,6 +46,7 @@ export type CustomerQuotationCharge = { id: string; label: string; amountGbp: st
 export type CustomerQuotationSupplySummary = { reference: string; description: string; quantity: number; dimensions: string; amountGbp: string | null };
 export type CustomerQuotationProductShowcase = { id: "ecotherm" | "europa-92-alu"; name: string; imageUrl: string; positionReferences: string[] };
 export type CustomerQuotationSpecificationOverview = { productSystem: string; positionReferences: string[]; items: Array<{ label: string; values: string[] }> };
+export type CustomerQuotationCommercialTerms = { validityDays:number;terms:string[];exclusions:string[];reviewed:boolean;reviewedAt:string|null };
 
 export type CustomerQuotationProjection = {
   brand: CustomerDocumentBrand;
@@ -56,6 +57,7 @@ export type CustomerQuotationProjection = {
   coverPhotoUrl: string | null;
   productShowcases: CustomerQuotationProductShowcase[];
   specificationOverview: CustomerQuotationSpecificationOverview[];
+  commercialTerms:CustomerQuotationCommercialTerms;
   displayOptions: CustomerQuotationDisplayOptions;
   estimateReference: string;
   commercialRevision: number;
@@ -128,6 +130,7 @@ export function buildCustomerQuotationProjection(input: {
   brand?: CustomerDocumentBrand;
   coverPhotoUrl?: string | null;
   displayOptions?: CustomerQuotationDisplayOptions;
+  commercialTerms?:CustomerQuotationCommercialTerms;
 }): CustomerQuotationProjection {
   const result = deriveProjectCostingCommercialResult(input.scenario);
   const estimateById = new Map(input.estimate.positions.map((position) => [String(position.id), position]));
@@ -234,6 +237,7 @@ export function buildCustomerQuotationProjection(input: {
     coverPhotoUrl: input.coverPhotoUrl ?? null,
     productShowcases,
     specificationOverview,
+    commercialTerms:input.commercialTerms??{validityDays:30,terms:[],exclusions:[],reviewed:false,reviewedAt:null},
     displayOptions: input.displayOptions ?? DEFAULT_CUSTOMER_QUOTATION_DISPLAY_OPTIONS,
     estimateReference: input.estimate.estimateRef,
     commercialRevision: input.scenario.revisionNumber,
