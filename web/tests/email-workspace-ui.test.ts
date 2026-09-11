@@ -170,7 +170,9 @@ test("Email defaults to the exact selected message, remembers optional conversat
   assert.ok(ui.indexOf('className="email-context-panel"')<ui.indexOf('<SelectedMessage message={activeMessage}'));
   for(const label of ["Client","Project","Estimate","Supplier","Document","Open Files","Import Manufacturer Estimate"])assert.match(ui,new RegExp(`>\\s*${label}\\s*<`));
   assert.match(api,/assignmentOptions/);assert.match(api,/assignDocument/);assert.match(css,/\.email-message-row\.is-preview-selected\{[^}]*box-shadow:inset 5px/);assert.match(css,/\.email-reader__selected-message/);
-  assert.match(ui,/communicationsApi\.list\([\s\S]*?readingMode/);assert.match(ui,/communicationsApi\.sync\([\s\S]*?readingMode/);assert.match(ui,/inbox\|\|\|\$\{initialReadingMode\}/);assert.match(api,/mode:MailboxListMode="message"/);
+  assert.match(ui,/mailboxMemoryCache\.get\("inbox\|\|"\)/);assert.doesNotMatch(api,/MailboxListMode|[?&]mode=/);
+  const loadBoundary=ui.slice(ui.indexOf("const load = useCallback"),ui.indexOf("const loadRef = useRef")),modeBoundary=ui.slice(ui.indexOf("const changeReadingMode"),ui.indexOf("const beginResize"));
+  assert.doesNotMatch(loadBoundary,/readingMode/);assert.doesNotMatch(modeBoundary,/setPageToken|setPageHistory|communicationsApi\.(?:list|sync)/);assert.match(ui,/aria-label="Select all messages"/);assert.match(ui,/aria-label=\{`\$\{folderLabel\} messages`\}/);
 });
 
 test("Email and Files use QuoteSuite typography tokens and normal control hit targets",async()=>{

@@ -282,6 +282,8 @@ async function run() {
     );
     assert.equal(new Set(targetSearchRows.map((row) => row.messageId)).size, 2);
     assert.equal(new Set(targetSearchRows.map((row) => row.threadId)).size, 1);
+    assert.match(targetSearchRows[0]?.date || "", /10 Sept? 2026/);
+    assert.match(targetSearchRows[1]?.date || "", /9 Sept? 2026/);
     const screenshots = [await capture(tab, "00-individual-message-rows")];
 
     const openedWord = await tab.evaluate(
@@ -393,6 +395,76 @@ async function run() {
     const conversationCount = await tab.evaluate(
       "document.querySelectorAll('.email-reader__message').length",
     );
+    const conversationRows = await tab.evaluate(
+      `(()=>[...document.querySelectorAll('.email-message-row')].filter(row=>/Viktorija/i.test(row.textContent)&&/EF-CL-028/i.test(row.textContent)&&/(?:9|10) Sept? 2026/.test(row.querySelector('time')?.textContent||'')).map(row=>({messageId:row.dataset.messageId,threadId:row.dataset.threadId,date:row.querySelector('time')?.textContent.trim()})))()`,
+    );
+    assert.deepEqual(
+      conversationRows.map((row) => row.messageId),
+      targetSearchRows.map((row) => row.messageId),
+      "Conversation reading mode changed the individual-message Inbox rows",
+    );
+    const openedWordInConversation = await tab.evaluate(
+      `(()=>{const row=[...document.querySelectorAll('.email-message-row')].find(item=>item.dataset.messageId===${JSON.stringify(wordMessage.messageId)});if(!row)return false;row.click();return true})()`,
+    );
+    assert.ok(
+      openedWordInConversation,
+      "9 September row was not selectable in Conversation reading mode",
+    );
+    await waitFor(
+      () =>
+        tab.evaluate(
+          `document.querySelector('.email-message-row.is-preview-selected')?.dataset.messageId===${JSON.stringify(wordMessage.messageId)}`,
+        ),
+      "Conversation reading mode lost the selected Word message identity",
+    );
+    await waitFor(
+      () =>
+        tab.evaluate(
+          "![...document.querySelectorAll('button')].find(item=>item.textContent.trim()==='Link existing')?.disabled",
+        ),
+      "Word message filing action unavailable in Conversation reading mode",
+    );
+    await clickText(tab, "Link existing");
+    await waitFor(
+      () => tab.evaluate("Boolean(document.querySelector('.email-assignment'))"),
+      "Word message picker unavailable in Conversation reading mode",
+    );
+    const conversationWordPickerDocument = await tab.evaluate(
+      `(()=>{const root=document.querySelector('.email-assignment'),label=[...root.querySelectorAll('label')].find(item=>item.childNodes[0]?.textContent.trim()==='Document');return label?.querySelector('select')?.selectedOptions?.[0]?.textContent.trim()||''})()`,
+    );
+    assert.equal(conversationWordPickerDocument, wordPickerDocument);
+    await clickText(tab, "Close");
+    const openedPdfInConversation = await tab.evaluate(
+      `(()=>{const row=[...document.querySelectorAll('.email-message-row')].find(item=>item.dataset.messageId===${JSON.stringify(messageView.messageId)});if(!row)return false;row.click();return true})()`,
+    );
+    assert.ok(
+      openedPdfInConversation,
+      "10 September row was not selectable in Conversation reading mode",
+    );
+    await waitFor(
+      () =>
+        tab.evaluate(
+          `document.querySelector('.email-message-row.is-preview-selected')?.dataset.messageId===${JSON.stringify(messageView.messageId)}`,
+        ),
+      "Conversation reading mode lost the selected PDF message identity",
+    );
+    await waitFor(
+      () =>
+        tab.evaluate(
+          "![...document.querySelectorAll('button')].find(item=>item.textContent.trim()==='Link existing')?.disabled",
+        ),
+      "PDF message filing action unavailable in Conversation reading mode",
+    );
+    await clickText(tab, "Link existing");
+    await waitFor(
+      () => tab.evaluate("Boolean(document.querySelector('.email-assignment'))"),
+      "PDF message picker unavailable in Conversation reading mode",
+    );
+    const conversationPdfPickerDocument = await tab.evaluate(
+      `(()=>{const root=document.querySelector('.email-assignment'),label=[...root.querySelectorAll('label')].find(item=>item.childNodes[0]?.textContent.trim()==='Document');return label?.querySelector('select')?.selectedOptions?.[0]?.textContent.trim()||''})()`,
+    );
+    assert.equal(conversationPdfPickerDocument, picker.document.text);
+    await clickText(tab, "Close");
     await clickText(tab, "Message");
     await waitFor(
       () =>
@@ -400,6 +472,14 @@ async function run() {
           "Boolean(document.querySelector('.email-reader__selected-message'))",
         ),
       "Message mode could not be restored",
+    );
+    const messageRowsAfterToggle = await tab.evaluate(
+      `(()=>[...document.querySelectorAll('.email-message-row')].filter(row=>/Viktorija/i.test(row.textContent)&&/EF-CL-028/i.test(row.textContent)&&/(?:9|10) Sept? 2026/.test(row.querySelector('time')?.textContent||'')).map(row=>({messageId:row.dataset.messageId,threadId:row.dataset.threadId,date:row.querySelector('time')?.textContent.trim()})))()`,
+    );
+    assert.deepEqual(
+      messageRowsAfterToggle.map((row) => row.messageId),
+      targetSearchRows.map((row) => row.messageId),
+      "Returning to Message reading mode changed the individual-message Inbox rows",
     );
 
     await clickText(tab, "Client Database", ".app-sidebar-item");
@@ -589,6 +669,10 @@ async function run() {
             conflict: picker.conflict.trim(),
           },
           conversationCount,
+          conversationRows,
+          conversationWordPickerDocument,
+          conversationPdfPickerDocument,
+          messageRowsAfterToggle,
           preview,
           pdf: {
             path: pdfPath,
