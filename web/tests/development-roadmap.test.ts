@@ -38,7 +38,7 @@ test("chronology remains ordered and displays the current checkpoint", () => {
   assert.equal([...ROADMAP_CHRONOLOGY].reverse().find((entry) => entry.checkpointSha)?.checkpointSha, ROADMAP_CHECKPOINT_SHA);
   assert.equal(ROADMAP_CHRONOLOGY.find((entry) => entry.title === "Browser automation process-lifecycle hardening")?.sequence, 75);
   assert.equal(ROADMAP_CHRONOLOGY.at(-1)?.title, "Email supplier-file conflict review and recoverable revision filing");
-  assert.equal(ROADMAP_CHECKPOINT_SHA, "cb30fcc");
+  assert.equal(ROADMAP_CHECKPOINT_SHA, "ece5307");
 });
 
 test("Email intake conflict review and permanent workflow feedback remain explicit unimplemented requirements", () => {
