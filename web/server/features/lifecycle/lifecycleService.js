@@ -7,6 +7,7 @@ import { createCustomerLifecycleDocumentService } from './customerLifecycleDocum
 import { createSupplierRevisionChangeDocumentService } from './supplierRevisionChangeDocumentService.js';
 import { recordSupplierResponseState, outstandingSupplierRevisionRequests, outstandingSupplierResponseReviews, supplierReviewSourceIdentity, staleSupplierReviewCount } from './supplierResponseState.js';
 import {factoryAttachmentOptions,savedFactoryAttachments,reviewFactoryAttachments,assertFactoryAttachmentsCurrent,factoryCommunicationAttachments} from './factoryAttachmentReview.js';
+import {factoryDeliveryState,sendFactoryOnce} from './factoryDelivery.js';
 
 const text = (value) => String(value ?? '').trim();
 const hash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -383,7 +384,7 @@ export function createLifecycleService(db, options = {}) {
         const document = await customerDocuments.get(id);
         if (document?.orderId === orderId && message?.attachments?.some(item => item.storageKey === document.storageKey && item.sha256 === document.sha256)) attachments.push({ id: document.id, fileName: document.fileName, sha256: document.sha256, downloadUrl: `/api/lifecycle/documents/${encodeURIComponent(document.id)}`, priceFree: document.context?.audience === 'factory-price-free-v1' });
       }
-      factoryDraft = { additionalFiles,availableFiles:await factoryAttachmentOptions(db,order),id: request.id, communicationMessageId: request.communication_message_id, status: request.status, recipient: request.recipient, subject: request.subject, bodyText: request.body_text, updatedAt: request.updated_at, attachments, needsPreparation: !message || message.attachments.length !== 1+additionalFiles.length || attachments.length !== 1 || !attachments[0].priceFree, sentAt: message?.sentAt || null };
+      factoryDraft = { delivery:await factoryDeliveryState(db,orderId),deliveryMode:delivery.publicStatus().deliveryMode,additionalFiles,availableFiles:await factoryAttachmentOptions(db,order),id: request.id, communicationMessageId: request.communication_message_id, status: request.status, recipient: request.recipient, subject: request.subject, bodyText: request.body_text, updatedAt: request.updated_at, attachments, needsPreparation: !message || message.attachments.length !== 1+additionalFiles.length || attachments.length !== 1 || !attachments[0].priceFree, sentAt: message?.sentAt || null };
     }
     const confirmations = await db.all(`SELECT fc.*,r.id release_id,r.released_at,s.id signoff_id,s.approved_at signoff_approved_at,s.signed_pdf_document_id
       FROM factory_confirmations fc LEFT JOIN factory_confirmation_releases r ON r.factory_confirmation_id=fc.id
@@ -401,6 +402,8 @@ export function createLifecycleService(db, options = {}) {
     if (!order) throw problem('Order was not found.', 404, 'order_not_found');
     if (!await db.get('SELECT id FROM order_staff_approvals WHERE order_id=?', orderId)) throw problem('Staff approval is required before preparing the factory order.', 409, 'factory_order_staff_approval_required');
     const existing = await db.get('SELECT * FROM factory_order_requests WHERE order_id=?', orderId);
+    const activeDelivery=await db.get("SELECT * FROM factory_delivery_attempts WHERE order_id=? AND state IN ('sending','sent','uncertain')",orderId);
+    if(activeDelivery&&input.send!==true)throw problem('A factory delivery attempt is recorded. Review its outcome before editing or replacing this request.',409,'factory_delivery_unconfirmed');
     if (existing) {
       if (input.editDraft === true) {
         if (existing.status !== 'draft') throw problem('Only an unsent factory draft can be edited. Sent correspondence is retained unchanged.', 409, 'factory_draft_not_editable');
@@ -413,7 +416,7 @@ export function createLifecycleService(db, options = {}) {
         if (!prior) throw problem('The saved message is unavailable. Prepare the factory preview again before editing.',409,'factory_order_communication_missing');
         const message = await communications.save({ ...prior, id: randomUUID(), createdAt: stamp(), provider: 'quotesuite_preview', providerMessageId: null, threadId: null, sentAt: null, error: null, attachments: [...(prior.attachments || []).filter(item=>item.storageKey),...factoryCommunicationAttachments(selectedFiles)].map(item => ({ ...item, id: randomUUID() })), folder: 'drafts', status: 'draft', to: [recipient], cc: [], bcc: [], subject, bodyText, snippet: bodyText, bodyHtml: `<p>${bodyText.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('\n','<br>')}</p>` });
         await db.run('INSERT INTO factory_attachment_reviews(communication_message_id,order_id,files_json,reviewed_by,reviewed_at) VALUES(?,?,?,?,?)',message.id,orderId,JSON.stringify(selectedFiles),text(input.createdBy)||existing.created_by,stamp());
-        const changed = await db.run("UPDATE factory_order_requests SET recipient=?,subject=?,body_text=?,communication_message_id=?,updated_at=? WHERE id=? AND communication_message_id=? AND status='draft'",recipient,subject,bodyText,message.id,stamp(),existing.id,existing.communication_message_id);
+        const changed = await db.run("UPDATE factory_order_requests SET recipient=?,subject=?,body_text=?,communication_message_id=?,updated_at=? WHERE id=? AND communication_message_id=? AND status='draft' AND NOT EXISTS(SELECT 1 FROM factory_delivery_attempts WHERE order_id=? AND state IN ('sending','sent','uncertain'))",recipient,subject,bodyText,message.id,stamp(),existing.id,existing.communication_message_id,orderId);
         if (!changed.changes) throw problem('The factory draft changed while saving. Reopen it to review the current version; no message was sent.',409,'factory_draft_changed');
         await event('factory.order.draft_reviewed',message.id,[{kind:'order',id:orderId},{kind:'communication',id:message.id}]);
         return { id: existing.id, status: 'draft', communicationMessageId: message.id };
@@ -427,24 +430,27 @@ export function createLifecycleService(db, options = {}) {
         if (input.send === true) throw problem('This older factory draft contains a customer document. Prepare the factory preview again to replace its attachment with a price-free schedule, review it, then send.', 409, 'factory_draft_requires_safe_schedule');
         const document = await customerDocuments.createFactoryOrderDocument(orderId);
         const message = await deliverOrSave({ id: randomUUID(), provider: 'quotesuite_preview', direction: 'outbound', folder: 'drafts', status: 'draft', from: [], to: [existing.recipient], cc: [], bcc: [], subject: existing.subject, bodyText: existing.body_text, bodyHtml: `<p>${existing.body_text.replaceAll('&','&amp;').replaceAll('<','&lt;')}</p>`, links: [{kind:'order',id:orderId},{kind:'project',id:order.project_id}], attachments: [{id:randomUUID(),fileName:document.fileName,mediaType:document.mediaType,sizeBytes:document.sizeBytes,storageKey:document.storageKey,sha256:document.sha256}] }, false);
-        await db.run("UPDATE factory_order_requests SET status='draft',document_ids_json=?,communication_message_id=?,updated_at=? WHERE id=?", JSON.stringify([document.id]), message.id, stamp(), existing.id);
+        const replaced=await db.run("UPDATE factory_order_requests SET status='draft',document_ids_json=?,communication_message_id=?,updated_at=? WHERE id=? AND communication_message_id=? AND status='draft' AND NOT EXISTS(SELECT 1 FROM factory_delivery_attempts WHERE order_id=? AND state IN ('sending','sent','uncertain'))", JSON.stringify([document.id]), message.id, stamp(), existing.id,existing.communication_message_id,orderId);
+        if(!replaced.changes)throw problem('This factory request changed or delivery started while preparing. Reopen it to review the recorded result.',409,'factory_draft_changed');
         await event('factory.order.preview_replaced', existing.id, [{kind:'order',id:orderId},{kind:'communication',id:message.id}]);
         return { ...existing, status: 'draft', communicationMessageId: message.id, documentIds: [document.id], delivery: delivery.publicStatus() };
       }
       if (input.send === true && existing.status !== 'sent') {
+        if(input.reviewed!==true||text(input.expectedCommunicationId)!==existing.communication_message_id)throw problem('Reopen and review the saved recipient, message and attachments before sending this factory request.',409,'factory_delivery_review_required');
         const prior = await communications.get(existing.communication_message_id);
         if (!prior) throw problem('Prepared factory Order correspondence was not found.', 409, 'factory_order_communication_missing');
         delivery.assertRecipient(existing.recipient, 'factory');
         await assertFactoryAttachmentsCurrent(db,order,additionalFiles);
-        const sent = await communicationService.sendMessage({ ...prior, provider:'google_workspace',folder:'sent',status:'sending' });
-        const at=stamp();
+        const receipt=await sendFactoryOnce(db,{orderId,communicationId:existing.communication_message_id,send:({attemptId})=>communicationService.sendMessage({ ...prior, provider:'google_workspace',folder:'sent',status:'sending' },{factoryDeliveryAttemptId:attemptId}),now:stamp});
+        const at=receipt.sent_at||stamp();
         await db.run("UPDATE factory_order_requests SET status='sent',updated_at=? WHERE id=?",at,existing.id);
-        await event('factory.order.sent',existing.id,[{kind:'order',id:orderId},{kind:'communication',id:sent.id}]);
+        await event('factory.order.sent',existing.id,[{kind:'order',id:orderId},{kind:'communication',id:existing.communication_message_id}]);
         return { ...existing, status:'sent', delivery:delivery.publicStatus(), documentIds:parse(existing.document_ids_json,[]) };
       }
       return { ...existing, delivery: delivery.publicStatus(), documentIds: parse(existing.document_ids_json, []) };
     }
     const recipient = text(input.recipient), actor = text(input.createdBy), subject = text(input.subject) || `Factory Order ${order.order_ref}`;
+    if(input.send===true)throw problem('Prepare the factory request first, then review its saved schedule and attachments before sending.',409,'factory_delivery_review_required');
     if (!recipient || !actor) throw problem('Factory recipient and staff identity are required.');
     if (input.send === true) delivery.assertRecipient(recipient, 'factory');
     const orderDocument = await customerDocuments.createFactoryOrderDocument(orderId);

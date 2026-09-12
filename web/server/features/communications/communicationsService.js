@@ -457,18 +457,32 @@ export function createCommunicationsService(db, options = {}) {
     return saved;
   }
 
-  async function sendMessage(input) {
-    guardTestRecipients(input);
-    const status = await requireGmailCapability();
-    const attachments = await Promise.all((input.attachments || []).map((item) => decodeAttachment(item, attachmentRoot, workspace))), id = String(input.id || randomUUID());
-    await repository.save({ ...input, id, provider: "google_workspace", mailboxId: "me", direction: "outbound", folder: "sent", status: "sending", attachments: attachments.map(({ bytes, ...item }) => ({ ...item, sizeBytes: item.sizeBytes ?? bytes.length })) });
+  async function sendMessage(input, commandContext = {}) {
+    let status,attachments,sent;
+    const id = String(input.id || randomUUID());
     try {
-      const sent = await gmail.send({ ...input, attachments });
+      guardTestRecipients(input);
+      const factorySchema=await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='factory_order_requests'");
+      if(factorySchema){
+        const factoryMessage=await db.get(`SELECT id FROM factory_order_requests WHERE communication_message_id=?
+          UNION SELECT order_id FROM factory_attachment_reviews WHERE communication_message_id=?
+          UNION SELECT evidence_id FROM workflow_events WHERE event_name LIKE 'factory.order.%' AND EXISTS(SELECT 1 FROM json_each(links_json) WHERE json_extract(value,'$.kind')='communication' AND json_extract(value,'$.id')=?) LIMIT 1`,id,id,id);
+        if(factoryMessage&&!await db.get("SELECT id FROM factory_delivery_attempts WHERE id=? AND communication_message_id=? AND state='sending'",commandContext.factoryDeliveryAttemptId||'',id))throw Object.assign(new Error('Send this saved factory request from its reviewed Order journey so its delivery and duplicate protection are retained.'),{status:409,code:'factory_delivery_context_required'});
+      }
+      status = await requireGmailCapability();
+      attachments = await Promise.all((input.attachments || []).map((item) => decodeAttachment(item, attachmentRoot, workspace)));
+      await repository.save({ ...input, id, provider: "google_workspace", mailboxId: "me", direction: "outbound", folder: "sent", status: "sending", attachments: attachments.map(({ bytes, ...item }) => ({ ...item, sizeBytes: item.sizeBytes ?? bytes.length })) });
+    } catch(error) { error.deliveryOutcome='not_sent'; throw error; }
+    try {
+      sent = await gmail.send({ ...input, attachments });
+      if(!sent?.providerMessageId)throw Object.assign(new Error('Gmail did not return a confirmed message identity.'),{code:'provider_delivery_unconfirmed'});
       const saved = await repository.save({ ...input, id, provider: "google_workspace", providerMessageId: sent.providerMessageId, threadId: sent.threadId, mailboxId: "me", direction: "outbound", folder: "sent", status: "sent", sentAt: new Date().toISOString(), attachments: attachments.map(({ bytes, ...item }) => ({ ...item, sizeBytes: item.sizeBytes ?? bytes.length })) });
       await bumpProjection(String(status.account?.id || status.account?.email || "me"), { lastReconciledAt: new Date().toISOString(), error: null });
       return saved;
     } catch (error) {
-      await repository.save({ ...input, id, provider: "google_workspace", mailboxId: "me", direction: "outbound", folder: "sent", status: "failed", error: error instanceof Error ? error.message : "Provider send failed.", attachments: attachments.map(({ bytes, ...item }) => ({ ...item, sizeBytes: item.sizeBytes ?? bytes.length })) });
+      error.deliveryOutcome=sent?.providerMessageId?'sent':'uncertain';
+      if(sent?.providerMessageId)error.providerMessageId=sent.providerMessageId;
+      else await repository.save({ ...input, id, provider: "google_workspace", mailboxId: "me", direction: "outbound", folder: "sent", status: "failed", error: error instanceof Error ? error.message : "Provider send failed.", attachments: attachments.map(({ bytes, ...item }) => ({ ...item, sizeBytes: item.sizeBytes ?? bytes.length })) }).catch(()=>{});
       throw error;
     }
   }

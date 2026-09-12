@@ -15,6 +15,7 @@ import { initializeLifecycleSchema } from "../server/features/lifecycle/lifecycl
 import { createLifecycleService, deriveConfirmationCheck, deriveRevisionCheck } from "../server/features/lifecycle/lifecycleService.js";
 import { saveSupplierResponseReview, supplierResponseReviewContext, supplierResponseReviewHistory } from "../server/features/lifecycle/supplierResponseReviews.js";
 import { createCommunicationRepository } from "../server/features/communications/communicationRepository.js";
+import { createCommunicationsService } from "../server/features/communications/communicationsService.js";
 import { createTestDeliveryPolicy } from "../server/features/lifecycle/testDeliveryPolicy.js";
 import { createPortalTestAdapter } from "../server/features/clientPortal/portalTestAdapter.js";
 import { createIssuedQuotationService } from "../server/features/customerQuotations/issuedQuotationService.js";
@@ -311,6 +312,8 @@ test("customer acceptance creates one canonical Order and factory commitment rem
   const approval=await lifecycle.approveOrder(accepted.orderId,{approvedBy:"staff-1",note:"Reviewed exact issued revision"});assert.equal(approval.status,"staff_approved");
   const draft=await lifecycle.prepareFactoryOrder(accepted.orderId,{recipient:"factory@example.test",createdBy:"staff-1",documentIds:["document-issued"]});assert.equal(draft.status,"draft");assert.equal((await source.db.get("SELECT status FROM orders WHERE id=?",accepted.orderId)).status,"staff_approved");
   const safeDocument=await lifecycle.customerDocuments.get(draft.documentIds[0]);
+  const ordinaryMail=createCommunicationsService(source.db,{deliveryPolicy:{assertAllRecipients(){}}});
+  await assert.rejects(()=>ordinaryMail.sendMessage({id:draft.communicationMessageId,factoryDeliveryAttemptId:'cannot-pass-context-in-payload'}),error=>error.code==='factory_delivery_context_required'&&error.deliveryOutcome==='not_sent');
   assert.equal(safeDocument.context.audience,'factory-price-free-v1');assert.match(safeDocument.fileName,/Factory-Schedule/);
   assert.equal(safeDocument.projection.totalIncVatGbp,undefined);assert.equal(safeDocument.projection.commercialTerms,undefined);assert.equal(safeDocument.projection.positions[0].totalSellingPriceGbp,undefined);
   const draftReplay=await lifecycle.prepareFactoryOrder(accepted.orderId,{recipient:'factory@example.test',createdBy:'staff-1'});assert.deepEqual(draftReplay.documentIds,draft.documentIds);

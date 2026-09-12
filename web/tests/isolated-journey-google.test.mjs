@@ -9,6 +9,9 @@ import {isolatedJourneyMode} from './fixtures/isolatedJourneyGuard.mjs';
 test('no-network reissue mode needs isolated development, explicit opt-in and exact test addresses',()=>{
  const env={NODE_ENV:'development',QUOTESUITE_TEST_JOURNEY:'1',QUOTESUITE_TEST_DELIVERY_ENABLED:'1',QUOTESUITE_DISPOSABLE_PROVIDER_DELIVERY:'customer-reissue',QUOTESUITE_TEST_CUSTOMER_EMAIL:'customer.journey@example.test',QUOTESUITE_TEST_FACTORY_EMAIL:'factory.journey@example.test',QUOTESUITE_DB_PATH:path.join(os.tmpdir(),'quotesuite-complete-journey-guard','fixture.db')};
  assert.equal(isolatedJourneyMode(env).delivery,true);
+ assert.equal(isolatedJourneyMode({...env,QUOTESUITE_DISPOSABLE_PROVIDER_DELIVERY:'factory-send'}).factoryDelivery,true);
+ assert.equal(isolatedJourneyMode(env).factoryDelivery,false);
+ assert.throws(()=>isolatedJourneyMode({...env,QUOTESUITE_DISPOSABLE_PROVIDER_DELIVERY:'factory-send',QUOTESUITE_TEST_FACTORY_EMAIL:'live@example.com'}),/requires the owned/);
  for(const patch of [{NODE_ENV:'production'},{QUOTESUITE_TEST_FACTORY_EMAIL:'factory@example.com'},{QUOTESUITE_TEST_DELIVERY_ENABLED:'0'},{QUOTESUITE_DISPOSABLE_PROVIDER_DELIVERY:''}])assert.throws(()=>isolatedJourneyMode({...env,...patch}),/requires the owned/);
 });
 

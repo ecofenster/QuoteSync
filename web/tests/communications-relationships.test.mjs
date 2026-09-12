@@ -52,6 +52,14 @@ test('changed retained provider attachment blocks before Gmail send or draft mut
   assert.equal(sends,0);assert.deepEqual(await repository.get(draft.id),before);
 });
 
+test('provider-confirmed send retains its identity when later local projection fails',async t=>{
+  const db=await fixture(t),repository=createCommunicationRepository(db);let sends=0;
+  const service=createCommunicationsService(db,{deliveryPolicy:{assertAllRecipients(){}},workspace:{status:async()=>({connected:true,account:{id:'disposable-account'},capabilities:{gmail:{available:true}}})},gmail:{send:async()=>{sends++;return {providerMessageId:'confirmed-provider-message',threadId:'confirmed-thread'}}}});
+  // This bounded fixture deliberately lacks the later watch/projection table.
+  await assert.rejects(()=>service.sendMessage({...providerMessage(),id:'confirmed-send',direction:'outbound'}),error=>error.deliveryOutcome==='sent'&&error.providerMessageId==='confirmed-provider-message');
+  const saved=await repository.get('confirmed-send');assert.equal(sends,1);assert.equal(saved.status,'sent');assert.equal(saved.providerMessageId,'confirmed-provider-message');assert.equal(saved.threadId,'confirmed-thread');assert.ok(saved.sentAt);
+});
+
 test("provider enrichment preserves explicit canonical links",async t=>{
   const db=await fixture(t),repository=createCommunicationRepository(db),clientLink={kind:"client",id:"client-1"};
   await repository.save(providerMessage([clientLink]));
