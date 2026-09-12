@@ -20,6 +20,8 @@ import { pdfJsRuntimeOptions } from "../server/features/supplierImportLab/pdfJsR
 import { createBrowserRunController, countBrowserRunProfiles } from "./browser-run-lifecycle.mjs";
 import { terminateOwnedProcessTree } from "./e2e-owned-process.mjs";
 import { initializeIsolatedJourneyDatabase } from "./isolated-journey-database.mjs";
+import { createServer as createPortProbe } from "node:net";
+import { QUOTESUITE_RUNTIME_CONTRACT } from "../shared/runtimeHealthContract.js";
 
 const APP_URL = "http://127.0.0.1:5276";
 const API_URL = "http://127.0.0.1:3104";
@@ -31,7 +33,6 @@ const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const reachable = async (url) => { try { return (await fetch(url)).ok; } catch { return false; } };
 const waitFor = async (fn, message, timeout = 60_000) => { const started = Date.now(); while (Date.now() - started < timeout) { const result = await fn().catch(() => false); if (result) return result; await delay(150); } throw new Error(message); };
 const controller = createBrowserRunController({ throwOnLeak: true, processOptions: { platformName: process.platform } });
-controller.installInterruptHandlers();
 
 function projection(reference, revision = 1) {
   return {
@@ -66,6 +67,7 @@ async function seed(databasePath, attachmentRoot) {
   const customerProjection = projection(estimateReference, 1);
   await db.run(`INSERT INTO clients(id,name,email,contact_name,company_name,client_ref,project_name,created_at,deleted_at,commercial_lifecycle,reference_namespace,updated_at) VALUES(?,?,?,?,?,?,?,?,NULL,'prospect','test',?)`, clientId, "TEST Customer Journey", CUSTOMER, "TEST Customer Journey", "", `TEST-CL-${suffix.toUpperCase()}`, customerProjection.projectName, now, now);
   await db.run("INSERT INTO projects(id,client_id,name,status,created_at,updated_at) VALUES(?,?,?,'active',?,?)", projectId, clientId, customerProjection.projectName, now, now);
+  await db.run("INSERT INTO supplier_commercial_defaults(supplier_code,supplier_name,policy_json,pricing_display_policy_json,updated_at) VALUES('TEST-JOURNEY-SUPPLIER','TEST Journey Supplier','{}','{}',?)",now);
   await db.run(`INSERT INTO estimates(id,client_id,project_id,estimate_ref,base_estimate_ref,revision_no,status,estimated_order_month,estimated_order_year,defaults_json,positions_json,order_meta_json,outcome,project_address,project_address_json,postcode,what3words,created_by_user_id,created_by_name,created_by_role,created_at,updated_at,deleted_at) VALUES(?,?,?,?,?,1,'Issued','September',2026,'{}',?,'{}','Open',?,'{}','CF10 1AA','','test-staff','Test Staff','estimator',?,?,NULL)`, estimateId, clientId, projectId, estimateReference, estimateReference, JSON.stringify(customerProjection.positions.map((item) => ({ id: item.id, positionRef: item.reference, qty: item.quantity, widthMm: item.widthMm, heightMm: item.heightMm, roomName: item.roomName }))), customerProjection.projectAddress, now, now);
   const documents = createCustomerQuotationDocumentService(db, { attachmentRoot });
   const document = await documents.createImmutablePdf({ estimateId, quotationRevision: 1, projection: customerProjection });
@@ -125,8 +127,26 @@ async function inspectPdf(filePath, expected) {
 }
 
 async function run() {
+  const userApiBefore=await fetch('http://127.0.0.1:3001/api/health').then(response=>response.ok?response.json():null).catch(()=>null);
+  for(const port of [3104,5276,DEBUG_PORT]){
+    const probe=createPortProbe();await new Promise((resolve,reject)=>{probe.once('error',()=>reject(new Error(`Acceptance port ${port} is already occupied; no existing listener will be replaced.`)));probe.listen(port,'127.0.0.1',resolve)});await new Promise(resolve=>probe.close(resolve));
+  }
   const root = await mkdtemp(path.join(os.tmpdir(), "quotesuite-complete-journey-")), databasePath = path.join(root, "quotesync.db"), attachmentRoot = path.join(root, "attachments");
   let api, vite, browser, tab, cleanup;
+  let cleanupPromise;
+  const dispose=()=>cleanupPromise||(cleanupPromise=(async()=>{
+    try{tab?.socket.close()}catch{}
+    try{cleanup=await controller.stop('final');if(cleanup)console.log(JSON.stringify({ownedBrowserCleanup:cleanup}));}
+    finally{
+      const stopped=await Promise.allSettled([vite,api].map(async child=>{if(child?.pid&&child.exitCode===null&&child.signalCode===null){const result=await terminateOwnedProcessTree(child,{platformName:process.platform});if(!result.exited)throw new Error(`Owned test process ${child.pid} did not exit.`);}}));
+      const failedStop=stopped.find(result=>result.status==='rejected');if(failedStop)throw failedStop.reason;
+      await rm(root,{recursive:true,force:true,maxRetries:20,retryDelay:200});
+      const userApiAfter=await fetch('http://127.0.0.1:3001/api/health').then(response=>response.ok?response.json():null).catch(()=>null);
+      assert.equal(userApiAfter?.instanceId||null,userApiBefore?.instanceId||null,'User API baseline changed during isolated acceptance');
+    }
+  })());
+  const interrupt=()=>{void dispose().then(()=>process.exit(130),error=>{console.error(error);process.exit(1)})};
+  process.once('SIGINT',interrupt);process.once('SIGTERM',interrupt);process.once('SIGBREAK',interrupt);
   try {
     await mkdir(attachmentRoot, { recursive: true }); await mkdir(OUTPUT, { recursive: true });
     const isolation=await initializeIsolatedJourneyDatabase({databasePath,attachmentRoot});
@@ -135,6 +155,7 @@ async function run() {
     api = spawn(process.execPath, ["server/index.js"], { cwd: process.cwd(), env: { ...process.env, QUOTESUITE_DB_PATH: databasePath, QUOTESYNC_ATTACHMENT_ROOT: attachmentRoot, PORT: "3104", NODE_ENV: "development", QUOTESUITE_APP_ORIGINS: APP_URL, QUOTESUITE_TEST_JOURNEY: "1", QUOTESUITE_TEST_DELIVERY_ENABLED: "0", QUOTESUITE_TEST_CUSTOMER_EMAIL: CUSTOMER, QUOTESUITE_TEST_FACTORY_EMAIL: FACTORY }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     vite = spawn(process.execPath, [path.resolve("node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", "5276"], { cwd: process.cwd(), env: { ...process.env, VITE_API_BASE_URL: API_URL }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     await waitFor(() => reachable(`${API_URL}/api/health`), "Disposable journey API did not start"); await waitFor(() => reachable(APP_URL), "Disposable journey UI did not start");
+    const runtime=await (await fetch(`${API_URL}/api/health`)).json();assert.equal(runtime.runtimeVersion,QUOTESUITE_RUNTIME_CONTRACT.version,'Disposable API runtime contract is incompatible');
     const profile = await controller.createProfile({ label: "complete-customer-order-journey", debugPort: DEBUG_PORT });
     browser = spawn("C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", ["--headless=new", `--remote-debugging-port=${DEBUG_PORT}`, `--user-data-dir=${profile}`, "--no-first-run", "--disable-gpu", "--disable-extensions", "--window-size=1920,1080", "about:blank"], { stdio: "ignore", windowsHide: true });
     controller.setRun({ child: browser }); await waitFor(() => reachable(`http://127.0.0.1:${DEBUG_PORT}/json/version`), "Owned Chrome did not start", 15_000); controller.setRun({ child: browser, userDataDir: profile, debugPort: DEBUG_PORT, profileProcessCountDuring: await countBrowserRunProfiles(profile, { platformName: process.platform }) }); tab = await connect();
@@ -147,7 +168,26 @@ async function run() {
     await input(tab, ".portal-external__positions fieldset:first-child select", "amendment_requested"); await input(tab, ".portal-external__positions fieldset:first-child textarea", "Change the external finish from white to black."); await input(tab, "section.portal-external__command > label select", "amendment_requested"); await input(tab, "section.portal-external__command > label textarea", "Update the project finish schedule to match."); await click(tab, "Submit reviewed responses"); await waitFor(() => tab.evaluate("document.body.innerText.includes('Response recorded')&&document.body.innerText.includes('project team reviews')"), "Customer changes were not acknowledged");
     const reviewDesktop = await tab.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: true }); await writeFile(path.join(OUTPUT, "01-customer-changes-submitted--1920x1080.png"), Buffer.from(reviewDesktop.data, "base64"));
 
-    await tab.send("Page.navigate", { url: APP_URL }); await waitFor(() => tab.evaluate("document.body.innerText.includes('Client Portal')"), "Staff application did not render"); await click(tab, "Client Portal"); await waitFor(() => tab.evaluate(`[...document.querySelectorAll('article')].some(item=>item.textContent.includes(${JSON.stringify(`TEST-CL-${fixture.suffix.toUpperCase()}`)})&&item.querySelector('button'))`), "Disposable request did not render in the staff Changes Requested queue"); const opened = await tab.evaluate(`(()=>{const row=[...document.querySelectorAll('article')].find(item=>item.textContent.includes(${JSON.stringify(`TEST-CL-${fixture.suffix.toUpperCase()}`)}));const button=row?.querySelector('button');if(!button)return false;button.click();return true})()`); assert.equal(opened, true); try { await waitFor(() => tab.evaluate("document.body.innerText.toLowerCase().includes('immutable customer review')"), "Staff change detail did not render", 10_000); } catch (error) { throw new Error(`${error.message}: ${JSON.stringify({ body: await tab.evaluate("document.body.innerText"), failures: tab.failures, diagnostics: tab.diagnostics })}`); } const staffChanges = await tab.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: true }); await writeFile(path.join(OUTPUT, "02-staff-changes-requested--1920x1080.png"), Buffer.from(staffChanges.data, "base64")); await click(tab, "Create working revision"); await waitFor(() => tab.evaluate("document.body.innerText.includes('Working revision created')"), "Staff UI did not create the working revision"); await waitFor(() => tab.evaluate("[...document.querySelectorAll('button')].some(item=>item.textContent.includes('Prepare supplier change preview'))"), "Supplier change correspondence UI did not become available"); assert.equal(await tab.evaluate("[...document.querySelectorAll('label')].find(item=>item.textContent.includes('Send now to the configured factory test address'))?.querySelector('input')?.disabled"),true); await input(tab, ".portal-operation-detail fieldset input[type=email]", FACTORY); await click(tab, "Prepare supplier change preview"); await waitFor(() => tab.evaluate("document.body.innerText.includes('correspondence prepared in preview-only mode')"), "Staff UI did not prepare the supplier change correspondence");
+    await tab.send("Page.navigate", { url: APP_URL }); await waitFor(() => tab.evaluate("document.body.innerText.includes('Client Portal')"), "Staff application did not render"); await click(tab, "Client Portal");
+    await waitFor(() => tab.evaluate(`[...document.querySelectorAll('article')].some(item=>item.textContent.includes(${JSON.stringify(`TEST-CL-${fixture.suffix.toUpperCase()}`)})&&item.querySelector('button'))`), "Disposable request did not render in the staff Changes Requested queue");
+    const opened = await tab.evaluate(`(()=>{const row=[...document.querySelectorAll('article')].find(item=>item.textContent.includes(${JSON.stringify(`TEST-CL-${fixture.suffix.toUpperCase()}`)}));const button=row?.querySelector('button');if(!button)return false;button.click();return true})()`); assert.equal(opened, true);
+    await waitFor(() => tab.evaluate("document.body.innerText.toLowerCase().includes('immutable customer review')"), "Staff change detail did not render");
+    const staffChanges = await tab.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: true }); await writeFile(path.join(OUTPUT, "02-staff-changes-requested--1920x1080.png"), Buffer.from(staffChanges.data, "base64"));
+    await click(tab, "Create working revision"); await waitFor(() => tab.evaluate("document.body.innerText.includes('Working revision created')"), "Staff UI did not create the working revision");
+    await click(tab, "Open working Estimate");
+    await waitFor(()=>tab.evaluate("[...document.querySelectorAll('button')].some(item=>item.textContent.includes('Request supplier estimate / revision'))"),'Working Estimate did not expose the consolidated supplier composer');
+    await click(tab,'Request supplier estimate / revision');
+    await waitFor(()=>tab.evaluate("document.querySelector('.supplier-rfq input[type=email]')&&!document.body.innerText.includes('Loading supplier request context')"),'Supplier composer did not load');
+    await input(tab,'.supplier-rfq select','TEST-JOURNEY-SUPPLIER');await input(tab,'.supplier-rfq input[type=email]',FACTORY);
+    assert.equal(await tab.evaluate("document.querySelectorAll('.supplier-rfq input[name=supplier-request-kind]')[1]?.checked"),true,'Customer context did not preselect revision mode');
+    assert.equal(await tab.evaluate("document.querySelector('.supplier-rfq')?.innerText.includes('Preview only')"),true);
+    await click(tab,'Prepare for review');await waitFor(()=>tab.evaluate("document.querySelector('.supplier-rfq__result')?.innerText.includes('Prepared for review — not sent')"),'Reviewed supplier request was not saved');
+    const preparedContext=await staff(`/api/lifecycle/projects/${fixture.projectId}/supplier-enquiries`,null,'GET');
+    assert.equal(preparedContext.enquiries.length,1);assert.equal(preparedContext.enquiries[0].requestKind,'revision');assert.notEqual(preparedContext.enquiries[0].status,'sent');
+    await click(tab,'Continue editing');await waitFor(()=>tab.evaluate("document.querySelector('.supplier-rfq input[type=email]')?.value==="+JSON.stringify(FACTORY)),'Prepared supplier request could not reopen');
+    if(process.argv.includes('--stop-after-supplier-draft')){
+      console.log(JSON.stringify({scope:'Normal application customer changes → working revision → reviewed supplier draft/reopen only',supplierRequests:1,preparedNotSent:true,sourceImportAndReissueVerified:false}));return;
+    }
 
     const queue = await staff("/api/lifecycle/changes-requested", null, "GET"), reviewId = queue.find((item) => item.client_ref === `TEST-CL-${fixture.suffix.toUpperCase()}`)?.review_submission_id; assert.ok(reviewId, "Disposable change request was absent from the staff queue");
     const changeDetail = await staff(`/api/lifecycle/changes-requested/${reviewId}`, null, "GET"), revisionRequest = changeDetail.supplierRevision; assert.ok(revisionRequest?.id, "Staff UI did not persist the supplier revision request");
@@ -200,14 +240,7 @@ async function run() {
     assert.equal(proof.originalEstimateStatus, "Issued"); assert.equal(proof.successorRevision, 2); assert.equal(proof.orderStatus, "customer_final_confirmation_approved"); assert.equal(proof.signedPdfReviewCount, 1);
     console.log(JSON.stringify({ mode: "development_test_adapter", delivery: "preview_only", addresses: { customerConfigured: true, factoryConfigured: true }, journey: proof, contentAgreement: { immutableEstimateSha256: issuedRow.sha256, downloadSha256: pdfEvidence[0].sha256, portalDownloadSha256: successorPortalEstimateHash.hash, releaseDocumentId: releaseRow.document_id, issuedDocumentId: issuedRow.id, emailAttachmentSha256: emailAttachment.sha256, emailAttachmentStorageKey: emailAttachment.storage_key, previewAndIssueShareRenderer: true }, pdfEvidence: [...pdfEvidence, previewEvidence], screenshots: OUTPUT, browserCleanup: { ownedProcesses: cleanup.ownedBrowserProcessesRemaining, ownedProfiles: cleanup.ownedTemporaryProfilesRemaining } }, null, 2));
   } finally {
-    try { tab?.socket.close(); } catch {}
-    if (browser) await controller.stop("final");
-    if (vite) await terminateOwnedProcessTree(vite, { platformName: process.platform });
-    if (api) await terminateOwnedProcessTree(api, { platformName: process.platform });
-    for (let attempt = 0; attempt < 25; attempt += 1) {
-      try { await rm(root, { recursive: true, force: true }); break; }
-      catch (error) { if (attempt === 24) console.error(`Temporary journey workspace cleanup remains pending: ${error.message}`); else await delay(200); }
-    }
+    try{await dispose()}finally{process.removeListener('SIGINT',interrupt);process.removeListener('SIGTERM',interrupt);process.removeListener('SIGBREAK',interrupt);}
   }
 }
 

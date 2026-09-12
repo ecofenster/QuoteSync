@@ -2211,6 +2211,16 @@ function openEstimateDefaults(clientId: Models.ClientId, estimateId: Models.Esti
   window.history.replaceState(null, "", `#/estimate/${encodeURIComponent(clientId)}/${encodeURIComponent(estimateId)}`);
 }
 
+async function openPortalWorkingEstimate(clientId: Models.ClientId, estimateId: Models.EstimateId) {
+  const estimates=await loadClientEstimatesFromApi(clientId);
+  const working=estimates.find(item=>item.id===estimateId);
+  if(!working)throw new Error('The working Estimate could not be loaded. Your revision is retained; try opening it again.');
+  if(!clients.some(client=>client.id===clientId))throw new Error('The Client is not available in this workspace. Refresh the Client list before opening the working Estimate.');
+  setClients(current=>current.map(client=>client.id!==clientId?client:{...client,estimates:client.estimates.some(item=>item.id===estimateId)?client.estimates:[...client.estimates,working]}));
+  setTopShellPage('app');
+  openEstimateDefaults(clientId,estimateId);
+}
+
 function openCrmRecord(target: CrmRecordTarget) {
   if (target.kind === "revision_request") {
     selectMenu("client_portal");
@@ -5070,7 +5080,7 @@ return (
               <EmailWorkspace onOpenIntegrations={()=>{setAdminInitialSection("integrations");setTopShellPage("admin");setActiveTopShellNavKey("admin")}} onOpenFollowUps={()=>selectMenu("follow_ups")} onOpenEstimateFiles={(clientId,estimateId)=>{openEstimateDefaults(clientId as Models.ClientId,estimateId as Models.EstimateId);window.setTimeout(()=>window.dispatchEvent(new CustomEvent("quotesuite:open-estimate-documents")),0)}} onImportManufacturerEstimate={(clientId,estimateId,documentId)=>{openEstimateDefaults(clientId as Models.ClientId,estimateId as Models.EstimateId);window.setTimeout(()=>window.dispatchEvent(new CustomEvent("quotesuite:import-manufacturer-quote",{detail:{canonicalDocumentId:documentId}})),0)}} />
             )}
 
-            {menu === "client_portal" && view === "customers" && <ClientPortalStaffWorkspace clients={clients} initialClientId={portalContext?.clientId??null} initialProjectId={portalContext?.projectId??null} onContextConsumed={()=>setPortalContext(null)} onOpenEstimate={(clientId,estimateId)=>openEstimateDefaults(clientId as Models.ClientId,estimateId as Models.EstimateId)} />}
+            {menu === "client_portal" && view === "customers" && <ClientPortalStaffWorkspace clients={clients} initialClientId={portalContext?.clientId??null} initialProjectId={portalContext?.projectId??null} onContextConsumed={()=>setPortalContext(null)} onOpenEstimate={(clientId,estimateId)=>openPortalWorkingEstimate(clientId as Models.ClientId,estimateId as Models.EstimateId)} />}
 
             {menu === "enquiries" && view === "customers" && (
               <EnquiryWorkspace clients={clients} onCommercialIdentityChanged={refreshClientsFromApi} onOpenProject={(clientId) => { setEstimatePickerClientId(clientId as Models.ClientId); setView("estimate_picker"); }} />
