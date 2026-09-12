@@ -38,6 +38,12 @@ async function run(){
     INSERT INTO canonical_documents VALUES('document-1','project-1','Approved drawing.pdf','application/pdf',120,'project_drawing','drive-file-1','7','abc123','2026/TEST/Drawings','2026-09-11T10:00:00.000Z',NULL,0);`);await initializeWorkflowSchema(db);await initializeLifecycleSchema(db);
   await build({entryPoints:[path.resolve("tests/fixtures/SupplierRfqAcceptance.tsx")],bundle:true,format:"esm",platform:"browser",jsx:"automatic",outdir:root,define:{"import.meta.env.VITE_API_BASE_URL":JSON.stringify(base),"import.meta.env.DEV":"false","import.meta.env.PROD":"true"}});
   let postCount=0,failFirst=true;const app=express();app.use(express.json());app.use((req,res,next)=>{if(req.method==="POST"&&req.path.endsWith("/supplier-enquiries")){postCount+=1;if(failFirst){failFirst=false;return res.status(503).json({error:"Temporary test interruption. Your reviewed details have not been discarded.",code:"disposable_failure"})}return delay(220).then(next)}return next()});
+  const savedSourceAttempts=[];
+  app.post('/api/communications/documents/:documentId/manufacturer-import-review',(req,res,next)=>{
+    const id=req.params.documentId;if(!['changed-source','supplier-conflict','temporary-source'].includes(id))return next();
+    savedSourceAttempts.push(id);
+    return res.status(id==='temporary-source'?503:409).json({code:id==='changed-source'?'canonical_document_content_changed':id==='supplier-conflict'?'canonical_document_supplier_conflict':'temporary_failure',error:id==='changed-source'?'This provider file has changed since it was retained. The earlier source is preserved.':id==='supplier-conflict'?'The saved document supplier differs from the retained quotation. Review its supplier relationship.':'Temporary connection interruption.'});
+  });
   const repository=createCommunicationRepository(db);
   await db.exec(`CREATE TABLE portal_review_submissions(id TEXT PRIMARY KEY); CREATE TABLE estimate_revision_releases(id TEXT PRIMARY KEY);
     INSERT INTO portal_review_submissions VALUES('history-review'); INSERT INTO estimate_revision_releases VALUES('history-release');
@@ -123,6 +129,20 @@ async function run(){
   await evaluate("[...document.querySelectorAll('button')].find(item=>item.textContent==='Open other review').click()");
   await waitFor(()=>evaluate("[...document.querySelectorAll('label')].find(item=>item.textContent==='After')?.querySelector('input').value==='Blue'"),"Switching request retained another request's form");
   console.log(JSON.stringify({reviewForm:{savedChecksReopened:true,failurePreservedValues:true,requestSwitchIsolated:true,history:{persisted:true,pageSize:10,total:12}},scope:'Production review component and history HTTP route with disposable fixture inputs; not the complete application reissue journey'}));
+  for(const [label,id] of [['Review changed saved source','changed-source'],['Review supplier conflict','supplier-conflict']]){
+    await evaluate(`[...document.querySelectorAll('button')].find(item=>item.textContent===${JSON.stringify(label)}).click()`);
+    await waitFor(()=>evaluate("document.querySelector('.manufacturer-quote-upload')?.innerText.includes('Open Files to review')"),'Saved source conflict did not explain recovery');
+    assert.equal(await evaluate("document.querySelector('.manufacturer-quote-upload').innerText.includes('remains unchanged; retry is safe')"),false);
+    assert.equal(await evaluate("document.querySelector('.manufacturer-quote-upload').innerText.includes('Retry saved document')"),false);
+    await evaluate("window.addEventListener('quotesuite:open-estimate-documents',event=>{window.__savedSourceFiles=event.detail},{once:true});[...document.querySelector('.manufacturer-quote-upload').querySelectorAll('button')].find(item=>item.textContent==='Open Files').click()");
+    assert.deepEqual(await evaluate('window.__savedSourceFiles'),{estimateId:'estimate-1',canonicalDocumentId:id});
+  }
+  await evaluate("[...document.querySelectorAll('button')].find(item=>item.textContent==='Review temporary failure').click()");
+  await waitFor(()=>evaluate("document.querySelector('.manufacturer-quote-upload')?.innerText.includes('selection is retained')"),'Temporary failure lost retry guidance');
+  await evaluate("[...document.querySelectorAll('button')].find(item=>item.textContent==='Retry saved document').click()");
+  await waitFor(async()=>savedSourceAttempts.filter(id=>id==='temporary-source').length===2,'Retry lost saved source identity');
+  assert.deepEqual(savedSourceAttempts,['changed-source','supplier-conflict','temporary-source','temporary-source']);
+  console.log(JSON.stringify({savedSourceRecovery:{changedContentReview:true,supplierConflictReview:true,exactFilesHandoff:true,temporaryRetrySameIdentity:true},scope:'Production component with injected HTTP errors; real provider-byte conflict validation is separately service/HTTP tested.'}));
   const userRuntimeAfter=await fetch("http://127.0.0.1:3001/api/health").then(response=>response.ok?response.json():null).catch(()=>null);if(userRuntimeBefore)assert.equal(userRuntimeAfter?.instanceId,userRuntimeBefore.instanceId);else assert.equal(userRuntimeAfter,null);console.log(JSON.stringify({previewOnly:true,recoverableFailure:true,preserved,immediateProgress:true,duplicateProtection:{postCount,records:1,messages:1},resultNextAction:true,replySelection:{sameThreadIndependent:true,boundedPages:true,exactBody:true,acknowledgementPersisted:true},apiBaseline:userRuntimeBefore?"preserved":"not listening and unchanged"},null,2));
 }
 

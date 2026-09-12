@@ -84,7 +84,12 @@ export default function EstimateCommercialWorkspace({
         (event as CustomEvent<{ canonicalDocumentId?: string }>).detail
           ?.canonicalDocumentId,
       );
-    const handleOpenDocuments = () => setDocumentsOpen(true);
+    const handleOpenDocuments = (event: Event) => {
+      const target=(event as CustomEvent<{estimateId?:string}>).detail?.estimateId;
+      if(target&&target!==estimateId)return;
+      setTab("costing");
+      setDocumentsOpen(true);
+    };
     window.addEventListener(
       "quotesuite:import-manufacturer-quote",
       handleOpenImport,
@@ -97,7 +102,7 @@ export default function EstimateCommercialWorkspace({
       );
       window.removeEventListener("quotesuite:open-estimate-documents", handleOpenDocuments);
     };
-  }, [openImport]);
+  }, [openImport,estimateId]);
   useEffect(() => {
     void ensureEstimateCosting(estimateId, estimateRef).then((scenario) =>
       setScenarioId(scenario.id),
