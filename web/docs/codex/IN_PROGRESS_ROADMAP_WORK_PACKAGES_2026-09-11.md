@@ -39,6 +39,10 @@ The first implementation pass starts with: **start the day → see real overdue/
 
 ### Supplier-revision acceptance sequence (not yet user accepted)
 
+Supplier-specific history continuation: staff can now expand View details → supplier review versions for the selected request, showing retained field values, before/returned source references, reviewer/date and captured source revision. The endpoint enforces the exact parent/request relationship and uses ten-record pages; history includes unresolved earlier decisions rather than replacing them. Service checks prove separate supplier histories and eleven-record pagination; the production-component/HTTP browser opens the saved supplier version and its source references, with zero owned browser/profile remnants. TypeScript and all 28 Roadmap checks pass. No ordinary-user acceptance is implied.
+
+Full-journey runner audit: `scripts/run-complete-customer-order-journey-browser.mjs` still clicks the removed `Prepare supplier change preview` control and creates placeholder returned supplier-document metadata rather than importing a genuine source. Its historical Portal/Order evidence must not be treated as current acceptance of the consolidated supplier composer, independent supplier reviews or Manufacturer Import. Next update the normal-application journey to the current controls and use an exact retained source or byte-identical disposable copy through analyse/review/final import/reload, while retaining the current delivery and process-ownership restrictions. Do not rerun the stale script and describe a fixture/API shortcut as the requested full-source acceptance.
+
 1. Open a disposable customer's requested changes and working Estimate. Prepare/reopen the supplier requests; confirm prepared is not sent.
 2. Review each exact supplier reply, file the selected revised document, and open Manufacturer Import for review without automatic costing approval.
 3. In customer-change review, select each supplier response and save its source-backed fields. Confirm one completed supplier does not clear the other.

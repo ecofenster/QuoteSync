@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../../services/api/apiClient";
+import SupplierReviewHistory from "./SupplierReviewHistory";
 
 type Check={estimatePositionId:string|null;fieldKey:string;beforeValue:string;expectedValue:string;afterValue:string;beforeSourceReference:string;afterSourceReference:string;resolutionNote:string;approvedDifference:boolean};
 type Supplier={id:string;supplier_name:string;reviewRequired:boolean;documents:Array<{id:string;file_name:string;provider_revision:string|null}>;review:null|{id:string;canonicalDocumentId:string;checks:Check[];reviewedAt:string}};
@@ -16,6 +17,7 @@ export default function SupplierResponseReviews({requestId,positions,onSaved}:{r
     {error?<p role="alert">{error} <button className="ui-button" onClick={()=>void load()}>Retry supplier reviews</button></p>:null}
     <label>Supplier request<select className="ui-select" value={selected} onChange={event=>setSelected(event.currentTarget.value)}><option value="">Choose a supplier response</option>{suppliers.map(item=><option key={item.id} value={item.id}>{item.supplier_name} · {item.reviewRequired?"Review required":"Review saved"}</option>)}</select></label>
     {supplier?<ReviewForm key={supplier.id} supplier={supplier} requestId={requestId} positions={positions} onSaved={async()=>{await load();await onSaved()}}/>:null}
+    {supplier?<SupplierReviewHistory key={`${supplier.id}:${supplier.review?.id||''}`} requestId={requestId} supplierId={supplier.id}/>:null}
   </fieldset>;
 }
 

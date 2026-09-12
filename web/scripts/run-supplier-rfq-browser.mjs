@@ -108,6 +108,10 @@ async function run(){
   await waitFor(()=>evaluate("document.body.innerText.includes('Supplier review saved.')"),"Supplier review result was not visible");
   assert.equal((await db.get('SELECT COUNT(*) count FROM supplier_response_reviews')).count,1);
   const savedSupplier=await db.get('SELECT checks_json FROM supplier_response_reviews');assert.equal(JSON.parse(savedSupplier.checks_json)[0].afterValue,'Green');
+  await evaluate("[...document.querySelectorAll('summary')].find(item=>item.textContent.includes('supplier review versions')).click()");
+  await waitFor(()=>evaluate("document.body.innerText.includes('Showing 1–1 of 1 saved review snapshots')"),"Supplier-specific review history did not open");
+  await evaluate("[...document.querySelectorAll('summary')].find(item=>item.textContent.startsWith('Supplier review saved on')).click()");
+  await waitFor(()=>evaluate("document.body.innerText.includes('Before source: Issued page 1 · Returned source: Supplier page 2')"),"Supplier history lost retained source references");
   await evaluate("[...document.querySelectorAll('summary')].find(item=>item.textContent.includes('earlier review history')).click()");
   await waitFor(()=>evaluate("document.body.innerText.includes('of 12 saved review snapshots')"),"Persisted review history did not load");
   assert.equal(await evaluate("document.body.innerText.includes('Showing 1–10 of 12')"),true);

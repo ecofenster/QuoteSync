@@ -2,7 +2,7 @@ import express from 'express';
 import { CURRENT_APP_USER } from '../currentUser.js';
 import { createLifecycleService } from '../features/lifecycle/lifecycleService.js';
 import { deriveRevisionCheck } from '../features/lifecycle/lifecycleService.js';
-import { supplierResponseReviewContext, saveSupplierResponseReview } from '../features/lifecycle/supplierResponseReviews.js';
+import { supplierResponseReviewContext, supplierResponseReviewHistory, saveSupplierResponseReview } from '../features/lifecycle/supplierResponseReviews.js';
 
 const fail = (res, error) => res.status(Number(error?.status) || 500).json({ error: error instanceof Error ? error.message : 'Lifecycle request failed.', code: error?.code || 'lifecycle_error' });
 export function createLifecycleRouter({ databasePromise, serviceOptions } = {}) {
@@ -20,6 +20,7 @@ export function createLifecycleRouter({ databasePromise, serviceOptions } = {}) 
   router.get('/supplier-revisions/:requestId', async (req,res) => { try { res.json(await (await service()).supplierRevisionDetail(req.params.requestId)); } catch(error){ fail(res,error); } });
   router.get('/supplier-revisions/:requestId/review-history', async (req,res) => { try { res.json(await (await service()).supplierReviewHistory(req.params.requestId,req.query.offset??0)); } catch(error){ fail(res,error); } });
   router.get('/supplier-revisions/:requestId/supplier-reviews', async (req,res) => { try { res.json(await supplierResponseReviewContext(await databasePromise,req.params.requestId)); } catch(error){ fail(res,error); } });
+  router.get('/supplier-revisions/:requestId/supplier-reviews/:supplierId/history', async (req,res) => { try { res.json(await supplierResponseReviewHistory(await databasePromise,req.params.requestId,req.params.supplierId,req.query.offset??0)); } catch(error){ fail(res,error); } });
   router.put('/supplier-revisions/:requestId/supplier-reviews/:supplierId', async (req,res) => { try { res.json(await saveSupplierResponseReview(await databasePromise,req.params.requestId,req.params.supplierId,{...req.body,reviewedBy:CURRENT_APP_USER.id},deriveRevisionCheck)); } catch(error){ fail(res,error); } });
   router.post('/supplier-revisions/:requestId/correspondence', async (req,res) => { try { res.json(await (await service()).prepareSupplierRevisionCorrespondence(req.params.requestId,{ ...req.body, reviewedBy:CURRENT_APP_USER.id })); } catch(error){ fail(res,error); } });
   router.post('/supplier-revisions/:requestId/returned-document', async (req,res) => { try { res.json(await (await service()).attachSupplierRevisionDocument(req.params.requestId,{ ...req.body, reviewedBy:CURRENT_APP_USER.id })); } catch(error){ fail(res,error); } });

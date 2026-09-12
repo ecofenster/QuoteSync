@@ -3,6 +3,18 @@ import { createHash, randomUUID } from 'node:crypto';
 const text=value=>String(value??'').trim();
 const fail=(message,code='supplier_response_review_invalid')=>Object.assign(new Error(message),{status:409,code});
 
+export async function supplierResponseReviewHistory(db,requestId,supplierId,offset=0){
+  if(!await db.get('SELECT id FROM supplier_enquiry_drafts WHERE id=? AND revision_request_id=?',supplierId,requestId))throw fail('This supplier request does not belong to the selected customer revision.');
+  const start=Number(offset);if(!Number.isSafeInteger(start)||start<0)throw fail('Choose a valid review history page.');
+  const total=Number((await db.get('SELECT COUNT(*) count FROM supplier_response_reviews WHERE supplier_enquiry_id=?',supplierId)).count);
+  const rows=await db.all(`SELECT review.*,doc.file_name FROM supplier_response_reviews review LEFT JOIN canonical_documents doc ON doc.id=review.canonical_document_id
+    WHERE supplier_enquiry_id=? ORDER BY review.rowid DESC LIMIT 10 OFFSET ?`,supplierId,start);
+  return {total,offset:start,items:rows.map(row=>{
+    const source=JSON.parse(row.evidence_identity).documents.find(doc=>doc.id===row.canonical_document_id);
+    return {id:row.id,recordedAt:row.created_at,recordedBy:row.reviewed_by,sourceLabel:`${row.file_name||'Retained supplier document'} · reviewed revision ${source?.provider_revision||'not recorded'}`,checks:JSON.parse(row.checks_json).map(check=>({estimate_position_id:check.estimatePositionId,field_key:check.fieldKey,before_value:check.beforeValue,expected_value:check.expectedValue,after_value:check.afterValue,before_source_reference:check.beforeSourceReference,after_source_reference:check.afterSourceReference,resolution_note:check.resolutionNote,status:check.status,resolved_by:row.reviewed_by,resolved_at:row.created_at}))};
+  })};
+}
+
 export async function supplierResponseReviewContext(db, requestId) {
   const suppliers=await db.all(`SELECT se.id,se.supplier_id,se.response_state,se.project_id,se.estimate_id,
     COALESCE(s.supplier_name,se.recipient,'Supplier') supplier_name

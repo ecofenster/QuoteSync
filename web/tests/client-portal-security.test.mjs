@@ -13,7 +13,7 @@ import { initializePortalSecuritySchema } from "../server/features/clientPortal/
 import { createPortalSecurityService } from "../server/features/clientPortal/portalSecurityService.js";
 import { initializeLifecycleSchema } from "../server/features/lifecycle/lifecycleSchema.js";
 import { createLifecycleService, deriveConfirmationCheck, deriveRevisionCheck } from "../server/features/lifecycle/lifecycleService.js";
-import { saveSupplierResponseReview, supplierResponseReviewContext } from "../server/features/lifecycle/supplierResponseReviews.js";
+import { saveSupplierResponseReview, supplierResponseReviewContext, supplierResponseReviewHistory } from "../server/features/lifecycle/supplierResponseReviews.js";
 import { createCommunicationRepository } from "../server/features/communications/communicationRepository.js";
 import { createTestDeliveryPolicy } from "../server/features/lifecycle/testDeliveryPolicy.js";
 import { createPortalTestAdapter } from "../server/features/clientPortal/portalTestAdapter.js";
@@ -253,6 +253,15 @@ test("customer changes produce a carried-forward working revision, attached chan
   assert.equal(responseReviews.find(item=>item.id===first.id).reviewRequired,false);assert.equal(responseReviews.find(item=>item.id===second.id).reviewRequired,true);
   await assert.rejects(()=>issuance.prepare(issueInput),error=>error.code==='supplier_response_reviews_required');
   await saveSupplierResponseReview(source.db,request.id,second.id,{...secondReviewInput,idempotencyKey:'supplier-review-3'},deriveRevisionCheck);
+  const secondHistory=await supplierResponseReviewHistory(source.db,request.id,second.id);
+  assert.equal(secondHistory.total,3);assert.ok(secondHistory.items.some(item=>item.checks.some(check=>check.after_value==='White')));
+  await assert.rejects(()=>supplierResponseReviewHistory(source.db,'another-parent',second.id),/does not belong/);
+  await assert.rejects(()=>supplierResponseReviewHistory(source.db,request.id,second.id,-1),/valid review history page/);
+  for(let pageIndex=0;pageIndex<10;pageIndex++)await saveSupplierResponseReview(source.db,request.id,first.id,{...reviewInput,idempotencyKey:`history-page-${pageIndex}`},deriveRevisionCheck);
+  const firstHistory=await supplierResponseReviewHistory(source.db,request.id,first.id);
+  assert.equal(firstHistory.total,11);assert.equal(firstHistory.items.length,10);
+  assert.equal((await supplierResponseReviewHistory(source.db,request.id,first.id,10)).items.length,1);
+  assert.ok(firstHistory.items.every(item=>item.checks.every(check=>check.after_value==='Black')));
   await lifecycle.verifySupplierRevision(request.id,{reviewedBy:'staff-1',checks:currentReview.checks.filter(row=>row.change_kind==='requested').map(recheck),unrelatedChanges:currentReview.checks.filter(row=>row.change_kind==='unrelated_material_change').map(recheck)});
   const terms=await issuance.saveCustomerTerms(successor.id,{validityDays:30,terms:["Final dimensions are subject to survey."],exclusions:["Building work by others."],reviewedBy:"staff-1"});projection.commercialTerms={validityDays:terms.validityDays,terms:terms.terms,exclusions:terms.exclusions,reviewed:true,reviewedAt:terms.reviewedAt};const prepared=await issuance.prepare(issueInput);assert.equal(prepared.status,"prepared_not_sent");
   assert.equal((await issuance.prepare(issueInput)).id,prepared.id);
