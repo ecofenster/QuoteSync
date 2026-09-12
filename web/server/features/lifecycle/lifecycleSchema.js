@@ -160,6 +160,14 @@ export async function initializeLifecycleSchema(db) {
   await db.exec('CREATE INDEX IF NOT EXISTS idx_supplier_revision_parent ON supplier_enquiry_drafts(revision_request_id,created_at DESC)');
   await ensureColumn(db, 'revision_change_checks', 'change_kind', "TEXT NOT NULL DEFAULT 'requested' CHECK(change_kind IN ('requested','unrelated_material_change'))");
   await ensureColumn(db, 'revision_change_checks', 'source_identity', 'TEXT');
+  await db.exec(`CREATE TABLE IF NOT EXISTS supplier_response_reviews (
+    id TEXT PRIMARY KEY,supplier_enquiry_id TEXT NOT NULL,idempotency_key TEXT NOT NULL,
+    content_hash TEXT NOT NULL,evidence_identity TEXT NOT NULL,canonical_document_id TEXT NOT NULL,
+    checks_json TEXT NOT NULL,unresolved INTEGER NOT NULL,reviewed_by TEXT NOT NULL,created_at TEXT NOT NULL,
+    UNIQUE(supplier_enquiry_id,idempotency_key),
+    FOREIGN KEY(supplier_enquiry_id) REFERENCES supplier_enquiry_drafts(id) ON DELETE RESTRICT,
+    FOREIGN KEY(canonical_document_id) REFERENCES canonical_documents(id) ON DELETE RESTRICT)`);
+  for(const action of ['UPDATE','DELETE'])await db.exec(`CREATE TRIGGER IF NOT EXISTS trg_supplier_response_reviews_${action.toLowerCase()} BEFORE ${action} ON supplier_response_reviews BEGIN SELECT RAISE(ABORT,'Supplier response reviews are immutable'); END`);
   await db.exec(`CREATE TABLE IF NOT EXISTS supplier_revision_review_history (
     id TEXT PRIMARY KEY,request_id TEXT NOT NULL,source_identity TEXT NOT NULL,
     checks_json TEXT NOT NULL,reviewed_by TEXT NOT NULL,reviewed_at TEXT NOT NULL,

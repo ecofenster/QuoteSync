@@ -3,7 +3,7 @@ import { createCustomerQuotationDocumentService } from "./customerQuotationDocum
 import { createCommunicationsService } from "../communications/communicationsService.js";
 import { createPortalSecurityService } from "../clientPortal/portalSecurityService.js";
 import { createTestDeliveryPolicy } from "../lifecycle/testDeliveryPolicy.js";
-import { outstandingSupplierRevisionRequests, staleSupplierReviewCount, supplierReviewPreparationSnapshot } from "../lifecycle/supplierResponseState.js";
+import { outstandingSupplierRevisionRequests, outstandingSupplierResponseReviews, staleSupplierReviewCount, supplierReviewPreparationSnapshot } from "../lifecycle/supplierResponseState.js";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const parse = (value, fallback = null) => { try { return JSON.parse(value || ""); } catch { return fallback; } };
@@ -50,8 +50,10 @@ export function createIssuedQuotationService(db, options = {}) {
     if (!Number.isInteger(quotationRevision) || Number(projection?.commercialRevision) !== quotationRevision || String(projection?.estimateReference) !== String(aggregate.estimate_ref)) throw Object.assign(new Error("Canonical quotation revision/reference does not match the Estimate."), { status: 409, code: "quotation_revision_changed" });
     const revisionRequest = await db.get("SELECT * FROM supplier_revision_requests WHERE successor_estimate_id=? ORDER BY created_at DESC LIMIT 1", estimateId);
     if (revisionRequest) {
+      const pendingReviews=await outstandingSupplierResponseReviews(db,revisionRequest.id);
       const outstandingSuppliers=await outstandingSupplierRevisionRequests(db,revisionRequest.id);
       if(outstandingSuppliers.length)throw issueProblem(`Supplier revision documents are still outstanding from ${[...new Set(outstandingSuppliers.map(item=>item.supplier_name))].join(', ')}. Review those requests before issuing the customer Estimate.`,409,'supplier_revision_responses_outstanding',{outstandingSuppliers});
+      if(pendingReviews.length)throw issueProblem(`Review the returned field evidence separately for ${pendingReviews.map(item=>item.supplier_name).join(', ')} before customer issue.`,409,'supplier_response_reviews_required');
       const unresolved = Number((await db.get("SELECT COUNT(*) count FROM revision_change_checks WHERE supplier_revision_request_id=? AND status IN ('not_implemented','needs_review','change_detected')", revisionRequest.id))?.count || 0);
       const missingPosition = Number((await db.get(`SELECT COUNT(*) count FROM portal_review_position_entries e WHERE e.review_submission_id=? AND e.response='amendment_requested' AND NOT EXISTS(SELECT 1 FROM revision_change_checks c WHERE c.supplier_revision_request_id=? AND c.change_kind='requested' AND c.estimate_position_id=e.estimate_position_id)`, revisionRequest.review_submission_id, revisionRequest.id))?.count || 0);
       const general = await db.get('SELECT general_response FROM portal_review_submissions WHERE id=?', revisionRequest.review_submission_id);
@@ -114,6 +116,7 @@ export function createIssuedQuotationService(db, options = {}) {
       const outstandingSuppliers=await outstandingSupplierRevisionRequests(db,currentRequest.id);
       if(outstandingSuppliers.length)throw issueProblem(`Supplier revision documents are still outstanding from ${[...new Set(outstandingSuppliers.map(item=>item.supplier_name))].join(', ')}. Nothing was sent. Review those requests before issuing the customer Estimate.`,409,'supplier_revision_responses_outstanding',{outstandingSuppliers});
       if(!currentRequest.verified_at||await staleSupplierReviewCount(db,currentRequest))throw issueProblem('The supplier revision review is incomplete or refers to an earlier document. Nothing was sent. Complete the current review before issuing the customer Estimate.',409,'supplier_revision_verification_required');
+      if((await outstandingSupplierResponseReviews(db,currentRequest.id)).length)throw issueProblem('One or more supplier responses need their own field review. Nothing was sent. Open the customer revision and complete the supplier reviews.',409,'supplier_response_reviews_required');
     }
     if((row.supplier_review_snapshot||null)!==await supplierReviewPreparationSnapshot(db,currentRequest))throw issueProblem('Supplier evidence or its review changed after this Email was prepared. Nothing was sent. Keep this draft as history, refresh the customer preview and prepare a new Email for review.',409,'supplier_review_changed_after_preparation',{estimateId:row.estimate_id,issuedQuotationId:row.id});
     const document = await documents.get(row.document_id), requestedRecipient = requiredText(overrides.recipient ?? row.recipient, "Recipient"), recipient = delivery.enabled ? delivery.assertRecipient(requestedRecipient, "customer") : requestedRecipient, subject = customerSubject(requiredText(overrides.subject ?? row.subject, "Subject")), bodyHtml = requiredText(overrides.bodyHtml ?? existingCommunication?.bodyHtml, "Email body");

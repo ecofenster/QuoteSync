@@ -97,8 +97,17 @@ async function run(){
   await evaluate("[...document.querySelectorAll('button')].find(item=>item.textContent.trim()==='Import Manufacturer Estimate')?.click()");
   await waitFor(()=>evaluate("window.__reviewDocument==='filed-reply'"),"Import handoff lost the saved document identity");
   console.log(JSON.stringify({filing:{providerUploads:storedFiles,partialSuccessVisible:true,retryReusedFile:true,responseState:"revised_document_received",importHandoffDocument:"filed-reply",provider:"disposable adapter"}}));
+  await db.run("UPDATE supplier_enquiry_drafts SET revision_request_id='history-request'");
   await evaluate("[...document.querySelectorAll('button')].find(item=>item.textContent==='Open saved review').click()");
   await waitFor(()=>evaluate("[...document.querySelectorAll('label')].some(item=>item.textContent==='After'&&item.querySelector('input')?.value==='Green')"),"Saved review values did not reopen");
+  await waitFor(()=>evaluate("[...document.querySelectorAll('legend')].some(item=>item.textContent==='Supplier response reviews')"),"Supplier-specific review controls did not open");
+  await evaluate("(()=>{const section=[...document.querySelectorAll('fieldset')].find(item=>item.querySelector('legend')?.textContent==='Supplier response reviews');const select=section.querySelector('select');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,select.options[1].value);select.dispatchEvent(new Event('change',{bubbles:true}))})()");
+  await waitFor(()=>evaluate("document.body.innerText.includes('Save supplier review')"),"Supplier field review did not render");
+  await evaluate("(()=>{const section=[...document.querySelectorAll('fieldset')].find(item=>item.querySelector('legend')?.textContent==='Supplier response reviews');for(const [label,value] of [['Field','finish'],['Before','White'],['Requested','Green'],['Returned','Green'],['Before source / page','Issued page 1'],['Returned source / page','Supplier page 2']]){const input=[...section.querySelectorAll('label')].find(item=>item.textContent===label).querySelector('input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}))}})()");
+  await evaluate("(()=>{const button=[...document.querySelectorAll('button')].find(item=>item.textContent==='Save supplier review');button.click();button.click()})()");
+  await waitFor(()=>evaluate("document.body.innerText.includes('Supplier review saved.')"),"Supplier review result was not visible");
+  assert.equal((await db.get('SELECT COUNT(*) count FROM supplier_response_reviews')).count,1);
+  const savedSupplier=await db.get('SELECT checks_json FROM supplier_response_reviews');assert.equal(JSON.parse(savedSupplier.checks_json)[0].afterValue,'Green');
   await evaluate("[...document.querySelectorAll('summary')].find(item=>item.textContent.includes('earlier review history')).click()");
   await waitFor(()=>evaluate("document.body.innerText.includes('of 12 saved review snapshots')"),"Persisted review history did not load");
   assert.equal(await evaluate("document.body.innerText.includes('Showing 1–10 of 12')"),true);

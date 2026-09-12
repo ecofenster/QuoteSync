@@ -1,3 +1,9 @@
+import { supplierResponseReviewContext } from './supplierResponseReviews.js';
+
+export async function outstandingSupplierResponseReviews(db,requestId) {
+  return (await supplierResponseReviewContext(db,requestId)).filter(item=>item.reviewRequired);
+}
+
 export async function outstandingSupplierRevisionRequests(db, revisionRequestId) {
   return db.all(`SELECT se.id,se.supplier_id,se.recipient,se.subject,se.status,se.response_state,
     COALESCE(s.supplier_name,se.recipient,'Supplier') supplier_name
@@ -14,7 +20,10 @@ export function supplierReviewSourceIdentity(request) {
 
 export async function staleSupplierReviewCount(db, request) {
   const row=await db.get('SELECT COUNT(*) count FROM revision_change_checks WHERE supplier_revision_request_id=? AND source_identity IS NOT ?',request.id,supplierReviewSourceIdentity(request));
-  return Number(row?.count || 0);
+  const later=await db.get(`SELECT COUNT(*) count FROM supplier_response_reviews review JOIN supplier_enquiry_drafts se ON se.id=review.supplier_enquiry_id
+    WHERE se.revision_request_id=? AND se.status<>'cancelled' AND review.created_at>?
+    AND NOT EXISTS(SELECT 1 FROM supplier_enquiry_drafts next WHERE next.supersedes_id=se.id AND next.status<>'cancelled')`,request.id,request.verified_at||'');
+  return Number(row?.count || 0)+Number(later?.count||0);
 }
 
 // Freeze the exact review behind a prepared customer document. New supplier work
@@ -33,7 +42,8 @@ export async function supplierReviewPreparationSnapshot(db, request) {
     doc.provider_revision,doc.checksum,doc.removed_at,doc.trashed
     FROM manufacturer_response_links link JOIN canonical_documents doc ON doc.id=link.canonical_document_id
     WHERE link.supplier_enquiry_id=? ORDER BY link.id`,supplier.id)});
-  return JSON.stringify({requestId:request.id,source:supplierReviewSourceIdentity(request),verifiedAt:request.verified_at,status:request.status,checks,responses});
+  const supplierReviews=(await supplierResponseReviewContext(db,request.id)).map(item=>({supplierId:item.id,reviewId:item.review?.id||null}));
+  return JSON.stringify({requestId:request.id,source:supplierReviewSourceIdentity(request),verifiedAt:request.verified_at,status:request.status,checks,responses,supplierReviews});
 }
 
 // Shared by reviewed reply linking and provider-confirmed filing; safe on retry.

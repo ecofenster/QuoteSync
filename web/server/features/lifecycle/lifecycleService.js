@@ -5,7 +5,7 @@ import { createCommunicationsService } from '../communications/communicationsSer
 import { createTestDeliveryPolicy } from './testDeliveryPolicy.js';
 import { createCustomerLifecycleDocumentService } from './customerLifecycleDocumentService.js';
 import { createSupplierRevisionChangeDocumentService } from './supplierRevisionChangeDocumentService.js';
-import { recordSupplierResponseState, outstandingSupplierRevisionRequests, supplierReviewSourceIdentity, staleSupplierReviewCount } from './supplierResponseState.js';
+import { recordSupplierResponseState, outstandingSupplierRevisionRequests, outstandingSupplierResponseReviews, supplierReviewSourceIdentity, staleSupplierReviewCount } from './supplierResponseState.js';
 
 const text = (value) => String(value ?? '').trim();
 const hash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -318,11 +318,12 @@ export function createLifecycleService(db, options = {}) {
     const missingRequestedPositions = requestedPositions.map((row) => row.estimate_position_id).filter((positionId) => !covered.has(positionId));
     const generalCovered = generalReview?.general_response !== 'amendment_requested' || Boolean(await db.get(`SELECT id FROM revision_change_checks WHERE supplier_revision_request_id=? AND change_kind='requested' AND estimate_position_id IS NULL`, requestId));
     const outstandingSuppliers=await outstandingSupplierRevisionRequests(db,requestId);
-    const staleChecks=await staleSupplierReviewCount(db,request);
+    const pendingSupplierReviews=(await outstandingSupplierResponseReviews(db,requestId)).filter(item=>item.response_state==='revised_document_received');
+    const staleChecks=await staleSupplierReviewCount(db,{...request,verified_at:at});
     const unresolved = Number((await db.get(`SELECT COUNT(*) count FROM revision_change_checks WHERE supplier_revision_request_id=? AND status IN ('not_implemented','needs_review','change_detected')`, requestId))?.count || 0) + missingRequestedPositions.length + (generalCovered ? 0 : 1) + outstandingSuppliers.length;
-    await db.run("UPDATE supplier_revision_requests SET verified_at=?,status=?,updated_at=? WHERE id=?", unresolved||staleChecks ? null : at, 'approved', at, requestId);
+    await db.run("UPDATE supplier_revision_requests SET verified_at=?,status=?,updated_at=? WHERE id=?", unresolved||staleChecks||pendingSupplierReviews.length ? null : at, 'approved', at, requestId);
     await event('supplier.revision.verified', `${requestId}:${hash(checks)}`, [{ kind: 'supplier_revision_request', id: requestId }, { kind: 'estimate', id: request.successor_estimate_id }]);
-    return { requestId, checks: await db.all('SELECT * FROM revision_change_checks WHERE supplier_revision_request_id=? ORDER BY change_kind,estimate_position_id,field_key', requestId), missingRequestedPositions, generalRequestCovered: generalCovered, outstandingSuppliers, staleChecks, unresolved:unresolved+staleChecks, issueAllowed: unresolved === 0&&staleChecks===0 };
+    return { requestId, checks: await db.all('SELECT * FROM revision_change_checks WHERE supplier_revision_request_id=? ORDER BY change_kind,estimate_position_id,field_key', requestId), missingRequestedPositions, generalRequestCovered: generalCovered, outstandingSuppliers, pendingSupplierReviews:pendingSupplierReviews.map(item=>({id:item.id,supplier_name:item.supplier_name})), staleChecks, unresolved:unresolved+staleChecks+pendingSupplierReviews.length, issueAllowed: unresolved === 0&&staleChecks===0&&pendingSupplierReviews.length===0 };
   }
 
   async function approveOrder(orderId, input = {}) {
