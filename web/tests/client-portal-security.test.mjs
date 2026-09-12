@@ -320,6 +320,14 @@ test("customer acceptance creates one canonical Order and factory commitment rem
   const repaired=await lifecycle.prepareFactoryOrder(accepted.orderId,{send:false});assert.deepEqual(repaired.documentIds,[safeDocument.id]);assert.notEqual(repaired.communicationMessageId,draft.communicationMessageId);
   assert.ok(await createCommunicationRepository(source.db).get(draft.communicationMessageId),'Previous draft evidence must remain retained');
   assert.equal((await lifecycle.customerDocuments.get(legacy.id)).sha256,legacy.sha256,'Customer Order evidence changed during repair');
+  const opened=(await lifecycle.orderJourney(accepted.orderId)).factoryDraft;assert.equal(opened.attachments[0].id,safeDocument.id);assert.equal(opened.needsPreparation,false);
+  const edit={editDraft:true,expectedCommunicationId:opened.communicationMessageId,recipient:'reviewed.factory@example.test',subject:'Reviewed factory request',bodyText:'Please check <dimensions> & reply.\nReviewed draft only.'};
+  await lifecycle.prepareFactoryOrder(accepted.orderId,edit);
+  const saved=(await lifecycle.orderJourney(accepted.orderId)).factoryDraft;assert.equal(saved.bodyText,edit.bodyText);assert.equal(saved.recipient,edit.recipient);assert.equal(saved.status,'draft');assert.deepEqual(saved.attachments,opened.attachments);assert.notEqual(saved.communicationMessageId,opened.communicationMessageId);
+  await assert.rejects(()=>lifecycle.prepareFactoryOrder(accepted.orderId,{...edit,bodyText:'Stale edit'}),error=>error.code==='factory_draft_changed');
+  assert.equal((await lifecycle.orderJourney(accepted.orderId)).factoryDraft.bodyText,edit.bodyText);
+  assert.equal((await createCommunicationRepository(source.db).get(opened.communicationMessageId)).attachments.length,1,'Editing must preserve previous attachment metadata');
+  const currentMessage=await createCommunicationRepository(source.db).get(saved.communicationMessageId);assert.match(currentMessage.bodyHtml,/&lt;dimensions&gt; &amp; reply\.<br>/);assert.equal(currentMessage.attachments.length,1);assert.equal(currentMessage.snippet,edit.bodyText);assert.equal(currentMessage.providerMessageId,null);assert.equal(currentMessage.threadId,null);
 });
 
 test("accepted Positions remain a fail-closed gate through factory confirmation and final customer sign-off",async t=>{

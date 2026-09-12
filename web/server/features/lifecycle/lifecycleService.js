@@ -372,6 +372,17 @@ export function createLifecycleService(db, options = {}) {
     if (!order) throw problem('Order was not found.', 404, 'order_not_found');
     const acceptedPositions = await db.all('SELECT estimate_position_id,position_reference,confirmations_json,created_at FROM portal_position_acceptances WHERE estimate_acceptance_id=? ORDER BY position_reference', order.acceptance_id);
     const documents = await db.all('SELECT id,file_name,document_type,provider_revision revision,provider_modified_at modified_at FROM canonical_documents WHERE project_id=? AND removed_at IS NULL AND trashed=0 ORDER BY provider_modified_at DESC', order.project_id);
+    const request = await db.get('SELECT * FROM factory_order_requests WHERE order_id=?', orderId);
+    let factoryDraft = null;
+    if (request) {
+      const message = await communications.get(request.communication_message_id);
+      const attachments = [];
+      for (const id of parse(request.document_ids_json, [])) {
+        const document = await customerDocuments.get(id);
+        if (document?.orderId === orderId && message?.attachments?.some(item => item.storageKey === document.storageKey && item.sha256 === document.sha256)) attachments.push({ id: document.id, fileName: document.fileName, sha256: document.sha256, downloadUrl: `/api/lifecycle/documents/${encodeURIComponent(document.id)}`, priceFree: document.context?.audience === 'factory-price-free-v1' });
+      }
+      factoryDraft = { id: request.id, communicationMessageId: request.communication_message_id, status: request.status, recipient: request.recipient, subject: request.subject, bodyText: request.body_text, updatedAt: request.updated_at, attachments, needsPreparation: !message || message.attachments.length !== 1 || attachments.length !== 1 || !attachments[0].priceFree, sentAt: message?.sentAt || null };
+    }
     const confirmations = await db.all(`SELECT fc.*,r.id release_id,r.released_at,s.id signoff_id,s.approved_at signoff_approved_at,s.signed_pdf_document_id
       FROM factory_confirmations fc LEFT JOIN factory_confirmation_releases r ON r.factory_confirmation_id=fc.id
       LEFT JOIN factory_confirmation_signoffs s ON s.factory_confirmation_release_id=r.id WHERE fc.order_id=? ORDER BY fc.created_at DESC`, orderId);
@@ -380,7 +391,7 @@ export function createLifecycleService(db, options = {}) {
       const signedPdfReview = confirmation.release_id ? await db.get('SELECT * FROM factory_confirmation_signed_pdf_reviews WHERE factory_confirmation_release_id=? ORDER BY reviewed_at DESC LIMIT 1', confirmation.release_id) : null;
       confirmationDetails.push({ id: confirmation.id, documentId: confirmation.canonical_document_id, revision: confirmation.revision, status: confirmation.status, createdAt: confirmation.created_at, releaseId: confirmation.release_id, releasedAt: confirmation.released_at, signoffId: confirmation.signoff_id, signedPdfDocumentId: signedPdfReview?.signed_pdf_document_id || confirmation.signed_pdf_document_id, signedOffAt: confirmation.signoff_approved_at, signedPdfReviewedAt: signedPdfReview?.reviewed_at || null, checks: await db.all('SELECT * FROM factory_confirmation_checks WHERE factory_confirmation_id=? ORDER BY estimate_position_id,field_key', confirmation.id) });
     }
-    return { id: order.id, orderRef: order.order_ref, clientId: order.client_id, projectId: order.project_id, status: order.status, sourceEstimateId: order.source_estimate_id, sourceEstimateRevision: Number(order.source_estimate_revision), estimateReleaseId: order.estimate_release_id, estimateDocumentId: order.estimate_document_id, customerProjection: parse(order.customer_projection_json, {}), acceptance: { id: order.acceptance_id, acceptedAt: order.accepted_at, positions: acceptedPositions.map((position) => ({ estimatePositionId: position.estimate_position_id, reference: position.position_reference, confirmations: parse(position.confirmations_json, {}) })) }, staffApproval: order.staff_approval_id ? { id: order.staff_approval_id, approvedBy: order.approved_by, approvedAt: order.approved_at, note: order.approval_note } : null, factoryOrder: order.factory_order_request_id ? { id: order.factory_order_request_id, status: order.factory_order_status, recipient: order.factory_recipient, subject: order.factory_subject, bodyText: order.factory_body_text } : null, documents, confirmations: confirmationDetails };
+    return { factoryDraft, id: order.id, orderRef: order.order_ref, clientId: order.client_id, projectId: order.project_id, status: order.status, sourceEstimateId: order.source_estimate_id, sourceEstimateRevision: Number(order.source_estimate_revision), estimateReleaseId: order.estimate_release_id, estimateDocumentId: order.estimate_document_id, customerProjection: parse(order.customer_projection_json, {}), acceptance: { id: order.acceptance_id, acceptedAt: order.accepted_at, positions: acceptedPositions.map((position) => ({ estimatePositionId: position.estimate_position_id, reference: position.position_reference, confirmations: parse(position.confirmations_json, {}) })) }, staffApproval: order.staff_approval_id ? { id: order.staff_approval_id, approvedBy: order.approved_by, approvedAt: order.approved_at, note: order.approval_note } : null, factoryOrder: order.factory_order_request_id ? { id: order.factory_order_request_id, status: order.factory_order_status, recipient: order.factory_recipient, subject: order.factory_subject, bodyText: order.factory_body_text } : null, documents, confirmations: confirmationDetails };
   }
 
   async function prepareFactoryOrder(orderId, input = {}) {
@@ -389,6 +400,20 @@ export function createLifecycleService(db, options = {}) {
     if (!await db.get('SELECT id FROM order_staff_approvals WHERE order_id=?', orderId)) throw problem('Staff approval is required before preparing the factory order.', 409, 'factory_order_staff_approval_required');
     const existing = await db.get('SELECT * FROM factory_order_requests WHERE order_id=?', orderId);
     if (existing) {
+      if (input.editDraft === true) {
+        if (existing.status !== 'draft') throw problem('Only an unsent factory draft can be edited. Sent correspondence is retained unchanged.', 409, 'factory_draft_not_editable');
+        if (text(input.expectedCommunicationId) !== existing.communication_message_id) throw problem('This factory draft changed in another window. Reopen it before saving; your entered text has not been discarded.', 409, 'factory_draft_changed');
+        const recipient = text(input.recipient), subject = text(input.subject), bodyText = text(input.bodyText);
+        if (!/^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(recipient) || !subject || /[\r\n]/.test(subject) || !bodyText) throw problem('Enter one valid recipient, a subject and a message before saving.');
+        if (recipient === existing.recipient && subject === existing.subject && bodyText === existing.body_text) return { id: existing.id, status: 'draft', unchanged: true };
+        const prior = await communications.get(existing.communication_message_id);
+        if (!prior) throw problem('The saved message is unavailable. Prepare the factory preview again before editing.',409,'factory_order_communication_missing');
+        const message = await communications.save({ ...prior, id: randomUUID(), createdAt: stamp(), provider: 'quotesuite_preview', providerMessageId: null, threadId: null, sentAt: null, error: null, attachments: (prior.attachments || []).map(item => ({ ...item, id: randomUUID() })), folder: 'drafts', status: 'draft', to: [recipient], cc: [], bcc: [], subject, bodyText, snippet: bodyText, bodyHtml: `<p>${bodyText.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('\n','<br>')}</p>` });
+        const changed = await db.run("UPDATE factory_order_requests SET recipient=?,subject=?,body_text=?,communication_message_id=?,updated_at=? WHERE id=? AND communication_message_id=? AND status='draft'",recipient,subject,bodyText,message.id,stamp(),existing.id,existing.communication_message_id);
+        if (!changed.changes) throw problem('The factory draft changed while saving. Reopen it to review the current version; no message was sent.',409,'factory_draft_changed');
+        await event('factory.order.draft_reviewed',message.id,[{kind:'order',id:orderId},{kind:'communication',id:message.id}]);
+        return { id: existing.id, status: 'draft', communicationMessageId: message.id };
+      }
       const retained = await Promise.all(parse(existing.document_ids_json, []).map(id => customerDocuments.get(id)));
       const factoryDocument = retained.find(document => document?.orderId === orderId && document.context?.audience === 'factory-price-free-v1');
       const priorDraft = await communications.get(existing.communication_message_id);
