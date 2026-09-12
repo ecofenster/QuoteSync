@@ -296,7 +296,9 @@ test("one tracked supplier revision draft reopens, sends once and follows up onc
   const prepared=await lifecycle.prepareSupplierEnquiry("project-a1",payload);assert.equal(prepared.status,"draft");assert.equal((await lifecycle.supplierRevisionDetail(parent.id)).status,"prepared_for_review");
   const sent=await lifecycle.prepareSupplierEnquiry("project-a1",{...payload,send:true});assert.equal(sent.status,"sent");assert.equal(sent.responseDueAt,"2026-09-13T10:00:00.000Z");assert.equal(sendCount,1);
   const replay=await lifecycle.prepareSupplierEnquiry("project-a1",{...payload,send:true});assert.equal(replay.idempotentReplay,true);assert.equal(sendCount,1);
-  clock=Date.parse("2026-09-13T10:01:00.000Z");failNext=true;const failedFollowup=await lifecycle.processDueSupplierRevisionFollowups();assert.deepEqual(failedFollowup,{processed:1,sent:0,failed:1});assert.equal(sendCount,1);
+  const adjusted=await lifecycle.updateSupplierResponseDue(sent.id,{responseDueAt:"2026-09-14T10:00:00.000Z"});assert.equal(adjusted.responseDueAt,"2026-09-14T10:00:00.000Z");
+  clock=Date.parse("2026-09-13T10:01:00.000Z");assert.deepEqual(await lifecycle.processDueSupplierRevisionFollowups(),{processed:0,sent:0,failed:0});
+  clock=Date.parse("2026-09-14T10:01:00.000Z");failNext=true;const failedFollowup=await lifecycle.processDueSupplierRevisionFollowups();assert.deepEqual(failedFollowup,{processed:1,sent:0,failed:1});assert.equal(sendCount,1);
   const queued=await lifecycle.retrySupplierRevisionFollowup(sent.id);assert.equal(queued.followupFailure,"");
   const followup=await lifecycle.processDueSupplierRevisionFollowups();assert.deepEqual(followup,{processed:1,sent:1,failed:0});assert.equal(sendCount,2);
   assert.deepEqual(await lifecycle.processDueSupplierRevisionFollowups(),{processed:0,sent:0,failed:0});assert.equal(sendCount,2);
