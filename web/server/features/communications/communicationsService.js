@@ -9,6 +9,7 @@ import { createGoogleWorkspaceService, GMAIL_MODIFY_SCOPE } from "../integration
 import { classifyNotification, decodeGmailNotification, resolveNotificationConfiguration, resolveWatchLifecycle } from "./communicationLiveSync.js";
 import { createTestDeliveryPolicy } from "../lifecycle/testDeliveryPolicy.js";
 import { createSupplierQuotesService } from "../supplierQuotes/supplierQuotesService.js";
+import { recordSupplierResponseState } from "../lifecycle/supplierResponseState.js";
 
 const MUTATING_MAILBOX_CAPABILITIES = Object.freeze(["archive", "trash", "read_state", "star", "move", "labels"]);
 const COMMAND_CAPABILITIES = Object.freeze({ archive: "archive", trash: "trash", mark_read: "read_state", mark_unread: "read_state", star: "star", unstar: "star", move: "move", label: "labels" });
@@ -349,12 +350,14 @@ export function createCommunicationsService(db, options = {}) {
         if (message.direction !== "inbound") throw Object.assign(new Error("Only an inbound supplier message can be recorded as a returned quote."), { status: 422, code: "supplier_response_inbound_required" });
         let response = await db.get("SELECT * FROM manufacturer_response_links WHERE project_id=? AND communication_message_id=? AND canonical_document_id=?", projectId, message.id, stored.documentId);
         const idempotentReplay = Boolean(response);
+        if (response && (response.supplier_enquiry_id !== supplierEnquiryId || response.estimate_id !== estimateId)) throw Object.assign(new Error('The saved document is already linked to a different supplier request or Estimate. Review its existing relationship.'), { code: 'manufacturer_response_link_conflict' });
         if (!response) {
           const id = randomUUID(), at = new Date().toISOString();
           await db.run("INSERT INTO manufacturer_response_links(id,project_id,estimate_id,supplier_enquiry_id,communication_message_id,canonical_document_id,status,created_by,created_at) VALUES(?,?,?,?,?,?,'ready_for_import',?,?)", id, projectId, estimateId, supplierEnquiryId, message.id, stored.documentId, String(input.createdBy || "user-1"), at);
           response = await db.get("SELECT * FROM manufacturer_response_links WHERE id=?", id);
           for (const eventName of ["supplier.response.linked", "supplier.quote_returned"]) await db.run("INSERT INTO workflow_events(id,event_name,evidence_id,occurred_at,links_json,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(event_name,evidence_id) DO NOTHING", randomUUID(), eventName, id, at, JSON.stringify([{ kind: "supplier_enquiry", id: supplierEnquiryId }, { kind: "communication", id: message.id }, { kind: "document", id: stored.documentId }, { kind: "estimate", id: estimateId }]), at);
         }
+        await recordSupplierResponseState(db,{supplierEnquiryId,documentId:stored.documentId,receivedAt:response.created_at});
         manufacturerResponse = { id: response.id, supplierEnquiryId, status: "ready_for_import", event: "supplier.quote_returned", nextAction: "Review the saved document with Manufacturer Import", idempotentReplay };
       }
     } catch (cause) {

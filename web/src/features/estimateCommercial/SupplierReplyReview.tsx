@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { apiFetch } from "../../services/api/apiClient";
+import { apiFetch, ApiRequestError } from "../../services/api/apiClient";
 import { communicationsApi, type CommunicationMessageView, type CommunicationAssignmentOptions, type CommunicationAssignmentResult } from "../../services/communications/communicationsApi";
 import { AssignmentDialog } from "../communications/EmailWorkspace";
 
@@ -15,13 +15,20 @@ export default function SupplierReplyReview({ projectId, estimateId, requestId, 
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [partial, setPartial] = useState<{ fileName?: string; folderPath?: string; webViewLink?: string | null } | null>(null);
   const [assignment, setAssignment] = useState<CommunicationAssignmentOptions | null>(null);
   const [fileResult, setFileResult] = useState<CommunicationAssignmentResult | null>(null);
   const locked = useRef(false);
   async function run(action: () => Promise<void>, progress: string) {
     if (locked.current) return;
-    locked.current = true; setBusy(true); setError(""); setNotice(progress);
-    try { await action(); } catch (reason) { setNotice(""); setError(reason instanceof Error ? reason.message : "The action could not be completed. Your selection is retained; retry when ready."); }
+    locked.current = true; setBusy(true); setError(""); setPartial(null); setNotice(progress);
+    try { await action(); } catch (reason) {
+      setNotice(""); setError(reason instanceof Error ? reason.message : "The action could not be completed. Your selection is retained; retry when ready.");
+      if (reason instanceof ApiRequestError && reason.body) {
+        try { const body = JSON.parse(reason.body); if (body.code === "communication_assignment_partial_success") setPartial(body.details || {}); }
+        catch { /* Keep the readable original error when no structured result exists. */ }
+      }
+    }
     finally { locked.current = false; setBusy(false); }
   }
   const search = (page: string | null = null) => run(async () => {
@@ -54,7 +61,7 @@ export default function SupplierReplyReview({ projectId, estimateId, requestId, 
     setFileResult(null); setNotice("");
   }, "Checking the selected message’s retained documents…");
   if (assignment) return <AssignmentDialog options={assignment} result={fileResult} saving={busy}
-    feedback={error ? { state: "failed", message: error } : busy ? { state: "saving", message: "Saving document…" } : null}
+    feedback={partial ? { state: "partial", message: "The document was saved, but QuoteSuite could not finish linking it.", details: partial } : error ? { state: "failed", message: error } : busy ? { state: "saving", message: "Saving document…" } : null}
     onClose={() => { if (!busy) { setAssignment(null); setError(""); } }}
     onSubmit={value => void run(async () => {
       if (value.projectId !== projectId || value.estimateId !== estimateId || value.supplierEnquiryId !== requestId) throw new Error("Keep this document linked to the supplier request being reviewed. Use Email to file it against a different record.");

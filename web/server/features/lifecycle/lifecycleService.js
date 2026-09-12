@@ -5,6 +5,7 @@ import { createCommunicationsService } from '../communications/communicationsSer
 import { createTestDeliveryPolicy } from './testDeliveryPolicy.js';
 import { createCustomerLifecycleDocumentService } from './customerLifecycleDocumentService.js';
 import { createSupplierRevisionChangeDocumentService } from './supplierRevisionChangeDocumentService.js';
+import { recordSupplierResponseState } from './supplierResponseState.js';
 
 const text = (value) => String(value ?? '').trim();
 const hash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -207,15 +208,11 @@ export function createLifecycleService(db, options = {}) {
     const responseResult=(id,idempotentReplay)=>({id,projectId,estimateId,canonicalDocumentId:documentId,status:documentId?'ready_for_import':'review_required',responseState:documentId?'revised_document_received':'acknowledgement_received',nextAction:documentId?'Review with Manufacturer Import':'Review the acknowledgement and record a revised expected-return date if needed.',idempotentReplay});
     const existing=await db.get('SELECT * FROM manufacturer_response_links WHERE project_id=? AND communication_message_id=? AND canonical_document_id IS ?',projectId,communicationId,documentId);if(existing){
       if(existing.supplier_enquiry_id!==supplierEnquiryId||existing.estimate_id!==estimateId)throw problem('This response is already linked to a different supplier request or Estimate. Review the existing relationship before changing it.',409,'manufacturer_response_link_conflict');
+      await recordSupplierResponseState(db,{supplierEnquiryId,documentId,receivedAt:existing.created_at});
       return responseResult(existing.id,true);
     }
     const id=randomUUID(),at=stamp();await db.run(`INSERT INTO manufacturer_response_links(id,project_id,estimate_id,supplier_enquiry_id,communication_message_id,canonical_document_id,status,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?)`,id,projectId,estimateId,supplierEnquiryId,communicationId,documentId,documentId?'ready_for_import':'review_required',actor,at);
-    if(supplierEnquiryId){
-      const responseState=documentId?'revised_document_received':'acknowledgement_received';
-      await db.run("UPDATE supplier_enquiry_drafts SET response_state=CASE WHEN response_state='revised_document_received' THEN response_state ELSE ? END,received_at=COALESCE(received_at,?),followup_due_at=NULL,followup_failure='',updated_at=? WHERE id=?",responseState,at,at,supplierEnquiryId);
-      const request=await db.get("SELECT revision_request_id FROM supplier_enquiry_drafts WHERE id=?",supplierEnquiryId);
-      if(request?.revision_request_id)await db.run("UPDATE supplier_revision_requests SET workflow_state=CASE WHEN workflow_state IN ('revised_document_received','revised_customer_estimate_issued','cancelled','superseded') THEN workflow_state ELSE ? END,received_at=COALESCE(received_at,?),updated_at=? WHERE id=?",documentId?'revised_document_received':'supplier_reply_received',at,at,request.revision_request_id);
-    }
+    await recordSupplierResponseState(db,{supplierEnquiryId,documentId,receivedAt:at});
     await communications.addLink(communicationId,{kind:'project',id:projectId});if(estimateId)await communications.addLink(communicationId,{kind:'estimate',id:estimateId});
     await event('supplier.response.linked',id,[{kind:'project',id:projectId},{kind:'communication',id:communicationId},...(documentId?[{kind:'document',id:documentId}]:[]),...(estimateId?[{kind:'estimate',id:estimateId}]:[])]);
     await event(documentId?'supplier.quote_returned':'supplier.acknowledgement_received',id,[{kind:'project',id:projectId},{kind:'communication',id:communicationId},...(documentId?[{kind:'document',id:documentId}]:[]),...(estimateId?[{kind:'estimate',id:estimateId}]:[]),...(supplierEnquiryId?[{kind:'supplier_enquiry',id:supplierEnquiryId}]:[])]);

@@ -93,6 +93,15 @@ test("Link existing resolves EF-CL reference, exposes the full picker without a 
     CREATE TABLE workflow_events(id TEXT PRIMARY KEY,event_name TEXT,evidence_id TEXT,occurred_at TEXT,links_json TEXT,created_at TEXT,UNIQUE(event_name,evidence_id));
     INSERT INTO supplier_enquiry_drafts VALUES('supplier-rfq-1','project-1','estimate-1','ZYLE','factory@example.test','Request for quotation','sent',1,'2026-08-25T10:00:00.000Z');
     INSERT INTO supplier_enquiry_drafts VALUES('supplier-rfq-wrong','project-1','other-estimate','ZYLE','factory@example.test','Different Estimate request','sent',1,'2026-08-25T09:00:00.000Z');`);
+  await db.exec(`ALTER TABLE supplier_enquiry_drafts ADD COLUMN revision_request_id TEXT;
+    ALTER TABLE supplier_enquiry_drafts ADD COLUMN response_state TEXT DEFAULT 'outstanding';
+    ALTER TABLE supplier_enquiry_drafts ADD COLUMN received_at TEXT;
+    ALTER TABLE supplier_enquiry_drafts ADD COLUMN followup_due_at TEXT;
+    ALTER TABLE supplier_enquiry_drafts ADD COLUMN followup_failure TEXT DEFAULT '';
+    ALTER TABLE supplier_enquiry_drafts ADD COLUMN updated_at TEXT;
+    CREATE TABLE supplier_revision_requests(id TEXT PRIMARY KEY,workflow_state TEXT,received_at TEXT,updated_at TEXT);
+    INSERT INTO supplier_revision_requests VALUES('parent-revision','sent_to_supplier',NULL,NULL);
+    UPDATE supplier_enquiry_drafts SET revision_request_id='parent-revision',followup_due_at='2026-09-20T10:00:00Z' WHERE id='supplier-rfq-1';`);
   const providerDocument=()=>{providerRead+=1;currentProviderDocumentId=`ANGjdJ-${String(providerRead).padEnd(418,"x")}`;return{...providerMessage(),from:["Viktorija <info@zylefenster.com>"],subject:"Ats.: EF-CL-028: Stuart Gilks",bodyText:"Please see attached.",attachments:[
     {sourcePartId:"0.1",fileName:"image.png",mediaType:"image/png",sizeBytes:1240,providerAttachmentId:`ANGjdJ-${String(providerRead).padEnd(396,"i")}`,contentId:"ii_1a07b70b3b8cb971f161",inline:true},
     {sourcePartId:"1",fileName:"EF-CL-028 Stuart Gilks, Ecotherm +.docx",mediaType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",sizeBytes:115091,providerAttachmentId:currentProviderDocumentId,contentId:null,inline:false},
@@ -106,7 +115,14 @@ test("Link existing resolves EF-CL reference, exposes the full picker without a 
   await assert.rejects(()=>service.assignSupplierDocument("provider-message-1",{...options.proposed,attachmentId:"obsolete-provider-derived-selection",conflictsReviewed:true}),error=>error.code==="communication_assignment_attachment_stale"&&error.details.eligibleFileNames[0]==="EF-CL-028 Stuart Gilks, Ecotherm +.docx");
   await assert.rejects(()=>service.assignSupplierDocument("provider-message-1",{...options.proposed,supplierEnquiryId:"supplier-rfq-wrong",attachmentId:options.attachments[0].id,conflictsReviewed:true}),error=>error.code==="communication_assignment_supplier_enquiry_conflict");
   await assert.rejects(()=>service.assignSupplierDocument("provider-message-1",{...options.proposed,supplierId:"ZYLE",attachmentId:options.attachments[0].id}),/review the reference conflict/i);
+  await db.exec("CREATE TRIGGER fail_response_state BEFORE UPDATE ON supplier_enquiry_drafts BEGIN SELECT RAISE(ABORT,'test interrupted response projection'); END");
+  await assert.rejects(()=>service.assignSupplierDocument("provider-message-1",{...options.proposed,supplierId:"ZYLE",attachmentId:options.attachments[0].id,conflictsReviewed:true}),error=>error.code==='communication_assignment_partial_success'&&error.details.documentId==='document-1');
+  await db.exec('DROP TRIGGER fail_response_state');
   const result=await service.assignSupplierDocument("provider-message-1",{...options.proposed,supplierId:"ZYLE",attachmentId:options.attachments[0].id,conflictsReviewed:true});
+  const requestState=await db.get("SELECT * FROM supplier_enquiry_drafts WHERE id='supplier-rfq-1'");
+  assert.equal(requestState.response_state,'revised_document_received');assert.equal(requestState.followup_due_at,null);assert.ok(requestState.received_at);
+  assert.equal((await db.get("SELECT workflow_state FROM supplier_revision_requests WHERE id='parent-revision'")).workflow_state,'revised_document_received');
+  assert.equal(result.manufacturerResponse.idempotentReplay,true);
   assert.ok(providerRead>=5);assert.equal(Buffer.from(filed.bytes).toString(),"genuine");assert.equal(filed.communicationAttachmentId,options.attachments[0].id);assert.equal(filed.providerAttachmentId,currentProviderDocumentId);assert.equal(result.fileName,"EF-CL-028 Stuart Gilks, Ecotherm +.docx");assert.equal(result.providerFileId,"provider-file-1");assert.equal(result.navigation.openFilesLabel,"Open Files");assert.equal(result.navigation.importLabel,"Import Manufacturer Estimate");assert.equal(result.manufacturerResponse.supplierEnquiryId,"supplier-rfq-1");assert.equal(result.manufacturerResponse.event,"supplier.quote_returned");assert.equal((await db.get("SELECT COUNT(*) count FROM manufacturer_response_links")).count,1);assert.equal((await db.get("SELECT COUNT(*) count FROM workflow_events WHERE event_name='supplier.quote_returned'")).count,1);
   assert.deepEqual(new Set(result.links.map(item=>item.kind)),new Set(["client","project","estimate","supplier"]));
 });
