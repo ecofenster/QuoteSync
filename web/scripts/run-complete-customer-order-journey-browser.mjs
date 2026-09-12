@@ -22,6 +22,7 @@ import { terminateOwnedProcessTree } from "./e2e-owned-process.mjs";
 import { initializeIsolatedJourneyDatabase } from "./isolated-journey-database.mjs";
 import { createServer as createPortProbe } from "node:net";
 import { QUOTESUITE_RUNTIME_CONTRACT } from "../shared/runtimeHealthContract.js";
+import { pathToFileURL } from 'node:url';
 
 const APP_URL = "http://127.0.0.1:5276";
 const API_URL = "http://127.0.0.1:3104";
@@ -68,6 +69,8 @@ async function seed(databasePath, attachmentRoot) {
   await db.run(`INSERT INTO clients(id,name,email,contact_name,company_name,client_ref,project_name,created_at,deleted_at,commercial_lifecycle,reference_namespace,updated_at) VALUES(?,?,?,?,?,?,?,?,NULL,'prospect','test',?)`, clientId, "TEST Customer Journey", CUSTOMER, "TEST Customer Journey", "", `TEST-CL-${suffix.toUpperCase()}`, customerProjection.projectName, now, now);
   await db.run("INSERT INTO projects(id,client_id,name,status,created_at,updated_at) VALUES(?,?,?,'active',?,?)", projectId, clientId, customerProjection.projectName, now, now);
   await db.run("INSERT INTO supplier_commercial_defaults(supplier_code,supplier_name,policy_json,pricing_display_policy_json,updated_at) VALUES('TEST-JOURNEY-SUPPLIER','TEST Journey Supplier','{}','{}',?)",now);
+  await db.run("INSERT INTO supplier_commercial_defaults(supplier_code,supplier_name,policy_json,pricing_display_policy_json,updated_at) VALUES('EKO','EKO-OKNA',?,'{}',?) ON CONFLICT(supplier_code) DO NOTHING",JSON.stringify({pricingMethod:'factory_price',pricingBasis:'factory_price',paidInQuotedCurrency:true,settlementCurrency:'EUR'}),now);
+  if(!await db.get("SELECT id FROM configurator_manufacturers WHERE code='EKO' OR name='EKO-OKNA'"))await db.run("INSERT INTO configurator_manufacturers(id,name,code,is_active) VALUES('test-manufacturer-eko','EKO-OKNA','EKO',1)");
   await db.run(`INSERT INTO estimates(id,client_id,project_id,estimate_ref,base_estimate_ref,revision_no,status,estimated_order_month,estimated_order_year,defaults_json,positions_json,order_meta_json,outcome,project_address,project_address_json,postcode,what3words,created_by_user_id,created_by_name,created_by_role,created_at,updated_at,deleted_at) VALUES(?,?,?,?,?,1,'Issued','September',2026,'{}',?,'{}','Open',?,'{}','CF10 1AA','','test-staff','Test Staff','estimator',?,?,NULL)`, estimateId, clientId, projectId, estimateReference, estimateReference, JSON.stringify(customerProjection.positions.map((item) => ({ id: item.id, positionRef: item.reference, qty: item.quantity, widthMm: item.widthMm, heightMm: item.heightMm, roomName: item.roomName }))), customerProjection.projectAddress, now, now);
   const documents = createCustomerQuotationDocumentService(db, { attachmentRoot });
   const document = await documents.createImmutablePdf({ estimateId, quotationRevision: 1, projection: customerProjection });
@@ -152,9 +155,10 @@ async function run() {
     const isolation=await initializeIsolatedJourneyDatabase({databasePath,attachmentRoot});
     console.log(JSON.stringify({journeyIsolation:isolation}));
     const fixture=await seed(databasePath,attachmentRoot);
-    api = spawn(process.execPath, ["server/index.js"], { cwd: process.cwd(), env: { ...process.env, QUOTESUITE_DB_PATH: databasePath, QUOTESYNC_ATTACHMENT_ROOT: attachmentRoot, PORT: "3104", NODE_ENV: "development", QUOTESUITE_APP_ORIGINS: APP_URL, QUOTESUITE_TEST_JOURNEY: "1", QUOTESUITE_TEST_DELIVERY_ENABLED: "0", QUOTESUITE_TEST_CUSTOMER_EMAIL: CUSTOMER, QUOTESUITE_TEST_FACTORY_EMAIL: FACTORY }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    api = spawn(process.execPath, ["--import",pathToFileURL(path.resolve('tests/fixtures/isolatedJourneyExchangeRate.mjs')).href,"server/index.js"], { cwd: process.cwd(), env: { ...process.env, QUOTESUITE_DB_PATH: databasePath, QUOTESYNC_ATTACHMENT_ROOT: attachmentRoot, PORT: "3104", NODE_ENV: "development", QUOTESUITE_APP_ORIGINS: APP_URL, QUOTESUITE_TEST_JOURNEY: "1", QUOTESUITE_TEST_DELIVERY_ENABLED: "0", QUOTESUITE_TEST_CUSTOMER_EMAIL: CUSTOMER, QUOTESUITE_TEST_FACTORY_EMAIL: FACTORY }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    let apiStartupLog='';for(const stream of [api.stdout,api.stderr])stream.on('data',chunk=>{apiStartupLog=(apiStartupLog+String(chunk)).slice(-5000)});
     vite = spawn(process.execPath, [path.resolve("node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", "5276"], { cwd: process.cwd(), env: { ...process.env, VITE_API_BASE_URL: API_URL }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
-    await waitFor(() => reachable(`${API_URL}/api/health`), "Disposable journey API did not start"); await waitFor(() => reachable(APP_URL), "Disposable journey UI did not start");
+    try{await waitFor(() => reachable(`${API_URL}/api/health`), "Disposable journey API did not start")}catch(error){throw new Error(`${error.message}: ${apiStartupLog}`)} await waitFor(() => reachable(APP_URL), "Disposable journey UI did not start");
     const runtime=await (await fetch(`${API_URL}/api/health`)).json();assert.equal(runtime.runtimeVersion,QUOTESUITE_RUNTIME_CONTRACT.version,'Disposable API runtime contract is incompatible');
     const profile = await controller.createProfile({ label: "complete-customer-order-journey", debugPort: DEBUG_PORT });
     browser = spawn("C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", ["--headless=new", `--remote-debugging-port=${DEBUG_PORT}`, `--user-data-dir=${profile}`, "--no-first-run", "--disable-gpu", "--disable-extensions", "--window-size=1920,1080", "about:blank"], { stdio: "ignore", windowsHide: true });
@@ -178,7 +182,7 @@ async function run() {
     await waitFor(()=>tab.evaluate("[...document.querySelectorAll('button')].some(item=>item.textContent.includes('Request supplier estimate / revision'))"),'Working Estimate did not expose the consolidated supplier composer');
     await click(tab,'Request supplier estimate / revision');
     await waitFor(()=>tab.evaluate("document.querySelector('.supplier-rfq input[type=email]')&&!document.body.innerText.includes('Loading supplier request context')"),'Supplier composer did not load');
-    await input(tab,'.supplier-rfq select','TEST-JOURNEY-SUPPLIER');await input(tab,'.supplier-rfq input[type=email]',FACTORY);
+    await input(tab,'.supplier-rfq select','EKO');await input(tab,'.supplier-rfq input[type=email]',FACTORY);
     assert.equal(await tab.evaluate("document.querySelectorAll('.supplier-rfq input[name=supplier-request-kind]')[1]?.checked"),true,'Customer context did not preselect revision mode');
     assert.equal(await tab.evaluate("document.querySelector('.supplier-rfq')?.innerText.includes('Preview only')"),true);
     await click(tab,'Prepare for review');await waitFor(()=>tab.evaluate("document.querySelector('.supplier-rfq__result')?.innerText.includes('Prepared for review — not sent')"),'Reviewed supplier request was not saved');
@@ -188,6 +192,38 @@ async function run() {
     if(process.argv.includes('--stop-after-supplier-draft')){
       console.log(JSON.stringify({scope:'Normal application customer changes → working revision → reviewed supplier draft/reopen only',supplierRequests:1,preparedNotSent:true,sourceImportAndReissueVerified:false}));return;
     }
+
+    await click(tab,'Cancel');
+    const originalSource=await readFile(path.resolve('docs/Supplier_Quotes/John_Wingfield/web-26-1133450.pdf'));
+    assert.equal(sha256(originalSource),'d1f34d3fd36ef40e4fb1b3ccbddc96b96837fdfd86f598af9c2b189f674f1899','Genuine supplier source changed; review its expected evidence before acceptance');
+    const sourcePath=path.join(root,'web-26-1133450.pdf');await writeFile(sourcePath,originalSource);
+    await click(tab,'Import Manufacturer Quote');
+    await waitFor(()=>tab.evaluate("document.body.innerText.includes('Upload & Analyse')"),'Normal Manufacturer Import upload did not open');
+    await tab.send('DOM.enable');const dom=await tab.send('DOM.getDocument',{depth:-1,pierce:true});
+    const fileInput=await tab.send('DOM.querySelector',{nodeId:dom.root.nodeId,selector:'input[type=file]'});assert.ok(fileInput.nodeId,'Manufacturer file input is missing');
+    await tab.send('DOM.setFileInputFiles',{nodeId:fileInput.nodeId,files:[sourcePath]});await click(tab,'Upload & Analyse');
+    await waitFor(()=>tab.evaluate("document.body.innerText.includes('Confirm Manufacturer Quote')"),'Genuine supplier source did not reach identity review',90000);
+    await click(tab,'Confirm & Extract Quote');
+    await waitFor(()=>tab.evaluate("document.body.innerText.includes('Extraction / Commercial Review')"),'Genuine supplier source did not reach extraction review',90000);
+    const extractedText=await tab.evaluate('document.body.innerText');assert.ok(extractedText.includes('7,885.45'),'Genuine source reconciliation is missing');
+    const preImportDb=await open({filename:databasePath,driver:sqlite3.Database,mode:sqlite3.OPEN_READONLY});
+    try{
+      assert.equal((await preImportDb.get('SELECT COUNT(*) count FROM supplier_quote_positions')).count,0,'Analysis changed canonical positions before approval');
+      assert.equal((await preImportDb.get('SELECT COUNT(*) count FROM project_calculator_estimate_product_rows')).count,0,'Analysis changed Project Costing before approval');
+    }finally{await preImportDb.close()}
+    await waitFor(()=>tab.evaluate("[...document.querySelectorAll('button')].some(item=>item.textContent.includes('Import to Project Costing')&&!item.disabled)"),'Final import remains blocked; review genuine-source diagnostics');
+    await click(tab,'Import to Project Costing');
+    await waitFor(async()=>{const db=await open({filename:databasePath,driver:sqlite3.Database,mode:sqlite3.OPEN_READONLY});try{return (await db.get('SELECT COUNT(*) count FROM supplier_quote_positions')).count===5}finally{await db.close()}},'Final import did not persist five source positions',90000);
+    await tab.send('Page.reload',{ignoreCache:true});await waitFor(()=>tab.evaluate("document.body.innerText.includes('Project Costing')"),'Working Estimate did not reload after import');
+    const persisted=await open({filename:databasePath,driver:sqlite3.Database,mode:sqlite3.OPEN_READONLY});
+    try{
+      const source=await persisted.get('SELECT storage_key FROM supplier_quote_attachments WHERE sha256=?',sha256(originalSource));assert.ok(source,'Retained genuine source metadata is missing');assert.equal(sha256(await readFile(path.join(attachmentRoot,source.storage_key))),sha256(originalSource));
+      const rows=await persisted.all('SELECT total_price_amount,source_position_id,source_snapshot_json FROM project_calculator_estimate_product_rows');assert.equal(rows.length,5);assert.equal(new Set(rows.map(row=>row.source_position_id)).size,5);assert.equal(rows.reduce((sum,row)=>sum+Number(row.total_price_amount),0).toFixed(2),'7885.45');
+      for(const row of rows){const snapshot=JSON.parse(row.source_snapshot_json);assert.equal(snapshot.commercialSupplier.supplierCode,'EKO');assert.equal(snapshot.manufacturerEvidence.sourceVisual.status,'available');}
+      const operations=await persisted.all('SELECT status FROM supplier_quote_import_operations');assert.ok(operations.length>0&&operations.every(operation=>operation.status==='confirmed'),'Final import did not confirm persisted postconditions');
+      assert.equal((await persisted.get('SELECT status FROM estimates WHERE id=?',fixture.estimateId)).status,'Issued','Original issued Estimate was changed');
+    }finally{await persisted.close()}
+    if(process.argv.includes('--stop-after-manufacturer-import')){console.log(JSON.stringify({scope:'Normal application through genuine-source final Manufacturer Import and reload',positions:5,sourceSha256:sha256(originalSource),exchangeRate:'explicit disposable fixture',twoSupplierReviewAndReissueVerified:false}));return;}
 
     const queue = await staff("/api/lifecycle/changes-requested", null, "GET"), reviewId = queue.find((item) => item.client_ref === `TEST-CL-${fixture.suffix.toUpperCase()}`)?.review_submission_id; assert.ok(reviewId, "Disposable change request was absent from the staff queue");
     const changeDetail = await staff(`/api/lifecycle/changes-requested/${reviewId}`, null, "GET"), revisionRequest = changeDetail.supplierRevision; assert.ok(revisionRequest?.id, "Staff UI did not persist the supplier revision request");
