@@ -13,13 +13,13 @@ export function parseSupplierImportConfirmationResponse(value:unknown):SupplierI
 function responseList<T>(value:unknown,label:string):T[]{if(value==null)return[];if(!Array.isArray(value))throw new Error(`${label} response was incomplete.`);return value as T[]}
 async function listStoredDocuments(estimateId:string) { const quotes=await supplierQuotesApi.listQuotes(estimateId); return (await Promise.all(quotes.map(async quote=>(await Promise.all((await supplierQuotesApi.listRevisions(estimateId,quote.id)).map(async revision=>(await supplierQuotesApi.listAttachments(estimateId,quote.id,revision.id)).map(attachment=>({quote,revision,attachment}))))).flat()))).flat(); }
 async function uploadManufacturerQuoteForAnalysis(estimateId:string,file:File){
-  const identity=globalThis.crypto?.randomUUID?.()??`${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const quote=await supplierQuotesApi.createQuote(estimateId,{supplierCode:`AUTO-${identity}`.slice(0,64),supplierName:"Automatic identification pending"});
-  const revision=await supplierQuotesApi.createRevision(estimateId,quote.id,{supplierQuotationNumber:"",supplierRevision:"",fullQuotationReference:`Analysis pending · ${file.name}`,currency:"XXX",vatStatus:"unknown"});
-  const uploaded=await supplierQuotesApi.uploadAttachments(estimateId,quote.id,revision.id,[file],"original_quote","complete_quotation");
-  const documents=uploaded.attachments.map(attachment=>({quoteId:quote.id,revisionId:revision.id,attachmentId:attachment.id}));
-  const review=await supplierQuotesApi.prepareReview(estimateId,documents);
-  return {quote,revision,attachments:uploaded.attachments,documents,review};
+  const body=new FormData();body.append('files',file);
+  const {documents,duplicate}=await apiFetch(`${base(estimateId)}/stage-upload`,{method:'POST',body}) as {duplicate:boolean;documents:Array<{quoteId:string;revisionId:string;attachmentId:string}>};
+  try{
+    const attachments=await Promise.all(documents.map(document=>apiFetch(`${base(estimateId)}/${document.quoteId}/revisions/${document.revisionId}/attachments/${document.attachmentId}`) as Promise<SupplierQuoteAttachment>));
+    const review=await supplierQuotesApi.prepareReview(estimateId,documents);
+    return {duplicate,attachments,documents,review};
+  }catch(error){throw new Error(`${error instanceof Error?error.message:'Analysis could not finish.'} The original quotation is retained. Retry with this same file to reuse it; nothing has been imported to Project Costing by this analysis attempt.`)}
 }
 export const supplierQuotesApi = {
   listQuotes: async (estimateId: string) => responseList<SupplierQuote>(await apiFetch(base(estimateId)),"Supplier quotations"),

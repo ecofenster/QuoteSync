@@ -1,6 +1,7 @@
 import express from 'express';
 import { createReadStream } from 'node:fs';
-import { rename } from 'node:fs/promises';
+import { rename, readFile } from 'node:fs/promises';
+import { stageManufacturerUpload } from '../features/supplierQuotes/stageManufacturerUpload.js';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { SUPPLIER_UPLOAD_LIMITS } from '../config/supplierUploadLimits.js';
@@ -23,6 +24,16 @@ export async function createSupplierQuotesRouter({ dbPromise, attachmentRoot = r
   if (!dbPromise) throw new Error('Supplier Quotes router requires a database promise.');
   const router = express.Router(); const upload = await createSupplierUploadMiddleware(attachmentRoot);
   const service = async () => createSupplierQuotesService(await dbPromise, { ...supplierServiceOptions, attachmentRoot });
+  router.post('/:estimateId/supplier-quotes/stage-upload',middlewarePromise(upload),async(req,res,next)=>{
+    try{
+      if(req.files?.length!==1)return apiError(res,422,'manufacturer_upload_one_source','Choose one original manufacturer PDF or DOCX.');
+      const file=req.files[0],validated=await validateSupplierDocumentFile({filename:file.path,originalFileName:file.originalname,declaredMimeType:file.mimetype,sizeBytes:file.size,maxFileNameLength:SUPPLIER_UPLOAD_LIMITS.maxOriginalFileNameLength});
+      if(!validated.valid||!validated.parserEligible)return apiError(res,422,validated.code||'unsupported_file_type','Choose a readable original manufacturer PDF or DOCX.');
+      const result=await stageManufacturerUpload(await dbPromise,{estimateId:req.params.estimateId,bytes:await readFile(file.path),fileName:validated.displayName,mediaType:validated.mediaType,attachmentRoot});
+      return res.json(result);
+    }catch(error){if(error.status)return apiError(res,error.status,error.code,error.message);next(error)}
+    finally{for(const file of req.files||[])await removeFileIfPresent(file.path)}
+  });
   router.get('/:estimateId/commercial-settings',async(req,res,next)=>{try{const db=await dbPromise;if(!(await db.get('SELECT 1 FROM estimates WHERE id=?',req.params.estimateId)))return apiError(res,404,'estimate_not_found','Estimate not found.');const row=await db.get('SELECT pricing_source,created_at,updated_at FROM estimate_commercial_settings WHERE estimate_id=?',req.params.estimateId);res.json({estimateId:req.params.estimateId,pricingSource:row?.pricing_source??null,createdAt:row?.created_at??null,updatedAt:row?.updated_at??null});}catch(error){next(error);}});
   router.put('/:estimateId/commercial-settings',async(req,res,next)=>{try{const source=req.body?.pricingSource;if(!['quotesync_generated','supplier_quotation_import'].includes(source))return apiError(res,400,'invalid_pricing_source','Choose a recognized pricing source.');const db=await dbPromise;if(!(await db.get('SELECT 1 FROM estimates WHERE id=?',req.params.estimateId)))return apiError(res,404,'estimate_not_found','Estimate not found.');const now=new Date().toISOString();await db.run(`INSERT INTO estimate_commercial_settings(estimate_id,pricing_source,created_at,updated_at) VALUES(?,?,?,?) ON CONFLICT(estimate_id) DO UPDATE SET pricing_source=excluded.pricing_source,updated_at=excluded.updated_at`,req.params.estimateId,source,now,now);res.json({estimateId:req.params.estimateId,pricingSource:source,updatedAt:now});}catch(error){next(error);}});
   router.get('/:estimateId/supplier-quotes', async (req, res, next) => { try { const value = await (await service()).listQuotes(req.params.estimateId); return value ? res.json(value) : apiError(res, 404, 'estimate_not_found', 'Estimate not found.'); } catch (e) { next(e); } });
