@@ -25,6 +25,8 @@ import { QUOTESUITE_RUNTIME_CONTRACT } from "../shared/runtimeHealthContract.js"
 import { pathToFileURL } from 'node:url';
 import {createGoogleWorkspaceService} from '../server/features/integrations/googleWorkspaceService.js';
 import {GOOGLE_WORKSPACE_SCOPES} from '../server/features/integrations/googleWorkspaceService.js';
+import {extractSupplierDocument} from '../server/features/supplierImportLab/documentExtraction.js';
+import {parsePdfSupplierFields} from '../server/features/supplierImportLab/pdfSupplierAdapters.js';
 
 const APP_URL = "http://127.0.0.1:5276";
 const API_URL = "http://127.0.0.1:3104";
@@ -32,9 +34,10 @@ const DEBUG_PORT = 9416;
 const CUSTOMER = "customer.journey@example.test";
 const FACTORY = "factory.journey@example.test";
 const OUTPUT = path.resolve("test-output/complete-customer-order-journey");
+const overallSourceReview=process.argv.includes('--stop-after-source-backed-overall-review');
 const receivedSupplierReviews=process.argv.includes('--stop-after-received-supplier-reviews');
 const multiSupplierReview=receivedSupplierReviews||process.argv.includes('--stop-after-multi-supplier-review');
-const providerJourneyRequested=receivedSupplierReviews||['--stop-after-supplier-filing','--stop-after-supplier-review','--stop-after-multi-supplier-review'].some(flag=>process.argv.includes(flag));
+const providerJourneyRequested=overallSourceReview||receivedSupplierReviews||['--stop-after-supplier-filing','--stop-after-supplier-review','--stop-after-multi-supplier-review'].some(flag=>process.argv.includes(flag));
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const reachable = async (url) => { try { return (await fetch(url)).ok; } catch { return false; } };
 const waitFor = async (fn, message, timeout = 60_000) => { const started = Date.now(); while (Date.now() - started < timeout) { const result = await fn().catch(() => false); if (result) return result; await delay(150); } throw new Error(message); };
@@ -73,6 +76,14 @@ async function seed(databasePath, attachmentRoot) {
   const estimateReference = providerJourney?'EF-EST-2026-901':`TEST-EST-${suffix.toUpperCase()}`;
   const clientReference=providerJourney?'EF-CL-901':`TEST-CL-${suffix.toUpperCase()}`;
   const customerProjection = projection(estimateReference, 1);
+  if(overallSourceReview){
+    const filename=path.resolve('docs/Supplier_Quotes/John_Wingfield/web-26-1133450.pdf');
+    const extracted=await extractSupplierDocument(filename,{id:'test-baseline-evidence',mediaType:'application/pdf',sha256:sha256(await readFile(filename))});
+    const first=parsePdfSupplierFields(extracted).rows.find(row=>row.displayReference==='001');assert.ok(first?.widthMm&&first?.heightMm);
+    assert.match(extracted.pages[0].blocks.map(block=>block.text).join(' '),/RAL:\s*7016\s*\(Anthracite grey\)\s*Matt/);
+    // Test-owned issued requirement, not a claim about the real customer's prior offer.
+    customerProjection.positions=[{...customerProjection.positions[0],reference:first.displayReference,customerReference:first.displayReference,widthMm:first.widthMm,heightMm:first.heightMm,quantity:first.quantity,productSystem:first.productSystem,description:'Disposable window requirement',configurationDescription:'Source-matched test opening',thermal:{},specification:[{label:'External finish',value:'White'}]}];
+  }
   await db.run(`INSERT INTO clients(id,name,email,contact_name,company_name,client_ref,project_name,created_at,deleted_at,commercial_lifecycle,reference_namespace,updated_at) VALUES(?,?,?,?,?,?,?,?,NULL,'prospect','test',?)`, clientId, "TEST Customer Journey", CUSTOMER, "TEST Customer Journey", "", clientReference, customerProjection.projectName, now, now);
   await db.run("INSERT INTO projects(id,client_id,name,status,created_at,updated_at) VALUES(?,?,?,'active',?,?)", projectId, clientId, customerProjection.projectName, now, now);
   await db.run("INSERT INTO supplier_commercial_defaults(supplier_code,supplier_name,policy_json,pricing_display_policy_json,updated_at) VALUES('TEST-JOURNEY-SUPPLIER','TEST Journey Supplier','{}','{}',?)",now);
@@ -186,7 +197,7 @@ async function run() {
     const originalPortalEstimateHash = await tab.evaluate(`(async()=>{const link=[...document.querySelectorAll('a')].find(item=>item.textContent.includes('View issued Estimate'));const response=await fetch(link.href,{credentials:'include'}),bytes=await response.arrayBuffer(),digest=await crypto.subtle.digest('SHA-256',bytes);return {status:response.status,type:response.headers.get('content-type'),hash:[...new Uint8Array(digest)].map(value=>value.toString(16).padStart(2,'0')).join('')}})()`);
     assert.deepEqual({ status: originalPortalEstimateHash.status, type: originalPortalEstimateHash.type, hash: originalPortalEstimateHash.hash }, { status: 200, type: "application/pdf", hash: fixture.document.sha256 });
     await click(tab, "Review Estimate"); await waitFor(() => tab.evaluate("document.body.innerText.includes('Review every Position')"), "Customer Position review did not open");
-    await input(tab, ".portal-external__positions fieldset:first-child select", "amendment_requested"); await input(tab, ".portal-external__positions fieldset:first-child textarea", "Change the external finish from white to black."); await input(tab, "section.portal-external__command > label select", "amendment_requested"); await input(tab, "section.portal-external__command > label textarea", "Update the project finish schedule to match."); await click(tab, "Submit reviewed responses"); await waitFor(() => tab.evaluate("document.body.innerText.includes('Response recorded')&&document.body.innerText.includes('project team reviews')"), "Customer changes were not acknowledged");
+    await input(tab, ".portal-external__positions fieldset:first-child select", "amendment_requested"); await input(tab, ".portal-external__positions fieldset:first-child textarea", overallSourceReview?"Change the external finish from White to RAL: 7016 (Anthracite grey) Matt.":"Change the external finish from white to black."); await input(tab, "section.portal-external__command > label select", "amendment_requested"); await input(tab, "section.portal-external__command > label textarea", overallSourceReview?"Confirm the supplier quotation reference WEB/26/1133450.":"Update the project finish schedule to match."); await click(tab, "Submit reviewed responses"); await waitFor(() => tab.evaluate("document.body.innerText.includes('Response recorded')&&document.body.innerText.includes('project team reviews')"), "Customer changes were not acknowledged");
     const reviewDesktop = await tab.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: true }); await writeFile(path.join(OUTPUT, "01-customer-changes-submitted--1920x1080.png"), Buffer.from(reviewDesktop.data, "base64"));
 
     await tab.send("Page.navigate", { url: APP_URL }); await waitFor(() => tab.evaluate("document.body.innerText.includes('Client Portal')"), "Staff application did not render"); await click(tab, "Client Portal");
@@ -308,6 +319,34 @@ async function run() {
       const supplierSelector="[...document.querySelectorAll('fieldset')].find(item=>item.querySelector('legend')?.textContent==='Supplier response reviews')";
       await tab.evaluate(`(()=>{const select=${supplierSelector}.querySelector('select');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,${JSON.stringify(preparedContext.enquiries[0].id)});select.dispatchEvent(new Event('change',{bubbles:true}))})()`);
       await waitFor(()=>tab.evaluate("document.body.innerText.includes('Save supplier review')"),'Source-backed supplier field form did not open');
+      if(overallSourceReview){
+        const finish='RAL: 7016 (Anthracite grey) Matt';
+        const fillLabels=async(selector,values)=>{for(const [label,value] of Object.entries(values))await tab.evaluate(`(()=>{const field=[...(${selector}).querySelectorAll('label')].find(item=>item.textContent===${JSON.stringify(label)}).querySelector('input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(field,${JSON.stringify(value)});field.dispatchEvent(new Event('input',{bubbles:true}))})()`)};
+        await tab.evaluate(`(()=>{const select=[...${supplierSelector}.querySelectorAll('label')].find(item=>item.textContent.startsWith('Position')).querySelector('select');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,'test-position-w01');select.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+        await fillLabels(supplierSelector,{'Field':'external_finish','Before':'White','Requested':finish,'Returned':finish,'Before source / page':'Disposable issued Estimate, Position 001, External finish','Returned source / page':'web-26-1133450.pdf, page 1, Window 001, Colour'});
+        await click(tab,'Save supplier review');await waitFor(()=>tab.evaluate("document.body.innerText.includes('Supplier review saved. Complete')"),'Source-backed supplier Position review did not save');
+        const savedDocumentId=await tab.evaluate(`[...${supplierSelector}.querySelectorAll('label')].find(item=>item.textContent.startsWith('Returned supplier document')).querySelector('select').value`);
+        assert.ok(savedDocumentId,'Exact filed supplier document was not selected');
+        await tab.evaluate("(()=>{const select=[...document.querySelectorAll('label')].find(item=>item.textContent.startsWith('Source kind')).querySelector('select');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,'canonical_document');select.dispatchEvent(new Event('change',{bubbles:true}))})()");
+        await tab.evaluate(`(()=>{const select=[...document.querySelectorAll('label')].find(item=>item.textContent.startsWith('Reviewed document')).querySelector('select');if(![...select.options].some(option=>option.value===${JSON.stringify(savedDocumentId)}))throw new Error('Filed source absent from overall review choices');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,${JSON.stringify(savedDocumentId)});select.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+        await click(tab,'Link returned revision');await waitFor(()=>tab.evaluate("document.body.innerText.includes('Returned supplier revision linked')"),'Exact filed document was not linked to overall review');
+        const overall="[...document.querySelectorAll('fieldset')].find(item=>item.querySelector('legend')?.textContent==='Requested-change verification')";
+        await waitFor(()=>tab.evaluate(`Boolean(${overall})`),'Overall customer checks are unavailable after source filing');
+        await fillLabels(`${overall}.querySelectorAll('article')[0]`,{'Field':'external_finish','Before':'White','Requested':finish,'After':finish,'Before source':'Disposable issued Estimate, Position 001, External finish','After source':'web-26-1133450.pdf, page 1, Window 001, Colour'});
+        await fillLabels(`${overall}.querySelectorAll('article')[1]`,{'Field':'quotation_reference','Before':'Not confirmed','Requested':'WEB/26/1133450','After':'WEB/26/1133450','Before source':'Disposable customer request, general reference confirmation','After source':'web-26-1133450.pdf, page 1, Price details'});
+        await click(tab,'Verify changes');await waitFor(()=>tab.evaluate("document.body.innerText.includes('ready for customer-document review')"),'Overall source-backed review did not reach customer-document readiness');
+        const evidenceDb=await open({filename:databasePath,driver:sqlite3.Database,mode:sqlite3.OPEN_READONLY});
+        try{
+          const request=await evidenceDb.get('SELECT * FROM supplier_revision_requests');assert.ok(request.verified_at);
+          const working=await evidenceDb.get('SELECT positions_json FROM estimates WHERE id=?',request.successor_estimate_id),positions=JSON.parse(working.positions_json),matched=positions.find(item=>item.id==='test-position-w01');
+          assert.ok(matched?.supplierEvidenceLinks?.length,'Genuine source Position did not map to the exact issued Position: '+JSON.stringify(positions.map(item=>({id:item.id,ref:item.positionRef,width:item.widthMm,height:item.heightMm}))));
+          assert.equal(positions.length,5,'Source-matched issued Position was duplicated');
+          assert.equal((await evidenceDb.get('SELECT COUNT(*) count FROM revision_change_checks WHERE status=\'implemented\'')).count,2);
+          assert.equal((await evidenceDb.get('SELECT COUNT(*) count FROM issued_quotations')).count,1,'Verification automatically issued a customer document');
+          assert.deepEqual(JSON.parse((await evidenceDb.get('SELECT positions_json FROM estimates WHERE id=?',fixture.estimateId)).positions_json).map(item=>item.id),['test-position-w01']);
+        }finally{await evidenceDb.close()}
+        console.log(JSON.stringify({scope:'Normal source-backed Position review and overall verification',source:'WEB/26/1133450 page 1 Window 001',exactCanonicalPositionRetained:true,automaticCustomerIssue:false,customerReissueVerified:false}));return;
+      }
       await tab.evaluate(`(()=>{const section=${supplierSelector};for(const [label,value] of [['Field','quotation_reference'],['Before','Original disposable issued quotation'],['Requested','A new revised quotation reference'],['Returned','WEB/26/1133450'],['Before source / page','Disposable issued Estimate overview'],['Returned source / page','web-26-1133450.pdf, page 1, quotation reference']]){const field=[...section.querySelectorAll('label')].find(item=>item.textContent===label).querySelector('input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(field,value);field.dispatchEvent(new Event('input',{bubbles:true}))}})()`);
       await click(tab,'Save supplier review');
       await waitFor(()=>tab.evaluate("document.body.innerText.includes('field(s) still need resolution')"),'Unresolved source review did not explain remaining work');
