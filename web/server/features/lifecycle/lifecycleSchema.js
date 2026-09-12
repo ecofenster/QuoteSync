@@ -128,6 +128,7 @@ export async function initializeLifecycleSchema(db) {
   await ensureColumn(db, 'supplier_revision_requests', 'response_due_at', 'TEXT');
   await ensureColumn(db, 'supplier_revision_requests', 'received_at', 'TEXT');
   await ensureColumn(db, 'supplier_revision_requests', 'completed_at', 'TEXT');
+  await ensureColumn(db, 'supplier_revision_requests', 'returned_checksum', 'TEXT');
   await db.exec(`UPDATE supplier_revision_requests
     SET workflow_state = CASE
       WHEN status = 'sent' THEN 'sent_to_supplier'
@@ -158,5 +159,11 @@ export async function initializeLifecycleSchema(db) {
   await db.exec('CREATE INDEX IF NOT EXISTS idx_supplier_revision_followup_due ON supplier_enquiry_drafts(request_kind,status,response_state,followup_due_at)');
   await db.exec('CREATE INDEX IF NOT EXISTS idx_supplier_revision_parent ON supplier_enquiry_drafts(revision_request_id,created_at DESC)');
   await ensureColumn(db, 'revision_change_checks', 'change_kind', "TEXT NOT NULL DEFAULT 'requested' CHECK(change_kind IN ('requested','unrelated_material_change'))");
+  await ensureColumn(db, 'revision_change_checks', 'source_identity', 'TEXT');
+  await db.exec(`CREATE TABLE IF NOT EXISTS supplier_revision_review_history (
+    id TEXT PRIMARY KEY,request_id TEXT NOT NULL,source_identity TEXT NOT NULL,
+    checks_json TEXT NOT NULL,reviewed_by TEXT NOT NULL,reviewed_at TEXT NOT NULL,
+    FOREIGN KEY(request_id) REFERENCES supplier_revision_requests(id) ON DELETE RESTRICT)`);
+  for(const action of ['UPDATE','DELETE'])await db.exec(`CREATE TRIGGER IF NOT EXISTS trg_supplier_revision_review_history_${action.toLowerCase()} BEFORE ${action} ON supplier_revision_review_history BEGIN SELECT RAISE(ABORT,'Supplier review history is immutable'); END`);
   for (const table of immutable) await db.exec(`CREATE TRIGGER IF NOT EXISTS trg_${table}_delete_evidence BEFORE DELETE ON ${table} BEGIN SELECT RAISE(ABORT,'Lifecycle evidence must be superseded, not deleted'); END`);
 }

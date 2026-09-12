@@ -5,7 +5,7 @@ import { createCommunicationsService } from '../communications/communicationsSer
 import { createTestDeliveryPolicy } from './testDeliveryPolicy.js';
 import { createCustomerLifecycleDocumentService } from './customerLifecycleDocumentService.js';
 import { createSupplierRevisionChangeDocumentService } from './supplierRevisionChangeDocumentService.js';
-import { recordSupplierResponseState, outstandingSupplierRevisionRequests } from './supplierResponseState.js';
+import { recordSupplierResponseState, outstandingSupplierRevisionRequests, supplierReviewSourceIdentity, staleSupplierReviewCount } from './supplierResponseState.js';
 
 const text = (value) => String(value ?? '').trim();
 const hash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -272,7 +272,9 @@ export function createLifecycleService(db, options = {}) {
       ? await db.get(`SELECT a.id,a.original_file_name file_name,COALESCE(r.supplier_revision,CAST(r.revision_sequence AS TEXT)) provider_revision,a.sha256 checksum FROM supplier_quote_attachments a JOIN supplier_quote_revisions r ON r.id=a.revision_id WHERE a.id=? AND a.estimate_id=?`, documentId, request.successorEstimateId)
       : await db.get('SELECT id,file_name,provider_revision,checksum FROM canonical_documents WHERE id=? AND project_id=? AND removed_at IS NULL AND trashed=0', documentId, request.projectId);
     if (!document) throw problem('The returned supplier revision must be a current canonical document for this Project.', 422, 'supplier_revision_return_document_invalid');
-    const receivedAt=stamp();await db.run("UPDATE supplier_revision_requests SET returned_document_id=?,returned_source_kind=?,returned_revision=?,status='approved',workflow_state='revised_document_received',received_at=COALESCE(received_at,?),updated_at=? WHERE id=?", document.id, sourceKind, revision,receivedAt,receivedAt, requestId);
+    const previous=await db.get('SELECT * FROM supplier_revision_requests WHERE id=?',requestId);
+    const changed=supplierReviewSourceIdentity(previous)!==supplierReviewSourceIdentity({returned_document_id:document.id,returned_source_kind:sourceKind,returned_revision:revision,returned_checksum:document.checksum});
+    const receivedAt=stamp();await db.run("UPDATE supplier_revision_requests SET returned_document_id=?,returned_source_kind=?,returned_revision=?,returned_checksum=?,verified_at=CASE WHEN ? THEN NULL ELSE verified_at END,status='approved',workflow_state='revised_document_received',received_at=COALESCE(received_at,?),updated_at=? WHERE id=?", document.id, sourceKind, revision,document.checksum||null,changed?1:0,receivedAt,receivedAt, requestId);
     await event('supplier.revision.returned_document_linked', `${requestId}:${document.id}:${revision}`, [{ kind: 'supplier_revision_request', id: requestId }, { kind: sourceKind, id: document.id }, { kind: 'estimate', id: request.successorEstimateId }]);
     return { ...(await supplierRevisionDetail(requestId)), returnedDocument: { id: document.id, sourceKind, fileName: document.file_name, revision, checksum: document.checksum } };
   }
@@ -281,13 +283,24 @@ export function createLifecycleService(db, options = {}) {
     const request = await db.get('SELECT * FROM supplier_revision_requests WHERE id=?', requestId);
     if (!request) throw problem('Supplier revision request was not found.', 404, 'supplier_revision_request_not_found');
     if (!request.returned_document_id) throw problem('Link the returned supplier revision document before verifying requested changes.', 409, 'supplier_revision_document_required');
+    if(!text(input.reviewedBy))throw problem('Staff review identity is required.',422,'supplier_revision_reviewer_required');
     const checks = [...(Array.isArray(input.checks) ? input.checks.map((check) => ({ ...check, changeKind: 'requested' })) : []), ...(Array.isArray(input.unrelatedChanges) ? input.unrelatedChanges.map((check) => ({ ...check, changeKind: 'unrelated_material_change', requestedChange: text(check.requestedChange) || 'Unrelated material change introduced by supplier revision' })) : [])];
     if (!checks.length) throw problem('At least one source-backed requested-change check is required.');
     const at = stamp();
+    const sourceIdentity=supplierReviewSourceIdentity(request);
+    const preceding=await db.all('SELECT * FROM revision_change_checks WHERE supplier_revision_request_id=? ORDER BY id',requestId);
+    if(preceding.length)await db.run('INSERT INTO supplier_revision_review_history(id,request_id,source_identity,checks_json,reviewed_by,reviewed_at) VALUES(?,?,?,?,?,?)',randomUUID(),requestId,JSON.stringify([...new Set(preceding.map(check=>check.source_identity||'legacy-unrecorded'))]),JSON.stringify(preceding),text(input.reviewedBy),at);
+    await db.run('UPDATE supplier_revision_requests SET verified_at=NULL,updated_at=? WHERE id=?',at,requestId);
     for (const check of checks) {
       const status = check.approvedDifference === true && text(check.resolutionNote) ? 'approved_difference' : deriveRevisionCheck(check);
+      const existingCheck=await db.get('SELECT id FROM revision_change_checks WHERE supplier_revision_request_id=? AND estimate_position_id IS ? AND field_key=?',requestId,text(check.estimatePositionId)||null,text(check.fieldKey));
+      if(existingCheck){
+        await db.run('UPDATE revision_change_checks SET after_value=?,status=?,after_source_reference=?,resolution_note=?,resolved_by=?,resolved_at=?,change_kind=?,source_identity=? WHERE supplier_revision_request_id=? AND estimate_position_id IS ? AND field_key=?',text(check.afterValue)||null,status,text(check.afterSourceReference)||null,text(check.resolutionNote),text(input.reviewedBy),at,check.changeKind,sourceIdentity,requestId,text(check.estimatePositionId)||null,text(check.fieldKey));
+        continue;
+      }
       await db.run(`INSERT INTO revision_change_checks(id,supplier_revision_request_id,estimate_position_id,field_key,requested_change,before_value,expected_value,after_value,status,before_source_reference,after_source_reference,resolution_note,resolved_by,resolved_at,created_at,change_kind)
         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(supplier_revision_request_id,estimate_position_id,field_key) DO UPDATE SET after_value=excluded.after_value,status=excluded.status,after_source_reference=excluded.after_source_reference,resolution_note=excluded.resolution_note,resolved_by=excluded.resolved_by,resolved_at=excluded.resolved_at,change_kind=excluded.change_kind`, randomUUID(), requestId, text(check.estimatePositionId) || null, text(check.fieldKey), text(check.requestedChange), text(check.beforeValue) || null, text(check.expectedValue) || null, text(check.afterValue) || null, status, text(check.beforeSourceReference) || null, text(check.afterSourceReference) || null, text(check.resolutionNote), text(input.reviewedBy) || null, input.reviewedBy ? at : null, at, check.changeKind);
+      await db.run('UPDATE revision_change_checks SET source_identity=? WHERE supplier_revision_request_id=? AND estimate_position_id IS ? AND field_key=?',sourceIdentity,requestId,text(check.estimatePositionId)||null,text(check.fieldKey));
     }
     const requestedPositions = await db.all(`SELECT e.estimate_position_id FROM portal_review_position_entries e WHERE e.review_submission_id=? AND e.response='amendment_requested'`, request.review_submission_id);
     const generalReview = await db.get('SELECT general_response FROM portal_review_submissions WHERE id=?', request.review_submission_id);
@@ -295,10 +308,11 @@ export function createLifecycleService(db, options = {}) {
     const missingRequestedPositions = requestedPositions.map((row) => row.estimate_position_id).filter((positionId) => !covered.has(positionId));
     const generalCovered = generalReview?.general_response !== 'amendment_requested' || Boolean(await db.get(`SELECT id FROM revision_change_checks WHERE supplier_revision_request_id=? AND change_kind='requested' AND estimate_position_id IS NULL`, requestId));
     const outstandingSuppliers=await outstandingSupplierRevisionRequests(db,requestId);
+    const staleChecks=await staleSupplierReviewCount(db,request);
     const unresolved = Number((await db.get(`SELECT COUNT(*) count FROM revision_change_checks WHERE supplier_revision_request_id=? AND status IN ('not_implemented','needs_review','change_detected')`, requestId))?.count || 0) + missingRequestedPositions.length + (generalCovered ? 0 : 1) + outstandingSuppliers.length;
-    await db.run("UPDATE supplier_revision_requests SET verified_at=?,status=?,updated_at=? WHERE id=?", unresolved ? null : at, unresolved ? 'approved' : 'approved', at, requestId);
+    await db.run("UPDATE supplier_revision_requests SET verified_at=?,status=?,updated_at=? WHERE id=?", unresolved||staleChecks ? null : at, 'approved', at, requestId);
     await event('supplier.revision.verified', `${requestId}:${hash(checks)}`, [{ kind: 'supplier_revision_request', id: requestId }, { kind: 'estimate', id: request.successor_estimate_id }]);
-    return { requestId, checks: await db.all('SELECT * FROM revision_change_checks WHERE supplier_revision_request_id=? ORDER BY change_kind,estimate_position_id,field_key', requestId), missingRequestedPositions, generalRequestCovered: generalCovered, outstandingSuppliers, unresolved, issueAllowed: unresolved === 0 };
+    return { requestId, checks: await db.all('SELECT * FROM revision_change_checks WHERE supplier_revision_request_id=? ORDER BY change_kind,estimate_position_id,field_key', requestId), missingRequestedPositions, generalRequestCovered: generalCovered, outstandingSuppliers, staleChecks, unresolved:unresolved+staleChecks, issueAllowed: unresolved === 0&&staleChecks===0 };
   }
 
   async function approveOrder(orderId, input = {}) {

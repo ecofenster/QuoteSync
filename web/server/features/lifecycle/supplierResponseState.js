@@ -8,6 +8,15 @@ export async function outstandingSupplierRevisionRequests(db, revisionRequestId)
     ORDER BY se.created_at,se.id`, revisionRequestId);
 }
 
+export function supplierReviewSourceIdentity(request) {
+  return JSON.stringify([request.returned_source_kind || 'canonical_document', request.returned_document_id, request.returned_revision, request.returned_checksum || null]);
+}
+
+export async function staleSupplierReviewCount(db, request) {
+  const row=await db.get('SELECT COUNT(*) count FROM revision_change_checks WHERE supplier_revision_request_id=? AND source_identity IS NOT ?',request.id,supplierReviewSourceIdentity(request));
+  return Number(row?.count || 0);
+}
+
 // Shared by reviewed reply linking and provider-confirmed filing; safe on retry.
 export async function recordSupplierResponseState(db, { supplierEnquiryId, documentId, receivedAt }) {
   if (!supplierEnquiryId) return;
