@@ -8,6 +8,7 @@ import { open } from "sqlite";
 import { createCommunicationRepository } from "../server/features/communications/communicationRepository.js";
 import { communicationAttachmentRecordId, createCommunicationsService, findRelationshipSuggestions, preserveCommunicationLinks, resolveCanonicalRelationship, resolveMailboxCapabilities } from "../server/features/communications/communicationsService.js";
 import { GMAIL_MODIFY_SCOPE } from "../server/features/integrations/googleWorkspaceService.js";
+import { createHash } from "node:crypto";
 
 async function fixture(t) {
   const root=await mkdtemp(path.join(os.tmpdir(),"qs-communication-links-")),db=await open({filename:path.join(root,"test.db"),driver:sqlite3.Database});
@@ -41,6 +42,15 @@ async function fixture(t) {
 }
 
 const providerMessage=(links=[])=>({id:"message-local-1",provider:"google_workspace",providerMessageId:"provider-message-1",threadId:"thread-1",mailboxId:"me",direction:"inbound",folder:"inbox",status:"received",from:["Exact Client <exact.client@example.test>"],to:["sales@example.test"],cc:[],bcc:[],subject:"EF-ENQ-012 · EF-EST-2026-041 · EF-ORD-2026-003 · quotation 343718-1",bodyHtml:"<p>Fixture only</p>",bodyText:"EF-ENQ-012 EF-EST-2026-041 EF-ORD-2026-003 quotation 343718-1",links,error:null,sentAt:"2026-08-26T12:00:00.000Z",attachments:[]});
+
+test('changed retained provider attachment blocks before Gmail send or draft mutation',async t=>{
+  const db=await fixture(t),repository=createCommunicationRepository(db),original=Buffer.from('Reviewed document'),revised=Buffer.from('Replaced document');let sends=0;
+  const draft={...providerMessage(),id:'reviewed-draft',provider:'quotesuite_preview',direction:'outbound',folder:'drafts',status:'draft',sentAt:null,attachments:[{id:'reviewed-attachment',fileName:'Reviewed.pdf',mediaType:'application/pdf',driveFileId:'same-provider-id',sha256:createHash('sha256').update(original).digest('hex'),sizeBytes:original.length}]};await repository.save(draft);
+  const service=createCommunicationsService(db,{deliveryPolicy:{assertAllRecipients(){}},workspace:{status:async()=>({connected:true,capabilities:{gmail:{available:true}}}),googleFetch:async()=>new Response(revised)},gmail:{send:async()=>{sends++;throw new Error('Must not send')}}});
+  const before=await repository.get(draft.id);
+  await assert.rejects(()=>service.sendMessage(before),error=>error.code==='communication_attachment_changed');
+  assert.equal(sends,0);assert.deepEqual(await repository.get(draft.id),before);
+});
 
 test("provider enrichment preserves explicit canonical links",async t=>{
   const db=await fixture(t),repository=createCommunicationRepository(db),clientLink={kind:"client",id:"client-1"};

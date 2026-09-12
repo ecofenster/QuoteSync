@@ -1,5 +1,13 @@
 # In-progress Roadmap completion programme
 
+## Reviewed attachment bytes — delivery prerequisite
+
+Audit before additional factory attachment selection found that the shared mail service loaded current Drive/managed bytes without checking their retained checksum. It now verifies SHA-256 evidence before creating a provider draft or sending; legacy 32-character Drive MD5 values previously passed in the `sha256` field are verified as MD5 rather than mislabelled or ignored. Invalid/mismatching evidence raises an actionable 409 before draft persistence or Gmail invocation. Newly loaded bytes return their actual size and SHA-256; missing prior checksums are not claimed to establish a prior reviewed version. No issued document, provider file or retained source is rewritten.
+
+Nine focused attachment/communication tests pass inline/base64/managed/Drive branches, changed content at the same provider ID, legacy checksums, invalid evidence, zero send calls and unchanged saved draft on rejection. The fresh-storage genuine-source browser journey passes customer MIME send/failure/retry, exact customer acceptance, factory schedule download/hash, draft validation/save/reopen and zero owned cleanup with the user API instance unchanged. The changed-provider rejection is service-level evidence, not a separate normal-browser external-rename test. No live emails or live business writes occurred.
+
+This is a necessary shared prerequisite to `procurement-8`, not completion of its additional-attachment picker or factory delivery step. AGENTS now permanently records reviewed-byte verification. Roadmap status counts, original 73-ID mapping and user acceptance remain unchanged. Next: use this guard behind explicit canonical Project-file selection, retain the selected provider revision/checksum in the reviewed factory draft, and add reviewed delivery with durable duplicate/uncertain-outcome protection before enabling factory sends in automated acceptance.
+
 ## Persisted factory draft review and recovery
 
 The staff Order journey now reopens its saved factory request with recipient, subject, readable multiline message and an exact saved-PDF link resolved through the configured API origin. Saving a reviewed edit creates a new communication/attachment metadata identity while retaining the previous message and the same document bytes. An expected communication ID rejects stale-window writes; unchanged saves reuse the current version. Sent requests remain read-only. The UI prevents duplicate clicks, retains values after validation/save failures, and distinguishes saved-but-refresh-failed from an unsaved failure. Unsafe legacy requests expose re-preparation before editing rather than a misleading price-free download.

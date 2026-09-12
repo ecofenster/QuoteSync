@@ -20,17 +20,26 @@ export function resolveMailboxCapabilities(workspaceStatus) {
   return MUTATING_MAILBOX_CAPABILITIES.map((id) => ({ id, available: canModify }));
 }
 
-const decodeAttachment = async (attachment, attachmentRoot, workspace) => {
-  if (attachment.bytes) return Promise.resolve({ ...attachment, bytes: Buffer.from(attachment.bytes) });
-  if (attachment.contentBase64) return Promise.resolve({ ...attachment, bytes: Buffer.from(attachment.contentBase64, "base64") });
-  if (attachment.storageKey) return readFile(resolveManagedPath(attachment.storageKey, attachmentRoot)).then((bytes) => ({ ...attachment, bytes }));
-  if (attachment.driveFileId) {
+export async function decodeCommunicationAttachment(attachment, attachmentRoot, workspace) {
+  let bytes;
+  if (attachment.bytes) bytes = Buffer.from(attachment.bytes);
+  else if (attachment.contentBase64) bytes = Buffer.from(attachment.contentBase64, "base64");
+  else if (attachment.storageKey) bytes = await readFile(resolveManagedPath(attachment.storageKey, attachmentRoot));
+  else if (attachment.driveFileId) {
     const response = await workspace.googleFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(attachment.driveFileId)}?alt=media&supportsAllDrives=true`);
     if (!response.ok) throw Object.assign(new Error(`Attachment ${attachment.fileName || "file"} could not be read from connected storage.`), { status: response.status >= 500 ? 502 : response.status, code: "provider_attachment_unavailable" });
-    return { ...attachment, bytes: Buffer.from(await response.arrayBuffer()) };
+    bytes = Buffer.from(await response.arrayBuffer());
+  } else throw Object.assign(new Error(`Attachment ${attachment.fileName || "file"} has no content.`), { status: 400 });
+  const expected = String(attachment.sha256 || '').trim().toLowerCase();
+  // Legacy canonical Drive records passed their MD5 checksum in this field.
+  // Verify that evidence using its actual algorithm, then retain a SHA-256.
+  if (expected) {
+    const algorithm = /^[a-f0-9]{64}$/.test(expected) ? 'sha256' : /^[a-f0-9]{32}$/.test(expected) ? 'md5' : null;
+    if (!algorithm || createHash(algorithm).update(bytes).digest('hex') !== expected) throw Object.assign(new Error(`Attachment ${attachment.fileName || 'file'} no longer matches the reviewed document. Nothing was sent. Reopen the document and review its current version before preparing the email again.`), { status: 409, code: 'communication_attachment_changed' });
   }
-  throw Object.assign(new Error(`Attachment ${attachment.fileName || "file"} has no content.`), { status: 400 });
-};
+  return { ...attachment, bytes, sizeBytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') };
+}
+const decodeAttachment = decodeCommunicationAttachment;
 
 export function preserveCommunicationLinks(existing, providerMessage) {
   return Array.isArray(existing?.links) ? existing.links : Array.isArray(providerMessage?.links) ? providerMessage.links : [];
