@@ -24,6 +24,12 @@ export default function FactoryDraftReview({orderId,onChanged}:{orderId:string;o
     catch(reason){setError(reason instanceof Error?reason.message:"Delivery could not be confirmed. Do not send another copy.");await load().catch(()=>{});await onChanged?.().catch(()=>{})}
     finally{lock.current=false;setBusy(false);setDeliveryReviewed(false)}
   };
+  const checkDelivery=async()=>{
+    if(lock.current||!draft)return;lock.current=true;setBusy(true);setError("");setNotice("Checking delivery outcome… No additional email will be sent.");
+    try{const result=await apiFetch(`/api/lifecycle/orders/${orderId}/factory-order`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reconcile:true})}) as {message:string};setNotice(result.message);await load();await onChanged?.()}
+    catch(reason){setError(reason instanceof Error?reason.message:"The delivery check could not finish. No additional email was sent. Check again later.")}
+    finally{lock.current=false;setBusy(false)}
+  };
   if(!draft)return <p role="status">{error||"Opening saved factory request…"}</p>;
   const deliveryBlocked=Boolean(draft.delivery&&["sending","uncertain","sent"].includes(draft.delivery.state));
   const editable=draft.status==="draft"&&!deliveryBlocked, fieldsEditable=editable&&!draft.needsPreparation;
@@ -44,6 +50,7 @@ export default function FactoryDraftReview({orderId,onChanged}:{orderId:string;o
     {editable?<button className="ui-button ui-button--primary" disabled={busy||!recipient.trim()||!subject.trim()||!body.trim()} onClick={()=>void save(draft.needsPreparation)}>{busy?"Saving factory request…":draft.needsPreparation?"Prepare price-free schedule":"Save factory request"}</button>:null}
     {draft.delivery?<p role="status">{draft.delivery.state==="sent"?`Sent ${draft.delivery.sent_at||"— provider confirmed"}. Await supplier confirmation.`:draft.delivery.state==="not_sent"?"Nothing was sent. Correct the reported issue, review and retry.":"Delivery is in progress or awaiting confirmation. Do not send another copy; check the mailbox evidence first."}</p>:null}
     {editable&&!draft.needsPreparation&&draft.deliveryMode==="test_allowlist"?<div><label><input type="checkbox" checked={deliveryReviewed} disabled={dirty||busy} onChange={event=>setDeliveryReviewed(event.target.checked)}/> I have reviewed the saved recipient, message and attachments for this factory.</label><button className="ui-button" disabled={busy||dirty||!deliveryReviewed} onClick={()=>void send()}>{busy?"Sending factory request…":"Send reviewed factory request"}</button>{dirty?<p>Save your changes before reviewing delivery.</p>:null}</div>:null}
+    {draft.delivery&&(["sending","uncertain"].includes(draft.delivery.state)||(draft.delivery.state==="sent"&&draft.status!=="sent"))?<button className="ui-button" disabled={busy} onClick={()=>void checkDelivery()}>{busy?"Checking delivery outcome…":"Check delivery outcome"}</button>:null}
     {notice?<p className="ui-status" role="status">{notice}</p>:null}{error?<p className="ui-status ui-status--error" role="alert">{error} Your entered information is retained.</p>:null}
     <p>Saving retains the selected files but does not send an email. Delivery remains limited to the configured test addresses.</p>
   </fieldset>;

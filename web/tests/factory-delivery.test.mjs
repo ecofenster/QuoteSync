@@ -23,6 +23,11 @@ test('factory delivery claim persists across connections, failures and restart w
     await assert.rejects(()=>sendFactoryOnce(second,{orderId:'uncertain',communicationId:'uncertain-message',send:async()=>{throw new Error('Must not retry')}}),error=>error.code==='factory_delivery_unconfirmed');assert.equal((await factoryDeliveryState(db,'uncertain')).state,'uncertain');
     const partial=await sendFactoryOnce(db,{orderId:'partial',communicationId:'partial-message',send:async()=>{throw Object.assign(new Error('Local projection failed'),{deliveryOutcome:'sent',providerMessageId:'provider-partial'})}});assert.equal(partial.state,'sent');assert.equal(partial.provider_message_id,'provider-partial');
     await assert.rejects(()=>sendFactoryOnce(db,{orderId:'stale',communicationId:'old-message',send:async()=>{throw new Error('Must not send')}}),error=>error.code==='factory_draft_changed');
+    await db.run("INSERT INTO orders VALUES('race')");await db.run("INSERT INTO factory_order_requests VALUES('race','race-message','draft')");
+    const recovered=await sendFactoryOnce(db,{orderId:'race',communicationId:'race-message',send:async({attemptId})=>{
+      await second.run("UPDATE factory_delivery_attempts SET state='sent',provider_message_id='reconciled-proof',sent_at='2026-09-13T12:00:00Z' WHERE id=?",attemptId);
+      throw new Error('Original request timed out after concurrent recovery');
+    }});assert.equal(recovered.state,'sent');assert.equal(recovered.provider_message_id,'reconciled-proof');
     await assert.rejects(()=>db.run('DELETE FROM factory_delivery_attempts'),/cannot be deleted/);
   }finally{await second?.close();await db?.close();await rm(root,{recursive:true,force:true})}
 });

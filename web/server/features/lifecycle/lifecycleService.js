@@ -402,6 +402,19 @@ export function createLifecycleService(db, options = {}) {
     if (!order) throw problem('Order was not found.', 404, 'order_not_found');
     if (!await db.get('SELECT id FROM order_staff_approvals WHERE order_id=?', orderId)) throw problem('Staff approval is required before preparing the factory order.', 409, 'factory_order_staff_approval_required');
     const existing = await db.get('SELECT * FROM factory_order_requests WHERE order_id=?', orderId);
+    if(input.reconcile===true){
+      const attempt=await factoryDeliveryState(db,orderId);
+      if(!existing||!attempt||attempt.communication_message_id!==existing.communication_message_id)throw problem('No matching factory delivery attempt is available to check.',409,'factory_delivery_unconfirmed');
+      const proof=attempt.state==='sent'&&attempt.provider_message_id?{providerMessageId:attempt.provider_message_id,sentAt:attempt.sent_at}:await communicationService.reconcileFactoryDelivery(attempt);
+      if(!proof)return {status:'unconfirmed',message:'No exact sent-message confirmation was found. This does not prove that delivery failed. No email was sent by this check; keep the request blocked and check again later.'};
+      const at=stamp();
+      await db.run("UPDATE factory_delivery_attempts SET state='sent',provider_message_id=?,sent_at=?,reconciled_by=?,reconciled_at=?,updated_at=? WHERE id=?",proof.providerMessageId,proof.sentAt||attempt.sent_at,text(input.createdBy),at,at,attempt.id);
+      await db.run("UPDATE factory_order_requests SET status='sent',updated_at=? WHERE id=? AND communication_message_id=?",at,existing.id,attempt.communication_message_id);
+      const prior=await communications.get(attempt.communication_message_id);
+      if(prior)await communications.save({...prior,provider:'google_workspace',providerMessageId:proof.providerMessageId,threadId:proof.threadId||prior.threadId,status:'sent',folder:'sent',sentAt:proof.sentAt||attempt.sent_at,error:null});
+      await event('factory.order.delivery_reconciled',attempt.id,[{kind:'order',id:orderId},{kind:'communication',id:attempt.communication_message_id}]);
+      return {status:'sent',message:'The exact sent message and reviewed contents are confirmed. No additional email was sent.'};
+    }
     const activeDelivery=await db.get("SELECT * FROM factory_delivery_attempts WHERE order_id=? AND state IN ('sending','sent','uncertain')",orderId);
     if(activeDelivery&&input.send!==true)throw problem('A factory delivery attempt is recorded. Review its outcome before editing or replacing this request.',409,'factory_delivery_unconfirmed');
     if (existing) {

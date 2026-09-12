@@ -34,7 +34,8 @@ const DEBUG_PORT = 9416;
 const CUSTOMER = "customer.journey@example.test";
 const FACTORY = "factory.journey@example.test";
 const OUTPUT = path.resolve("test-output/complete-customer-order-journey");
-const sourceFactorySend=process.argv.includes('--stop-after-source-backed-factory-send');
+const sourceFactoryReconcile=process.argv.includes('--stop-after-source-backed-factory-reconcile');
+const sourceFactorySend=sourceFactoryReconcile||process.argv.includes('--stop-after-source-backed-factory-send');
 const sourceStaffOrder=sourceFactorySend||process.argv.includes('--stop-after-source-backed-staff-order');
 const sourceCustomerOrder=sourceStaffOrder||process.argv.includes('--stop-after-source-backed-customer-order');
 const sourceCustomerReissue=sourceCustomerOrder||process.argv.includes('--stop-after-source-backed-customer-reissue');
@@ -189,7 +190,7 @@ async function run() {
     const providerJourney=providerJourneyRequested,providerKey=createHash('sha256').update(randomUUID()).digest('hex');
     if(providerJourney)await writeFile(path.join(root,'provider-source.pdf'),await readFile(path.resolve('docs/Supplier_Quotes/John_Wingfield/web-26-1133450.pdf')));
     if(receivedSupplierReviews)await writeFile(path.join(root,'provider-second-source.docx'),await readFile(path.resolve('docs/Supplier_Quotes/343117-3_EF-EST-2026-004 - Luke.docx')));
-    api = spawn(process.execPath, ["--import",pathToFileURL(path.resolve('tests/fixtures/isolatedJourneyExchangeRate.mjs')).href,...(providerJourney?['--import',pathToFileURL(path.resolve('tests/fixtures/isolatedJourneyGoogle.mjs')).href]:[]),"server/index.js"], { cwd: process.cwd(), env: { ...process.env, ...(providerJourney?{QUOTESUITE_INTEGRATION_ENCRYPTION_KEY:providerKey}:{}), QUOTESUITE_DB_PATH: databasePath, QUOTESYNC_ATTACHMENT_ROOT: attachmentRoot, PORT: "3104", NODE_ENV: "development", QUOTESUITE_APP_ORIGINS: APP_URL, QUOTESUITE_TEST_JOURNEY: "1", QUOTESUITE_TEST_DELIVERY_ENABLED: sourceCustomerReissue?"1":"0", QUOTESUITE_DISPOSABLE_PROVIDER_DELIVERY:sourceFactorySend?'factory-send':sourceCustomerReissue?'customer-reissue':'', QUOTESUITE_TEST_CUSTOMER_EMAIL: CUSTOMER, QUOTESUITE_TEST_FACTORY_EMAIL: FACTORY }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+api = spawn(process.execPath, ["--import",pathToFileURL(path.resolve('tests/fixtures/isolatedJourneyExchangeRate.mjs')).href,...(providerJourney?['--import',pathToFileURL(path.resolve('tests/fixtures/isolatedJourneyGoogle.mjs')).href]:[]),"server/index.js"], { cwd: process.cwd(), env: { ...process.env, ...(providerJourney?{QUOTESUITE_INTEGRATION_ENCRYPTION_KEY:providerKey}:{}), QUOTESUITE_DB_PATH: databasePath, QUOTESYNC_ATTACHMENT_ROOT: attachmentRoot, PORT: "3104", NODE_ENV: "development", QUOTESUITE_APP_ORIGINS: APP_URL, QUOTESUITE_TEST_JOURNEY: "1", QUOTESUITE_TEST_DELIVERY_ENABLED: sourceCustomerReissue?"1":"0", QUOTESUITE_DISPOSABLE_PROVIDER_DELIVERY:sourceFactoryReconcile?'factory-reconcile':sourceFactorySend?'factory-send':sourceCustomerReissue?'customer-reissue':'', QUOTESUITE_TEST_CUSTOMER_EMAIL: CUSTOMER, QUOTESUITE_TEST_FACTORY_EMAIL: FACTORY }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     let apiStartupLog='';for(const stream of [api.stdout,api.stderr])stream.on('data',chunk=>{apiStartupLog=(apiStartupLog+String(chunk)).slice(-5000)});
     vite = spawn(process.execPath, [path.resolve("node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", "5276"], { cwd: process.cwd(), env: { ...process.env, VITE_API_BASE_URL: API_URL }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     try{await waitFor(() => reachable(`${API_URL}/api/health`), "Disposable journey API did not start")}catch(error){throw new Error(`${error.message}: ${apiStartupLog}`)} await waitFor(() => reachable(APP_URL), "Disposable journey UI did not start");
@@ -456,6 +457,12 @@ async function run() {
                   if(sourceFactorySend){
                     await tab.evaluate("[...document.querySelectorAll('.factory-draft-review label')].find(label=>label.textContent.includes('I have reviewed the saved recipient')).querySelector('input').click()");
                     await tab.evaluate("(()=>{const button=[...document.querySelectorAll('.factory-draft-review button')].find(button=>button.textContent==='Send reviewed factory request');button.click();button.click()})()");
+                    if(sourceFactoryReconcile){
+                      await waitFor(()=>tab.evaluate("[...document.querySelectorAll('.factory-draft-review button')].some(button=>button.textContent==='Check delivery outcome')"),'Uncertain send did not offer recovery');
+                      assert.equal((await preparedDb.get('SELECT state FROM factory_delivery_attempts WHERE order_id=?',order.id)).state,'uncertain');
+                      await click(tab,'Check delivery outcome');
+                      await waitFor(()=>tab.evaluate("document.querySelector('.factory-draft-review')?.textContent.includes('No additional email was sent')"),'Exact provider receipt was not recovered');
+                    }
                     await waitFor(()=>tab.evaluate("document.querySelector('.factory-draft-review')?.textContent.includes('Await supplier confirmation')"),'Factory send did not report confirmed outcome');
                     const sentRequest=await preparedDb.get('SELECT * FROM factory_order_requests WHERE order_id=?',order.id),attempts=await preparedDb.all('SELECT * FROM factory_delivery_attempts WHERE order_id=?',order.id);assert.equal(sentRequest.status,'sent');assert.equal(attempts.length,1);assert.equal(attempts[0].state,'sent');
                     const evidence=JSON.parse(await readFile(path.join(root,'disposable-delivery-evidence.json'),'utf8'));assert.equal(evidence.sent.length,2);assert.deepEqual(evidence.sent[1].recipients,[FACTORY]);assert.equal(evidence.sent[1].id,attempts[0].provider_message_id);assert.equal(await tab.evaluate("document.querySelector('.factory-draft-review textarea').readOnly"),true);

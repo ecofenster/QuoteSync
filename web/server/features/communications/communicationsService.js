@@ -10,6 +10,7 @@ import { classifyNotification, decodeGmailNotification, resolveNotificationConfi
 import { createTestDeliveryPolicy } from "../lifecycle/testDeliveryPolicy.js";
 import { createSupplierQuotesService } from "../supplierQuotes/supplierQuotesService.js";
 import { recordSupplierResponseState } from "../lifecycle/supplierResponseState.js";
+import {factoryManifest,verifyFactoryReceipt} from './factoryReceipt.js';
 
 const MUTATING_MAILBOX_CAPABILITIES = Object.freeze(["archive", "trash", "read_state", "star", "move", "labels"]);
 const COMMAND_CAPABILITIES = Object.freeze({ archive: "archive", trash: "trash", mark_read: "read_state", mark_unread: "read_state", star: "star", unstar: "star", move: "move", label: "labels" });
@@ -451,14 +452,14 @@ export function createCommunicationsService(db, options = {}) {
     guardTestRecipients(input);
     const status = await requireGmailCapability();
     const attachments = await Promise.all((input.attachments || []).map((item) => decodeAttachment(item, attachmentRoot, workspace)));
-    const localId = String(input.id || randomUUID()), provider = await gmail.createDraft({ ...input, attachments });
+    const localId = String(input.id || randomUUID()), provider = await gmail.createDraft({ ...input, attachments, factoryReceipt:null });
     const saved = await repository.save({ ...input, id: localId, provider: "google_workspace", providerMessageId: provider.providerMessageId, threadId: provider.threadId, mailboxId: "me", direction: "outbound", folder: "drafts", status: "draft", attachments: attachments.map(({ bytes, ...item }) => ({ ...item, sizeBytes: item.sizeBytes ?? bytes.length })) });
     await bumpProjection(String(status.account?.id || status.account?.email || "me"), { lastReconciledAt: new Date().toISOString(), error: null });
     return saved;
   }
 
   async function sendMessage(input, commandContext = {}) {
-    let status,attachments,sent;
+    let status,attachments,sent,factoryReceipt;
     const id = String(input.id || randomUUID());
     try {
       guardTestRecipients(input);
@@ -471,10 +472,17 @@ export function createCommunicationsService(db, options = {}) {
       }
       status = await requireGmailCapability();
       attachments = await Promise.all((input.attachments || []).map((item) => decodeAttachment(item, attachmentRoot, workspace)));
+      if(commandContext.factoryDeliveryAttemptId){
+        const accountId=status.account?.id||status.account?.email;
+        if(!accountId)throw new Error('The connected mailbox account identity is unavailable. Reconnect before sending.');
+        factoryReceipt={messageId:`<quotesuite-factory-${commandContext.factoryDeliveryAttemptId}@delivery.quotesuite.invalid>`,manifestSha256:factoryManifest(input)};
+        const retained=await db.run("UPDATE factory_delivery_attempts SET receipt_message_id=?,receipt_manifest_sha256=?,provider_account_id=? WHERE id=? AND communication_message_id=? AND state='sending'",factoryReceipt.messageId,factoryReceipt.manifestSha256,accountId,commandContext.factoryDeliveryAttemptId,id);
+        if(!retained.changes)throw new Error('The factory delivery claim changed. Reopen the request before sending.');
+      }
       await repository.save({ ...input, id, provider: "google_workspace", mailboxId: "me", direction: "outbound", folder: "sent", status: "sending", attachments: attachments.map(({ bytes, ...item }) => ({ ...item, sizeBytes: item.sizeBytes ?? bytes.length })) });
     } catch(error) { error.deliveryOutcome='not_sent'; throw error; }
     try {
-      sent = await gmail.send({ ...input, attachments });
+      sent = await gmail.send({ ...input, attachments, factoryReceipt });
       if(!sent?.providerMessageId)throw Object.assign(new Error('Gmail did not return a confirmed message identity.'),{code:'provider_delivery_unconfirmed'});
       const saved = await repository.save({ ...input, id, provider: "google_workspace", providerMessageId: sent.providerMessageId, threadId: sent.threadId, mailboxId: "me", direction: "outbound", folder: "sent", status: "sent", sentAt: new Date().toISOString(), attachments: attachments.map(({ bytes, ...item }) => ({ ...item, sizeBytes: item.sizeBytes ?? bytes.length })) });
       await bumpProjection(String(status.account?.id || status.account?.email || "me"), { lastReconciledAt: new Date().toISOString(), error: null });
@@ -482,7 +490,9 @@ export function createCommunicationsService(db, options = {}) {
     } catch (error) {
       error.deliveryOutcome=sent?.providerMessageId?'sent':'uncertain';
       if(sent?.providerMessageId)error.providerMessageId=sent.providerMessageId;
-      else await repository.save({ ...input, id, provider: "google_workspace", mailboxId: "me", direction: "outbound", folder: "sent", status: "failed", error: error instanceof Error ? error.message : "Provider send failed.", attachments: attachments.map(({ bytes, ...item }) => ({ ...item, sizeBytes: item.sizeBytes ?? bytes.length })) }).catch(()=>{});
+      else if(!commandContext.factoryDeliveryAttemptId)await repository.save({ ...input, id, provider: "google_workspace", mailboxId: "me", direction: "outbound", folder: "sent", status: "failed", error: error instanceof Error ? error.message : "Provider send failed.", attachments: attachments.map(({ bytes, ...item }) => ({ ...item, sizeBytes: item.sizeBytes ?? bytes.length })) }).catch(()=>{});
+      // Factory uncertainty belongs to its persistent attempt. A late error must
+      // not overwrite a message concurrently confirmed by receipt reconciliation.
       throw error;
     }
   }
@@ -490,6 +500,14 @@ export function createCommunicationsService(db, options = {}) {
   async function reply(input) {
     const original = await readMessage(input.providerMessageId);
     return sendMessage({ ...input, threadId: original.threadId, to: input.to?.length ? input.to : original.from, subject: /^re:/i.test(input.subject || "") ? input.subject : `Re: ${input.subject || original.subject}`, inReplyTo: original.providerMessageId, references: original.providerMessageId, inReplyToProviderMessageId: original.providerMessageId });
+  }
+
+  async function reconcileFactoryDelivery(attempt){
+    const status=await requireGmailCapability();
+    if(!attempt.receipt_message_id||!attempt.receipt_manifest_sha256||!attempt.provider_account_id||attempt.provider_account_id!==(status.account?.id||status.account?.email))return null;
+    const saved=await repository.get(attempt.communication_message_id);if(!saved)return null;
+    const raw=await gmail.findFactoryReceipt(attempt.receipt_message_id);
+    return verifyFactoryReceipt({raw,attempt,saved,readAttachment:gmail.attachment});
   }
 
   async function forward(input) {
@@ -547,5 +565,5 @@ export function createCommunicationsService(db, options = {}) {
     return { enquiryId: enquiry.id, enquiryRef: enquiry.enquiryRef, idempotentReplay: false, resumedIncomplete, selectedAttachmentCount: attachments.length, storageStatus: attachments.length ? "pending_reviewed_storage" : "no_attachments_selected", driveStatus: enquiry.driveTransitionStatus };
   }
 
-  return { status: workspace.status, mailbox, listMailbox, syncMailbox, readMessage, readThread, relationshipContext, linkRelationship, unlinkRelationship, assignmentOptions, reviewSupplierDocumentAssignment, assignSupplierDocument, prepareAssignedDocumentImport, changeState, maintainWatch, stopWatch, receiveNotification, command, createDraft, sendMessage, reply, forward, readAttachment, enquiryIntake, createEnquiryFromMessage, repository };
+  return { reconcileFactoryDelivery, status: workspace.status, mailbox, listMailbox, syncMailbox, readMessage, readThread, relationshipContext, linkRelationship, unlinkRelationship, assignmentOptions, reviewSupplierDocumentAssignment, assignSupplierDocument, prepareAssignedDocumentImport, changeState, maintainWatch, stopWatch, receiveNotification, command, createDraft, sendMessage, reply, forward, readAttachment, enquiryIntake, createEnquiryFromMessage, repository };
 }

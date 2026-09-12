@@ -19,7 +19,16 @@ export function createDisposableGoogleTransport({messages=[],attachments=new Map
     deliveryEvidence.attempts++;
     if(delivery.failFirst&&deliveryEvidence.attempts===1)return json({error:{message:'Disposable provider interruption. Nothing was sent; retry safely.'}},503);
     const id=`disposable-sent-${deliveryEvidence.sent.length+1}`,threadId=payload.threadId||id;
-    deliveryEvidence.sent.push({id,threadId,raw:payload.raw,recipients});return json({id,threadId});
+    deliveryEvidence.sent.push({id,threadId,raw:payload.raw,recipients});
+    const boundary=headers.match(/boundary="([^"]+)"/)?.[1];
+    const parts=mime.split(`--${boundary}`).slice(1,-1).map((part,index)=>{
+     const content=part.replace(/^\r\n/,'').replace(/\r\n$/,''),split=content.indexOf('\r\n\r\n'),head=content.slice(0,split),body=content.slice(split+4),mimeType=head.match(/Content-Type: ([^;\r]+)/i)?.[1],filename=head.match(/filename="([^"]+)"/i)?.[1];
+     if(filename){const bytes=Buffer.from(body,'base64'),attachmentId=`receipt-part-${index}`;attachments.set(`${id}:${attachmentId}`,bytes);return {partId:String(index),filename,mimeType,body:{attachmentId,size:bytes.length}}}
+     return {mimeType,body:{data:Buffer.from(body).toString('base64url')}};
+    });
+    messages.push({id,threadId,labelIds:['SENT'],internalDate:String(Date.now()),payload:{mimeType:'multipart/mixed',headers:headers.split('\r\n').map(line=>({name:line.slice(0,line.indexOf(':')),value:line.slice(line.indexOf(':')+1).trim()})),parts}});
+    if(delivery.loseFactoryResponse&&recipients.includes('factory.journey@example.test'))return json({error:{message:'Disposable response lost after provider acceptance'}},503);
+    return json({id,threadId});
    }
    if(method!=='GET')throw new Error('Disposable provider refuses Gmail writes and delivery.');
    if(url.pathname.endsWith('/labels'))return json({labels:[]});
@@ -39,7 +48,8 @@ export function createDisposableGoogleTransport({messages=[],attachments=new Map
    if(message){const found=messages.find(item=>item.id===decodeURIComponent(message[1]));return found?json(found):json({error:{message:'Disposable message not found'}},404);}
    if(url.pathname.endsWith('/messages')){
     const sender=url.searchParams.get('q')?.match(/from:([^\s]+)/)?.[1];
-    const filtered=messages.filter(message=>!sender||message.payload?.headers?.some(header=>header.name.toLowerCase()==='from'&&header.value.includes(sender)));
+    const receipt=url.searchParams.get('q')?.match(/rfc822msgid:(\S+)/)?.[1];
+    const filtered=messages.filter(message=>(!sender||message.payload?.headers?.some(header=>header.name.toLowerCase()==='from'&&header.value.includes(sender)))&&(!receipt||(message.labelIds?.includes('SENT')&&message.payload?.headers?.some(header=>header.name.toLowerCase()==='message-id'&&header.value===receipt))));
     const offset=Number(url.searchParams.get('pageToken')||0);if(!Number.isSafeInteger(offset)||offset<0)throw new Error('Invalid disposable page cursor');
     const end=offset+Math.min(pageSize,Number(url.searchParams.get('maxResults')||pageSize));
     return json({messages:filtered.slice(offset,end).map(({id,threadId})=>({id,threadId})),...(end<filtered.length?{nextPageToken:String(end)}:{}),resultSizeEstimate:filtered.length});

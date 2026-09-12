@@ -9,6 +9,8 @@ export async function initializeFactoryDeliverySchema(db){
     FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE RESTRICT);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_factory_delivery_active ON factory_delivery_attempts(order_id) WHERE state IN ('sending','sent','uncertain');
     CREATE TRIGGER IF NOT EXISTS trg_factory_delivery_delete BEFORE DELETE ON factory_delivery_attempts BEGIN SELECT RAISE(ABORT,'Factory delivery evidence cannot be deleted'); END;`);
+  const columns=new Set((await db.all('PRAGMA table_info(factory_delivery_attempts)')).map(row=>row.name));
+  for(const column of ['receipt_message_id','receipt_manifest_sha256','provider_account_id','reconciled_by','reconciled_at'])if(!columns.has(column))await db.exec(`ALTER TABLE factory_delivery_attempts ADD COLUMN ${column} TEXT`);
 }
 
 export async function factoryDeliveryState(db,orderId){
@@ -29,11 +31,13 @@ export async function sendFactoryOnce(db,{orderId,communicationId,send,now=()=>n
   try{
     const result=await send({attemptId:id});confirmed=result;
     if(!result?.providerMessageId)throw failure('The provider did not confirm a message identity. Do not resend until its mailbox outcome has been checked.','factory_delivery_unconfirmed');
-    await db.run("UPDATE factory_delivery_attempts SET state='sent',provider_message_id=?,sent_at=?,updated_at=? WHERE id=?",result.providerMessageId,result.sentAt||now(),now(),id);
+    await db.run("UPDATE factory_delivery_attempts SET state='sent',provider_message_id=?,sent_at=?,updated_at=? WHERE id=? AND state='sending'",result.providerMessageId,result.sentAt||now(),now(),id);
   }catch(error){
     const sent=(error.deliveryOutcome==='sent'&&error.providerMessageId)||confirmed?.providerMessageId;
     const state=sent?'sent':error.deliveryOutcome==='not_sent'?'not_sent':'uncertain';
-    await db.run('UPDATE factory_delivery_attempts SET state=?,provider_message_id=?,sent_at=?,error_message=?,updated_at=? WHERE id=?',state,sent||null,sent?now():null,error.message||'Delivery outcome could not be confirmed',now(),id);
+    await db.run("UPDATE factory_delivery_attempts SET state=?,provider_message_id=?,sent_at=?,error_message=?,updated_at=? WHERE id=? AND state='sending'",state,sent||null,sent?now():null,error.message||'Delivery outcome could not be confirmed',now(),id);
+    const retained=await db.get('SELECT * FROM factory_delivery_attempts WHERE id=?',id);
+    if(retained?.state==='sent')return retained;
     if(!sent)throw failure(state==='not_sent'?`Nothing was sent. ${error.message} Correct this and retry the reviewed request.`:'Factory delivery could not be confirmed. Do not resend: check the connected mailbox and this recorded attempt first.',state==='not_sent'?'factory_delivery_not_sent':'factory_delivery_unconfirmed');
   }
   return db.get('SELECT * FROM factory_delivery_attempts WHERE id=?',id);
