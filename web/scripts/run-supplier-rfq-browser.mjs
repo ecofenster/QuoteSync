@@ -39,6 +39,11 @@ async function run(){
   await build({entryPoints:[path.resolve("tests/fixtures/SupplierRfqAcceptance.tsx")],bundle:true,format:"esm",platform:"browser",jsx:"automatic",outdir:root,define:{"import.meta.env.VITE_API_BASE_URL":JSON.stringify(base),"import.meta.env.DEV":"false","import.meta.env.PROD":"true"}});
   let postCount=0,failFirst=true;const app=express();app.use(express.json());app.use((req,res,next)=>{if(req.method==="POST"&&req.path.endsWith("/supplier-enquiries")){postCount+=1;if(failFirst){failFirst=false;return res.status(503).json({error:"Temporary test interruption. Your reviewed details have not been discarded.",code:"disposable_failure"})}return delay(220).then(next)}return next()});
   const repository=createCommunicationRepository(db);
+  await db.exec(`CREATE TABLE portal_review_submissions(id TEXT PRIMARY KEY); CREATE TABLE estimate_revision_releases(id TEXT PRIMARY KEY);
+    INSERT INTO portal_review_submissions VALUES('history-review'); INSERT INTO estimate_revision_releases VALUES('history-release');
+    INSERT INTO supplier_revision_requests(id,review_submission_id,source_release_id,successor_estimate_id,subject,summary_json,created_by,created_at,updated_at) VALUES('history-request','history-review','history-release','estimate-1','Disposable history','{}','test-staff','2026-09-12','2026-09-12');`);
+  for(let index=0;index<12;index++)await db.run('INSERT INTO supplier_revision_review_history(id,request_id,source_identity,checks_json,reviewed_by,reviewed_at) VALUES(?,?,?,?,?,?)',`history-${String(index).padStart(2,'0')}`,'history-request','test-source',JSON.stringify([{field_key:'finish',before_value:'White',expected_value:'Green',after_value:'Green',after_source_reference:'Supplier page 2',status:'implemented',resolved_by:'test-staff',resolved_at:'2026-09-12T10:00:00Z'}]),'test-staff','2026-09-12T10:00:00Z');
+  app.put('/api/lifecycle/supplier-revisions/history-request/verification',(_req,res)=>res.status(503).json({error:'Temporary review interruption. Your entered checks are retained; try again.'}));
   await db.exec("ALTER TABLE projects ADD COLUMN context_year INTEGER DEFAULT 2026; ALTER TABLE estimates ADD COLUMN created_at TEXT;");
   let storedFiles=0;
   const supplierBytes=Buffer.from("Disposable retained supplier estimate bytes"),folderPath="Disposable Project/Estimates/TEST-EST-1/Suppliers/Zyle Fenster";
@@ -92,6 +97,19 @@ async function run(){
   await evaluate("[...document.querySelectorAll('button')].find(item=>item.textContent.trim()==='Import Manufacturer Estimate')?.click()");
   await waitFor(()=>evaluate("window.__reviewDocument==='filed-reply'"),"Import handoff lost the saved document identity");
   console.log(JSON.stringify({filing:{providerUploads:storedFiles,partialSuccessVisible:true,retryReusedFile:true,responseState:"revised_document_received",importHandoffDocument:"filed-reply",provider:"disposable adapter"}}));
+  await evaluate("[...document.querySelectorAll('button')].find(item=>item.textContent==='Open saved review').click()");
+  await waitFor(()=>evaluate("[...document.querySelectorAll('label')].some(item=>item.textContent==='After'&&item.querySelector('input')?.value==='Green')"),"Saved review values did not reopen");
+  await evaluate("[...document.querySelectorAll('summary')].find(item=>item.textContent.includes('earlier review history')).click()");
+  await waitFor(()=>evaluate("document.body.innerText.includes('of 12 saved review snapshots')"),"Persisted review history did not load");
+  assert.equal(await evaluate("document.body.innerText.includes('Showing 1–10 of 12')"),true);
+  await evaluate("[...document.querySelectorAll('button')].find(item=>item.textContent==='Older reviews').click()");
+  await waitFor(()=>evaluate("document.body.innerText.includes('Showing 11–12 of 12')"),"Bounded history pagination failed");
+  await evaluate("[...document.querySelectorAll('button')].find(item=>item.textContent==='Verify changes').click()");
+  await waitFor(()=>evaluate("document.body.innerText.includes('Temporary review interruption')"),"Review failure was not visible");
+  assert.equal(await evaluate("[...document.querySelectorAll('label')].find(item=>item.textContent==='After').querySelector('input').value"),'Green');
+  await evaluate("[...document.querySelectorAll('button')].find(item=>item.textContent==='Open other review').click()");
+  await waitFor(()=>evaluate("[...document.querySelectorAll('label')].find(item=>item.textContent==='After')?.querySelector('input').value==='Blue'"),"Switching request retained another request's form");
+  console.log(JSON.stringify({reviewForm:{savedChecksReopened:true,failurePreservedValues:true,requestSwitchIsolated:true,history:{persisted:true,pageSize:10,total:12}},scope:'Production review component and history HTTP route with disposable fixture inputs; not the complete application reissue journey'}));
   const userRuntimeAfter=await fetch("http://127.0.0.1:3001/api/health").then(response=>response.ok?response.json():null).catch(()=>null);if(userRuntimeBefore)assert.equal(userRuntimeAfter?.instanceId,userRuntimeBefore.instanceId);else assert.equal(userRuntimeAfter,null);console.log(JSON.stringify({previewOnly:true,recoverableFailure:true,preserved,immediateProgress:true,duplicateProtection:{postCount,records:1,messages:1},resultNextAction:true,replySelection:{sameThreadIndependent:true,boundedPages:true,exactBody:true,acknowledgementPersisted:true},apiBaseline:userRuntimeBefore?"preserved":"not listening and unchanged"},null,2));
 }
 

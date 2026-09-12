@@ -207,6 +207,15 @@ test("customer changes produce a carried-forward working revision, attached chan
   assert.equal(currentReview.issueAllowed,true);assert.equal(currentReview.checks.length,3);
   const history=await source.db.all('SELECT * FROM supplier_revision_review_history WHERE request_id=?',request.id);assert.ok(history.length>=2);assert.ok(history.some(row=>JSON.parse(row.checks_json).some(check=>String(check.source_identity).includes('"2"'))));
   await assert.rejects(()=>source.db.run("UPDATE supplier_revision_review_history SET checks_json='[]' WHERE id=?",history[0].id),/immutable/);
+  const historyPage=await lifecycle.supplierReviewHistory(request.id,0);
+  assert.equal(historyPage.total,history.length);assert.equal(historyPage.items.length,Math.min(10,history.length));
+  assert.ok(historyPage.items.some(item=>item.checks.some(check=>check.field_key==='external_finish')));
+  const reopenedReview=await lifecycle.changeRequestDetail(review.reviewSubmissionId);
+  assert.equal(reopenedReview.checks.length,3);assert.equal(reopenedReview.supplierRevision.returnedRevision,'3');
+  assert.ok(Array.isArray(reopenedReview.supplierRevision.supplierDocuments));
+  assert.equal((await lifecycle.supplierReviewHistory(request.id,history.length)).items.length,0);
+  await assert.rejects(()=>lifecycle.supplierReviewHistory(request.id,-1),/valid history page/);
+  await assert.rejects(()=>lifecycle.supplierReviewHistory('missing-request',0),/not found/);
   await source.db.run("INSERT INTO supplier_commercial_defaults(supplier_code,supplier_name,updated_at) VALUES('SECOND-SUPPLIER','Second Supplier',?)",new Date().toISOString());
   const dispatchInput={estimateId:successor.id,recipient:"factory@example.test",subject:"Reviewed revision request",bodyText:"Please return the revised estimate.",createdBy:"staff-1",requestKind:"revision",revisionRequestId:request.id};
   const first=await lifecycle.prepareSupplierEnquiry("project-a1",{...dispatchInput,supplierId:"TEST-SUPPLIER",idempotencyKey:"multi-first"});
