@@ -9,8 +9,10 @@ export function createEnquiriesRouter({ databasePromise = dbPromise, driveServic
   const router = express.Router();
   const service = async () => { const db = await databasePromise; return createCommercialIdentityService(db, { driveTransitions: createCommercialDriveService(db, driveServiceOptions) }); };
   router.get("/", async (req, res) => { try { res.json(await (await service()).listEnquiries({ includeConverted: req.query.include_converted !== "0" })); } catch (error) { fail(res, error); } });
+  router.get("/:id/source", async (req, res) => { try { res.json(await (await service()).getEnquirySource(req.params.id)); } catch (error) { fail(res, error); } });
   router.post("/", async (req, res) => { try { res.status(201).json(await (await service()).createEnquiry(req.body)); } catch (error) { fail(res, error); } });
   router.post("/:id/qualify", async (req, res) => { try { res.json(await (await service()).qualifyEnquiry(req.params.id, req.body)); } catch (error) { fail(res, error); } });
+  router.post("/:id/file-attachments", async (req, res) => { try { res.json(await (await service()).fileReviewedEnquiryAttachments(req.params.id)); } catch (error) { fail(res, error); } });
   return router;
 }
 

@@ -6,6 +6,52 @@ export type DriveProvisioningOutcome = {
   code: string | null;
   message: string;
 };
+export type EnquiryAttachmentStorageOutcome = {
+  status: "stored" | "partial_failure" | "failed" | "no_reviewed_attachments" | "pending_folder_provisioning";
+  folderPath?: string;
+  stored: number;
+  failed: number;
+  pending: number;
+  code?: string;
+  message?: string;
+  files: Array<{ attachmentId: string; fileName: string; status: "stored" | "reused" | "failed"; documentId?: string; errorCode?: string }>;
+};
+export type EnquirySource = {
+  enquiryId: string;
+  enquiryRef: string;
+  state: "available" | "manual" | "missing";
+  message: string | null;
+  overview: null | { text: string; kind: "reviewed_intake"; label: string };
+  original: null | {
+    communicationMessageId: string;
+    providerMessageId: string | null;
+    providerAvailable: boolean;
+    sender: string;
+    recipients: string[];
+    subject: string;
+    receivedAt: string;
+    bodyText: string;
+    bodyHtmlRetained: boolean;
+  };
+  attachments: Array<{
+    id: string;
+    fileName: string;
+    mediaType: string;
+    sizeBytes: number;
+    contentId: string | null;
+    inline: boolean;
+    classification: "inline_signature_resource" | "image_attachment" | "document_attachment";
+    selectedForFiling: boolean;
+    providerAttachmentId: string | null;
+    providerAvailable: boolean;
+    storageStatus: "pending" | "stored" | "failed" | "not_selected";
+    storageErrorCode: string | null;
+    canonicalDocumentId: string | null;
+    filedFileName: string | null;
+    folderPath: string | null;
+    webViewLink: string | null;
+  }>;
+};
 export type EnquiryRecord = {
   id: string;
   enquiryRef: string;
@@ -56,8 +102,10 @@ const put = (path: string, body: unknown) => apiFetch(path, { method: "PUT", hea
 
 export const commercialIdentityApi = {
   listEnquiries: () => apiFetch("/api/enquiries") as Promise<EnquiryRecord[]>,
+  enquirySource: (enquiryId: string) => apiFetch(`/api/enquiries/${encodeURIComponent(enquiryId)}/source`) as Promise<EnquirySource>,
   createEnquiry: (input: Partial<EnquiryRecord>) => json("/api/enquiries", input) as Promise<EnquiryRecord>,
-  qualifyEnquiry: (enquiryId: string, input: { mode: "existing_client" | "new_client"; clientId?: string; client?: { name: string; companyName?: string; email?: string; telephone?: string }; project: { name: string; contextYear: number; siteAddress?: string } }) => json(`/api/enquiries/${encodeURIComponent(enquiryId)}/qualify`, input) as Promise<{ enquiry: EnquiryRecord; client: { id: string; clientRef: string; name: string }; project: ProjectRecord; driveProvisioning: DriveProvisioningOutcome }>,
+  qualifyEnquiry: (enquiryId: string, input: { mode: "existing_client" | "new_client"; clientId?: string; client?: { name: string; companyName?: string; email?: string; telephone?: string }; project: { name: string; contextYear: number; siteAddress?: string } }) => json(`/api/enquiries/${encodeURIComponent(enquiryId)}/qualify`, input) as Promise<{ enquiry: EnquiryRecord; client: { id: string; clientRef: string; name: string }; project: ProjectRecord; driveProvisioning: DriveProvisioningOutcome; attachmentStorage: EnquiryAttachmentStorageOutcome }>,
+  fileEnquiryAttachments: (enquiryId: string) => json(`/api/enquiries/${encodeURIComponent(enquiryId)}/file-attachments`, {}) as Promise<{ enquiry: EnquiryRecord; driveProvisioning: DriveProvisioningOutcome; attachmentStorage: EnquiryAttachmentStorageOutcome }>,
   listProjects: (clientId: string) => apiFetch(`/api/projects?client_id=${encodeURIComponent(clientId)}`) as Promise<ProjectRecord[]>,
   createProject: (input: { id?: string; clientId: string; name: string; contextYear: number; siteAddress?: string; siteAddressJson?: Record<string, string>; postcode?: string }) => json("/api/projects", input) as Promise<ProjectRecord>,
   provisionProjectDrive: (projectId: string) => json(`/api/projects/${encodeURIComponent(projectId)}/provision-drive`, {}) as Promise<DriveProvisioningOutcome>,

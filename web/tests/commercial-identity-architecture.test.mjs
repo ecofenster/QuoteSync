@@ -274,6 +274,21 @@ test("reviewed Gmail attachments file once into the qualified Project Drawings (
   assert.equal(stored.document_type,"client_drawing");assert.equal(stored.enquiry_id,enquiry.id);assert.equal(stored.project_id,qualified.project.id);assert.equal(stored.storage_status,"stored");assert.match(stored.folder_path,/Drawings \(Client\)$/);
 });
 
+test("Enquiry source projection keeps the exact intake message, genuine images and filing state separate from inline resources", async (t) => {
+  const db=await fixture(t);await initializeLifecycleSchema(db);
+  const identity=createCommercialIdentityService(db,{now}),enquiry=await identity.createEnquiry({displayName:"Source Contact",projectName:"Source Project"});
+  const repository=createCommunicationRepository(db),first=await repository.save({id:"source-message",provider:"google_workspace",providerMessageId:"source-provider-message",threadId:"shared-thread",direction:"inbound",folder:"inbox",status:"received",from:["Source Contact <source@example.test>"],to:["sales@example.test"],cc:[],bcc:[],subject:"Original source subject",bodyHtml:"<p>Exact first body</p>",bodyText:"Exact first body",sentAt:"2026-09-09T09:00:00.000Z",links:[{kind:"enquiry",id:enquiry.id}],attachments:[{id:"source-document",fileName:"requirements.pdf",mediaType:"application/pdf",sizeBytes:12,providerAttachmentId:"provider-document",inline:false},{id:"source-image",fileName:"site.jpg",mediaType:"image/jpeg",sizeBytes:24,providerAttachmentId:"provider-image",inline:false},{id:"source-logo",fileName:"signature.png",mediaType:"image/png",sizeBytes:6,providerAttachmentId:"provider-logo",contentId:"signature",inline:true}]});
+  await repository.save({id:"later-message",provider:"google_workspace",providerMessageId:"later-provider-message",threadId:"shared-thread",direction:"inbound",folder:"inbox",status:"received",from:["Source Contact <source@example.test>"],to:["sales@example.test"],cc:[],bcc:[],subject:"Later conversation message",bodyHtml:"",bodyText:"This must not replace the source",sentAt:"2026-09-10T09:00:00.000Z",links:[],attachments:[]});
+  await db.run("INSERT INTO enquiry_email_intakes(id,enquiry_id,communication_message_id,provider_message_id,reviewed_brief,created_by,created_at) VALUES('source-intake',?,?,?,?,?,?)",enquiry.id,first.id,"source-provider-message","Reviewed source overview","staff",now().toISOString());
+  await db.run("INSERT INTO enquiry_intake_attachments(id,enquiry_email_intake_id,communication_attachment_id,file_name,storage_status) VALUES('source-document-selection','source-intake','source-document','requirements.pdf','pending')");
+  await db.run("INSERT INTO enquiry_intake_attachments(id,enquiry_email_intake_id,communication_attachment_id,file_name,storage_status) VALUES('source-image-selection','source-intake','source-image','site.jpg','failed')");
+  const source=await identity.getEnquirySource(enquiry.id);
+  assert.equal(source.state,"available");assert.equal(source.original.providerMessageId,"source-provider-message");assert.equal(source.original.subject,"Original source subject");assert.equal(source.original.bodyText,"Exact first body");assert.equal(source.overview.text,"Reviewed source overview");
+  assert.deepEqual(source.attachments.map(item=>[item.fileName,item.classification,item.selectedForFiling,item.storageStatus]),[["requirements.pdf","document_attachment",true,"pending"],["site.jpg","image_attachment",true,"failed"],["signature.png","inline_signature_resource",false,"not_selected"]]);
+  const manual=await identity.createEnquiry({displayName:"Manual Contact",projectName:"Manual Project"});
+  assert.equal((await identity.getEnquirySource(manual.id)).state,"manual");
+});
+
 test("Email Enquiry intake retry resumes a partially created stable record without allocating a duplicate", async (t) => {
   const db=await fixture(t);await initializeLifecycleSchema(db);
   const workspace={async status(){return{connected:true,enquiriesRootFolderId:null,capabilities:{gmail:{available:true},drive:{available:true}},account:{id:"account"}}}};

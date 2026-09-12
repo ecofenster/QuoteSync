@@ -316,7 +316,7 @@ function DrawingViewport(
                     viewBox: model.viewBox,
                   }).y})`}
                 >
-                  <rect x={-62} y={-18} width={124} height={28} rx={6} fill="#ffffff" stroke="#0f766e" strokeWidth={1} />
+                  <rect x={-62} y={-18} width={124} height={28} rx={6} fill="var(--qs-drawing-marker-bg)" stroke="#0f766e" strokeWidth={1} />
                   <text x={0} y={-2} textAnchor="middle" fontSize={11} fontWeight={700} fill="#0f766e">
                     {`${measurement.distanceMm.toFixed(1)} mm`}
                   </text>
@@ -341,7 +341,7 @@ function DrawingViewport(
                       setHoveredMeasurementId(null);
                     }}
                   >
-                    <circle cx={0} cy={0} r={8} fill="#ffffff" stroke="#b91c1c" strokeWidth={1} />
+                    <circle cx={0} cy={0} r={8} fill="var(--qs-drawing-marker-bg)" stroke="#b91c1c" strokeWidth={1} />
                     <text x={0} y={4} textAnchor="middle" fontSize={12} fontWeight={700} fill="#b91c1c">
                       ×
                     </text>
@@ -378,7 +378,7 @@ function DrawingViewport(
                   viewBox: model.viewBox,
                 }).y})`}
               >
-                <rect x={-62} y={-18} width={124} height={28} rx={6} fill="#ffffff" stroke="#2563eb" strokeWidth={1} />
+                <rect x={-62} y={-18} width={124} height={28} rx={6} fill="var(--qs-drawing-marker-bg)" stroke="#2563eb" strokeWidth={1} />
                 <text x={0} y={-2} textAnchor="middle" fontSize={11} fontWeight={700} fill="#1d4ed8">
                   {`${buildMeasurementAnnotation("preview", measurementStart, activeMeasurementEnd).distanceMm.toFixed(1)} mm`}
                 </text>

@@ -675,6 +675,12 @@ function projectMapStageFor(outcome: Models.EstimateOutcome, estimate: Estimate,
   return "estimate";
 }
 
+function projectMapStageLabel(stage: Exclude<ProjectMapStage, "all" | "enquiry">) {
+  if (stage === "estimate") return "Estimate / Quotation";
+  if (stage === "order") return "Order / Sold";
+  return stage.replace(/^./, (value) => value.toUpperCase());
+}
+
 function H2({ children }: { children: React.ReactNode }) {
   return <h2 className="app-heading app-heading--section">{children}</h2>;
 }
@@ -1905,6 +1911,7 @@ export default function App() {
 
   const [selectedMapEstimateId, setSelectedMapEstimateId] = useState<Models.EstimateId | null>(null);
   const [projectMapStage, setProjectMapStage] = useState<ProjectMapStage>("all");
+  const [projectMapFitRequest, setProjectMapFitRequest] = useState(0);
 
   const pendingResolvedCoordinatePersistsRef = useRef<Record<string, boolean>>({});
 
@@ -3183,7 +3190,7 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
     estimate: Estimate,
     resolved: ResolvedClientLocation
   ) {
-    if (resolved.source === "estimate" || resolved.source === "cache") return;
+    if (resolved.source === "estimate" || resolved.isClientAddressFallback) return;
     if (targetClient.isProtected) return;
 
     const currentLat = estimate.latitude == null || !Number.isFinite(Number(estimate.latitude)) ? null : Number(estimate.latitude);
@@ -3277,7 +3284,7 @@ function setEstimateInstaller(clientId: Models.ClientId, estimateId: Models.Esti
     return () => {
       cancelled = true;
     };
-  }, [googleMapsApiKey, googleGeocodingAccess, what3wordsApiKey, projectMapRowsForBoard, mapsApiReady]);
+  }, [googleMapsApiKey, googleGeocodingAccess, what3wordsApiKey, projectMapRowsForBoard, mapsApiReady, resolvedLocationsByClientId]);
 
   useEffect(() => {
     setSelectedMapEstimateId(null);
@@ -3932,9 +3939,9 @@ function renderInstallationBoard() {
 function renderProjectMapBoard() {
     const rows = projectMapRowsForBoard;
     const summary = globalSummaryForRows(rows);
-    const mapItems: GoogleMapMarkerItem[] = rows.flatMap(({ client, estimate }) => {
+    const mapItems: GoogleMapMarkerItem[] = [...new Map(rows.flatMap(({ client, estimate }) => {
       const resolved = resolvedLocationsByClientId[estimate.id];
-      if (!resolved) return [];
+      if (!resolved || resolved.isClientAddressFallback) return [];
       const row = globalEstimateRows.find((item) => item.estimate.id === estimate.id);
       const stage = row ? projectMapStageFor(row.outcome, row.estimate, row.installerId) : "estimate";
       return [
@@ -3945,11 +3952,19 @@ function renderProjectMapBoard() {
           title: clientDisplayName(client),
           subtitle: resolved.label,
           variant: stage,
-          stage: stage === "estimate" ? "Estimate / Quotation" : stage === "order" ? "Order / Sold" : stage.replace(/^./, (value) => value.toUpperCase()),
+          stage: projectMapStageLabel(stage),
           reference: estimate.estimateRef,
         },
       ];
+    }).map((item) => [item.id, item] as const)).values()];
+    const unresolvedRows = rows.filter(({ estimate }) => {
+      const resolved = resolvedLocationsByClientId[estimate.id];
+      return !resolved || resolved.isClientAddressFallback;
     });
+    const visibleStages = [...new Set(mapItems.map((item) => item.variant).filter(Boolean))] as Array<Exclude<ProjectMapStage, "all" | "enquiry">>;
+    const legendStages: Array<Exclude<ProjectMapStage, "all" | "enquiry">> = visibleStages.length
+      ? visibleStages
+      : ["estimate", "order", "installation", "completed", "lost"];
 
     return (
       <Card className="project-map-card">
@@ -3960,9 +3975,7 @@ function renderProjectMapBoard() {
           </div>
 
           <div className="qs-migrated-19" aria-label="Project map status filters">
-            {([[
-              "all", "All"
-            ], ["enquiry", "Enquiry"], ["estimate", "Estimate / Quotation"], ["order", "Order / Sold"], ["installation", "Installation"], ["completed", "Completed"], ["lost", "Lost"]] as Array<[ProjectMapStage, string]>).map(([value, label]) => (
+            {([["all", "All stages"], ["estimate", "Estimate / Quotation"], ["order", "Order / Sold"], ["installation", "Installation"], ["completed", "Completed"], ["lost", "Lost"]] as Array<[ProjectMapStage, string]>).map(([value, label]) => (
               <Button
                 key={value}
                 variant={projectMapStage === value ? "selected" : "secondary"}
@@ -3972,6 +3985,12 @@ function renderProjectMapBoard() {
                 {label}
               </Button>
             ))}
+            <Button variant="secondary" disabled={!mapItems.length} onClick={() => setProjectMapFitRequest((value) => value + 1)}>Show all locations</Button>
+          </div>
+
+          <div className="project-map-legend" aria-label="Project map legend">
+            {legendStages.map((stage) => <span key={stage} className={`project-map-legend__item project-map-legend__item--${stage}`}><i aria-hidden="true" />{projectMapStageLabel(stage)}</span>)}
+            <Small>Numbered pins contain more than one record at a shared location.</Small>
           </div>
 
           <div className="project-map-summary-grid">
@@ -3988,7 +4007,7 @@ function renderProjectMapBoard() {
             <div className="project-map-summary-group">
             <div className="operational-stat">
               <div className="operational-stat__label">Unresolved locations</div>
-              <div className="operational-stat__value">{rows.length - mapItems.length}</div>
+              <div className="operational-stat__value">{unresolvedRows.length}</div>
             </div>
             <div className="operational-stat">
               <div className="operational-stat__label">Total cost</div>
@@ -3997,6 +4016,8 @@ function renderProjectMapBoard() {
             </div>
           </div>
 
+          {unresolvedRows.length ? <section className="project-map-unresolved" aria-labelledby="project-map-unresolved-title"><div><H3><span id="project-map-unresolved-title">Locations to resolve</span></H3><Small>These records stay in the list and totals, but QuoteSuite will not invent a Project location from an unconfirmed Client address.</Small></div>{unresolvedRows.map(({ client, estimate }) => <article key={estimate.id}><div><strong>{estimate.estimateRef} · {clientDisplayName(client)}</strong><Small>{estimateProjectAddressLabel(estimate)}</Small></div><Button variant="secondary" onClick={() => openEstimateFromGlobalMenu(client.id, estimate.id)}>Review location</Button></article>)}</section> : null}
+
           <div className="qs-migrated-45">
             <div className="qs-migrated-46">
               {rows.map(({ client, estimate, outcome, installerId }) => {
@@ -4004,7 +4025,7 @@ function renderProjectMapBoard() {
                 const totals = estimateCommercialTotals(estimate);
                 const stage = projectMapStageFor(outcome, estimate, installerId);
                 const resolved = resolvedLocationsByClientId[estimate.id];
-                const stageLabel = stage === "estimate" ? "Estimate / Quotation" : stage === "order" ? "Order / Sold" : stage.replace(/^./, (value) => value.toUpperCase());
+                const stageLabel = projectMapStageLabel(stage);
                 return (
                   <div
                     id={`estimate-map-row-${estimate.id}`}
@@ -4038,7 +4059,7 @@ function renderProjectMapBoard() {
                       <Small>{monthYearLabel(estimate.estimatedOrderMonth || "", estimate.estimatedOrderYear || 0)}</Small>
                       <Small>{resolved?.label ?? estimateProjectAddressLabel(estimate)}</Small>
                       {resolved?.isClientAddressFallback ? <Small>Client address fallback — not a confirmed project/site location</Small> : null}
-                      {!resolved ? <Small>Location unavailable</Small> : null}
+                      {!resolved || resolved.isClientAddressFallback ? <Small>Project location unresolved — review the location</Small> : null}
                       <Small>{formatMeasure(totals.totalSquareMetres)} m² {formatMoney(totals.estimateTotal)}</Small>
                     </div>
                     <div className="qs-migrated-74">
@@ -4085,6 +4106,7 @@ function renderProjectMapBoard() {
                     if (row) openEstimateFromGlobalMenu(row.client.id, row.estimate.id);
                   }}
                   onApiReady={() => setMapsApiReady(true)}
+                  fitAllRequest={projectMapFitRequest}
                   height={980}
                   emptyText="No project locations could be resolved for the current filters."
                 />
@@ -4539,7 +4561,7 @@ return (
           </Card>
 
           {/* Main */}
-          <div className="app-main-workspace" data-density={menu === "dashboard" && view === "customers" ? "compact" : "standard"} data-scroll-owner={view === "customers" && (menu === "email" || menu === "client_database" || menu === "enquiries") ? "feature" : "workspace"}>
+          <div className="app-main-workspace" data-density={menu === "dashboard" && view === "customers" ? "compact" : "standard"} data-scroll-owner={view === "customers" && (menu === "email" || menu === "client_database") ? "feature" : "workspace"}>
             {demoClientsLoaded && (
               <div className="demo-mode-banner" role="status">
                 <strong>Demo mode active</strong>
@@ -4553,24 +4575,6 @@ return (
               </div>
             )}
             {topShellPage === "tools" && <ToolsHubPage initialTool={initialToolsTab} />}
-            {topShellPage !== "tools" && menu !== "dashboard" && menu !== "email" && view !== "estimate_workspace" && (
-              <Card className="qs-migrated-87">
-                <div className="app-cluster app-cluster--between app-cluster--start">
-                  <div>
-                    <H2>Quick actions</H2>
-                    <Small>Start the canonical workflow: Enquiry → Client → Project → Estimate → Order.</Small>
-                  </div>
-
-                  <div className="app-cluster">
-                    {menu === "enquiries" ? <Button variant="primary" onClick={() => selectMenu("enquiries")}>+ New Enquiry</Button> : null}
-                    {menu === "estimates" ? <Button variant="primary" onClick={() => openAddEstimateModal()}>+ New Estimate</Button> : null}
-                    <Button variant="primary" onClick={openAddClientPanel}>
-                      Add Client
-                    </Button>
-                  </div>
-                </div>
-              </Card>
-            )}
 			{topShellPage !== "tools" && menu === "dashboard" && view === "customers" && (
               <MainDashboard
                 clients={clients}
@@ -5057,7 +5061,7 @@ return (
             {menu === "client_portal" && view === "customers" && <ClientPortalStaffWorkspace clients={clients} initialClientId={portalContext?.clientId??null} initialProjectId={portalContext?.projectId??null} onContextConsumed={()=>setPortalContext(null)} onOpenEstimate={(clientId,estimateId)=>openEstimateDefaults(clientId as Models.ClientId,estimateId as Models.EstimateId)} />}
 
             {menu === "enquiries" && view === "customers" && (
-              <EnquiryWorkspace clients={clients} onCommercialIdentityChanged={refreshClientsFromApi} />
+              <EnquiryWorkspace clients={clients} onCommercialIdentityChanged={refreshClientsFromApi} onOpenProject={(clientId) => { setEstimatePickerClientId(clientId as Models.ClientId); setView("estimate_picker"); }} />
             )}
 
             {menu === "estimates" && view === "customers" && renderGlobalEstimateMenu(

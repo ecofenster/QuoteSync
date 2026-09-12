@@ -454,7 +454,7 @@ export function createCommercialDriveService(db, options = {}) {
         outcomes.push({ attachmentId: row.intake_attachment_id, fileName: row.file_name, status: "failed", errorCode: code });
       }
     }
-    return { status: outcomes.some((item) => item.status === "failed") ? "partial_failure" : "stored", projectId, stored: outcomes.filter((item) => ["stored","reused"].includes(item.status)).length, failed: outcomes.filter((item) => item.status === "failed").length, pending: 0, files: outcomes };
+    return { status: !outcomes.length ? "no_reviewed_attachments" : outcomes.some((item) => item.status === "failed") ? "partial_failure" : "stored", projectId, folderPath: target.folder_path, stored: outcomes.filter((item) => ["stored","reused"].includes(item.status)).length, failed: outcomes.filter((item) => item.status === "failed").length, pending: 0, files: outcomes };
   }
 
   async function provisionEstimate(estimateId) {

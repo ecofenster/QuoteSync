@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 
 export type GoogleMapMarkerVariant = "open" | "estimate" | "order" | "lost" | "installation" | "completed" | "enquiry";
 
@@ -24,24 +24,29 @@ function resolvedToken(name: string) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-function markerColor(variant: GoogleMapMarkerVariant | undefined) {
-  if (variant === "installation") return resolvedToken("--qs-operational-installations");
-  if (variant === "completed") return resolvedToken("--qs-semantic-success");
-  if (variant === "order") return resolvedToken("--qs-semantic-success");
-  if (variant === "lost") return resolvedToken("--qs-semantic-error");
-  return resolvedToken("--qs-theme-text");
+function markerColor(variant: GoogleMapMarkerVariant | undefined, mixed = false) {
+  if (mixed) return resolvedToken("--qs-map-stage-mixed");
+  if (variant === "installation") return resolvedToken("--qs-map-stage-installation");
+  if (variant === "completed") return resolvedToken("--qs-map-stage-completed");
+  if (variant === "order") return resolvedToken("--qs-map-stage-order");
+  if (variant === "lost") return resolvedToken("--qs-map-stage-lost");
+  return resolvedToken("--qs-map-stage-estimate") || resolvedToken("--qs-theme-text");
 }
 
-function markerIcon(variant: GoogleMapMarkerVariant | undefined) {
-  const fill = markerColor(variant);
+function markerIcon(variant: GoogleMapMarkerVariant | undefined, count = 1, mixed = false) {
+  const fill = markerColor(variant, mixed);
+  const contrast = resolvedToken("--qs-brand-white");
+  const label = count > 1 ? String(Math.min(count, 99)) : "";
   const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 34 34">
-      <circle cx="17" cy="17" r="11" fill="${fill}" stroke="${resolvedToken("--qs-brand-white")}" stroke-width="4" />
+    <svg xmlns="http://www.w3.org/2000/svg" width="38" height="46" viewBox="0 0 38 46">
+      <path d="M19 44C16 37 5 29 5 19C5 11.3 11.3 5 19 5C26.7 5 33 11.3 33 19C33 29 22 37 19 44Z" fill="${fill}" stroke="${contrast}" stroke-width="3" />
+      <circle cx="19" cy="19" r="8" fill="${contrast}" fill-opacity="${label ? "0.2" : "1"}" />
+      ${label ? `<text x="19" y="23" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="${contrast}">${label}</text>` : ""}
     </svg>
   `;
   return {
     url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
-    scaledSize: new google.maps.Size(34, 34),
+    scaledSize: new google.maps.Size(38, 46),
   };
 }
 
@@ -82,6 +87,7 @@ export default function GoogleMapPanel({
   onOpen,
   onApiReady,
   onMapClick,
+  fitAllRequest = 0,
   height = 600,
   emptyText = "No map items available.",
 }: {
@@ -92,44 +98,51 @@ export default function GoogleMapPanel({
   onOpen?: (id: string) => void;
   onApiReady?: () => void;
   onMapClick?: (lat: number, lng: number) => void;
+  fitAllRequest?: number;
   height?: number;
   emptyText?: string;
 }) {
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
-  const markersRef = useRef<Array<{ id: string; marker: google.maps.Marker }>>([]);
+  const markersRef = useRef<Array<{ ids: string[]; marker: google.maps.Marker; items: GoogleMapMarkerItem[] }>>([]);
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
   const [loadError, setLoadError] = useState<string>("");
 
-  const buildInfoWindowContent = (item: GoogleMapMarkerItem) => {
+  const buildInfoWindowContent = useCallback((groupItems: GoogleMapMarkerItem[]) => {
     const content = document.createElement("div");
     content.className = "google-map-panel__info";
     const title = document.createElement("div");
     title.className = "google-map-panel__info-title";
-    title.textContent = item.title;
+    title.textContent = groupItems.length > 1 ? `${groupItems.length} records at this location` : groupItems[0].title;
     content.appendChild(title);
-    if (item.subtitle) {
+    if (groupItems.length === 1 && groupItems[0].subtitle) {
       const subtitle = document.createElement("div");
       subtitle.className = "google-map-panel__info-subtitle";
-      subtitle.textContent = item.subtitle;
+      subtitle.textContent = groupItems[0].subtitle;
       content.appendChild(subtitle);
     }
-    if (item.reference || item.stage) {
+    const records = document.createElement("div");
+    records.className = "google-map-panel__info-records";
+    groupItems.forEach((item) => {
+      const record = document.createElement("div");
+      record.className = "google-map-panel__info-record";
       const details = document.createElement("div");
       details.className = "google-map-panel__info-subtitle";
-      details.textContent = [item.reference, item.stage].filter(Boolean).join(" · ");
-      content.appendChild(details);
-    }
-    if (onOpen) {
-      const open = document.createElement("button");
-      open.type = "button";
-      open.className = "ui-button";
-      open.textContent = "Open";
-      open.addEventListener("click", () => onOpen(item.id));
-      content.appendChild(open);
-    }
+      details.textContent = groupItems.length > 1 ? `${item.title} · ${[item.reference, item.stage].filter(Boolean).join(" · ")}` : [item.reference, item.stage].filter(Boolean).join(" · ");
+      record.appendChild(details);
+      if (onOpen) {
+        const open = document.createElement("button");
+        open.type = "button";
+        open.className = "ui-button ui-button--primary google-map-panel__info-open";
+        open.textContent = "Open";
+        open.addEventListener("click", () => onOpen(item.id));
+        record.appendChild(open);
+      }
+      records.appendChild(record);
+    });
+    content.appendChild(records);
     return content;
-  };
+  }, [onOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -183,30 +196,38 @@ loadGoogleMaps(apiKey)
 
     const bounds = new window.google.maps.LatLngBounds();
 
-    const openInfoWindow = (item: GoogleMapMarkerItem, marker: google.maps.Marker) => {
+    const openInfoWindow = (groupItems: GoogleMapMarkerItem[], marker: google.maps.Marker) => {
       if (!infoWindowRef.current) return;
-      infoWindowRef.current.setContent(buildInfoWindowContent(item) as unknown as string);
+      infoWindowRef.current.setContent(buildInfoWindowContent(groupItems) as unknown as string);
       infoWindowRef.current.open({
         map: mapRef.current!,
         anchor: marker,
       });
     };
 
-    markersRef.current = items.map((item) => {
+    const uniqueItems = [...new Map(items.map((item) => [item.id, item])).values()];
+    const groupedItems = [...uniqueItems.reduce((groups, item) => {
+      const key = `${item.lat.toFixed(6)}:${item.lng.toFixed(6)}`;
+      groups.set(key, [...(groups.get(key) || []), item]);
+      return groups;
+    }, new Map<string, GoogleMapMarkerItem[]>()).values()];
+    markersRef.current = groupedItems.map((groupItems) => {
+      const item = groupItems[0];
+      const variants = new Set(groupItems.map((entry) => entry.variant));
       const marker = new window.google!.maps.Marker({
         map: mapRef.current!,
         position: { lat: item.lat, lng: item.lng },
-        title: item.title,
-        icon: markerIcon(item.variant),
+        title: groupItems.length > 1 ? `${groupItems.length} records at this location` : item.title,
+        icon: markerIcon(item.variant, groupItems.length, variants.size > 1),
       });
 
       marker.addListener("click", () => {
-        openInfoWindow(item, marker);
-        onSelect?.(item.id);
+        openInfoWindow(groupItems, marker);
+        if (groupItems.length === 1) onSelect?.(item.id);
       });
 
       bounds.extend(marker.getPosition()!);
-      return { id: item.id, marker };
+      return { ids: groupItems.map((entry) => entry.id), marker, items: groupItems };
     });
 
     if (selectedId) {
@@ -219,7 +240,14 @@ loadGoogleMaps(apiKey)
     }
 
     mapRef.current.fitBounds(bounds, 60);
-  }, [items, onSelect, selectedId]);
+  }, [buildInfoWindowContent, items, onSelect, selectedId]);
+
+  useEffect(() => {
+    if (!mapRef.current || !window.google?.maps || !items.length) return;
+    const bounds = new window.google.maps.LatLngBounds();
+    [...new Map(items.map((item) => [item.id, item])).values()].forEach((item) => bounds.extend(new window.google!.maps.LatLng(item.lat, item.lng)));
+    mapRef.current.fitBounds(bounds, 60);
+  }, [fitAllRequest, items]);
 
   useEffect(() => {
     if (!mapRef.current || !selectedId) return;
@@ -228,15 +256,15 @@ loadGoogleMaps(apiKey)
     mapRef.current.panTo({ lat: selected.lat, lng: selected.lng });
     mapRef.current.setZoom(Math.max(mapRef.current.getZoom() ?? 5, 8));
 
-    const selectedMarker = markersRef.current.find((entry) => entry.id === selectedId)?.marker;
-    if (!selectedMarker || !infoWindowRef.current) return;
+    const selectedGroup = markersRef.current.find((entry) => entry.ids.includes(selectedId));
+    if (!selectedGroup || !infoWindowRef.current) return;
 
-    infoWindowRef.current.setContent(buildInfoWindowContent(selected) as unknown as string);
+    infoWindowRef.current.setContent(buildInfoWindowContent(selectedGroup.items) as unknown as string);
     infoWindowRef.current.open({
       map: mapRef.current,
-      anchor: selectedMarker,
+      anchor: selectedGroup.marker,
     });
-  }, [items, selectedId]);
+  }, [buildInfoWindowContent, items, selectedId]);
 
   if (loadError) {
     return (

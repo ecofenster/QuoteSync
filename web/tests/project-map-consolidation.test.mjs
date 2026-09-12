@@ -17,13 +17,14 @@ test("normal navigation exposes one Project Map entry", async () => {
 
 test("Project Map provides lifecycle filters, unified counters, unresolved state and canonical open action", async () => {
   const app = await read("src/App.tsx");
-  for (const label of ["Enquiry", "Estimate / Quotation", "Order / Sold", "Installation", "Completed"]) {
-    assert.match(app, new RegExp(`"${label}"`));
+  for (const label of ["All stages", "Estimate / Quotation", "Order / Sold", "Installation", "Completed", "Lost", "Show all locations"]) {
+    assert.match(app, new RegExp(label));
   }
   assert.match(app, /Mapped projects/);
   assert.match(app, /Visible projects/);
   assert.match(app, /Unresolved locations/);
-  assert.match(app, /Location unavailable/);
+  assert.match(app, /Locations to resolve/);
+  assert.match(app, /Project location unresolved/);
   assert.match(app, /onOpen=.*openEstimateFromGlobalMenu/s);
   assert.doesNotMatch(app, /Total mÃ/);
 });
@@ -102,10 +103,17 @@ test("Project Map card explicitly distinguishes Client fallback from confirmed s
 });
 
 test("map popup remains client-neutral and uses the canonical project id", async () => {
-  const panel = await read("src/components/GoogleMapPanel.tsx");
+  const [panel, css, tokens] = await Promise.all([read("src/components/GoogleMapPanel.tsx"), read("src/App.css"), read("src/styles/tokens.css")]);
   assert.match(panel, /reference\?: string/);
   assert.match(panel, /stage\?: string/);
   assert.match(panel, /open\.textContent = "Open"/);
   assert.match(panel, /onOpen\(item\.id\)/);
+  assert.match(panel, /records at this location/);
+  assert.match(panel, /toFixed\(6\)/);
+  assert.match(panel, /fitAllRequest/);
+  assert.match(css, /\.google-map-panel \.gm-style \.gm-style-iw-c/);
+  assert.match(css, /\.gm-style-iw-tc::after/);
+  assert.match(tokens, /--qs-map-popup-bg:/);
+  assert.match(tokens, /--qs-map-stage-completed:/);
   assert.doesNotMatch(panel, /integrations\.googleMaps\.apiKey/);
 });

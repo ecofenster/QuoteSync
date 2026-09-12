@@ -12,7 +12,7 @@ test("roadmap typed data is complete, unique and deterministically countable", (
   assert.ok(all.length >= 100);
   const counts = roadmapStatusCounts(ROADMAP_ITEMS);
   assert.equal(Object.values(counts).reduce((sum, value) => sum + value, 0), all.length);
-  assert.deepEqual(counts, { complete: 23, in_progress: 73, not_started: 142, blocked: 3, legacy: 10 });
+  assert.deepEqual(counts, { complete: 23, in_progress: 74, not_started: 141, blocked: 3, legacy: 10 });
 });
 
 test("Administration exposes Development and the QuoteSuite Roadmap workspace", async () => {
@@ -34,10 +34,10 @@ test("status rendering uses accessible text as well as colour", async () => {
 });
 
 test("chronology remains ordered and displays the current checkpoint", () => {
-  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 153 }, (_, index) => index + 1));
+  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 154 }, (_, index) => index + 1));
   assert.equal([...ROADMAP_CHRONOLOGY].reverse().find((entry) => entry.checkpointSha)?.checkpointSha, ROADMAP_CHECKPOINT_SHA);
   assert.equal(ROADMAP_CHRONOLOGY.find((entry) => entry.title === "Browser automation process-lifecycle hardening")?.sequence, 75);
-  assert.equal(ROADMAP_CHRONOLOGY.at(-1)?.title, "Canonical technical-document applicability review");
+  assert.equal(ROADMAP_CHRONOLOGY.at(-1)?.title, "Guided Enquiry context, compact Dashboard and map/theme correction");
   assert.equal(ROADMAP_CHECKPOINT_SHA, "5f3cb01");
 });
 
@@ -252,7 +252,7 @@ test("platform readiness matches the approved audit classification", () => {
   assert.match(DEVELOPMENT_ORDER[1], /Configurator development continues as a major parallel programme/);
 });
 
-test("CRM lifecycle foundation and deferred Add Client cleanup are recorded", () => {
+test("CRM lifecycle foundation and completed generic Quick actions cleanup are recorded", () => {
   const lifecycle = all.find((item) => item.id === "crm-lifecycle");
   const cleanup = all.find((item) => item.id === "crm-add-client-cleanup");
   assert.equal(lifecycle?.status, "in_progress");
@@ -260,8 +260,9 @@ test("CRM lifecycle foundation and deferred Add Client cleanup are recorded", ()
   assert.match(lifecycle?.summary ?? "", /EF-ENQ.*EF-CL.*immutable internal ID.*without public EF-PRJ/s);
   assert.match((lifecycle?.notes||[]).join(" "),/Direct Web Enquiry intake.*public integration contract.*WordPress/s);
   assert.match((lifecycle?.notes||[]).join(" "),/rate limiting.*bot.*replay.*untrusted-upload/s);
-  assert.equal(cleanup?.status, "not_started");
-  assert.match(cleanup?.deferredReason ?? "", /controls remain unchanged/);
+  assert.equal(cleanup?.status, "complete");
+  assert.match(cleanup?.implementationStatus ?? "", /generic Quick actions banners.*removed/i);
+  assert.match(cleanup?.technicalVerificationStatus ?? "", /primary New Enquiry path remains available/i);
 });
 
 test("communications roadmap keeps Email dedicated and scopes omnichannel business history",()=>{

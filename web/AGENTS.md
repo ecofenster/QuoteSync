@@ -32,6 +32,8 @@
 - QuoteSuite is the neutral platform identity. Company-branded profiles render a balanced `QuoteSuite | Company` lockup with QuoteSuite on the left; the QuoteSuite profile renders the platform mark once. Lockups must use layout flow, appearance-appropriate assets and responsive reflow without overlap, crop or distortion.
 - Future brand profiles must supply semantic brand assets and palette tokens to the shared V2 system. They must not duplicate component CSS, alter component geometry or encode tenant-specific business behaviour.
 - Legacy QuoteSuite Light and Dark remain transition fallbacks until V2 rollout acceptance explicitly authorises their retirement.
+- Configurator and drawing chrome must use shared semantic appearance tokens for workspace, nested-panel, drawing-surround, artboard, annotation and interaction surfaces. Theme styling must not invert or recolour actual product finishes or retained source images; baked-in image backgrounds and container styling defects must be diagnosed separately.
+- A future Configurator navigation change requires a reviewed interaction design before replacing the current controls. Context menus must be selection-sensitive, position nested hover menus predictably and provide equivalent keyboard and touch access; top-level tabs and their contents remain a user decision rather than an implementation assumption.
 
 ## Application spacing and responsive rhythm
 
@@ -41,11 +43,28 @@
 
 - QuoteSuite workflows must use plain language and familiar actions. Keep implementation, provider and developer terminology out of the normal user path; place optional diagnostic or provenance detail behind a clearly labelled `View details` disclosure.
 - Show only the information and controls relevant to the current step, and give that step one clear primary action. Do not make users interpret unrelated workflow stages or competing primary commands.
+- Do not add generic `Quick actions` banners or introductory action panels. Keep creation commands in the shared Create menu and retain necessary workspace-owned actions in the relevant header or record context; Dashboard Needs attention / Next actions and contextual record actions are purposeful workflow surfaces, not generic action panels.
 - Detect likely existing records, files and conflicts automatically. Ask the user only when a meaningful decision is required, show the supporting evidence, and explain each option and consequence simply. Never treat a matching filename as proof of identical content or silently overwrite/discard potentially revised evidence.
 - Every user-triggered multi-step or long-running action must show immediate progress, then a clear complete, partial or failed result stating what changed, what did not, the exact relevant identity or destination and the next useful action.
 - Preserve entered information and completed idempotent work after errors. Explain how to recover or retry safely without creating duplicates or losing successful prior steps.
 - Wording and behaviour must remain consistent across Email, Clients, Projects, Files, Estimates, Comparisons, Portal and Orders. Acceptance must demonstrate that an ordinary user can complete the task without developer guidance; passing an underlying unit, API or persistence test alone is insufficient.
 - Apply this principle incrementally to the current intake and filing repairs, then review other workspaces in bounded stages. It does not authorise an unrestricted redesign or mark untested workflow stages as accepted.
+- Project maps must keep every resolved canonical location visibly represented across stage filters and zoom levels, use readable theme-governed popups and expose unresolved addresses with a correction action. A map must not invent coordinates, infer completeness from one paginated list page or hide coincident records; provider styling cannot override the approved popup contract.
+
+## Service ownership, privacy and service levels
+
+- Team names are workspace configuration, while Enquiries, Estimates, Orders, Completed/aftercare, Lost/re-engagement and Service are stable responsibility areas. Lifecycle routing must preserve assignment history and outstanding action ownership, must not duplicate tasks on retry, and must place records without a valid route in a visible actionable Unassigned queue. Assignment never grants access beyond the existing permission boundary.
+- Service cases are canonical workspace-owned records with independent references, history, evidence, status, waiting party, warranty assessment, team/person and next action. Customer-visible updates and attachments are separate from internal notes, supplier discussions and staff-only warranty reasoning; every Portal and direct-download request must enforce the exact workspace/customer/resource grant.
+- Internal service targets are distinct from an approved customer-facing SLA. Policies are configurable by priority, case type and responsible team, define business hours, timezone, holidays and explicit timer start/pause/resume/completion rules, and are version-snapshotted at registration. Reassignment never resets elapsed time and an automated acknowledgement is not a substantive first response.
+- Customer-facing commitments appear only when an approved applicable policy exists. Policy changes, pauses, deadlines, escalations and breach history remain auditable; proposed policies are labelled proposals and cannot silently publish contractual promises.
+
+## Installation documents, surveys and travel
+
+- Installer packs, price-free schedules and surveys are generated from one exact Estimate/Order revision, its canonical Positions, saved installation calculations and reviewed drawing identities. Generated documents, selected attachments and delivery outcomes remain linked to that originating revision so later edits cannot alter previously reviewed or sent evidence.
+- Installer packs exclude customer selling prices, supplier purchase prices, margins and internal pricing calculations while showing reviewed operational allowances. Client price-free schedules exclude both commercial prices and installer allowances. Missing operational evidence remains `Not confirmed`, never zero or an invented value.
+- Survey measurements, fitting allowances and their calculation basis are retained as proposed sizes only. Applying approved sizes requires an explicit editable revision and visible differences; issued Estimates, Orders and survey history remain immutable. Door heights require reviewed FFL, datum, threshold, below-FFL and support/subbase evidence and must not double-count extensions or support.
+- Installer-specific crew, labour, attendance, material and travel rules are workspace configuration. Ecofenster's Ecoglaze minimum-three policy must not seed another installer or workspace. Required lift-and-slide, sliding and bifold Purenit support is a visible reviewable component whose manufacturer-dimension relationship and missing price remain explicit.
+- Installation travel uses the assigned installer's configured base address and the actual site address. Retain departure, destination, one-way and return travel times, route evidence and any reviewed manual override basis; distinguish daily return from one outward/return journey around an overnight stay so they cannot both be charged. Apply the installer's snapshotted travel-cost policy, and show `Travel time not confirmed` when an address or route is unavailable.
 
 ## Ecofenster workspace protection and clean customer provisioning
 

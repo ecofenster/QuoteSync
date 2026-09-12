@@ -2,6 +2,11 @@
   display: grid;
   gap: 14px;
   min-height: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--qs-border-standard);
+  border-radius: var(--radius-card);
+  background: var(--qs-configurator-workspace-bg);
+  color: var(--qs-theme-text);
 }
 
 .b92-section-title {
@@ -95,6 +100,10 @@
   display: grid;
   gap: 12px;
   min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--qs-border-standard);
+  border-radius: var(--radius-card);
+  background: var(--qs-configurator-panel-bg);
 }
 
 .b92-configurator__preview-header {
@@ -132,7 +141,7 @@
   padding: 8px;
   border: 1px solid var(--qs-border-standard);
   border-radius: var(--radius-md);
-  background: var(--qs-bg-card);
+  background: var(--qs-configurator-drawing-surround);
 }
 
 .b92-configurator__field-targets {

@@ -102,6 +102,84 @@ export function createCommercialIdentityService(db, { now = () => new Date(), id
     return rows.map(mapEnquiry);
   }
 
+  async function getEnquirySource(enquiryId) {
+    const enquiry = await db.get("SELECT id,enquiry_ref FROM enquiries WHERE id=? AND deleted_at IS NULL", clean(enquiryId));
+    if (!enquiry) throw problem("Enquiry not found.", 404, "enquiry_not_found");
+    const intake = await db.get(`SELECT i.id intake_id,i.provider_message_id intake_provider_message_id,i.reviewed_brief,i.created_at intake_created_at,
+      m.id communication_message_id,m.provider,m.provider_message_id,m.from_json,m.to_json,m.subject,m.body_html,m.body_text,m.sent_at,m.provider_state_json
+      FROM enquiry_email_intakes i LEFT JOIN communication_messages m ON m.id=i.communication_message_id
+      WHERE i.enquiry_id=?`, enquiry.id).catch(() => null);
+    if (!intake) {
+      return {
+        enquiryId: enquiry.id,
+        enquiryRef: enquiry.enquiry_ref,
+        state: "manual",
+        message: "This Enquiry was created manually, so there is no originating email to show.",
+        overview: null,
+        original: null,
+        attachments: [],
+      };
+    }
+    if (!intake.communication_message_id) {
+      return {
+        enquiryId: enquiry.id,
+        enquiryRef: enquiry.enquiry_ref,
+        state: "missing",
+        message: "The originating email relationship is retained, but its message content is currently unavailable. Reconnect Email and refresh the message before continuing with its attachments.",
+        overview: intake.reviewed_brief ? { text: intake.reviewed_brief, kind: "reviewed_intake", label: "Reviewed enquiry overview" } : null,
+        original: null,
+        attachments: [],
+      };
+    }
+    const providerState = parseJson(intake.provider_state_json);
+    const providerMessageId = clean(intake.intake_provider_message_id || intake.provider_message_id) || null;
+    const rows = await db.all(`SELECT ca.id,ca.file_name,ca.media_type,ca.size_bytes,ca.storage_key,ca.provider_attachment_id,ca.drive_file_id,ca.sha256,ca.content_id,ca.is_inline,
+      ia.id intake_attachment_id,ia.storage_status,ia.canonical_document_id,ia.error_code,
+      d.file_name filed_file_name,d.folder_path,d.web_view_link
+      FROM communication_attachments ca
+      LEFT JOIN enquiry_intake_attachments ia ON ia.communication_attachment_id=ca.id AND ia.enquiry_email_intake_id=?
+      LEFT JOIN canonical_documents d ON d.id=ia.canonical_document_id
+      WHERE ca.communication_message_id=? ORDER BY ca.created_at,ca.id`, intake.intake_id, intake.communication_message_id);
+    return {
+      enquiryId: enquiry.id,
+      enquiryRef: enquiry.enquiry_ref,
+      state: "available",
+      message: providerState.providerRemoved
+        ? "The retained email is available, but Gmail no longer reports the original message. Filed copies remain available where shown."
+        : null,
+      overview: intake.reviewed_brief ? { text: intake.reviewed_brief, kind: "reviewed_intake", label: "Reviewed enquiry overview" } : null,
+      original: {
+        communicationMessageId: intake.communication_message_id,
+        providerMessageId,
+        providerAvailable: Boolean(providerMessageId && !providerState.providerRemoved),
+        sender: parseJson(intake.from_json, [])[0] || "Sender not recorded",
+        recipients: parseJson(intake.to_json, []),
+        subject: clean(intake.subject) || "No subject",
+        receivedAt: intake.sent_at || intake.intake_created_at,
+        bodyText: String(intake.body_text || ""),
+        bodyHtmlRetained: Boolean(clean(intake.body_html)),
+      },
+      attachments: rows.map((row) => ({
+        id: row.id,
+        fileName: row.file_name,
+        mediaType: row.media_type,
+        sizeBytes: Number(row.size_bytes || 0),
+        contentId: row.content_id || null,
+        inline: Boolean(row.is_inline),
+        classification: row.is_inline ? "inline_signature_resource" : String(row.media_type || "").startsWith("image/") ? "image_attachment" : "document_attachment",
+        selectedForFiling: Boolean(row.intake_attachment_id),
+        providerAttachmentId: row.provider_attachment_id || null,
+        providerAvailable: Boolean(providerMessageId && row.provider_attachment_id && !providerState.providerRemoved),
+        storageStatus: row.storage_status || "not_selected",
+        storageErrorCode: row.error_code || null,
+        canonicalDocumentId: row.canonical_document_id || null,
+        filedFileName: row.filed_file_name || null,
+        folderPath: row.folder_path || null,
+        webViewLink: row.web_view_link || null,
+      })),
+    };
+  }
+
   async function createProject(input = {}) {
     const clientId = clean(input.clientId), name = clean(input.name);
     if (!clientId) throw problem("Project creation requires a Client.", 422, "project_client_required");
@@ -185,7 +263,22 @@ export function createCommercialIdentityService(db, { now = () => new Date(), id
     };
   }
 
-  return { createEnquiry, listEnquiries, qualifyEnquiry, createProject, listProjects, provisionProjectDrive: provisionProjectOutcome };
+  async function fileReviewedEnquiryAttachments(enquiryId) {
+    const enquiry = await db.get(`${enquirySelect} WHERE e.id=? AND e.deleted_at IS NULL`, clean(enquiryId));
+    if (!enquiry) throw problem("Enquiry not found.", 404, "enquiry_not_found");
+    if (!enquiry.converted_project_id) throw problem("Connect this Enquiry to a Client and Project before filing its reviewed attachments.", 409, "enquiry_project_required");
+    const driveProvisioning = await provisionProjectOutcome(enquiry.converted_project_id);
+    const attachmentStorage = driveProvisioning.status === "provisioned" && driveTransitions?.storeReviewedEnquiryAttachments
+      ? await driveTransitions.storeReviewedEnquiryAttachments(enquiry.id, enquiry.converted_project_id).catch((cause) => ({ status: "failed", stored: 0, failed: 0, pending: 0, files: [], code: clean(cause?.code) || "attachment_storage_failed", message: "The Client and Project are retained, but the selected email attachments could not be filed. Check the provider connection and retry safely." }))
+      : { status: driveProvisioning.status === "provisioned" ? "no_reviewed_attachments" : "pending_folder_provisioning", stored: 0, failed: 0, pending: 0, files: [] };
+    const driveTransitionStatus = driveProvisioning.status === "provisioned"
+      ? attachmentStorage.status === "failed" || attachmentStorage.status === "partial_failure" ? "failed" : "linked"
+      : driveProvisioning.status === "not_configured" ? "not_required" : driveProvisioning.status === "failed" ? "failed" : "pending";
+    await db.run("UPDATE enquiries SET drive_transition_status=?,updated_at=? WHERE id=?", driveTransitionStatus, timestamp(now), enquiry.id);
+    return { enquiry: mapEnquiry(await db.get(`${enquirySelect} WHERE e.id=?`, enquiry.id)), driveProvisioning, attachmentStorage };
+  }
+
+  return { createEnquiry, listEnquiries, getEnquirySource, qualifyEnquiry, fileReviewedEnquiryAttachments, createProject, listProjects, provisionProjectDrive: provisionProjectOutcome };
 }
 
-function parseJson(value) { try { return JSON.parse(value || "{}"); } catch { return {}; } }
+function parseJson(value, fallback = {}) { try { return JSON.parse(value || JSON.stringify(fallback)); } catch { return fallback; } }

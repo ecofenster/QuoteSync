@@ -28,6 +28,7 @@ type DashboardProjection = {
 };
 
 type SearchResult = { kind: string; id: string; label: string; description: string; target: CrmRecordTarget };
+const ATTENTION_PAGE_SIZE = 4;
 
 type Props = {
   clients: Client[];
@@ -79,13 +80,14 @@ export default function MainDashboard({ activeUserName = "User", onOpenMenu, onO
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [attentionVisible, setAttentionVisible] = useState(ATTENTION_PAGE_SIZE);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError("");
     apiFetch("/api/crm/dashboard")
-      .then((value) => { if (!cancelled) setProjection(value as DashboardProjection); })
+      .then((value) => { if (!cancelled) { setProjection(value as DashboardProjection); setAttentionVisible(ATTENTION_PAGE_SIZE); } })
       .catch((cause) => { if (!cancelled) setError(cause instanceof Error ? cause.message : "Today’s work could not be loaded."); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -153,7 +155,8 @@ export default function MainDashboard({ activeUserName = "User", onOpenMenu, onO
       <div className="qs-dashboard-columns">
         <section className="qs-dashboard-panel qs-dashboard-panel--attention">
           <header><div><p className="qs-dashboard-eyebrow">Act first</p><h2>Needs attention</h2></div><span>{projection.attention.length} open</span></header>
-          <div className="qs-dashboard-work-list">{projection.attention.length ? projection.attention.map((item) => <WorkItemRow key={item.id} item={item} onOpen={openTarget} />) : <Empty>Nothing overdue or unanswered. Review today’s work next.</Empty>}</div>
+          <div className="qs-dashboard-work-list">{projection.attention.length ? projection.attention.slice(0,attentionVisible).map((item) => <WorkItemRow key={item.id} item={item} onOpen={openTarget} />) : <Empty>Nothing overdue or unanswered. Review today’s work next.</Empty>}</div>
+          {projection.attention.length ? <footer className="qs-dashboard-panel__reveal"><span role="status">Showing {Math.min(attentionVisible,projection.attention.length)} of {projection.attention.length}</span><div>{attentionVisible>ATTENTION_PAGE_SIZE?<button type="button" className="ui-button ui-button--ghost" onClick={()=>setAttentionVisible(ATTENTION_PAGE_SIZE)}>Show fewer</button>:null}{attentionVisible<projection.attention.length?<button type="button" className="ui-button" onClick={()=>setAttentionVisible((current)=>Math.min(current+ATTENTION_PAGE_SIZE,projection.attention.length))}>Show more</button>:null}</div></footer>:null}
         </section>
 
         <aside className="qs-dashboard-side">

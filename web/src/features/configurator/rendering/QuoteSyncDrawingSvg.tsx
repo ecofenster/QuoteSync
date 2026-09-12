@@ -46,8 +46,8 @@ function renderShape(shape: DrawingShape, key: string) {
 function renderMarker(marker: DrawingMarker, key: string) {
   return (
     <g key={key}>
-      <circle cx={marker.x} cy={marker.y} r={marker.radius} fill="#fff" stroke="#111" strokeWidth={1} />
-      <text x={marker.x} y={marker.y + 4} textAnchor="middle" fontSize={14} fontWeight={600} fill="#111">
+      <circle cx={marker.x} cy={marker.y} r={marker.radius} fill="var(--qs-drawing-marker-bg)" stroke="var(--qs-drawing-annotation)" strokeWidth={1} />
+      <text x={marker.x} y={marker.y + 4} textAnchor="middle" fontSize={14} fontWeight={600} fill="var(--qs-drawing-annotation)">
         {marker.value}
       </text>
     </g>
@@ -56,7 +56,12 @@ function renderMarker(marker: DrawingMarker, key: string) {
 
 function renderHandle(handle: DrawingHandle, key: string) {
   const size = handle.size;
-  return <line key={key} x1={handle.x} y1={handle.y - size} x2={handle.x} y2={handle.y + size} stroke="#111" strokeWidth={1.6} strokeLinecap="round" />;
+  return <line key={key} x1={handle.x} y1={handle.y - size} x2={handle.x} y2={handle.y + size} stroke="var(--qs-drawing-annotation)" strokeWidth={1.6} strokeLinecap="round" />;
+}
+
+function renderAnnotationShape(shape: DrawingShape, key: string) {
+  if (shape.kind !== "line") return renderShape(shape, key);
+  return <line key={key} x1={shape.x1} y1={shape.y1} x2={shape.x2} y2={shape.y2} stroke="var(--qs-drawing-annotation)" strokeWidth={shape.strokeWidth ?? 1} strokeDasharray={shape.dashed ? "6 6" : undefined} />;
 }
 
 function parseCellKey(key: string) {
@@ -85,21 +90,21 @@ export default function QuoteSyncDrawingSvg(props: Props) {
 
   return (
     <svg viewBox={`0 0 ${model.viewBox.width} ${model.viewBox.height}`} width="100%" height="100%" className="qs-migrated-238">
-      <rect x={0} y={0} width={model.viewBox.width} height={model.viewBox.height} fill="#ffffff" />
+      <rect x={0} y={0} width={model.viewBox.width} height={model.viewBox.height} fill="var(--qs-drawing-artboard-bg)" />
 
       {model.elements.flatMap((element) => element.shapes.map((shape, index) => renderShape(shape, `${element.id}-${index}`)))}
 
       {model.annotations.dimensions.map((dimension, index) => (
         <g key={`dimension-${index}`} fill="none" fontFamily="ui-sans-serif, system-ui, -apple-system">
-          {renderShape(dimension.line, `dimension-line-${index}`)}
-          {renderShape(dimension.tickA, `dimension-tick-a-${index}`)}
-          {renderShape(dimension.tickB, `dimension-tick-b-${index}`)}
+          {renderAnnotationShape(dimension.line, `dimension-line-${index}`)}
+          {renderAnnotationShape(dimension.tickA, `dimension-tick-a-${index}`)}
+          {renderAnnotationShape(dimension.tickB, `dimension-tick-b-${index}`)}
           <text
             x={dimension.text.x}
             y={dimension.text.y}
             textAnchor={dimension.text.anchor || "middle"}
             fontSize={dimension.text.fontSize ?? 12}
-            fill={dimension.text.fill || "#111"}
+            fill="var(--qs-drawing-annotation)"
             transform={dimension.text.rotate ? `rotate(${dimension.text.rotate} ${dimension.text.x} ${dimension.text.y})` : undefined}
           >
             {dimension.text.value}
@@ -108,7 +113,7 @@ export default function QuoteSyncDrawingSvg(props: Props) {
       ))}
 
       {model.annotations.labels.map((label, index) => (
-        <text key={`label-${index}`} x={label.x} y={label.y} textAnchor={label.anchor || "start"} fontSize={label.fontSize ?? 10} fontWeight={label.fontWeight ?? 500} fill={label.fill || "#71717a"}>
+        <text key={`label-${index}`} x={label.x} y={label.y} textAnchor={label.anchor || "start"} fontSize={label.fontSize ?? 10} fontWeight={label.fontWeight ?? 500} fill="var(--qs-drawing-annotation-muted)">
           {label.value}
         </text>
       ))}

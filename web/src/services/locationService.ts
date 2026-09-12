@@ -317,12 +317,14 @@ export async function resolveEstimateLocation(
   if (fallbackWords && opts.what3wordsApiKey) {
     const coords = await convertWhat3Words(fallbackWords, opts.what3wordsApiKey);
     if (coords) {
+      const usesClientFallback = !words;
       const resolved: ResolvedClientLocation = {
         ...coords,
         source: "what3words",
-        label: `what3words: ${fallbackWords}`,
+        label: `${usesClientFallback ? "Client address fallback: " : ""}what3words: ${fallbackWords}`,
         resolvedAt: new Date().toISOString(),
         inputKey,
+        isClientAddressFallback: usesClientFallback,
       };
       saveCachedLocation("estimate", estimate.id, resolved);
       return resolved;
