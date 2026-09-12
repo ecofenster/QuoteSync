@@ -1003,6 +1003,13 @@ function parseEkoWebItemised(document) {
     const markerIndex = marker.page.blocks.indexOf(marker.block);
     const quantityBlock = marker.page.blocks.slice(markerIndex + 1).find((block) => /^Quantity\s*:/i.test(String(block.text).trim()));
     const system = ekoWebSystem(marker.page.blocks.map((block) => ({ ...block, text: String(block.text).trim(), pageNumber: marker.page.pageNumber })), markerIndex);
+    const following=marker.page.blocks.slice(markerIndex+1);
+    const nextMarker=following.findIndex(block=>/^(Window|Door)\s+\d{3}$/i.test(String(block.text).trim()));
+    const colourBlocks=(nextMarker<0?following:following.slice(0,nextMarker)).filter(block=>/^Colour\s*:\s*\S/i.test(String(block.text).trim()));
+    const colour=colourBlocks.length===1?colourBlocks[0]:null;
+    const colourValue=colour?String(colour.text).trim().replace(/^Colour\s*:\s*/i,''):null;
+    const colourFieldId=`eko-web-${marker.reference}-colour`;
+    const sourceSpecification=colour?{version:'manufacturer-source-specification-v1',supplierInterpretation:'eko_web_itemised_colour_v1',sourceAttachmentId:document.attachmentId,sourceAttachmentHash:document.sourceSha256,sourcePage:marker.page.pageNumber,sourcePages:[marker.page.pageNumber],coordinateSpace:'pdf_points',fieldCount:1,sections:[{name:'Finish',fields:[{id:colourFieldId,ordinal:0,section:'Finish',label:'Colour',rawValue:colourValue,sourceText:colour.text,sourcePage:marker.page.pageNumber,boundingRegion:colour.boundingBox,coordinateSpace:'pdf_points',evidenceClass:'explicit',confidence:'strong',reviewStatus:'mapped_automatic',sourceBlockIds:[colour.id]}]}],canonical:{finish:{value:colourValue,manufacturerSourceValue:colourValue,sourceFieldIds:[colourFieldId]}}}:null;
     const dimensions = ekoWebOverallDimensions(marker.page, markerIndex);
     const priceLabel = positionBlocks.findIndex((block) => /^Price$/i.test(block.text));
     const priceBlock = priceLabel >= 0 ? positionBlocks.slice(priceLabel + 1, priceLabel + 8).find((block) => /^[£€$]\s*[\d,.]+$/.test(block.text)) : null;
@@ -1013,6 +1020,7 @@ function parseEkoWebItemised(document) {
     const glazingBlock = positionBlocks.find((block) => /\[Ug\s*=\s*[\d.,]+\]/i.test(block.text));
     const warnings = [
       ...(!system.value ? ['The product/system brand was not identified from the explicit system evidence.'] : []),
+      ...(colourBlocks.length>1?['Multiple Colour headings require review; no product colour was selected automatically.']:[]),
       ...(!quantity ? ['Position quantity was not recognised.'] : []),
       ...(!dimensions.widthMm || !dimensions.heightMm ? ['Overall position dimensions were not reconstructed from the source drawing dimensions.'] : []),
       ...(!totalPrice || !currency ? ['Position price or currency was not recognised.'] : []),
@@ -1024,6 +1032,7 @@ function parseEkoWebItemised(document) {
       manufacturerItemNumber: marker.reference,
       product: marker.product,
       productSystem: system.value,
+      sourceSpecification,
       quantity,
       widthMm: dimensions.widthMm,
       heightMm: dimensions.heightMm,

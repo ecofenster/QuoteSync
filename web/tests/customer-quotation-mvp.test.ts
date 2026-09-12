@@ -12,6 +12,12 @@ import { manufacturerVisualOrientation, manufacturerVisualOrientationLabel } fro
 import { CUSTOMER_SAFE_MANUFACTURER_SPECIFICATION_POLICY, projectCustomerSafeManufacturerSpecification } from "../src/features/customerQuotation/customerSafeManufacturerSpecification";
 
 const configuredContract = { schemaVersion: 1, source: "b92_configurator", product: { systemCode: "B92" } };
+test('unsided supplier colour remains customer-safe without inventing inside or outside finishes',()=>{
+  const colour='RAL: 7016 (Anthracite grey) Matt';
+  const result=projectCustomerSafeManufacturerSpecification({canonicalSpecification:{finish:{value:colour}}});
+  assert.deepEqual(result.items.filter(item=>item.category==='finishes'),[{concept:'finish',category:'finishes',label:'Colour',value:colour}]);
+  assert.equal(projectCustomerSafeManufacturerSpecification({}).items.some(item=>item.concept==='finish'),false);
+});
 const estimate = { id: "estimate-1", estimateRef: "EF-EST-MVP-001", projectName: "Canonical Project", projectAddress: "1 Test Street", positions: [
   { id: "position-1", positionRef: "W01", roomName: "Kitchen", configuredContract },
 ] } as any;

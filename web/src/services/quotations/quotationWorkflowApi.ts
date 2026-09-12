@@ -7,11 +7,15 @@ export type IssuedQuotationView={id:string;status:"prepared_not_sent"|"issued"|"
 export type EstimateWorkflowState={estimateId:string;manufacturerQuoteImported:boolean;costingReady:boolean;quotationReviewed:boolean;quotationPrepared:boolean;quotationStatus:string|null;quotationLifecycleStatus:IssuedQuotationLifecycleStatus|null;quotationIssued:boolean;issuedQuotationId:string|null;followUpDue:boolean;followUpDueDate:string|null;followUpCompleted:boolean;followUpId:string|null;customerAccepted:boolean;orderCreated:boolean};
 export type CustomerEstimateTerms={estimateId:string;validityDays:number;terms:string[];exclusions:string[];reviewed:boolean;reviewedBy:string|null;reviewedAt:string|null};
 const json={"Content-Type":"application/json"};
+async function issuedView(request:Promise<unknown>):Promise<IssuedQuotationView>{
+  const view=await request as IssuedQuotationView;
+  return view.document?.downloadUrl.startsWith('/api/')?{...view,document:{...view.document,downloadUrl:apiUrl(view.document.downloadUrl)}}:view;
+}
 export const quotationWorkflowApi={
-  prepare:(input:{estimateId:string;clientId:string;estimateRevision:number;quotationRevision:number;projection:CustomerQuotationProjection;recipient:string;subject?:string;bodyHtml?:string;termsSnapshot?:string|null})=>apiFetch("/api/quotation-workflow/prepare",{method:"POST",headers:json,body:JSON.stringify(input)}) as Promise<IssuedQuotationView>,
-  send:(id:string,input:{recipient:string;subject:string;bodyHtml:string})=>apiFetch(`/api/quotation-workflow/issued/${encodeURIComponent(id)}/send`,{method:"POST",headers:json,body:JSON.stringify(input)}) as Promise<IssuedQuotationView>,
-  withdraw:(id:string,reason:string)=>apiFetch(`/api/quotation-workflow/issued/${encodeURIComponent(id)}/withdraw`,{method:"POST",headers:json,body:JSON.stringify({reason})}) as Promise<IssuedQuotationView>,
-  get:(id:string)=>apiFetch(`/api/quotation-workflow/issued/${encodeURIComponent(id)}`) as Promise<IssuedQuotationView>,
+  prepare:(input:{estimateId:string;clientId:string;estimateRevision:number;quotationRevision:number;projection:CustomerQuotationProjection;recipient:string;subject?:string;bodyHtml?:string;termsSnapshot?:string|null})=>issuedView(apiFetch("/api/quotation-workflow/prepare",{method:"POST",headers:json,body:JSON.stringify(input)})),
+  send:(id:string,input:{recipient:string;subject:string;bodyHtml:string})=>issuedView(apiFetch(`/api/quotation-workflow/issued/${encodeURIComponent(id)}/send`,{method:"POST",headers:json,body:JSON.stringify(input)})),
+  withdraw:(id:string,reason:string)=>issuedView(apiFetch(`/api/quotation-workflow/issued/${encodeURIComponent(id)}/withdraw`,{method:"POST",headers:json,body:JSON.stringify({reason})})),
+  get:(id:string)=>issuedView(apiFetch(`/api/quotation-workflow/issued/${encodeURIComponent(id)}`)),
   getCustomerTerms:(estimateId:string)=>apiFetch(`/api/quotation-workflow/estimates/${encodeURIComponent(estimateId)}/customer-terms`) as Promise<CustomerEstimateTerms>,
   saveCustomerTerms:(estimateId:string,input:{validityDays:number;terms:string[];exclusions:string[]})=>apiFetch(`/api/quotation-workflow/estimates/${encodeURIComponent(estimateId)}/customer-terms`,{method:"PUT",headers:json,body:JSON.stringify(input)}) as Promise<CustomerEstimateTerms>,
   state:(estimateId:string)=>apiFetch(`/api/quotation-workflow/estimates/${encodeURIComponent(estimateId)}/state`) as Promise<EstimateWorkflowState>,

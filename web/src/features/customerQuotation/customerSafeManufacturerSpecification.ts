@@ -17,7 +17,7 @@ export type CustomerSafeManufacturerSpecification = {
 export const CUSTOMER_SAFE_MANUFACTURER_SPECIFICATION_POLICY = Object.freeze({
   version: "customer-safe-manufacturer-specification-policy-v1",
   customerDefaultConcepts: Object.freeze([
-    "system", "configuration", "external_finish", "internal_finish", "glazing_build_up", "glass_thickness",
+    "system", "configuration", "finish", "external_finish", "internal_finish", "glazing_build_up", "glass_thickness",
     "spacer", "acoustic", "solar_factor", "light_transmission", "hardware", "operation", "locking", "security",
     "customer_accessory",
   ]),
@@ -179,6 +179,8 @@ export function projectCustomerSafeManufacturerSpecification(
 
   add(items, { concept: "external_finish", category: "finishes", label: "External", value: finishValue(canonical.externalFinish) });
   add(items, { concept: "internal_finish", category: "finishes", label: "Internal", value: finishValue(canonical.internalFinish) });
+  // A supplier's unsided Colour statement is not evidence of separate finishes.
+  if(!canonical.externalFinish&&!canonical.internalFinish)add(items, { concept: "finish", category: "finishes", label: "Colour", value: valueOf(canonical.finish) });
 
   add(items, { concept: "glazing_build_up", category: "glazing", label: "Glazing", value: glazingBuildUp(evidence, canonical, panes) });
   const spacers = unique(panes.map((pane) => normalizedSpacer(text(pane.warmEdge))));

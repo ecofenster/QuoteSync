@@ -34,7 +34,8 @@ const DEBUG_PORT = 9416;
 const CUSTOMER = "customer.journey@example.test";
 const FACTORY = "factory.journey@example.test";
 const OUTPUT = path.resolve("test-output/complete-customer-order-journey");
-const overallSourceReview=process.argv.includes('--stop-after-source-backed-overall-review');
+const sourceCustomerPreparation=process.argv.includes('--stop-after-source-backed-customer-preparation');
+const overallSourceReview=sourceCustomerPreparation||process.argv.includes('--stop-after-source-backed-overall-review');
 const receivedSupplierReviews=process.argv.includes('--stop-after-received-supplier-reviews');
 const multiSupplierReview=receivedSupplierReviews||process.argv.includes('--stop-after-multi-supplier-review');
 const providerJourneyRequested=overallSourceReview||receivedSupplierReviews||['--stop-after-supplier-filing','--stop-after-supplier-review','--stop-after-multi-supplier-review'].some(flag=>process.argv.includes(flag));
@@ -334,6 +335,11 @@ async function run() {
         await waitFor(()=>tab.evaluate(`Boolean(${overall})`),'Overall customer checks are unavailable after source filing');
         await fillLabels(`${overall}.querySelectorAll('article')[0]`,{'Field':'external_finish','Before':'White','Requested':finish,'After':finish,'Before source':'Disposable issued Estimate, Position 001, External finish','After source':'web-26-1133450.pdf, page 1, Window 001, Colour'});
         await fillLabels(`${overall}.querySelectorAll('article')[1]`,{'Field':'quotation_reference','Before':'Not confirmed','Requested':'WEB/26/1133450','After':'WEB/26/1133450','Before source':'Disposable customer request, general reference confirmation','After source':'web-26-1133450.pdf, page 1, Price details'});
+        if(sourceCustomerPreparation){
+          await click(tab,'Add unrelated material change');
+          await fillLabels(`${overall}.querySelectorAll('article')[2]`,{'Field':'additional_positions','Before':'001 only','Requested':'001 only','After':'001, 002, 003, 004, 005','Before source':'Disposable issued Estimate schedule','After source':'WEB/26/1133450, pages 1–7, complete position schedule','Resolution note':'Staff explicitly accepts four additional source Positions for this disposable successor offer; the original one-Position issued offer remains unchanged.'});
+          await tab.evaluate(`${overall}.querySelectorAll('article')[2].querySelector('input[type=checkbox]').click()`);
+        }
         await click(tab,'Verify changes');await waitFor(()=>tab.evaluate("document.body.innerText.includes('ready for customer-document review')"),'Overall source-backed review did not reach customer-document readiness');
         const evidenceDb=await open({filename:databasePath,driver:sqlite3.Database,mode:sqlite3.OPEN_READONLY});
         try{
@@ -345,7 +351,33 @@ async function run() {
           assert.equal((await evidenceDb.get('SELECT COUNT(*) count FROM issued_quotations')).count,1,'Verification automatically issued a customer document');
           assert.deepEqual(JSON.parse((await evidenceDb.get('SELECT positions_json FROM estimates WHERE id=?',fixture.estimateId)).positions_json).map(item=>item.id),['test-position-w01']);
         }finally{await evidenceDb.close()}
-        console.log(JSON.stringify({scope:'Normal source-backed Position review and overall verification',source:'WEB/26/1133450 page 1 Window 001',exactCanonicalPositionRetained:true,automaticCustomerIssue:false,customerReissueVerified:false}));return;
+        console.log(JSON.stringify({scope:'Normal source-backed Position review and overall verification',source:'WEB/26/1133450 page 1 Window 001',exactCanonicalPositionRetained:true,automaticCustomerIssue:false,customerReissueVerified:false}));
+        if(sourceCustomerPreparation){
+          await click(tab,'Open working Estimate');await waitFor(()=>tab.evaluate("document.body.innerText.includes('Review Customer Quotation')"),'Working Estimate did not expose customer review');
+          await click(tab,'Review Customer Quotation');await waitFor(()=>tab.evaluate("Boolean(document.querySelector('.customer-quotation__totals'))"),'Customer quotation preview did not load');
+          const previewText=await tab.evaluate("document.querySelector('.customer-quotation__dialog').innerText");
+          for(const reference of ['001','002','003','004','005'])assert.ok(previewText.includes(reference),`Customer preview omits Position ${reference}`);
+          assert.ok(previewText.includes('7016'),'Customer preview omits the reviewed source-backed external finish');
+          await click(tab,'Review terms');await input(tab,'.customer-quotation__terms-editor input','30');
+          await input(tab,'.customer-quotation__terms-editor textarea','Disposable acceptance offer only. All sizes remain subject to reviewed survey.');
+          await click(tab,'Confirm for this Estimate');await waitFor(()=>tab.evaluate("document.body.innerText.includes('Customer terms reviewed')"),'Customer terms did not persist');
+          await click(tab,'Send to Client');await waitFor(()=>tab.evaluate("document.body.innerText.includes('Email ready to review')&&document.body.innerText.includes('Nothing has been sent')"),'Reviewed customer Email preparation failed');
+          const preparedDb=await open({filename:databasePath,driver:sqlite3.Database,mode:sqlite3.OPEN_READONLY});
+          try{
+            const prepared=await preparedDb.get("SELECT * FROM issued_quotations WHERE status<>'issued'");assert.ok(prepared?.document_id);assert.ok(prepared.supplier_review_snapshot);assert.equal(prepared.recipient,CUSTOMER);
+            assert.equal((await preparedDb.get("SELECT COUNT(*) count FROM issued_quotations WHERE status='issued'")).count,1);
+            const savedPdf=await preparedDb.get('SELECT * FROM customer_quotation_documents WHERE id=?',prepared.document_id);
+            const pdfUrl=await tab.evaluate("document.querySelector('.customer-quotation__email-evidence a').href");
+            const download=await fetch(pdfUrl);assert.equal(download.status,200);const pdfBytes=Buffer.from(await download.arrayBuffer());assert.equal(sha256(pdfBytes),savedPdf.sha256);
+            const emailAttachment=await preparedDb.get('SELECT sha256 FROM communication_attachments WHERE communication_message_id=?',prepared.communication_message_id);assert.equal(emailAttachment.sha256,savedPdf.sha256);
+            const customerProjection=JSON.parse(savedPdf.projection_json);assert.equal(customerProjection.positions.length,5);assert.equal(customerProjection.positions.find(item=>item.reference==='001').specification.find(item=>item.label==='Colour').value,finish);
+            const pdfFile=path.join(OUTPUT,'source-backed-prepared-customer-estimate.pdf');await writeFile(pdfFile,pdfBytes);
+            const pdfEvidence=await inspectPdf(pdfFile,['001','002','003','004','005','7016','Disposable acceptance offer only']);console.log(JSON.stringify({preparedPdf:pdfEvidence,emailAttachmentMatchesSavedPdf:true,customerTotal:customerProjection.totalIncVatGbp}));
+          }finally{await preparedDb.close()}
+          const screenshot=await tab.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});await writeFile(path.join(OUTPUT,'source-backed-customer-preparation.png'),Buffer.from(screenshot.data,'base64'));
+          console.log(JSON.stringify({scope:'Source-backed complete-schedule review → normal customer preview → reviewed terms → retained Email/PDF preparation',positions:5,additionalPositionsExplicitlyReviewed:true,sent:false,customerReissueVerified:false}));
+        }
+        return;
       }
       await tab.evaluate(`(()=>{const section=${supplierSelector};for(const [label,value] of [['Field','quotation_reference'],['Before','Original disposable issued quotation'],['Requested','A new revised quotation reference'],['Returned','WEB/26/1133450'],['Before source / page','Disposable issued Estimate overview'],['Returned source / page','web-26-1133450.pdf, page 1, quotation reference']]){const field=[...section.querySelectorAll('label')].find(item=>item.textContent===label).querySelector('input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(field,value);field.dispatchEvent(new Event('input',{bubbles:true}))}})()`);
       await click(tab,'Save supplier review');
@@ -444,6 +476,11 @@ async function run() {
     const proofDb = await open({ filename: databasePath, driver: sqlite3.Database, mode: sqlite3.OPEN_READONLY }); const proof = { originalEstimateStatus: (await proofDb.get("SELECT status FROM estimates WHERE id=?", fixture.estimateId)).status, successorRevision: (await proofDb.get("SELECT revision_no FROM estimates WHERE id=?", successor.id)).revision_no, orderStatus: (await proofDb.get("SELECT status FROM orders WHERE id=?", order.id)).status, reviewCount: (await proofDb.get("SELECT COUNT(*) count FROM portal_review_submissions")).count, revisionCheckCount: (await proofDb.get("SELECT COUNT(*) count FROM revision_change_checks")).count, confirmationCheckCount: (await proofDb.get("SELECT COUNT(*) count FROM factory_confirmation_checks")).count, signedPdfReviewCount: (await proofDb.get("SELECT COUNT(*) count FROM factory_confirmation_signed_pdf_reviews")).count }; await proofDb.close();
     assert.equal(proof.originalEstimateStatus, "Issued"); assert.equal(proof.successorRevision, 2); assert.equal(proof.orderStatus, "customer_final_confirmation_approved"); assert.equal(proof.signedPdfReviewCount, 1);
     console.log(JSON.stringify({ mode: "development_test_adapter", delivery: "preview_only", addresses: { customerConfigured: true, factoryConfigured: true }, journey: proof, contentAgreement: { immutableEstimateSha256: issuedRow.sha256, downloadSha256: pdfEvidence[0].sha256, portalDownloadSha256: successorPortalEstimateHash.hash, releaseDocumentId: releaseRow.document_id, issuedDocumentId: issuedRow.id, emailAttachmentSha256: emailAttachment.sha256, emailAttachmentStorageKey: emailAttachment.storage_key, previewAndIssueShareRenderer: true }, pdfEvidence: [...pdfEvidence, previewEvidence], screenshots: OUTPUT, browserCleanup: { ownedProcesses: cleanup.ownedBrowserProcessesRemaining, ownedProfiles: cleanup.ownedTemporaryProfilesRemaining } }, null, 2));
+  } catch(error) {
+    if(tab){
+      try{console.error(JSON.stringify({journeyFailureUi:await tab.evaluate('document.body.innerText'),browserErrors:tab.diagnostics,failedRequests:tab.failures}));}catch{}
+    }
+    throw error;
   } finally {
     try{await dispose()}finally{process.removeListener('SIGINT',interrupt);process.removeListener('SIGTERM',interrupt);process.removeListener('SIGBREAK',interrupt);}
   }
