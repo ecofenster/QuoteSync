@@ -278,10 +278,20 @@ test("supplier enquiry preview and returned evidence stay linked to one canonica
   assert.equal(enquiry.status,"draft");assert.deepEqual(enquiry.documents.map(item=>item.id),["document-safe"]);assert.equal((await source.db.get("SELECT COUNT(*) count FROM supplier_enquiry_drafts WHERE project_id='project-a1'")).count,1);
   const response=await communications.save({id:"supplier-response-a1",provider:"fixture",providerMessageId:"supplier-response-a1",direction:"inbound",folder:"inbox",status:"received",from:["factory@example.test"],to:["sales@example.test"],cc:[],bcc:[],subject:"Re: TEST supplier enquiry",bodyHtml:"",bodyText:"Quotation attached",links:[],attachments:[]});
   await assert.rejects(()=>lifecycle.linkManufacturerResponse("project-a1",{estimateId:"estimate-a1",supplierEnquiryId:enquiry.id,communicationMessageId:enquiry.communicationMessageId,canonicalDocumentId:"document-safe",createdBy:"staff-1"}),error=>error.code==="manufacturer_response_message_invalid");
+  const acknowledged=await lifecycle.linkManufacturerResponse("project-a1",{estimateId:"estimate-a1",supplierEnquiryId:enquiry.id,communicationMessageId:response.id,createdBy:"staff-1"});
+  assert.equal(acknowledged.status,"review_required");
+  assert.equal((await source.db.get("SELECT COUNT(*) count FROM workflow_events WHERE event_name='supplier.quote_returned'")).count,0);
+  assert.equal((await source.db.get("SELECT status FROM manufacturer_response_links WHERE id=?",acknowledged.id)).status,"review_required");
   const linked=await lifecycle.linkManufacturerResponse("project-a1",{estimateId:"estimate-a1",supplierEnquiryId:enquiry.id,communicationMessageId:response.id,canonicalDocumentId:"document-safe",createdBy:"staff-1"});
   assert.equal(linked.status,"ready_for_import");assert.equal(linked.nextAction,"Review with Manufacturer Import");
   assert.equal((await source.db.get("SELECT COUNT(*) count FROM workflow_events WHERE event_name='supplier.quote_returned'")).count,1);
   const replay=await lifecycle.linkManufacturerResponse("project-a1",{estimateId:"estimate-a1",supplierEnquiryId:enquiry.id,communicationMessageId:response.id,canonicalDocumentId:"document-safe",createdBy:"staff-1"});assert.equal(replay.idempotentReplay,true);
+  assert.equal(replay.nextAction,"Review with Manufacturer Import");
+  const late=await communications.save({...response,id:"late-acknowledgement",providerMessageId:"late-acknowledgement",subject:"Thank you"});
+  await lifecycle.linkManufacturerResponse("project-a1",{estimateId:"estimate-a1",supplierEnquiryId:enquiry.id,communicationMessageId:late.id,createdBy:"staff-1"});
+  assert.equal((await source.db.get('SELECT response_state FROM supplier_enquiry_drafts WHERE id=?',enquiry.id)).response_state,"revised_document_received");
+  assert.equal((await source.db.get("SELECT COUNT(*) count FROM workflow_events WHERE event_name='supplier.quote_returned'")).count,1);
+  await assert.rejects(()=>lifecycle.linkManufacturerResponse("project-a1",{estimateId:"estimate-a1",communicationMessageId:response.id,canonicalDocumentId:"document-safe",createdBy:"staff-1"}),error=>error.code==="manufacturer_response_link_conflict");
   await assert.rejects(()=>lifecycle.prepareSupplierEnquiry("project-a2",{estimateId:"estimate-a2",supplierId:"TEST-SUPPLIER",recipient:"factory@example.test",subject:"Wrong Project",bodyText:"No",documentIds:["document-safe"],createdBy:"staff-1"}),error=>error.code==="supplier_enquiry_document_invalid");
 });
 
