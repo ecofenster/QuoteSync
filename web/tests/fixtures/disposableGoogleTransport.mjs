@@ -10,6 +10,16 @@ export function createDisposableGoogleTransport({messages=[],attachments=new Map
   if(url.hostname==='gmail.googleapis.com'){
    if(method!=='GET')throw new Error('Disposable provider refuses Gmail writes and delivery.');
    if(url.pathname.endsWith('/labels'))return json({labels:[]});
+   if(url.pathname.endsWith('/profile'))return json({historyId:'1'});
+   if(url.pathname.endsWith('/history'))return json({historyId:'1',history:[]});
+   const thread=url.pathname.match(/\/threads\/([^/]+)$/);
+   if(thread){const id=decodeURIComponent(thread[1]);return json({id,messages:messages.filter(message=>message.threadId===id)});}
+   if(url.pathname.endsWith('/threads')){
+    const sender=url.searchParams.get('q')?.match(/from:([^\s]+)/)?.[1],label=url.searchParams.get('labelIds');
+    const filtered=messages.filter(message=>(!label||message.labelIds?.includes(label))&&(!sender||message.payload?.headers?.some(header=>header.name.toLowerCase()==='from'&&header.value.includes(sender))));
+    const ids=[...new Set(filtered.map(message=>message.threadId))],offset=Number(url.searchParams.get('pageToken')||0),end=offset+pageSize;
+    return json({threads:ids.slice(offset,end).map(id=>({id})),...(end<ids.length?{nextPageToken:String(end)}:{})});
+   }
    const attachment=url.pathname.match(/\/messages\/([^/]+)\/attachments\/([^/]+)$/);
    if(attachment){const bytes=attachments.get(`${decodeURIComponent(attachment[1])}:${decodeURIComponent(attachment[2])}`);return bytes?json({data:Buffer.from(bytes).toString('base64url'),size:bytes.length}):json({error:{message:'Disposable attachment not found'}},404);}
    const message=url.pathname.match(/\/messages\/([^/]+)$/);

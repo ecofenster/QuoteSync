@@ -566,13 +566,6 @@ export default function ScenarioCostingWorksheet({
   const commercialActions = useEstimateCommercialActions();
   const customerPolicy = useCustomerViewPolicy();
   const runtimeHealth = useOptionalRuntimeHealth();
-  useEffect(() => {
-    if (!commercialActions) return;
-    const open = () => commercialActions.openManufacturerImport();
-    window.addEventListener("quotesuite:import-manufacturer-quote", open);
-    return () =>
-      window.removeEventListener("quotesuite:import-manufacturer-quote", open);
-  }, [commercialActions]);
   const commercialScenario = scenario as WorksheetScenario & {
     supplierCommercialPolicies?: SupplierCommercialResult[];
     customerPricing?: {

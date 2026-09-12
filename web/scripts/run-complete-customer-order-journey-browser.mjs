@@ -23,6 +23,8 @@ import { initializeIsolatedJourneyDatabase } from "./isolated-journey-database.m
 import { createServer as createPortProbe } from "node:net";
 import { QUOTESUITE_RUNTIME_CONTRACT } from "../shared/runtimeHealthContract.js";
 import { pathToFileURL } from 'node:url';
+import {createGoogleWorkspaceService} from '../server/features/integrations/googleWorkspaceService.js';
+import {GOOGLE_WORKSPACE_SCOPES} from '../server/features/integrations/googleWorkspaceService.js';
 
 const APP_URL = "http://127.0.0.1:5276";
 const API_URL = "http://127.0.0.1:3104";
@@ -64,9 +66,11 @@ async function seed(databasePath, attachmentRoot) {
   await initializePortalSecuritySchema(db);
   await initializeLifecycleSchema(db);
   const suffix = Date.now().toString(36), clientId = randomUUID(), projectId = randomUUID(), estimateId = randomUUID(), issuedId = randomUUID(), now = "2026-09-10T09:00:00.000Z";
-  const estimateReference = `TEST-EST-${suffix.toUpperCase()}`;
+  const providerJourney=process.argv.includes('--stop-after-supplier-filing');
+  const estimateReference = providerJourney?'EF-EST-2026-901':`TEST-EST-${suffix.toUpperCase()}`;
+  const clientReference=providerJourney?'EF-CL-901':`TEST-CL-${suffix.toUpperCase()}`;
   const customerProjection = projection(estimateReference, 1);
-  await db.run(`INSERT INTO clients(id,name,email,contact_name,company_name,client_ref,project_name,created_at,deleted_at,commercial_lifecycle,reference_namespace,updated_at) VALUES(?,?,?,?,?,?,?,?,NULL,'prospect','test',?)`, clientId, "TEST Customer Journey", CUSTOMER, "TEST Customer Journey", "", `TEST-CL-${suffix.toUpperCase()}`, customerProjection.projectName, now, now);
+  await db.run(`INSERT INTO clients(id,name,email,contact_name,company_name,client_ref,project_name,created_at,deleted_at,commercial_lifecycle,reference_namespace,updated_at) VALUES(?,?,?,?,?,?,?,?,NULL,'prospect','test',?)`, clientId, "TEST Customer Journey", CUSTOMER, "TEST Customer Journey", "", clientReference, customerProjection.projectName, now, now);
   await db.run("INSERT INTO projects(id,client_id,name,status,created_at,updated_at) VALUES(?,?,?,'active',?,?)", projectId, clientId, customerProjection.projectName, now, now);
   await db.run("INSERT INTO supplier_commercial_defaults(supplier_code,supplier_name,policy_json,pricing_display_policy_json,updated_at) VALUES('TEST-JOURNEY-SUPPLIER','TEST Journey Supplier','{}','{}',?)",now);
   await db.run("INSERT INTO supplier_commercial_defaults(supplier_code,supplier_name,policy_json,pricing_display_policy_json,updated_at) VALUES('EKO','EKO-OKNA',?,'{}',?) ON CONFLICT(supplier_code) DO NOTHING",JSON.stringify({pricingMethod:'factory_price',pricingBasis:'factory_price',paidInQuotedCurrency:true,settlementCurrency:'EUR'}),now);
@@ -86,7 +90,7 @@ async function seed(databasePath, attachmentRoot) {
   const release = await portal.releaseIssuedEstimate({ issuedQuotationId: issuedId, releasedBy: "test-staff" });
   const invitation = await portal.createInvitation({ clientId, projectId, email: CUSTOMER, displayName: "TEST Customer Journey", createdBy: "test-staff" });
   await db.close();
-  return { suffix, clientId, projectId, estimateId, estimateReference, issuedId, document, projection: customerProjection, release, invitation, projectDrawingId: `test-project-drawing-${suffix}`, returnedRevisionId: `test-returned-revision-${suffix}`, factoryConfirmationDocumentId: `test-factory-confirmation-${suffix}`, signedConfirmationDocumentId: `test-signed-confirmation-${suffix}` };
+  return { suffix, clientId, clientReference, projectId, estimateId, estimateReference, issuedId, document, projection: customerProjection, release, invitation, projectDrawingId: `test-project-drawing-${suffix}`, returnedRevisionId: `test-returned-revision-${suffix}`, factoryConfirmationDocumentId: `test-factory-confirmation-${suffix}`, signedConfirmationDocumentId: `test-signed-confirmation-${suffix}` };
 }
 
 async function connect() {
@@ -161,7 +165,9 @@ async function run() {
     const isolation=await initializeIsolatedJourneyDatabase({databasePath,attachmentRoot});
     console.log(JSON.stringify({journeyIsolation:isolation}));
     const fixture=await seed(databasePath,attachmentRoot);
-    api = spawn(process.execPath, ["--import",pathToFileURL(path.resolve('tests/fixtures/isolatedJourneyExchangeRate.mjs')).href,"server/index.js"], { cwd: process.cwd(), env: { ...process.env, QUOTESUITE_DB_PATH: databasePath, QUOTESYNC_ATTACHMENT_ROOT: attachmentRoot, PORT: "3104", NODE_ENV: "development", QUOTESUITE_APP_ORIGINS: APP_URL, QUOTESUITE_TEST_JOURNEY: "1", QUOTESUITE_TEST_DELIVERY_ENABLED: "0", QUOTESUITE_TEST_CUSTOMER_EMAIL: CUSTOMER, QUOTESUITE_TEST_FACTORY_EMAIL: FACTORY }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    const providerJourney=process.argv.includes('--stop-after-supplier-filing'),providerKey=createHash('sha256').update(randomUUID()).digest('hex');
+    if(providerJourney)await writeFile(path.join(root,'provider-source.pdf'),await readFile(path.resolve('docs/Supplier_Quotes/John_Wingfield/web-26-1133450.pdf')));
+    api = spawn(process.execPath, ["--import",pathToFileURL(path.resolve('tests/fixtures/isolatedJourneyExchangeRate.mjs')).href,...(providerJourney?['--import',pathToFileURL(path.resolve('tests/fixtures/isolatedJourneyGoogle.mjs')).href]:[]),"server/index.js"], { cwd: process.cwd(), env: { ...process.env, ...(providerJourney?{QUOTESUITE_INTEGRATION_ENCRYPTION_KEY:providerKey}:{}), QUOTESUITE_DB_PATH: databasePath, QUOTESYNC_ATTACHMENT_ROOT: attachmentRoot, PORT: "3104", NODE_ENV: "development", QUOTESUITE_APP_ORIGINS: APP_URL, QUOTESUITE_TEST_JOURNEY: "1", QUOTESUITE_TEST_DELIVERY_ENABLED: "0", QUOTESUITE_TEST_CUSTOMER_EMAIL: CUSTOMER, QUOTESUITE_TEST_FACTORY_EMAIL: FACTORY }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     let apiStartupLog='';for(const stream of [api.stdout,api.stderr])stream.on('data',chunk=>{apiStartupLog=(apiStartupLog+String(chunk)).slice(-5000)});
     vite = spawn(process.execPath, [path.resolve("node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", "5276"], { cwd: process.cwd(), env: { ...process.env, VITE_API_BASE_URL: API_URL }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     try{await waitFor(() => reachable(`${API_URL}/api/health`), "Disposable journey API did not start")}catch(error){throw new Error(`${error.message}: ${apiStartupLog}`)} await waitFor(() => reachable(APP_URL), "Disposable journey UI did not start");
@@ -179,8 +185,8 @@ async function run() {
     const reviewDesktop = await tab.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: true }); await writeFile(path.join(OUTPUT, "01-customer-changes-submitted--1920x1080.png"), Buffer.from(reviewDesktop.data, "base64"));
 
     await tab.send("Page.navigate", { url: APP_URL }); await waitFor(() => tab.evaluate("document.body.innerText.includes('Client Portal')"), "Staff application did not render"); await click(tab, "Client Portal");
-    await waitFor(() => tab.evaluate(`[...document.querySelectorAll('article')].some(item=>item.textContent.includes(${JSON.stringify(`TEST-CL-${fixture.suffix.toUpperCase()}`)})&&item.querySelector('button'))`), "Disposable request did not render in the staff Changes Requested queue");
-    const opened = await tab.evaluate(`(()=>{const row=[...document.querySelectorAll('article')].find(item=>item.textContent.includes(${JSON.stringify(`TEST-CL-${fixture.suffix.toUpperCase()}`)}));const button=row?.querySelector('button');if(!button)return false;button.click();return true})()`); assert.equal(opened, true);
+    await waitFor(() => tab.evaluate(`[...document.querySelectorAll('article')].some(item=>item.textContent.includes(${JSON.stringify(fixture.clientReference)})&&item.querySelector('button'))`), "Disposable request did not render in the staff Changes Requested queue");
+    const opened = await tab.evaluate(`(()=>{const row=[...document.querySelectorAll('article')].find(item=>item.textContent.includes(${JSON.stringify(fixture.clientReference)}));const button=row?.querySelector('button');if(!button)return false;button.click();return true})()`); assert.equal(opened, true);
     await waitFor(() => tab.evaluate("document.body.innerText.toLowerCase().includes('immutable customer review')"), "Staff change detail did not render");
     const staffChanges = await tab.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: true }); await writeFile(path.join(OUTPUT, "02-staff-changes-requested--1920x1080.png"), Buffer.from(staffChanges.data, "base64"));
     await click(tab, "Create working revision"); await waitFor(() => tab.evaluate("document.body.innerText.includes('Working revision created')"), "Staff UI did not create the working revision");
@@ -251,6 +257,34 @@ async function run() {
       assert.deepEqual(await replayDb.all('SELECT id,source_position_id,total_price_amount FROM project_calculator_estimate_product_rows ORDER BY id'),retainedImportSnapshot.costing,'Repeat import duplicated or changed costing evidence');
     }finally{await replayDb.close()}
     if(process.argv.includes('--stop-after-manufacturer-import')){console.log(JSON.stringify({scope:'Normal application through genuine-source final Manufacturer Import, repeat upload/import and reload',positions:5,sourceSha256:sha256(originalSource),repeatPreservedSourceAndPositionIdentities:true,exchangeRate:'explicit disposable fixture',twoSupplierReviewAndReissueVerified:false}));return;}
+    if(providerJourney){
+      const providerDb=await open({filename:databasePath,driver:sqlite3.Database});
+      try{
+        const workspace=createGoogleWorkspaceService(providerDb,{environment:{},encryptionKey:providerKey,fetchImpl:async url=>new Response(JSON.stringify(String(url).includes('oauth2.googleapis.com')?{access_token:'disposable-access',refresh_token:'disposable-refresh',expires_in:3600,scope:GOOGLE_WORKSPACE_SCOPES.join(' ')}:{sub:'disposable-account',email:CUSTOMER,name:'Disposable acceptance mailbox'}),{status:200,headers:{'Content-Type':'application/json'}})});
+        await workspace.configure({clientId:'disposable-client',clientSecret:'disposable-secret',redirectUri:'http://127.0.0.1:3104/disposable-callback',estimatesRootFolderId:'disposable-root'});
+        const oauth=await workspace.beginOAuth();assert.equal((await workspace.completeOAuth({state:oauth.state,code:'disposable-code'})).connected,true);
+      }finally{await providerDb.close()}
+      await staff('/api/communications/sync',{folder:'inbox'});
+      await click(tab,'Request supplier estimate / revision');
+      await waitFor(()=>tab.evaluate("[...document.querySelectorAll('summary')].some(item=>item.textContent==='Review an incoming supplier reply')"),'Saved supplier request did not expose reply review');
+      await tab.evaluate("[...document.querySelectorAll('summary')].find(item=>item.textContent==='Review an incoming supplier reply').click()");
+      await tab.evaluate("[...document.querySelectorAll('.supplier-rfq__history button')].find(item=>item.textContent.includes('request 1')).click()");
+      await click(tab,'Find replies');await waitFor(()=>tab.evaluate("document.body.innerText.includes('Disposable supplier PDF response')"),'Disposable provider reply did not appear');
+      await click(tab,'Disposable supplier PDF response');await waitFor(()=>tab.evaluate("document.body.innerText.includes('This exact message contains')"),'Exact supplier body did not open');
+      await click(tab,'Review and file selected document');
+      await waitFor(()=>tab.evaluate("[...document.querySelectorAll('button')].some(item=>item.textContent.trim()==='File selected document'&&!item.disabled)"),'Exact supplier document picker did not become ready');
+      await click(tab,'File selected document');
+      try{await waitFor(()=>tab.evaluate("document.body.innerText.includes('Import Manufacturer Estimate')&&document.body.innerText.includes('Open Files')"),'Provider-backed filing did not finish',60000)}catch(error){throw new Error(`${error.message}: ${await tab.evaluate('document.body.innerText')}`)}
+      await click(tab,'Import Manufacturer Estimate');
+      await waitFor(()=>tab.evaluate("document.body.innerText.includes('Confirm Manufacturer Quote')"),'Filed provider source did not reopen genuine extraction review',90000);
+      const filedDb=await open({filename:databasePath,driver:sqlite3.Database,mode:sqlite3.OPEN_READONLY});
+      try{
+        const response=await filedDb.get("SELECT l.*,m.provider_message_id,d.folder_path,d.file_name FROM manufacturer_response_links l JOIN communication_messages m ON m.id=l.communication_message_id JOIN canonical_documents d ON d.id=l.canonical_document_id WHERE m.provider_message_id='disposable-supplier-pdf'");
+        assert.ok(response);assert.equal(response.supplier_enquiry_id,preparedContext.enquiries[0].id);assert.match(response.folder_path,/Suppliers\/EKO/i);assert.equal(response.file_name,'web-26-1133450.pdf');
+        const retained=await filedDb.all('SELECT id,source_canonical_document_id FROM supplier_quote_attachments');assert.equal(retained.length,1);assert.equal(retained[0].source_canonical_document_id,response.canonical_document_id);
+      }finally{await filedDb.close()}
+      console.log(JSON.stringify({scope:'Normal supplier request → exact provider reply → reviewed commercial Drive filing → canonical document → genuine Manufacturer Import review',provider:'disposable transport; no live OAuth or delivery',reusedOriginalSource:true,multiSupplierReissueVerified:false}));return;
+    }
 
     const queue = await staff("/api/lifecycle/changes-requested", null, "GET"), reviewId = queue.find((item) => item.client_ref === `TEST-CL-${fixture.suffix.toUpperCase()}`)?.review_submission_id; assert.ok(reviewId, "Disposable change request was absent from the staff queue");
     const changeDetail = await staff(`/api/lifecycle/changes-requested/${reviewId}`, null, "GET"), revisionRequest = changeDetail.supplierRevision; assert.ok(revisionRequest?.id, "Staff UI did not persist the supplier revision request");
