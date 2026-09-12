@@ -450,6 +450,7 @@ export function createCommunicationsService(db, options = {}) {
 
   async function createDraft(input) {
     guardTestRecipients(input);
+    if(input.id&&await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='supplier_delivery_attempts'")&&await db.get('SELECT id FROM supplier_enquiry_drafts WHERE communication_message_id=?',String(input.id)))throw Object.assign(new Error('Edit this saved supplier request in the reviewed Estimate composer. Its retained message cannot be replaced through ordinary Email.'),{status:409,code:'supplier_draft_context_required'});
     const status = await requireGmailCapability();
     const attachments = await Promise.all((input.attachments || []).map((item) => decodeAttachment(item, attachmentRoot, workspace)));
     const localId = String(input.id || randomUUID()), provider = await gmail.createDraft({ ...input, attachments, factoryReceipt:null });
@@ -463,6 +464,11 @@ export function createCommunicationsService(db, options = {}) {
     const id = String(input.id || randomUUID());
     try {
       guardTestRecipients(input);
+      const supplierSchema=await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='supplier_delivery_attempts'");
+      if(supplierSchema){
+        const supplierRequest=await db.get('SELECT id FROM supplier_enquiry_drafts WHERE communication_message_id=?',id);
+        if(supplierRequest&&!await db.get("SELECT id FROM supplier_delivery_attempts WHERE id=? AND supplier_enquiry_id=? AND communication_message_id=? AND state='sending'",commandContext.supplierDeliveryAttemptId||'',supplierRequest.id,id))throw Object.assign(new Error('Send this saved supplier request from its reviewed Estimate composer so its delivery and duplicate protection are retained.'),{status:409,code:'supplier_delivery_context_required'});
+      }
       const factorySchema=await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='factory_order_requests'");
       if(factorySchema){
         const factoryMessage=await db.get(`SELECT id FROM factory_order_requests WHERE communication_message_id=?

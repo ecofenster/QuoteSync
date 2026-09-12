@@ -1,4 +1,5 @@
 import {initializeFactoryDeliverySchema} from './factoryDelivery.js';
+import {initializeSupplierDeliverySchema} from './supplierDelivery.js';
 const statements = [
   `CREATE TABLE IF NOT EXISTS enquiry_email_intakes (
     id TEXT PRIMARY KEY,enquiry_id TEXT NOT NULL UNIQUE,communication_message_id TEXT NOT NULL UNIQUE,provider_message_id TEXT,
@@ -182,4 +183,5 @@ export async function initializeLifecycleSchema(db) {
     FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE RESTRICT)`);
   for(const action of ['UPDATE','DELETE'])await db.exec(`CREATE TRIGGER IF NOT EXISTS trg_factory_attachment_reviews_${action.toLowerCase()} BEFORE ${action} ON factory_attachment_reviews BEGIN SELECT RAISE(ABORT,'Factory attachment review history is immutable'); END`);
   await initializeFactoryDeliverySchema(db);
+  await initializeSupplierDeliverySchema(db);
 }

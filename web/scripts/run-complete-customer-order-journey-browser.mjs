@@ -35,7 +35,8 @@ const CUSTOMER = "customer.journey@example.test";
 const FACTORY = "factory.journey@example.test";
 const OUTPUT = path.resolve("test-output/complete-customer-order-journey");
 const sourceFactoryReconcile=process.argv.includes('--stop-after-source-backed-factory-reconcile');
-const supplierFollowup=process.argv.includes('--stop-after-supplier-followup');
+const supplierPartial=process.argv.includes('--stop-after-supplier-send-partial');
+const supplierFollowup=supplierPartial||process.argv.includes('--stop-after-supplier-followup');
 const sourceFactorySend=sourceFactoryReconcile||process.argv.includes('--stop-after-source-backed-factory-send');
 const sourceStaffOrder=sourceFactorySend||process.argv.includes('--stop-after-source-backed-staff-order');
 const sourceCustomerOrder=sourceStaffOrder||process.argv.includes('--stop-after-source-backed-customer-order');
@@ -305,8 +306,20 @@ api = spawn(process.execPath, ["--import",pathToFileURL(path.resolve('tests/fixt
       if(supplierFollowup){
         await waitFor(()=>tab.evaluate("document.body.innerText.includes('Reopen prepared request')"),'Prepared supplier request did not reopen');
         await click(tab,'Reopen prepared request');
+        if(supplierPartial){
+          const faultDb=await open({filename:databasePath,driver:sqlite3.Database});
+          try{await faultDb.exec("CREATE TRIGGER test_supplier_partial BEFORE UPDATE OF status ON supplier_enquiry_drafts WHEN NEW.status='sent' BEGIN SELECT RAISE(ABORT,'Disposable local completion failure'); END")}finally{await faultDb.close()}
+        }
         await tab.evaluate("document.querySelector('.supplier-rfq__send input').click()");
         await click(tab,'Send supplier request');
+        if(supplierPartial){
+          await waitFor(()=>tab.evaluate("document.querySelector('.supplier-rfq [role=alert]')?.textContent.includes('provider confirmed')"),'Confirmed partial-send result was not explained');
+          await waitFor(()=>tab.evaluate("[...document.querySelectorAll('.supplier-rfq__history')].some(item=>item.textContent.includes('sent — local result needs completion'))"),'Persisted sent receipt was not shown after local failure');
+          const faultDb=await open({filename:databasePath,driver:sqlite3.Database});
+          try{assert.equal((await faultDb.get('SELECT state FROM supplier_delivery_attempts')).state,'sent');await faultDb.exec('DROP TRIGGER test_supplier_partial')}finally{await faultDb.close()}
+          await click(tab,'Reopen prepared request');await click(tab,'Finish saved result');
+          assert.equal(JSON.parse(await readFile(path.join(root,'disposable-delivery-evidence.json'),'utf8')).sent.length,1,'Finishing local result sent another supplier message');
+        }
         await waitFor(()=>tab.evaluate("document.querySelector('.supplier-rfq__result')?.textContent.includes('Supplier request sent')"),'Supplier send did not show confirmed result');
         const followupDb=await open({filename:databasePath,driver:sqlite3.Database,mode:sqlite3.OPEN_READONLY});
         try{
@@ -328,7 +341,7 @@ api = spawn(process.execPath, ["--import",pathToFileURL(path.resolve('tests/fixt
           await tab.evaluate("[...document.querySelectorAll('summary')].find(item=>item.textContent.startsWith('View or reopen previous requests')).click()");
           await waitFor(()=>tab.evaluate("document.body.innerText.includes('Follow-up sent')"),'Persisted follow-up outcome was not visible after reopen');
           assert.equal(await tab.evaluate("document.body.innerText.includes('Retry follow-up safely')"),false);
-          console.log(JSON.stringify({scope:'Normal supplier composer → confirmed test send → seven-calendar-day deadline → reviewed due adjustment → persistent scheduled worker → reopened outcome',provider:'no-network disposable transport',providerMessages:2,liveDelivery:false,restartVerified:false,uncertainRecoveryVerified:false}));
+          console.log(JSON.stringify({scope:'Normal supplier composer → confirmed test send → seven-calendar-day deadline → reviewed due adjustment → persistent scheduled worker → reopened outcome',provider:'no-network disposable transport',providerMessages:2,partialSaveRecoveredWithoutResend:supplierPartial,liveDelivery:false,restartVerified:false,uncertainRecoveryVerified:false}));
         }finally{await followupDb.close()}
         return;
       }

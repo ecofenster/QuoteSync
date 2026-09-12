@@ -8,6 +8,8 @@ import { open } from "sqlite";
 import { initializeWorkflowSchema } from "../server/features/workflow/workflowSchema.js";
 import { initializeLifecycleSchema } from "../server/features/lifecycle/lifecycleSchema.js";
 import { createLifecycleService } from "../server/features/lifecycle/lifecycleService.js";
+import {createCommunicationRepository} from '../server/features/communications/communicationRepository.js';
+import {createCommunicationsService} from '../server/features/communications/communicationsService.js';
 
 async function fixture(t){
   const root=await mkdtemp(path.join(os.tmpdir(),"qs-rfq-")),db=await open({filename:path.join(root,"rfq.db"),driver:sqlite3.Database});
@@ -67,4 +69,39 @@ test("a partial RFQ save keeps the Email draft and safely resumes it",async t=>{
   assert.equal((await db.get("SELECT COUNT(*) count FROM communication_messages")).count,1);assert.equal((await db.get("SELECT COUNT(*) count FROM supplier_enquiry_drafts")).count,0);
   await db.exec("DROP TRIGGER fail_rfq");const resumed=await service.prepareSupplierEnquiry("project-1",request);
   assert.equal(resumed.revisionNo,1);assert.equal((await db.get("SELECT COUNT(*) count FROM communication_messages")).count,1);assert.equal((await db.get("SELECT COUNT(*) count FROM supplier_enquiry_drafts")).count,1);
+});
+
+test('supplier sending claims before IO, blocks concurrent/restarted uncertain sends and repairs confirmed partial saves',async t=>{
+  const {db}=await fixture(t),communications=createCommunicationRepository(db);let sends=0,release,started,fail='';
+  const waiting=new Promise(resolve=>{release=resolve}),begun=new Promise(resolve=>{started=resolve});
+  const deliveryPolicy={publicStatus:()=>({deliveryMode:'test_allowlist'}),assertRecipient:value=>assert.equal(value,'factory@example.test')};
+  const communicationService={repository:communications,sendMessage:async(message,context)=>{
+    assert.equal((await db.get('SELECT state FROM supplier_delivery_attempts WHERE id=?',context.supplierDeliveryAttemptId)).state,'sending');
+    assert.ok(await db.get('SELECT id FROM supplier_enquiry_drafts WHERE communication_message_id=?',message.id));
+    sends++;if(sends===1){started();await waiting}
+    if(fail)throw Object.assign(new Error('Test delivery interrupted'),{deliveryOutcome:fail});
+    return communications.save({...message,status:'sent',providerMessageId:`test-provider-${sends}`,sentAt:'2026-09-13T10:00:00Z'});
+  }};
+  const options={communications,communicationService,deliveryPolicy},service=createLifecycleService(db,options);
+  await service.prepareSupplierEnquiry('project-1',request);
+  const pending=service.prepareSupplierEnquiry('project-1',{...request,send:true});await begun;
+  const inFlight=await communications.get((await db.get('SELECT communication_message_id FROM supplier_enquiry_drafts WHERE idempotency_key=?',request.idempotencyKey)).communication_message_id);
+  await assert.rejects(()=>communications.save({...inFlight,status:'draft',subject:'Late concurrent preparation'}),/late draft save/);
+  await assert.rejects(()=>service.prepareSupplierEnquiry('project-1',{...request,send:true}),error=>error.code==='supplier_delivery_unconfirmed');release();await pending;assert.equal(sends,1);
+  const partial={...request,idempotencyKey:'partial-send'};
+  await db.exec("CREATE TRIGGER fail_sent_projection BEFORE UPDATE OF status ON supplier_enquiry_drafts WHEN NEW.status='sent' BEGIN SELECT RAISE(ABORT,'Test local completion failure'); END");
+  await assert.rejects(()=>service.prepareSupplierEnquiry('project-1',{...partial,send:true}),error=>error.code==='supplier_delivery_partial_success'&&error.message.includes('Finish saved result'));assert.equal(sends,2);
+  await db.exec('DROP TRIGGER fail_sent_projection');
+  assert.equal((await service.prepareSupplierEnquiry('project-1',{...partial,send:true})).status,'sent');assert.equal(sends,2,'Partial local save sent another copy');
+  fail='uncertain';const uncertain={...request,idempotencyKey:'uncertain-send'};
+  await assert.rejects(()=>service.prepareSupplierEnquiry('project-1',{...uncertain,send:true}),error=>error.code==='supplier_delivery_unconfirmed');
+  const restarted=createLifecycleService(db,options);await assert.rejects(()=>restarted.prepareSupplierEnquiry('project-1',{...uncertain,send:true}),error=>error.code==='supplier_delivery_unconfirmed');assert.equal(sends,3);
+  assert.equal((await restarted.supplierEnquiryContext('project-1','estimate-1')).enquiries.find(item=>item.idempotencyKey==='uncertain-send').deliveryState,'uncertain');
+  fail='not_sent';const retry={...request,idempotencyKey:'retry-send'};await assert.rejects(()=>service.prepareSupplierEnquiry('project-1',{...retry,send:true}),error=>error.code==='supplier_delivery_not_sent');fail='';assert.equal((await restarted.prepareSupplierEnquiry('project-1',{...retry,send:true})).status,'sent');
+  const direct=createCommunicationsService(db,{environment:{}}),prepared=await communications.get((await db.get('SELECT communication_message_id FROM supplier_enquiry_drafts WHERE idempotency_key=?',request.idempotencyKey)).communication_message_id);
+  await assert.rejects(()=>direct.sendMessage({...prepared,supplierDeliveryAttemptId:'forged-body-context'}),error=>error.code==='supplier_delivery_context_required');
+  await assert.rejects(()=>direct.createDraft({...prepared,subject:'Attempted ordinary Email overwrite'}),error=>error.code==='supplier_draft_context_required');
+  assert.equal((await communications.get(prepared.id)).subject,prepared.subject);
+  await assert.rejects(()=>communications.save({...prepared,status:'draft',providerMessageId:null}),/late draft save/);
+  await assert.rejects(()=>db.run('DELETE FROM supplier_delivery_attempts'),/cannot be deleted/);
 });

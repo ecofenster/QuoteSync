@@ -8,6 +8,7 @@ import { createSupplierRevisionChangeDocumentService } from './supplierRevisionC
 import { recordSupplierResponseState, outstandingSupplierRevisionRequests, outstandingSupplierResponseReviews, supplierReviewSourceIdentity, staleSupplierReviewCount } from './supplierResponseState.js';
 import {factoryAttachmentOptions,savedFactoryAttachments,reviewFactoryAttachments,assertFactoryAttachmentsCurrent,factoryCommunicationAttachments} from './factoryAttachmentReview.js';
 import {factoryDeliveryState,sendFactoryOnce} from './factoryDelivery.js';
+import {sendSupplierOnce} from './supplierDelivery.js';
 
 const text = (value) => String(value ?? '').trim();
 const hash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -104,6 +105,7 @@ export function createLifecycleService(db, options = {}) {
     subject: row.subject,
     bodyText: row.body_text,
     status: row.status,
+    deliveryState: row.status==='sent'?'sent':row.delivery_state||'pending',
     revisionNo: Number(row.revision_no || 1),
     supersedesId: row.supersedes_id || null,
     documentIds: parse(row.document_ids_json, []),
@@ -141,7 +143,7 @@ export function createLifecycleService(db, options = {}) {
     const suppliers = await db.all(`SELECT supplier_code id,supplier_name name FROM supplier_commercial_defaults
       WHERE NOT (upper(trim(supplier_name))='ANY' AND upper(trim(supplier_code)) IN ('FACTORY PRICE','1 TO 1 PRICING','STAGED DISCOUNT'))
       ORDER BY supplier_name,supplier_code`);
-    const enquiries = await db.all(`SELECT se.*,s.supplier_name FROM supplier_enquiry_drafts se
+    const enquiries = await db.all(`SELECT se.*,s.supplier_name,(SELECT state FROM supplier_delivery_attempts a WHERE a.supplier_enquiry_id=se.id ORDER BY a.created_at DESC,a.rowid DESC LIMIT 1) delivery_state FROM supplier_enquiry_drafts se
       LEFT JOIN supplier_commercial_defaults s ON s.supplier_code=se.supplier_id
       WHERE se.project_id=? AND (?='' OR se.estimate_id=?) ORDER BY se.created_at DESC LIMIT 50`, projectId, selectedEstimateId, selectedEstimateId);
     const revisionRequest = selectedEstimateId ? await db.get(`SELECT sr.*,r.submitted_at FROM supplier_revision_requests sr
@@ -183,17 +185,26 @@ export function createLifecycleService(db, options = {}) {
     const contentSha256=hash({projectId,estimateId,supplierId,recipient:normalized(recipient),subject,bodyText,requestKind,revisionRequestId,documentSnapshot:documentSnapshot.map(document=>({id:document.id,providerFileId:document.providerFileId,providerRevision:document.providerRevision,checksum:document.checksum}))});
     const idempotencyKey=text(input.idempotencyKey)||`content:${contentSha256}`;
     const existing=await db.get('SELECT se.*,s.supplier_name FROM supplier_enquiry_drafts se LEFT JOIN supplier_commercial_defaults s ON s.supplier_code=se.supplier_id WHERE se.idempotency_key=?',idempotencyKey);
+    if(!existing&&input.send===true){
+      // Persist the canonical request before delivery, retaining this exact key
+      // through partial-save recovery and concurrent requests.
+      await prepareSupplierEnquiry(projectId,{...input,send:false,idempotencyKey});
+      return prepareSupplierEnquiry(projectId,{...input,send:true,idempotencyKey});
+    }
     if(existing){
       if(existing.content_sha256&&existing.content_sha256!==contentSha256)throw problem('This request retry key belongs to different reviewed content. Start a new request revision if the reviewed content changed.',409,'supplier_enquiry_idempotency_conflict');
       if(input.send===true&&existing.status!=='sent'){
         delivery.assertRecipient(recipient,'factory');
         const prepared=await communications.get(existing.communication_message_id);if(!prepared)throw problem('The prepared Email draft could not be found. The supplier request is still retained; open its details and prepare a replacement draft.',409,'supplier_enquiry_communication_missing');
-        const sent=await communicationService.sendMessage({...prepared,provider:'google_workspace',folder:'sent',status:'sending'}),sentAt=sent.sentAt||stamp(),responseDueAt=requestKind==='revision'?plusCalendarDays(sentAt,7):null;
+        const receipt=await sendSupplierOnce(db,{requestId:existing.id,message:prepared,now:stamp,send:({attemptId})=>communicationService.sendMessage({...prepared,provider:'google_workspace',folder:'sent',status:'sending'},{supplierDeliveryAttemptId:attemptId})});
+        const sent={id:prepared.id},sentAt=receipt.sent_at,responseDueAt=requestKind==='revision'?plusCalendarDays(sentAt,7):null;
+        try{
         await db.run("UPDATE supplier_enquiry_drafts SET status='sent',sent_at=?,response_due_at=?,followup_due_at=?,followup_failure='',updated_at=? WHERE id=?",sentAt,responseDueAt,responseDueAt,sentAt,existing.id);
         if(revisionRequestId)await db.run("UPDATE supplier_revision_requests SET status='sent',workflow_state='sent_to_supplier',sent_at=COALESCE(sent_at,?),response_due_at=?,updated_at=? WHERE id=?",sentAt,responseDueAt,sentAt,revisionRequestId);
         await event(requestKind==='revision'?'supplier.revision.sent':'supplier.enquiry.sent',existing.id,[{kind:'project',id:projectId},{kind:'communication',id:sent.id},{kind:'estimate',id:estimateId},...(revisionRequestId?[{kind:'supplier_revision_request',id:revisionRequestId}]:[])]);
         const refreshed=await db.get('SELECT se.*,s.supplier_name FROM supplier_enquiry_drafts se LEFT JOIN supplier_commercial_defaults s ON s.supplier_code=se.supplier_id WHERE se.id=?',existing.id);
         return{...supplierEnquiryView(refreshed),documents:parse(refreshed.document_snapshot_json,[]),delivery:delivery.publicStatus(),idempotentReplay:false,nextAction:responseDueAt?`Supplier response due ${responseDueAt.slice(0,10)}. The request remains open until the revised document is reviewed.`:'Wait for the supplier response.'};
+        }catch(error){throw Object.assign(problem('The provider confirmed this supplier request was sent, but QuoteSuite could not finish its local result. Reopen the same saved request and choose Finish saved result. The recorded send will be reused without another email.',409,'supplier_delivery_partial_success'),{cause:error});}
       }
       return{...supplierEnquiryView(existing),documents:parse(existing.document_snapshot_json,[]),delivery:delivery.publicStatus(),idempotentReplay:true,nextAction:existing.status==='sent'?'Wait for the supplier response.':'Review the saved Email draft, then send it when ready.'};
     }
