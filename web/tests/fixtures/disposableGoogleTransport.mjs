@@ -1,13 +1,26 @@
 import {createHash,randomUUID} from 'node:crypto';
 
-// Test-only provider transport. No network fallback and no delivery operation.
+// Test-only provider transport. No network fallback; delivery is refused by
+// default and can only be simulated for explicitly configured test recipients.
 // Production Gmail/Drive adapters still perform their normal mapping and IO.
-export function createDisposableGoogleTransport({messages=[],attachments=new Map(),files=[],pageSize=2}={}){
+export function createDisposableGoogleTransport({messages=[],attachments=new Map(),files=[],pageSize=2,delivery=null}={}){
  const stored=new Map(files.map(file=>[file.id,{...file}])),binaries=new Map(),calls=[];
+ const deliveryEvidence={attempts:0,sent:[]};
+ if(delivery&&(!delivery.allowedRecipients?.length||delivery.allowedRecipients.some(value=>!/^[-\w.+]+@example\.test$/.test(value))))throw new Error('Disposable delivery requires explicit example.test recipients.');
  const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});
  const fetchImpl=async(raw,options={})=>{
   const url=new URL(String(raw)),method=String(options.method||'GET').toUpperCase();calls.push({method,path:url.pathname});
   if(url.hostname==='gmail.googleapis.com'){
+   if(method==='POST'&&url.pathname==='/gmail/v1/users/me/messages/send'&&delivery){
+    const payload=JSON.parse(options.body),mime=Buffer.from(payload.raw||'','base64url').toString('utf8'),headers=mime.split('\r\n\r\n')[0];
+    const recipientHeaders=[...headers.matchAll(/^(To|Cc|Bcc):\s*(.*)$/gmi)];
+    const recipients=recipientHeaders.flatMap(([,,value])=>value.split(',').map(address=>address.trim().replace(/\r$/,'')));
+    if(!recipients.length||!recipientHeaders.some(([,,value])=>value.trim())||recipients.some(address=>!delivery.allowedRecipients.includes(address)))throw new Error('Disposable delivery recipient is not allowlisted.');
+    deliveryEvidence.attempts++;
+    if(delivery.failFirst&&deliveryEvidence.attempts===1)return json({error:{message:'Disposable provider interruption. Nothing was sent; retry safely.'}},503);
+    const id=`disposable-sent-${deliveryEvidence.sent.length+1}`,threadId=payload.threadId||id;
+    deliveryEvidence.sent.push({id,threadId,raw:payload.raw,recipients});return json({id,threadId});
+   }
    if(method!=='GET')throw new Error('Disposable provider refuses Gmail writes and delivery.');
    if(url.pathname.endsWith('/labels'))return json({labels:[]});
    if(url.pathname.endsWith('/profile'))return json({historyId:'1'});
@@ -53,5 +66,5 @@ export function createDisposableGoogleTransport({messages=[],attachments=new Map
   }
   throw new Error(`Unsupported disposable provider operation: ${method} ${url.origin}${url.pathname}`);
  };
- return {fetchImpl,files:stored,binaries,calls};
+ return {fetchImpl,files:stored,binaries,calls,deliveryEvidence};
 }

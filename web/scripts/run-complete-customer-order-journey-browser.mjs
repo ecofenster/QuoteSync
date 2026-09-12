@@ -34,7 +34,8 @@ const DEBUG_PORT = 9416;
 const CUSTOMER = "customer.journey@example.test";
 const FACTORY = "factory.journey@example.test";
 const OUTPUT = path.resolve("test-output/complete-customer-order-journey");
-const sourceCustomerPreparation=process.argv.includes('--stop-after-source-backed-customer-preparation');
+const sourceCustomerReissue=process.argv.includes('--stop-after-source-backed-customer-reissue');
+const sourceCustomerPreparation=sourceCustomerReissue||process.argv.includes('--stop-after-source-backed-customer-preparation');
 const overallSourceReview=sourceCustomerPreparation||process.argv.includes('--stop-after-source-backed-overall-review');
 const receivedSupplierReviews=process.argv.includes('--stop-after-received-supplier-reviews');
 const multiSupplierReview=receivedSupplierReviews||process.argv.includes('--stop-after-multi-supplier-review');
@@ -184,7 +185,7 @@ async function run() {
     const providerJourney=providerJourneyRequested,providerKey=createHash('sha256').update(randomUUID()).digest('hex');
     if(providerJourney)await writeFile(path.join(root,'provider-source.pdf'),await readFile(path.resolve('docs/Supplier_Quotes/John_Wingfield/web-26-1133450.pdf')));
     if(receivedSupplierReviews)await writeFile(path.join(root,'provider-second-source.docx'),await readFile(path.resolve('docs/Supplier_Quotes/343117-3_EF-EST-2026-004 - Luke.docx')));
-    api = spawn(process.execPath, ["--import",pathToFileURL(path.resolve('tests/fixtures/isolatedJourneyExchangeRate.mjs')).href,...(providerJourney?['--import',pathToFileURL(path.resolve('tests/fixtures/isolatedJourneyGoogle.mjs')).href]:[]),"server/index.js"], { cwd: process.cwd(), env: { ...process.env, ...(providerJourney?{QUOTESUITE_INTEGRATION_ENCRYPTION_KEY:providerKey}:{}), QUOTESUITE_DB_PATH: databasePath, QUOTESYNC_ATTACHMENT_ROOT: attachmentRoot, PORT: "3104", NODE_ENV: "development", QUOTESUITE_APP_ORIGINS: APP_URL, QUOTESUITE_TEST_JOURNEY: "1", QUOTESUITE_TEST_DELIVERY_ENABLED: "0", QUOTESUITE_TEST_CUSTOMER_EMAIL: CUSTOMER, QUOTESUITE_TEST_FACTORY_EMAIL: FACTORY }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    api = spawn(process.execPath, ["--import",pathToFileURL(path.resolve('tests/fixtures/isolatedJourneyExchangeRate.mjs')).href,...(providerJourney?['--import',pathToFileURL(path.resolve('tests/fixtures/isolatedJourneyGoogle.mjs')).href]:[]),"server/index.js"], { cwd: process.cwd(), env: { ...process.env, ...(providerJourney?{QUOTESUITE_INTEGRATION_ENCRYPTION_KEY:providerKey}:{}), QUOTESUITE_DB_PATH: databasePath, QUOTESYNC_ATTACHMENT_ROOT: attachmentRoot, PORT: "3104", NODE_ENV: "development", QUOTESUITE_APP_ORIGINS: APP_URL, QUOTESUITE_TEST_JOURNEY: "1", QUOTESUITE_TEST_DELIVERY_ENABLED: sourceCustomerReissue?"1":"0", QUOTESUITE_DISPOSABLE_PROVIDER_DELIVERY:sourceCustomerReissue?'customer-reissue':'', QUOTESUITE_TEST_CUSTOMER_EMAIL: CUSTOMER, QUOTESUITE_TEST_FACTORY_EMAIL: FACTORY }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     let apiStartupLog='';for(const stream of [api.stdout,api.stderr])stream.on('data',chunk=>{apiStartupLog=(apiStartupLog+String(chunk)).slice(-5000)});
     vite = spawn(process.execPath, [path.resolve("node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", "5276"], { cwd: process.cwd(), env: { ...process.env, VITE_API_BASE_URL: API_URL }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     try{await waitFor(() => reachable(`${API_URL}/api/health`), "Disposable journey API did not start")}catch(error){throw new Error(`${error.message}: ${apiStartupLog}`)} await waitFor(() => reachable(APP_URL), "Disposable journey UI did not start");
@@ -213,7 +214,7 @@ async function run() {
     await waitFor(()=>tab.evaluate("document.querySelector('.supplier-rfq input[type=email]')&&!document.body.innerText.includes('Loading supplier request context')"),'Supplier composer did not load');
     await input(tab,'.supplier-rfq select','EKO');await input(tab,'.supplier-rfq input[type=email]',FACTORY);
     assert.equal(await tab.evaluate("document.querySelectorAll('.supplier-rfq input[name=supplier-request-kind]')[1]?.checked"),true,'Customer context did not preselect revision mode');
-    assert.equal(await tab.evaluate("document.querySelector('.supplier-rfq')?.innerText.includes('Preview only')"),true);
+    assert.equal(await tab.evaluate(sourceCustomerReissue?"document.querySelector('.supplier-rfq__send input')?.checked===false":"document.querySelector('.supplier-rfq')?.innerText.includes('Preview only')"),true);
     await click(tab,'Prepare for review');await waitFor(()=>tab.evaluate("document.querySelector('.supplier-rfq__result')?.innerText.includes('Prepared for review — not sent')"),'Reviewed supplier request was not saved');
     const preparedContext=await staff(`/api/lifecycle/projects/${fixture.projectId}/supplier-enquiries`,null,'GET');
     assert.equal(preparedContext.enquiries.length,1);assert.equal(preparedContext.enquiries[0].requestKind,'revision');assert.notEqual(preparedContext.enquiries[0].status,'sent');
@@ -374,9 +375,29 @@ async function run() {
             const customerProjection=JSON.parse(savedPdf.projection_json);assert.equal(customerProjection.positions.length,5);assert.equal(customerProjection.positions.find(item=>item.reference==='001').specification.find(item=>item.label==='Colour').value,finish);
             const pdfFile=path.join(OUTPUT,'source-backed-prepared-customer-estimate.pdf');await writeFile(pdfFile,pdfBytes);
             const pdfEvidence=await inspectPdf(pdfFile,['001','002','003','004','005','7016','Disposable acceptance offer only']);console.log(JSON.stringify({preparedPdf:pdfEvidence,emailAttachmentMatchesSavedPdf:true,customerTotal:customerProjection.totalIncVatGbp}));
+            if(sourceCustomerReissue){
+              await tab.evaluate("(()=>{const button=[...document.querySelectorAll('button')].find(item=>item.textContent.trim()==='Send Estimate');button.click();button.click()})()");
+              await waitFor(()=>tab.evaluate("document.body.innerText.includes('Estimate was not sent')&&document.body.innerText.includes('PDF and Email draft are still saved')"),'No-network send interruption did not explain recovery');
+              assert.equal((await preparedDb.get('SELECT status FROM issued_quotations WHERE id=?',prepared.id)).status,'failed');
+              assert.equal((await preparedDb.get("SELECT COUNT(*) count FROM issued_quotations WHERE status='issued'")).count,1);
+              await click(tab,'Send Estimate');await waitFor(()=>tab.evaluate("document.body.innerText.includes('Estimate sent successfully')"),'Reviewed no-network reissue did not complete');
+              const issued=await preparedDb.get('SELECT * FROM issued_quotations WHERE id=?',prepared.id);assert.equal(issued.status,'issued');assert.equal(issued.document_id,savedPdf.id);assert.ok(issued.issued_at);
+              const delivered=JSON.parse(await readFile(path.join(root,'disposable-delivery-evidence.json'),'utf8'));assert.equal(delivered.attempts,2);assert.equal(delivered.sent.length,1);assert.deepEqual(delivered.sent[0].recipients,[CUSTOMER]);assert.equal(issued.provider_message_id,delivered.sent[0].id);
+              const mime=Buffer.from(delivered.sent[0].raw,'base64url').toString();const encoded=mime.match(/Content-Transfer-Encoding: base64\r\n\r\n([A-Za-z0-9+/=\r\n]+?)\r\n--/);assert.ok(encoded,'Provider MIME omitted the reviewed PDF');assert.equal(sha256(Buffer.from(encoded[1].replace(/\s/g,''),'base64')),savedPdf.sha256);
+              assert.equal((await preparedDb.get('SELECT COUNT(*) count FROM estimate_revision_releases WHERE estimate_id=?',issued.estimate_id)).count,1);
+              assert.equal((await preparedDb.get('SELECT COUNT(*) count FROM followups WHERE issued_quotation_id=?',issued.id)).count,1);
+              assert.equal((await preparedDb.get('SELECT workflow_state FROM supplier_revision_requests WHERE successor_estimate_id=?',issued.estimate_id)).workflow_state,'revised_customer_estimate_issued');
+              assert.equal((await preparedDb.get('SELECT sha256 FROM customer_quotation_documents WHERE id=?',fixture.document.id)).sha256,fixture.document.sha256,'Original issued PDF changed during reissue');
+              const origin=await tab.evaluate('performance.timeOrigin');await tab.send('Page.reload');
+              await waitFor(()=>tab.evaluate(`performance.timeOrigin!==${origin}&&document.body.innerText.includes('Review Customer Quotation')`),'Issued working Estimate did not reopen after refresh');
+              await click(tab,'Review Customer Quotation');await waitFor(()=>tab.evaluate("document.querySelector('.customer-quotation__email-evidence')?.innerText.includes('Estimate sent successfully')"),'Provider-confirmed reissue was not restored after refresh');
+              assert.equal(await tab.evaluate("[...document.querySelectorAll('.customer-quotation__controls button')].find(button=>button.textContent==='Estimate issued')?.disabled"),true);
+              assert.equal(JSON.parse(await readFile(path.join(root,'disposable-delivery-evidence.json'),'utf8')).sent.length,1,'Refresh repeated provider delivery');
+              console.log(JSON.stringify({scope:'Genuine-source normal customer reissue through production Gmail MIME boundary',provider:'explicit no-network disposable transport',attempts:2,successfulProviderMessages:1,pdfBytesMatch:true,successorReleases:1,followups:1,originalIssuedEvidencePreserved:true,liveDelivery:false}));
+            }
           }finally{await preparedDb.close()}
           const screenshot=await tab.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});await writeFile(path.join(OUTPUT,'source-backed-customer-preparation.png'),Buffer.from(screenshot.data,'base64'));
-          console.log(JSON.stringify({scope:'Source-backed complete-schedule review → normal customer preview → reviewed terms → retained Email/PDF preparation',positions:5,additionalPositionsExplicitlyReviewed:true,sent:false,customerReissueVerified:false}));
+          console.log(JSON.stringify({scope:'Source-backed complete-schedule review → normal customer preview → reviewed terms → retained Email/PDF preparation',positions:5,additionalPositionsExplicitlyReviewed:true,sent:sourceCustomerReissue,customerReissueVerified:sourceCustomerReissue,liveDelivery:false}));
         }
         return;
       }
