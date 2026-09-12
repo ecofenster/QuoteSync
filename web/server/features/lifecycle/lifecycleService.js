@@ -297,6 +297,18 @@ export function createLifecycleService(db, options = {}) {
     if(!text(input.reviewedBy))throw problem('Staff review identity is required.',422,'supplier_revision_reviewer_required');
     const checks = [...(Array.isArray(input.checks) ? input.checks.map((check) => ({ ...check, changeKind: 'requested' })) : []), ...(Array.isArray(input.unrelatedChanges) ? input.unrelatedChanges.map((check) => ({ ...check, changeKind: 'unrelated_material_change', requestedChange: text(check.requestedChange) || 'Unrelated material change introduced by supplier revision' })) : [])];
     if (!checks.length) throw problem('At least one source-backed requested-change check is required.');
+    if(checks.length>500)throw problem('Review up to 500 fields at a time.',422,'supplier_revision_checks_invalid');
+    const reviewPositions=new Set((await db.all('SELECT estimate_position_id FROM portal_review_position_entries WHERE review_submission_id=?',request.review_submission_id)).map(row=>row.estimate_position_id));
+    const fields=new Set();
+    // Validate the entire submission before archiving or changing saved approval.
+    for(const check of checks){
+      const positionId=text(check.estimatePositionId)||null,fieldKey=text(check.fieldKey);
+      if(positionId&&!reviewPositions.has(positionId))throw problem('A reviewed Position does not belong to this issued customer revision. Reopen the customer change request and select its Position. Your saved review has not changed.',422,'supplier_revision_position_invalid');
+      const identity=JSON.stringify([positionId,fieldKey]);
+      if(!fieldKey||fields.has(identity))throw problem('Give each reviewed field a name and include it only once per Position. Your saved review has not changed.',422,'supplier_revision_checks_invalid');
+      fields.add(identity);
+      if(check.approvedDifference===true&&(!text(check.beforeValue)||!text(check.expectedValue)||!text(check.afterValue)||!text(check.beforeSourceReference)||!text(check.afterSourceReference)||!text(check.resolutionNote)))throw problem('To approve a difference, enter the original, expected and returned values, both source references, and your review reason. Your entries can be completed and retried; the saved review has not changed.',422,'supplier_revision_difference_evidence_required');
+    }
     const at = stamp();
     const sourceIdentity=supplierReviewSourceIdentity(request);
     const preceding=await db.all('SELECT * FROM revision_change_checks WHERE supplier_revision_request_id=? ORDER BY id',requestId);
