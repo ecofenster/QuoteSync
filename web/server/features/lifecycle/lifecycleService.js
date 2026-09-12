@@ -496,6 +496,14 @@ export function createLifecycleService(db, options = {}) {
       try{
         const current=await db.get("SELECT * FROM supplier_enquiry_drafts WHERE id=?",candidate.id);if(!current||current.response_state!=='outstanding'||current.status!=='sent')continue;
         delivery.assertRecipient(current.recipient,'factory');const original=await communications.get(current.communication_message_id);if(!original)throw problem('The original sent supplier request could not be reopened.',409,'supplier_followup_original_missing');
+        const eligible=await db.get(`SELECT se.id FROM supplier_enquiry_drafts se
+          JOIN supplier_revision_requests sr ON sr.id=se.revision_request_id
+          WHERE se.id=? AND se.status='sent' AND se.response_state='outstanding'
+          AND se.completed_at IS NULL AND se.followup_sent_at IS NULL
+          AND sr.status<>'cancelled' AND sr.completed_at IS NULL
+          AND sr.workflow_state NOT IN ('cancelled','superseded','revised_customer_estimate_issued')
+          AND NOT EXISTS(SELECT 1 FROM supplier_enquiry_drafts successor WHERE successor.supersedes_id=se.id AND successor.status<>'cancelled')`,current.id);
+        if(!eligible){await db.run('UPDATE supplier_enquiry_drafts SET followup_due_at=NULL,updated_at=? WHERE id=?',stamp(),current.id);continue;}
         const followupId=`supplier-followup-${current.id}`,bodyText=`Please could you provide an update on the requested revised estimate for ${current.subject}?`;
         const sent=await communicationService.sendMessage({id:followupId,provider:'google_workspace',direction:'outbound',folder:'sent',status:'sending',from:[],to:[current.recipient],cc:[],bcc:[],subject:`Follow-up: ${current.subject}`,bodyText,bodyHtml:`<p>${bodyText}</p>`,inReplyToProviderMessageId:original.providerMessageId||null,links:[{kind:'project',id:current.project_id},{kind:'estimate',id:current.estimate_id},{kind:'supplier_enquiry',id:current.id},...(current.revision_request_id?[{kind:'supplier_revision_request',id:current.revision_request_id}]:[])]});
         const sentAt=sent.sentAt||stamp();await db.run("UPDATE supplier_enquiry_drafts SET followup_sent_at=?,followup_message_id=?,followup_failure='',updated_at=? WHERE id=?",sentAt,sent.id,sentAt,current.id);await event('supplier.revision.followup_sent',current.id,[{kind:'supplier_enquiry',id:current.id},{kind:'communication',id:sent.id}]);sentCount+=1;

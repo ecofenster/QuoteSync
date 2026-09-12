@@ -303,6 +303,13 @@ test("one tracked supplier revision draft reopens, sends once and follows up onc
   const followup=await lifecycle.processDueSupplierRevisionFollowups();assert.deepEqual(followup,{processed:1,sent:1,failed:0});assert.equal(sendCount,2);
   assert.deepEqual(await lifecycle.processDueSupplierRevisionFollowups(),{processed:0,sent:0,failed:0});assert.equal(sendCount,2);
   const portal=await source.service.getProjectPortal(auth.session,"project-a1");assert.equal(portal.revisionRequests[0].status,"Updated Estimate being prepared");assert.equal(JSON.stringify(portal.revisionRequests).includes("factory@example.test"),false);
+  const second=await lifecycle.prepareSupplierEnquiry("project-a1",{...payload,subject:"Second supplier request",idempotencyKey:"second-tracked-request",send:true});
+  await source.db.run("UPDATE supplier_revision_requests SET status='cancelled',workflow_state='cancelled' WHERE id=?",parent.id);
+  clock+=8*24*60*60*1000;
+  const restarted=createLifecycleService(source.db,{portal:source.service,communications,communicationService,documentOptions:source.options.documentOptions,deliveryPolicy,now:()=>new Date(clock)});
+  assert.deepEqual(await restarted.processDueSupplierRevisionFollowups(),{processed:1,sent:0,failed:0});
+  assert.equal(sendCount,3);
+  assert.equal((await source.db.get('SELECT followup_due_at FROM supplier_enquiry_drafts WHERE id=?',second.id)).followup_due_at,null);
 });
 
 test("HTTP boundary is fail-closed by default and requires authentication plus CSRF when explicitly test-enabled",async t=>{
