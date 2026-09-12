@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
-import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -19,6 +19,7 @@ import { initializeLifecycleSchema } from "../server/features/lifecycle/lifecycl
 import { pdfJsRuntimeOptions } from "../server/features/supplierImportLab/pdfJsRuntime.js";
 import { createBrowserRunController, countBrowserRunProfiles } from "./browser-run-lifecycle.mjs";
 import { terminateOwnedProcessTree } from "./e2e-owned-process.mjs";
+import { initializeIsolatedJourneyDatabase } from "./isolated-journey-database.mjs";
 
 const APP_URL = "http://127.0.0.1:5276";
 const API_URL = "http://127.0.0.1:3104";
@@ -125,9 +126,12 @@ async function inspectPdf(filePath, expected) {
 
 async function run() {
   const root = await mkdtemp(path.join(os.tmpdir(), "quotesuite-complete-journey-")), databasePath = path.join(root, "quotesync.db"), attachmentRoot = path.join(root, "attachments");
-  await copyFile(path.resolve("quotesync.db"), databasePath); await mkdir(attachmentRoot, { recursive: true }); await mkdir(OUTPUT, { recursive: true });
-  const fixture = await seed(databasePath, attachmentRoot); let api, vite, browser, tab, cleanup;
+  let api, vite, browser, tab, cleanup;
   try {
+    await mkdir(attachmentRoot, { recursive: true }); await mkdir(OUTPUT, { recursive: true });
+    const isolation=await initializeIsolatedJourneyDatabase({databasePath,attachmentRoot});
+    console.log(JSON.stringify({journeyIsolation:isolation}));
+    const fixture=await seed(databasePath,attachmentRoot);
     api = spawn(process.execPath, ["server/index.js"], { cwd: process.cwd(), env: { ...process.env, QUOTESUITE_DB_PATH: databasePath, QUOTESYNC_ATTACHMENT_ROOT: attachmentRoot, PORT: "3104", NODE_ENV: "development", QUOTESUITE_APP_ORIGINS: APP_URL, QUOTESUITE_TEST_JOURNEY: "1", QUOTESUITE_TEST_DELIVERY_ENABLED: "0", QUOTESUITE_TEST_CUSTOMER_EMAIL: CUSTOMER, QUOTESUITE_TEST_FACTORY_EMAIL: FACTORY }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     vite = spawn(process.execPath, [path.resolve("node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", "5276"], { cwd: process.cwd(), env: { ...process.env, VITE_API_BASE_URL: API_URL }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     await waitFor(() => reachable(`${API_URL}/api/health`), "Disposable journey API did not start"); await waitFor(() => reachable(APP_URL), "Disposable journey UI did not start");
