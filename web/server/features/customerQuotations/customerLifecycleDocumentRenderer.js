@@ -78,7 +78,7 @@ function positionContent(position, drawing, brand, { includeChecks = false, chec
     unbreakable: true,
     stack: [{
       table: { widths: [130, "*"], body: [[
-        { stack: [drawing ? { image: drawing, fit: [118, 155], alignment: "center", margin: [0, 3, 0, 6] } : { text: "Drawing unavailable\nNo reliable source image exists.", alignment: "center", color: "#68736D", margin: [0, 52, 0, 52] }, { text: position.drawing?.source === "manufacturer" ? "Source-owned manufacturer drawing" : position.drawing?.available ? "Canonical configured drawing" : "No drawing substituted", style: "caption", alignment: "center" }], fillColor: "#F4F6F3" },
+        { stack: [drawing ? { image: drawing, fit: [118, 155], alignment: "center", margin: [0, 3, 0, 6] } : { text: "Drawing unavailable\nPlease ask us for details.", alignment: "center", color: "#68736D", margin: [0, 52, 0, 52] }, { text: position.drawing?.source === "manufacturer" ? "Manufacturer drawing" : position.drawing?.available ? "Product drawing" : "Drawing not available", style: "caption", alignment: "center" }], fillColor: "#F4F6F3" },
         { stack: [
           { columns: [{ text: `POSITION ${reference}`, style: "positionTitle" }, { text: price, style: "positionPrice", alignment: "right" }] },
           { text: `${number(position.quantity)} × ${number(position.widthMm)} × ${number(position.heightMm)} mm${position.roomName ? ` · ${clean(position.roomName)}` : ""}`, style: "positionMeta", margin: [0, 3, 0, 8] },

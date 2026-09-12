@@ -21,6 +21,7 @@ import {
 } from "./customerQuotationProjection";
 import CustomerQuotationPositionCard from "./CustomerQuotationPositionCard";
 import { quotationWorkflowApi, type IssuedQuotationView } from "../../services/quotations/quotationWorkflowApi";
+import { reviewedEmailText, reviewedEmailHtml } from "../../services/quotations/reviewedEmailBody";
 import type { CalculatorScenario } from "../projectCalculatorLab/domain/projectCalculatorLab.types";
 import "./customerQuotation.css";
 import "./customerQuotationBrand.css";
@@ -188,7 +189,7 @@ export default function CustomerQuotationPreview({
           setProjection(
             buildCustomerQuotationProjection({ scenario, client, estimate, coverPhotoUrl: coverPhoto?.dataUrl ?? null,commercialTerms:{validityDays:commercialTerms.validityDays,terms:commercialTerms.terms,exclusions:commercialTerms.exclusions,reviewed:commercialTerms.reviewed,reviewedAt:commercialTerms.reviewedAt} }),
           );
-          if(workflowState?.issuedQuotationId){const current=await quotationWorkflowApi.get(workflowState.issuedQuotationId);if(!cancelled){setIssuePreparation(current);setIssueRecipient(current.recipient);setIssueSubject(current.subject);setIssueBody(current.communication?.bodyHtml||"")}}
+          if(workflowState?.issuedQuotationId){const current=await quotationWorkflowApi.get(workflowState.issuedQuotationId);if(!cancelled){setIssuePreparation(current);setIssueRecipient(current.recipient);setIssueSubject(current.subject);setIssueBody(reviewedEmailText(current.communication?.bodyHtml||"")||current.communication?.bodyText||"")}}
         }
       })
       .catch((reason) => {
@@ -225,14 +226,14 @@ export default function CustomerQuotationPreview({
     setActiveAction("prepare");setIssueError("");setDownloadResult(null);
     try{
       const prepared=await quotationWorkflowApi.prepare({estimateId:String(estimate.id),clientId:String(client.id),estimateRevision:estimate.revisionNo,quotationRevision:projection.commercialRevision,projection,recipient:client.email});
-      setIssuePreparation(prepared);setIssueRecipient(prepared.recipient);setIssueSubject(prepared.subject);setIssueBody(prepared.communication?.bodyHtml||"");onWorkflowChanged?.();
+      setIssuePreparation(prepared);setIssueRecipient(prepared.recipient);setIssueSubject(prepared.subject);setIssueBody(reviewedEmailText(prepared.communication?.bodyHtml||"")||prepared.communication?.bodyText||"");onWorkflowChanged?.();
     }catch(reason){setIssueError(reason instanceof Error?reason.message:"Quotation email could not be prepared.")}
     finally{actionInFlight.current=false;setActiveAction(null)}
   };
   const sendPrepared=async()=>{
     if(!issuePreparation||actionInFlight.current)return;actionInFlight.current=true;
     setActiveAction("send");setIssueError("");
-    try{const issued=await quotationWorkflowApi.send(issuePreparation.id,{recipient:issueRecipient,subject:issueSubject,bodyHtml:issueBody});setIssuePreparation(issued);onWorkflowChanged?.()}
+    try{const issued=await quotationWorkflowApi.send(issuePreparation.id,{recipient:issueRecipient,subject:issueSubject,bodyHtml:reviewedEmailHtml(issueBody,issuePreparation.communication?.bodyHtml||"")});setIssuePreparation(issued);onWorkflowChanged?.()}
     catch(reason){setIssueError(reason instanceof Error?reason.message:"The provider did not send the quotation.");try{setIssuePreparation(await quotationWorkflowApi.get(issuePreparation.id))}catch{/* retain current preparation */}onWorkflowChanged?.()}
     finally{actionInFlight.current=false;setActiveAction(null)}
   };

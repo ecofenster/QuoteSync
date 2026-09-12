@@ -362,6 +362,7 @@ async function run() {
           await input(tab,'.customer-quotation__terms-editor textarea','Disposable acceptance offer only. All sizes remain subject to reviewed survey.');
           await click(tab,'Confirm for this Estimate');await waitFor(()=>tab.evaluate("document.body.innerText.includes('Customer terms reviewed')"),'Customer terms did not persist');
           await click(tab,'Send to Client');await waitFor(()=>tab.evaluate("document.body.innerText.includes('Email ready to review')&&document.body.innerText.includes('Nothing has been sent')"),'Reviewed customer Email preparation failed');
+          const readableMessage=await tab.evaluate("document.querySelector('.customer-quotation__email-fields textarea').value");assert.ok(readableMessage.includes('Dear TEST Customer Journey'));assert.doesNotMatch(readableMessage,/<\/?(?:p|strong|br)\b/);assert.ok(readableMessage.includes('\n'));
           const preparedDb=await open({filename:databasePath,driver:sqlite3.Database,mode:sqlite3.OPEN_READONLY});
           try{
             const prepared=await preparedDb.get("SELECT * FROM issued_quotations WHERE status<>'issued'");assert.ok(prepared?.document_id);assert.ok(prepared.supplier_review_snapshot);assert.equal(prepared.recipient,CUSTOMER);
