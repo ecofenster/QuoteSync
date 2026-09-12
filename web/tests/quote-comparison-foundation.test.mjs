@@ -25,8 +25,8 @@ test("Client workspace owns extraction-first Compare Quotes and governed Portal 
   assert.match(results,/Comparison Report/);assert.match(results,/Review Exceptions/);assert.match(results,/Advanced Mapping/);assert.match(results,/Project overview/);
   assert.match(results,/Drawing/);assert.match(results,/What is offered/);assert.match(results,/Position conclusion/);assert.match(results,/Image unavailable/);assert.doesNotMatch(results,/Overall Recommendations|Best value/);
   const print=await readFile(new URL("../src/features/quoteComparisons/ComparisonPrintDocument.tsx",import.meta.url),"utf8");
-  assert.match(results,/Print \/ Save PDF/);assert.match(results,/comparison\.status === "draft_review_required".*Approve comparison/);
-  assert.match(print,/approval is not required to print/);assert.match(print,/report\.sourceReferences/);assert.match(print,/packPositions\(report\.positions\)/);assert.match(print,/supplier\.commercial\.netSupply/);assert.match(print,/Image unavailable/);assert.match(print,/data-print-overview="3"/);assert.doesNotMatch(print,/Overall recommendations|Top 3|Best value|buildQuoteComparisonReport|rankingTuple|deriveProjectCosting/);
+  assert.match(results,/View \/ Download PDF/);assert.match(results,/comparison\.status === "draft_review_required".*Approve comparison/);
+  assert.match(print,/approval is not required/);assert.match(print,/report\.sourceReferences/);assert.match(print,/packPositions\(report\.positions\)/);assert.match(print,/supplier\.commercial\.netSupply/);assert.match(print,/Image unavailable/);assert.match(print,/data-print-overview="3"/);assert.doesNotMatch(print,/Overall recommendations|Top 3|Best value|buildQuoteComparisonReport|rankingTuple|deriveProjectCosting/);
   assert.match(results,/resolveManufacturerVisualAssetUrl\(drawing\.url\)/);assert.match(print,/resolveManufacturerVisualAssetUrl\(drawing\.url\)/);
   assert.match(workspace,/sourceVisuals:row\.sourceVisuals/);assert.match(workspace,/sourceAttachmentId:document\.attachmentId/);
   assert.doesNotMatch(workspace,/Create Draft Comparison/);
@@ -44,11 +44,17 @@ async function fixture(t){
     CREATE TABLE supplier_quotes(id TEXT PRIMARY KEY,estimate_id TEXT,supplier_name TEXT,supplier_code TEXT);
     CREATE TABLE supplier_quote_revisions(id TEXT PRIMARY KEY,supplier_quote_id TEXT,estimate_id TEXT);
     CREATE TABLE supplier_quote_attachments(id TEXT PRIMARY KEY,revision_id TEXT,estimate_id TEXT,original_file_name TEXT,media_type TEXT,sha256 TEXT);
+    CREATE TABLE configurator_manufacturers(id TEXT PRIMARY KEY,name TEXT NOT NULL,code TEXT NOT NULL,is_active INTEGER NOT NULL DEFAULT 1);
+    CREATE TABLE configurator_products(id TEXT PRIMARY KEY,manufacturer_id TEXT NOT NULL,name TEXT NOT NULL,code TEXT NOT NULL,is_active INTEGER NOT NULL DEFAULT 1);
+    CREATE TABLE supplier_commercial_defaults(supplier_code TEXT PRIMARY KEY,supplier_name TEXT NOT NULL,policy_json TEXT NOT NULL,pricing_display_policy_json TEXT NOT NULL,updated_at TEXT NOT NULL,active INTEGER NOT NULL DEFAULT 1);
   `);
   await initializeCommercialIdentitySchema(db);await initializeQuoteComparisonSchema(db);
   const now="2026-09-06T10:00:00.000Z",positions=[{id:"position-a",positionRef:"001",roomName:"Kitchen",qty:1,widthMm:1200,heightMm:1400},{id:"position-b",positionRef:"002",roomName:"Hall",qty:2,widthMm:900,heightMm:2100}];
   await db.run("INSERT INTO clients(id,name,email,project_name,client_ref,commercial_lifecycle,reference_namespace,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)","client-disposable","Disposable Client","test@example.com","Extension","TEST-CL-001","prospect","test",now,now);
   await db.run("INSERT INTO projects(id,client_id,name,status,created_at,updated_at) VALUES(?,?,?,?,?,?)","project-disposable","client-disposable","Extension","active",now,now);
+  await db.run("INSERT INTO configurator_manufacturers(id,name,code,is_active) VALUES(?,?,?,1)","maker-a","Maker A","MA");
+  await db.run("INSERT INTO configurator_products(id,manufacturer_id,name,code,is_active) VALUES(?,?,?,?,1)","system-92","maker-a","System 92","S92");
+  await db.run("INSERT INTO supplier_commercial_defaults(supplier_code,supplier_name,policy_json,pricing_display_policy_json,updated_at,active) VALUES(?,?,?,?,?,1)","SUP-A","Supplier A","{}","{}",now);
   await db.run("INSERT INTO estimates(id,client_id,project_id,estimate_ref,base_estimate_ref,revision_no,status,outcome,positions_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)","estimate-r2","client-disposable","project-disposable","TEST-EST-001-R2","TEST-EST-001",2,"Draft","Open",JSON.stringify(positions),now,now);
   await db.run("INSERT INTO project_calculator_lab_scenarios(id,estimate_id,revision_number,updated_at) VALUES(?,?,?,?)","scenario-r2","estimate-r2",4,now);
   for(const [id,name] of [["doc-a","supplier-a.pdf"],["doc-a-tech","supplier-a-spec.docx"],["doc-b","supplier-b.pdf"]])await db.run(`INSERT INTO canonical_documents(id,provider,provider_account_id,provider_file_id,client_id,project_id,document_type,file_name,mime_type,size_bytes,folder_path,trashed,discovered_at,last_seen_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,0,?,?,?)`,id,"google_drive","account",`provider-${id}`,"client-disposable","project-disposable","supplier_proposal",name,name.endsWith("pdf")?"application/pdf":"application/vnd.openxmlformats-officedocument.wordprocessingml.document",100,"Clients/Disposable",now,now,now);
@@ -129,12 +135,16 @@ test("comparison records support naming, draft copy, archive/restore and governe
 
 test("manufacturer/system library retains certificate and drawing version evidence without copying files",async t=>{
   const {db}=await fixture(t),service=createManufacturerDocumentLibraryService(db);
-  const certificate=await service.create({ownerKind:"manufacturer",ownerName:"Maker A",productSystemName:"System 92",category:"certificate",subcategory:"Thermal",title:"Thermal test",documentFormat:"PDF",canonicalDocumentId:"doc-a",versionLabel:"v1",issueDate:"2026-01-01",jurisdiction:"UK",applicability:{glass:"triple"}},"admin-1");
-  const drawing=await service.create({ownerKind:"manufacturer",ownerName:"Maker A",productSystemName:"System 92",category:"system_drawing",subcategory:"Threshold",title:"Threshold detail",documentFormat:"DWG",canonicalDocumentId:"doc-a-tech",versionLabel:"A"},"admin-1");
+  const options=await service.identityOptions();assert.equal(options.manufacturers[0].id,"maker-a");assert.equal(options.products[0].id,"system-92");assert.equal(options.suppliers[0].id,"SUP-A");
+  const certificate=await service.create({ownerKind:"manufacturer",ownerId:"maker-a",productSystemId:"system-92",category:"certificate",subcategory:"Thermal",title:"Thermal test",documentFormat:"PDF",canonicalDocumentId:"doc-a",versionLabel:"v1",issueDate:"2026-01-01",jurisdiction:"UK",applicability:{glass:"triple"}},"admin-1");
+  const drawing=await service.create({ownerKind:"manufacturer",ownerId:"maker-a",productSystemId:"system-92",category:"system_drawing",subcategory:"Threshold",title:"Threshold detail",documentFormat:"DWG",canonicalDocumentId:"doc-a-tech",versionLabel:"A"},"admin-1");
+  assert.equal(certificate.ownerId,"maker-a");assert.equal(certificate.productSystemId,"system-92");
   assert.equal((await service.list({category:"certificate"}))[0].subcategory,"Thermal");assert.equal(drawing.documentFormat,"DWG");
   const superseded=await service.supersede(certificate.id,{canonicalDocumentId:"doc-b",documentFormat:"PDF",versionLabel:"v2",issueDate:"2026-08-01"},"admin-2");
   assert.equal(superseded.previous.status,"superseded");assert.equal(superseded.replacement.status,"active");
-  const link=await service.linkToProject(drawing.id,"project-disposable","customer_approved","admin-2",{positionIds:["position-a"]});assert.equal(link.portalVisibility,"customer_approved");
+  await assert.rejects(()=>service.linkToProject(drawing.id,"project-disposable","customer_approved","admin-2",{positionIds:["position-a"]}),error=>error.code==="customer_document_review_required");
+  await assert.rejects(()=>service.linkToProject(drawing.id,"project-disposable","internal_only","admin-2",{positionIds:["position-other"]}),error=>error.code==="document_position_scope_mismatch");
+  const link=await service.linkToProject(drawing.id,"project-disposable","customer_approved","admin-2",{positionIds:["position-a"],customerSharingReviewed:true});assert.equal(link.portalVisibility,"customer_approved");assert.deepEqual(link.applicabilityEvidence.positionIds,["position-a"]);
   assert.equal((await db.get("SELECT COUNT(*) count FROM canonical_documents")).count,3,"library metadata must not duplicate provider-backed binaries");
 });
 
@@ -143,6 +153,7 @@ test("production-style API routes persist comparison and document-library record
   const server=app.listen(0,"127.0.0.1");t.after(()=>new Promise(resolve=>server.close(resolve)));await new Promise(resolve=>server.once("listening",resolve));const address=server.address();assert.ok(address&&typeof address==="object");const base=`http://127.0.0.1:${address.port}`;
   const baselineResponse=await fetch(`${base}/api/quote-comparisons/baseline?client_id=client-disposable&project_id=project-disposable`);assert.equal(baselineResponse.status,200);assert.equal((await baselineResponse.json()).baseline.estimateId,"estimate-r2");
   const comparisonResponse=await fetch(`${base}/api/quote-comparisons`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({clientId:"client-disposable",baselineEstimateId:"estimate-r2",baselineCommercial:{kind:"current_project_costing",scenarioId:"scenario-r2",customerSellingExVatGbp:"14500.00",vatGbp:"2900.00",totalIncVatGbp:"17400.00"},proposals:[{supplierName:"A",scopeKind:"supply_only",documents:[{canonicalDocumentId:"doc-a",documentRole:"commercial"}],items:[]},{supplierName:"B",scopeKind:"supply_only",documents:[{canonicalDocumentId:"doc-b",documentRole:"commercial"}],items:[]}]})});assert.equal(comparisonResponse.status,201);assert.equal((await comparisonResponse.json()).proposals.length,2);
-  const documentResponse=await fetch(`${base}/api/admin/manufacturer-documents`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ownerKind:"manufacturer",ownerName:"Maker",productSystemName:"System",category:"certificate",subcategory:"Security",title:"Security certificate",documentFormat:"PDF",canonicalDocumentId:"doc-a"})});assert.equal(documentResponse.status,201);assert.equal((await documentResponse.json()).subcategory,"Security");
+  const identities=await(await fetch(`${base}/api/admin/manufacturer-documents/identity-options`)).json();assert.equal(identities.products[0].id,"system-92");
+  const documentResponse=await fetch(`${base}/api/admin/manufacturer-documents`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ownerKind:"manufacturer",ownerId:"maker-a",productSystemId:"system-92",category:"certificate",subcategory:"Security",title:"Security certificate",documentFormat:"PDF",canonicalDocumentId:"doc-a"})});assert.equal(documentResponse.status,201);assert.equal((await documentResponse.json()).subcategory,"Security");
   const sources=await(await fetch(`${base}/api/admin/manufacturer-documents/canonical-sources`)).json();assert.equal(sources.length,3);
 });

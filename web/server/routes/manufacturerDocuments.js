@@ -15,6 +15,14 @@ export function createManufacturerDocumentsRouter({ databasePromise = null } = {
     try { res.json(await createManufacturerDocumentLibraryService(await resolveDatabase(databasePromise)).listCanonicalSources(req.query.search)); }
     catch (error) { respondError(res, error); }
   });
+  router.get("/identity-options", async (_req, res) => {
+    try { res.json(await createManufacturerDocumentLibraryService(await resolveDatabase(databasePromise)).identityOptions()); }
+    catch (error) { respondError(res, error); }
+  });
+  router.get("/project-options", async (req, res) => {
+    try { res.json(await createManufacturerDocumentLibraryService(await resolveDatabase(databasePromise)).listProjectOptions(req.query.search)); }
+    catch (error) { respondError(res, error); }
+  });
   router.get("/", async (req, res) => {
     try { res.json(await createManufacturerDocumentLibraryService(await resolveDatabase(databasePromise)).list({ ownerName: req.query.owner_name, productSystemName: req.query.product_system_name, category: req.query.category, status: req.query.status })); }
     catch (error) { respondError(res, error); }
@@ -28,6 +36,10 @@ export function createManufacturerDocumentsRouter({ databasePromise = null } = {
       const result = await createManufacturerDocumentLibraryService(await resolveDatabase(databasePromise)).supersede(req.params.documentId, req.body || {}, CURRENT_APP_USER.id);
       return result ? res.status(201).json(result) : res.status(404).json({ error: "Library document not found.", code: "manufacturer_document_not_found" });
     } catch (error) { respondError(res, error); }
+  });
+  router.get("/:documentId/projects/:projectId", async (req, res) => {
+    try { res.json(await createManufacturerDocumentLibraryService(await resolveDatabase(databasePromise)).projectApplicability(req.params.documentId, req.params.projectId)); }
+    catch (error) { respondError(res, error); }
   });
   router.put("/:documentId/projects/:projectId", async (req, res) => {
     try { res.json(await createManufacturerDocumentLibraryService(await resolveDatabase(databasePromise)).linkToProject(req.params.documentId, req.params.projectId, req.body?.portalVisibility, CURRENT_APP_USER.id, req.body?.applicabilityEvidence || {})); }

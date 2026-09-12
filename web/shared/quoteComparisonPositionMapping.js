@@ -149,7 +149,7 @@ export function inferQuoteComparisonMappings(items, positions) {
     return {
       ...item,
       canonicalEstimatePositionId: positionId,
-      relationshipKind: explicit && item.relationshipKind && item.relationshipKind !== "unmapped" ? item.relationshipKind : alternative ? "alternative" : compositeAssembly || counts.get(positionId) > 1 || item.supplierItemSnapshot?.componentRole ? "grouped" : "exact",
+      relationshipKind: explicit && item.relationshipKind ? item.relationshipKind : alternative ? "alternative" : compositeAssembly || counts.get(positionId) > 1 || item.supplierItemSnapshot?.componentRole ? "grouped" : "exact",
       differenceStatus: explicit && item.differenceStatus ? item.differenceStatus : statusFor(item, position, authority, differences),
       differences: explicit && Array.isArray(item.differences) ? item.differences : differences,
       provenance: { ...(item.provenance || {}), mappingAuthority: `automatic_${authority}`, mappingEvidence: { sourceReference: itemReference(item), canonicalReference: positionReference(position) } },
