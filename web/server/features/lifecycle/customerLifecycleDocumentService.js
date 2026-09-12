@@ -36,7 +36,7 @@ export function createCustomerLifecycleDocumentService(db, { attachmentRoot = re
     if (existing) return get(existing.id);
     const projectionJson = JSON.stringify(projection), contextJson = JSON.stringify(context), projectionSha256 = sha256(`${projectionJson}\n${contextJson}`);
     const id = randomUUID(), bytes = await renderCustomerLifecyclePdf({ kind, projection, context, attachmentRoot }), documentSha = sha256(bytes);
-    const title = kind === "order" ? "Order" : "Final-Confirmation";
+    const title = context.audience === "factory-price-free-v1" ? "Factory-Schedule" : kind === "order" ? "Order" : "Final-Confirmation";
     const fileName = `${safeName(context.reference)}-${title}-R${safeName(revision)}.pdf`;
     const storageKey = `orders/${safeName(orderId)}/customer-documents/${id}.pdf`;
     const target = await ensureManagedParent(storageKey, attachmentRoot);
@@ -65,5 +65,17 @@ export function createCustomerLifecycleDocumentService(db, { attachmentRoot = re
     return persist({ kind: "final_confirmation", ownerId: confirmation.id, orderId: confirmation.order_id, revision: confirmation.revision, projection, context, source });
   }
 
-  return { get, read, createOrderDocument, createFinalConfirmationDocument };
+  async function createFactoryOrderDocument(orderId) {
+    const source = await acceptedOrderSource(orderId), accepted = parse(source.customer_projection_json, null);
+    if (!accepted || !source.staff_approved_at) throw fail("The accepted schedule and staff approval are required for the factory document.", 409, "order_staff_approval_required");
+    const pick = (value, keys) => Object.fromEntries(keys.filter(key => value?.[key] !== undefined).map(key => [key, value[key]]));
+    const acceptedIds = new Set((await db.all("SELECT estimate_position_id FROM portal_position_acceptances WHERE estimate_acceptance_id=?", source.acceptance_id)).map(row => row.estimate_position_id));
+    // Allowlist rather than copying customer commercial snapshots into supplier output.
+    const projection = { ...pick(accepted, ["clientName", "projectName", "estimateReference", "brand"]), positions: (accepted.positions || []).filter(position => acceptedIds.has(position.id)).map(position => pick(position, ["id", "reference", "customerReference", "quantity", "widthMm", "heightMm", "roomName", "productSystem", "description", "configurationDescription", "specification", "thermal", "drawing"])) };
+    if (!projection.positions.length || projection.positions.length !== acceptedIds.size) throw fail("Every accepted Position must be present in the saved schedule before preparing a factory document.", 409, "factory_schedule_incomplete");
+    const revision = "factory-price-free-v1", context = { audience: revision, reference: source.order_ref, revision, documentDate: source.staff_approved_at, estimateReference: accepted.estimateReference, estimateRevision: Number(source.estimate_revision), sourceEstimateReleaseId: source.release_id, sourceEstimateDocumentId: source.source_estimate_document_id };
+    return persist({ kind: "order", ownerId: source.id, orderId: source.id, revision, projection, context, source });
+  }
+
+  return { get, read, createOrderDocument, createFactoryOrderDocument, createFinalConfirmationDocument };
 }

@@ -310,6 +310,16 @@ test("customer acceptance creates one canonical Order and factory commitment rem
   await assert.rejects(()=>lifecycle.prepareFactoryOrder(accepted.orderId,{recipient:"factory@example.test",createdBy:"staff-1"}),error=>error.code==="factory_order_staff_approval_required");
   const approval=await lifecycle.approveOrder(accepted.orderId,{approvedBy:"staff-1",note:"Reviewed exact issued revision"});assert.equal(approval.status,"staff_approved");
   const draft=await lifecycle.prepareFactoryOrder(accepted.orderId,{recipient:"factory@example.test",createdBy:"staff-1",documentIds:["document-issued"]});assert.equal(draft.status,"draft");assert.equal((await source.db.get("SELECT status FROM orders WHERE id=?",accepted.orderId)).status,"staff_approved");
+  const safeDocument=await lifecycle.customerDocuments.get(draft.documentIds[0]);
+  assert.equal(safeDocument.context.audience,'factory-price-free-v1');assert.match(safeDocument.fileName,/Factory-Schedule/);
+  assert.equal(safeDocument.projection.totalIncVatGbp,undefined);assert.equal(safeDocument.projection.commercialTerms,undefined);assert.equal(safeDocument.projection.positions[0].totalSellingPriceGbp,undefined);
+  const draftReplay=await lifecycle.prepareFactoryOrder(accepted.orderId,{recipient:'factory@example.test',createdBy:'staff-1'});assert.deepEqual(draftReplay.documentIds,draft.documentIds);
+  const legacy=await lifecycle.customerDocuments.createOrderDocument(accepted.orderId,{revision:'staff-approved'});
+  await source.db.run('UPDATE factory_order_requests SET document_ids_json=? WHERE id=?',JSON.stringify([legacy.id]),draft.id);
+  await assert.rejects(()=>lifecycle.prepareFactoryOrder(accepted.orderId,{send:true}),error=>error.code==='factory_draft_requires_safe_schedule');
+  const repaired=await lifecycle.prepareFactoryOrder(accepted.orderId,{send:false});assert.deepEqual(repaired.documentIds,[safeDocument.id]);assert.notEqual(repaired.communicationMessageId,draft.communicationMessageId);
+  assert.ok(await createCommunicationRepository(source.db).get(draft.communicationMessageId),'Previous draft evidence must remain retained');
+  assert.equal((await lifecycle.customerDocuments.get(legacy.id)).sha256,legacy.sha256,'Customer Order evidence changed during repair');
 });
 
 test("accepted Positions remain a fail-closed gate through factory confirmation and final customer sign-off",async t=>{

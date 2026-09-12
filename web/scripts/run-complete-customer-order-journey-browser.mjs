@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -34,7 +34,9 @@ const DEBUG_PORT = 9416;
 const CUSTOMER = "customer.journey@example.test";
 const FACTORY = "factory.journey@example.test";
 const OUTPUT = path.resolve("test-output/complete-customer-order-journey");
-const sourceCustomerReissue=process.argv.includes('--stop-after-source-backed-customer-reissue');
+const sourceStaffOrder=process.argv.includes('--stop-after-source-backed-staff-order');
+const sourceCustomerOrder=sourceStaffOrder||process.argv.includes('--stop-after-source-backed-customer-order');
+const sourceCustomerReissue=sourceCustomerOrder||process.argv.includes('--stop-after-source-backed-customer-reissue');
 const sourceCustomerPreparation=sourceCustomerReissue||process.argv.includes('--stop-after-source-backed-customer-preparation');
 const overallSourceReview=sourceCustomerPreparation||process.argv.includes('--stop-after-source-backed-overall-review');
 const receivedSupplierReviews=process.argv.includes('--stop-after-received-supplier-reviews');
@@ -144,12 +146,13 @@ async function staff(pathname, body, method = "POST") {
   return text ? JSON.parse(text) : null;
 }
 
-async function inspectPdf(filePath, expected) {
+async function inspectPdf(filePath, expected, forbidden = []) {
   const bytes = await readFile(filePath), task = getDocument(pdfJsRuntimeOptions({ data: new Uint8Array(bytes) }));
   try {
     const pdf = await task.promise; let searchableText = "";
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) { const page = await pdf.getPage(pageNumber), content = await page.getTextContent(); searchableText += ` ${content.items.map((item) => item.str).join(" ")}`; page.cleanup(); }
     for (const term of expected) assert.match(searchableText, new RegExp(term, "i"), `${path.basename(filePath)} is missing ${term}`);
+    for (const term of forbidden) assert.ok(!searchableText.includes(term), `${path.basename(filePath)} exposes ${term}`);
     const renderPage = async (pageNumber, suffix) => { const page = await pdf.getPage(pageNumber), viewport = page.getViewport({ scale: 1.25 }), canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height)), context = canvas.getContext("2d"); context.fillStyle = "#fff"; context.fillRect(0, 0, canvas.width, canvas.height); await page.render({ canvasContext: context, canvas, viewport, annotationMode: 0 }).promise; const output = filePath.replace(/\.pdf$/i, suffix); await writeFile(output, await canvas.encode("png")); const size = { width: viewport.width / 1.25, height: viewport.height / 1.25 }; page.cleanup(); return { output, size }; };
     const cover = await renderPage(1, "--cover.png"), schedule = await renderPage(Math.min(3, pdf.numPages), "--schedule.png"), summary = await renderPage(pdf.numPages, "--summary.png");
     return { filePath, sizeBytes: bytes.length, sha256: sha256(bytes), pageCount: pdf.numPages, searchableCharacters: searchableText.replace(/\s+/g, "").length, firstPage: cover.size, previewPaths: { cover: cover.output, schedule: schedule.output, summary: summary.output } };
@@ -394,9 +397,49 @@ async function run() {
               assert.equal(await tab.evaluate("[...document.querySelectorAll('.customer-quotation__controls button')].find(button=>button.textContent==='Estimate issued')?.disabled"),true);
               assert.equal(JSON.parse(await readFile(path.join(root,'disposable-delivery-evidence.json'),'utf8')).sent.length,1,'Refresh repeated provider delivery');
               console.log(JSON.stringify({scope:'Genuine-source normal customer reissue through production Gmail MIME boundary',provider:'explicit no-network disposable transport',attempts:2,successfulProviderMessages:1,pdfBytesMatch:true,successorReleases:1,followups:1,originalIssuedEvidencePreserved:true,liveDelivery:false}));
+              if(sourceCustomerOrder){
+                await tab.send('Page.navigate',{url:`${APP_URL}/?journey=source-customer-order#/client-portal`});
+                await waitFor(()=>tab.evaluate("document.body.innerText.includes('Accept Estimate')"),'Customer could not open the newly released successor');
+                const portalPdf=await tab.evaluate("(async()=>{const link=[...document.querySelectorAll('a')].find(item=>item.textContent.includes('View issued Estimate'));const response=await fetch(link.href,{credentials:'include'}),bytes=await response.arrayBuffer(),digest=await crypto.subtle.digest('SHA-256',bytes);return {status:response.status,type:response.headers.get('content-type'),hash:[...new Uint8Array(digest)].map(value=>value.toString(16).padStart(2,'0')).join('')}})()");
+                assert.deepEqual(portalPdf,{status:200,type:'application/pdf',hash:savedPdf.sha256},'Customer Portal did not expose the exact released PDF');
+                await click(tab,'Accept Estimate');await waitFor(()=>tab.evaluate("document.querySelectorAll('.portal-external__position-check input').length===5"),'Customer acceptance omitted released Positions');
+                await tab.evaluate("(()=>{const boxes=[...document.querySelectorAll('.portal-external__position-check input')];boxes.slice(0,4).forEach(box=>box.click());document.querySelector('.portal-external__overall-check input').click()})()");
+                assert.equal(await tab.evaluate("[...document.querySelectorAll('button')].find(button=>button.textContent==='Submit Estimate acceptance').disabled"),true,'Partial Position acceptance allowed an Order');
+                assert.equal((await preparedDb.get('SELECT COUNT(*) count FROM orders')).count,0);
+                await tab.evaluate("document.querySelectorAll('.portal-external__position-check input')[4].click()");
+                await tab.evaluate("(()=>{const button=[...document.querySelectorAll('button')].find(item=>item.textContent==='Submit Estimate acceptance');button.click();button.click()})()");
+                await waitFor(()=>tab.evaluate("document.body.innerText.includes('Estimate accepted')&&document.body.innerText.includes('waiting for staff approval')&&document.body.innerText.includes('No factory order was sent')"),'Customer acceptance did not explain staff approval and factory boundary');
+                const orders=await preparedDb.all('SELECT * FROM orders');assert.equal(orders.length,1);const order=orders[0];assert.equal(order.source_estimate_id,issued.estimate_id);assert.equal(order.source_estimate_revision,2);assert.equal(order.status,'customer_accepted_pending_staff_approval');assert.equal(order.client_id,fixture.clientId);assert.equal(order.project_id,fixture.projectId);
+                const acceptance=await preparedDb.get('SELECT * FROM portal_estimate_acceptances WHERE order_id=?',order.id);assert.ok(acceptance?.overall_accepted);
+                const acceptedIds=(await preparedDb.all('SELECT estimate_position_id FROM portal_position_acceptances WHERE estimate_acceptance_id=?',acceptance.id)).map(item=>item.estimate_position_id).sort();assert.deepEqual(acceptedIds,customerProjection.positions.map(position=>position.id).sort());
+                const release=await preparedDb.get('SELECT * FROM estimate_revision_releases WHERE id=?',acceptance.estimate_release_id);assert.equal(release.estimate_id,issued.estimate_id);assert.equal(order.accepted_commercial_snapshot_json,release.commercial_snapshot_json);
+                const previousOrigin=await tab.evaluate('performance.timeOrigin');await tab.send('Page.reload');await waitFor(()=>tab.evaluate(`performance.timeOrigin!==${previousOrigin}&&document.body.innerText.includes(${JSON.stringify(order.order_ref)})`),'Accepted Order disappeared from customer Portal after refresh');
+                assert.equal((await preparedDb.get('SELECT COUNT(*) count FROM orders')).count,1);assert.equal(JSON.parse(await readFile(path.join(root,'disposable-delivery-evidence.json'),'utf8')).sent.length,1,'Customer acceptance sent a factory communication');
+                console.log(JSON.stringify({scope:'Genuine released successor → exact customer PDF → five-Position acceptance → canonical Order → refresh',orderStatus:order.status,orders:1,acceptedPositions:5,partialAcceptanceBlocked:true,reviewedStaffApprovalStillRequired:true,factoryDelivery:false,liveDelivery:false}));
+                if(sourceStaffOrder){
+                  await tab.send('Page.navigate',{url:`${APP_URL}/?journey=source-staff-order`});await waitFor(()=>tab.evaluate("document.body.innerText.includes('Client Portal')"),'Staff application did not reopen');await click(tab,'Client Portal');
+                  await waitFor(()=>tab.evaluate(`[...document.querySelectorAll('.client-portal-directory__list article')].some(item=>item.textContent.includes(${JSON.stringify(fixture.clientReference)}))`),'Canonical customer was absent from staff Portal directory');
+                  await tab.evaluate(`[...document.querySelectorAll('.client-portal-directory__list article')].find(item=>item.textContent.includes(${JSON.stringify(fixture.clientReference)})).querySelector('button').click()`);
+                  await waitFor(()=>tab.evaluate("document.body.innerText.includes('Open Order journey')"),'Accepted Order was not actionable in staff Portal');await click(tab,'Open Order journey');
+                  await waitFor(()=>tab.evaluate("document.body.innerText.includes('Approve Order for factory')"),'Staff approval was not available');await click(tab,'Approve Order for factory');
+                  await waitFor(()=>tab.evaluate("document.body.innerText.includes('immutable staff-approved Order PDF created')"),'Staff approval did not confirm preserved Order evidence');
+                  await input(tab,'.portal-operation-detail fieldset input[type=email]',FACTORY);
+                  assert.equal(await tab.evaluate("[...document.querySelectorAll('label')].find(item=>item.textContent.includes('Send now to the configured factory test address')).querySelector('input').checked"),false);
+                  await click(tab,'Prepare factory Order preview');await waitFor(()=>tab.evaluate("document.body.innerText.includes('Factory Order email and PDF prepared')"),'Factory Order draft did not report prepared-not-sent outcome');
+                  const finalOrder=await preparedDb.get('SELECT * FROM orders WHERE id=?',order.id);assert.equal(finalOrder.status,'staff_approved');assert.equal(finalOrder.accepted_commercial_snapshot_json,order.accepted_commercial_snapshot_json);
+                  const factoryRequest=await preparedDb.get('SELECT * FROM factory_order_requests WHERE order_id=?',order.id);assert.equal(factoryRequest.status,'draft');
+                  const factoryDocument=await preparedDb.get('SELECT * FROM customer_lifecycle_documents WHERE id=?',JSON.parse(factoryRequest.document_ids_json)[0]);assert.equal(JSON.parse(factoryDocument.context_json).audience,'factory-price-free-v1');
+                  const factoryProjection=JSON.parse(factoryDocument.projection_json);assert.equal(factoryProjection.positions.length,5);assert.equal(factoryProjection.totalIncVatGbp,undefined);assert.equal(factoryProjection.commercialTerms,undefined);
+                  const factoryPath=path.join(OUTPUT,'source-backed-factory-schedule.pdf');await copyFile(path.join(attachmentRoot,factoryDocument.storage_key),factoryPath);
+                  const factoryPdf=await inspectPdf(factoryPath,['Factory Order schedule','001','002','003','004','005','7016'],['TOTAL INCLUDING VAT','Subtotal excluding VAT','Estimate validity',...(customerProjection.commercialTerms?.terms||[])]);assert.equal(factoryPdf.sha256,factoryDocument.sha256);
+                  console.log(JSON.stringify({factorySchedule:factoryPdf,customerCommercialFieldsAbsent:true}));
+                  assert.equal(JSON.parse(await readFile(path.join(root,'disposable-delivery-evidence.json'),'utf8')).sent.length,1,'Staff approval or factory preparation sent another message');
+                  console.log(JSON.stringify({scope:'Normal staff Order approval → immutable Order PDF → factory draft preparation',staffApproved:true,factoryPrepared:true,factorySent:false,acceptedSnapshotPreserved:true,returnedFactoryConfirmationVerified:false}));
+                }
+              }
             }
           }finally{await preparedDb.close()}
-          const screenshot=await tab.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});await writeFile(path.join(OUTPUT,'source-backed-customer-preparation.png'),Buffer.from(screenshot.data,'base64'));
+          const screenshot=await tab.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});await writeFile(path.join(OUTPUT,sourceStaffOrder?'source-backed-staff-order.png':sourceCustomerOrder?'source-backed-customer-order.png':'source-backed-customer-preparation.png'),Buffer.from(screenshot.data,'base64'));
           console.log(JSON.stringify({scope:'Source-backed complete-schedule review → normal customer preview → reviewed terms → retained Email/PDF preparation',positions:5,additionalPositionsExplicitlyReviewed:true,sent:sourceCustomerReissue,customerReissueVerified:sourceCustomerReissue,liveDelivery:false}));
         }
         return;

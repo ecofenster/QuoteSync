@@ -389,6 +389,18 @@ export function createLifecycleService(db, options = {}) {
     if (!await db.get('SELECT id FROM order_staff_approvals WHERE order_id=?', orderId)) throw problem('Staff approval is required before preparing the factory order.', 409, 'factory_order_staff_approval_required');
     const existing = await db.get('SELECT * FROM factory_order_requests WHERE order_id=?', orderId);
     if (existing) {
+      const retained = await Promise.all(parse(existing.document_ids_json, []).map(id => customerDocuments.get(id)));
+      const factoryDocument = retained.find(document => document?.orderId === orderId && document.context?.audience === 'factory-price-free-v1');
+      const priorDraft = await communications.get(existing.communication_message_id);
+      const safeDraft = factoryDocument && priorDraft?.attachments?.length === 1 && priorDraft.attachments[0].sha256 === factoryDocument.sha256 && priorDraft.attachments[0].storageKey === factoryDocument.storageKey;
+      if (existing.status !== 'sent' && !safeDraft) {
+        if (input.send === true) throw problem('This older factory draft contains a customer document. Prepare the factory preview again to replace its attachment with a price-free schedule, review it, then send.', 409, 'factory_draft_requires_safe_schedule');
+        const document = await customerDocuments.createFactoryOrderDocument(orderId);
+        const message = await deliverOrSave({ id: randomUUID(), provider: 'quotesuite_preview', direction: 'outbound', folder: 'drafts', status: 'draft', from: [], to: [existing.recipient], cc: [], bcc: [], subject: existing.subject, bodyText: existing.body_text, bodyHtml: `<p>${existing.body_text.replaceAll('&','&amp;').replaceAll('<','&lt;')}</p>`, links: [{kind:'order',id:orderId},{kind:'project',id:order.project_id}], attachments: [{id:randomUUID(),fileName:document.fileName,mediaType:document.mediaType,sizeBytes:document.sizeBytes,storageKey:document.storageKey,sha256:document.sha256}] }, false);
+        await db.run("UPDATE factory_order_requests SET status='draft',document_ids_json=?,communication_message_id=?,updated_at=? WHERE id=?", JSON.stringify([document.id]), message.id, stamp(), existing.id);
+        await event('factory.order.preview_replaced', existing.id, [{kind:'order',id:orderId},{kind:'communication',id:message.id}]);
+        return { ...existing, status: 'draft', communicationMessageId: message.id, documentIds: [document.id], delivery: delivery.publicStatus() };
+      }
       if (input.send === true && existing.status !== 'sent') {
         const prior = await communications.get(existing.communication_message_id);
         if (!prior) throw problem('Prepared factory Order correspondence was not found.', 409, 'factory_order_communication_missing');
@@ -404,8 +416,8 @@ export function createLifecycleService(db, options = {}) {
     const recipient = text(input.recipient), actor = text(input.createdBy), subject = text(input.subject) || `Factory Order ${order.order_ref}`;
     if (!recipient || !actor) throw problem('Factory recipient and staff identity are required.');
     if (input.send === true) delivery.assertRecipient(recipient, 'factory');
-    const orderDocument = await customerDocuments.createOrderDocument(orderId, { revision: 'staff-approved' });
-    const documentIds = [...new Set([orderDocument.id, ...(input.documentIds || []).map(text).filter(Boolean)])];
+    const orderDocument = await customerDocuments.createFactoryOrderDocument(orderId);
+    const documentIds = [orderDocument.id];
     const id = randomUUID(), communicationId = randomUUID(), at = stamp(), bodyText = text(input.bodyText) || `Please review the attached approved Order ${order.order_ref}.`;
     const communication=await deliverOrSave({ id: communicationId, provider:input.send===true?'google_workspace':'quotesuite_preview', direction:'outbound', folder:input.send===true?'sent':'drafts', status:input.send===true?'sending':'draft', from:[], to:[recipient], cc:[], bcc:[], subject, bodyText, bodyHtml:`<p>${bodyText.replaceAll('&','&amp;').replaceAll('<','&lt;')}</p>`, links:[{kind:'order',id:orderId},{kind:'project',id:order.project_id}], attachments:[{id:randomUUID(),fileName:orderDocument.fileName,mediaType:orderDocument.mediaType,sizeBytes:orderDocument.sizeBytes,storageKey:orderDocument.storageKey,sha256:orderDocument.sha256}] },input.send);
     const status=input.send===true?'sent':'draft';

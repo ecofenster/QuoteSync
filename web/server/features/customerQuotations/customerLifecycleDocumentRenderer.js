@@ -61,7 +61,7 @@ function labelled(label, value) {
   return { columns: [{ width: 166, stack: [{ text: label.toUpperCase(), style: "fieldLabel" }, { text: clean(value) || "Not supplied", style: "coverBody" }] }], margin: [24, 0, 0, 7] };
 }
 
-function positionContent(position, drawing, brand, { includeChecks = false, checkByPosition = new Map() } = {}) {
+function positionContent(position, drawing, brand, { includeChecks = false, includePrices = true, checkByPosition = new Map() } = {}) {
   const reference = clean(position.customerReference || position.reference || "Position");
   const specification = Array.isArray(position.specification) ? position.specification : [];
   const thermal = position.thermal || {};
@@ -80,7 +80,7 @@ function positionContent(position, drawing, brand, { includeChecks = false, chec
       table: { widths: [130, "*"], body: [[
         { stack: [drawing ? { image: drawing, fit: [118, 155], alignment: "center", margin: [0, 3, 0, 6] } : { text: "Drawing unavailable\nPlease ask us for details.", alignment: "center", color: "#68736D", margin: [0, 52, 0, 52] }, { text: position.drawing?.source === "manufacturer" ? "Manufacturer drawing" : position.drawing?.available ? "Product drawing" : "Drawing not available", style: "caption", alignment: "center" }], fillColor: "#F4F6F3" },
         { stack: [
-          { columns: [{ text: `POSITION ${reference}`, style: "positionTitle" }, { text: price, style: "positionPrice", alignment: "right" }] },
+          { columns: [{ text: `POSITION ${reference}`, style: "positionTitle" }, ...(includePrices ? [{ text: price, style: "positionPrice", alignment: "right" }] : [])] },
           { text: `${number(position.quantity)} × ${number(position.widthMm)} × ${number(position.heightMm)} mm${position.roomName ? ` · ${clean(position.roomName)}` : ""}`, style: "positionMeta", margin: [0, 3, 0, 8] },
           { table: { widths: [105, "*"], body: detailRows.map(([label, value]) => [{ text: label, style: "fieldLabel" }, { text: value, style: "body" }]) }, layout: { hLineWidth: () => 0, vLineWidth: () => 0, paddingLeft: () => 0, paddingRight: () => 3, paddingTop: () => 1.5, paddingBottom: () => 1.5 } },
           ...(position.classification === "alternative" ? [{ text: `Alternative to ${clean(position.alternativeToReference) || "the preceding included Position"}. This option is not included in the Estimate total.`, style: "alternative", margin: [0, 8, 0, 0] }] : []),
@@ -148,7 +148,20 @@ function documentDefinition({ kind, projection, context, assets }) {
   content.push({ text: "", pageBreak: "after" }, pageHeader(kind === "estimate" ? "Estimate Summary" : kind === "order" ? "Order Summary" : "Final Confirmation Summary", reference, brand));
   content.push({ text: `${positions.filter((position) => position.includedInQuotationTotal !== false).length} included Position(s) and ${positions.filter((position) => position.classification === "alternative").length} alternative option(s).`, style: "body", margin: [0, 0, 0, 12] }, summaryTable(projection));
   content.push(...commercialTermsContent(projection));
-  if (kind === "order") content.push({ text: "Customer acceptance", style: "sectionTitle", margin: [0, 22, 0, 7] }, { text: `Accepted ${formatDate(context.acceptedAt)} against immutable Estimate ${clean(context.estimateReference || projection.estimateReference)} revision ${number(context.estimateRevision)}.`, style: "body" }, { text: `Staff approval: ${context.staffApprovedAt ? `recorded ${formatDate(context.staffApprovedAt)}` : "Pending"}`, style: context.staffApprovedAt ? "checkOk" : "checkWarn", margin: [0, 6, 0, 0] });
+  // Factory output is a separate operational schedule. Never render the customer
+  // summary/terms and then hide them with styling: they must not enter the PDF.
+  if (context.audience === "factory-price-free-v1") {
+    content.splice(0, content.length,
+      pageHeader("Factory Order schedule", reference, brand),
+      { text: `${clean(projection.clientName)} · ${clean(projection.projectName)}`, style: "bodyStrong" },
+      { text: `Accepted Estimate ${clean(context.estimateReference)} · revision ${number(context.estimateRevision)}`, style: "body", margin: [0, 6, 0, 12] },
+      { text: "Price-free schedule of accepted Positions. Check against the agreed supplier quotation and return a confirmation for staff review. This document does not approve later supplier changes.", style: "notice" },
+      ...positions.flatMap((position, index) => [
+        ...(index > 0 && index % 2 === 0 ? [{ text: "", pageBreak: "after" }, pageHeader("Factory Order schedule", reference, brand)] : []),
+        positionContent(position, assets.drawings.get(clean(position.id)), brand, { includePrices: false }),
+      ]));
+  }
+  if (kind === "order" && context.audience !== "factory-price-free-v1") content.push({ text: "Customer acceptance", style: "sectionTitle", margin: [0, 22, 0, 7] }, { text: `Accepted ${formatDate(context.acceptedAt)} against immutable Estimate ${clean(context.estimateReference || projection.estimateReference)} revision ${number(context.estimateRevision)}.`, style: "body" }, { text: `Staff approval: ${context.staffApprovedAt ? `recorded ${formatDate(context.staffApprovedAt)}` : "Pending"}`, style: context.staffApprovedAt ? "checkOk" : "checkWarn", margin: [0, 6, 0, 0] });
   if (kind === "final_confirmation") content.push({ text: "Customer Position approval", style: "sectionTitle", margin: [0, 22, 0, 7] }, { text: "Each Position shown above must be explicitly approved against this exact confirmation revision. Any changed confirmation invalidates this sign-off and requires renewed review.", style: "notice" }, { table: { widths: ["*", 80], body: [[{ text: "POSITION", style: "fieldLabel" }, { text: "APPROVED", style: "fieldLabel" }], ...positions.filter((position) => position.includedInQuotationTotal !== false).map((position) => [{ text: clean(position.customerReference || position.reference), style: "body" }, { text: "[  ]", alignment: "center", fontSize: 11 }])] }, layout: { hLineColor: () => "#D7DDD9", vLineWidth: () => 0, paddingTop: () => 6, paddingBottom: () => 6 } }, { columns: [{ text: "Overall approval:  [  ]", style: "bodyStrong" }, { text: "Signature: ____________________", style: "bodyStrong" }, { text: "Date: ____________", style: "bodyStrong" }], margin: [0, 18, 0, 0] });
   return {
     pageSize: "A4", pageOrientation: "portrait", pageMargins: [40, 34, 40, 42],
