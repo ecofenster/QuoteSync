@@ -1,3 +1,13 @@
+export async function outstandingSupplierRevisionRequests(db, revisionRequestId) {
+  return db.all(`SELECT se.id,se.supplier_id,se.recipient,se.subject,se.status,se.response_state,
+    COALESCE(s.supplier_name,se.recipient,'Supplier') supplier_name
+    FROM supplier_enquiry_drafts se LEFT JOIN supplier_commercial_defaults s ON s.supplier_code=se.supplier_id
+    WHERE se.revision_request_id=? AND se.status<>'cancelled'
+    AND se.response_state<>'revised_document_received'
+    AND NOT EXISTS(SELECT 1 FROM supplier_enquiry_drafts successor WHERE successor.supersedes_id=se.id AND successor.status<>'cancelled')
+    ORDER BY se.created_at,se.id`, revisionRequestId);
+}
+
 // Shared by reviewed reply linking and provider-confirmed filing; safe on retry.
 export async function recordSupplierResponseState(db, { supplierEnquiryId, documentId, receivedAt }) {
   if (!supplierEnquiryId) return;

@@ -3,6 +3,7 @@ import { createCustomerQuotationDocumentService } from "./customerQuotationDocum
 import { createCommunicationsService } from "../communications/communicationsService.js";
 import { createPortalSecurityService } from "../clientPortal/portalSecurityService.js";
 import { createTestDeliveryPolicy } from "../lifecycle/testDeliveryPolicy.js";
+import { outstandingSupplierRevisionRequests } from "../lifecycle/supplierResponseState.js";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const parse = (value, fallback = null) => { try { return JSON.parse(value || ""); } catch { return fallback; } };
@@ -49,6 +50,8 @@ export function createIssuedQuotationService(db, options = {}) {
     if (!Number.isInteger(quotationRevision) || Number(projection?.commercialRevision) !== quotationRevision || String(projection?.estimateReference) !== String(aggregate.estimate_ref)) throw Object.assign(new Error("Canonical quotation revision/reference does not match the Estimate."), { status: 409, code: "quotation_revision_changed" });
     const revisionRequest = await db.get("SELECT * FROM supplier_revision_requests WHERE successor_estimate_id=? ORDER BY created_at DESC LIMIT 1", estimateId);
     if (revisionRequest) {
+      const outstandingSuppliers=await outstandingSupplierRevisionRequests(db,revisionRequest.id);
+      if(outstandingSuppliers.length)throw issueProblem(`Supplier revision documents are still outstanding from ${[...new Set(outstandingSuppliers.map(item=>item.supplier_name))].join(', ')}. Review those requests before issuing the customer Estimate.`,409,'supplier_revision_responses_outstanding',{outstandingSuppliers});
       const unresolved = Number((await db.get("SELECT COUNT(*) count FROM revision_change_checks WHERE supplier_revision_request_id=? AND status IN ('not_implemented','needs_review','change_detected')", revisionRequest.id))?.count || 0);
       const missingPosition = Number((await db.get(`SELECT COUNT(*) count FROM portal_review_position_entries e WHERE e.review_submission_id=? AND e.response='amendment_requested' AND NOT EXISTS(SELECT 1 FROM revision_change_checks c WHERE c.supplier_revision_request_id=? AND c.change_kind='requested' AND c.estimate_position_id=e.estimate_position_id)`, revisionRequest.review_submission_id, revisionRequest.id))?.count || 0);
       const general = await db.get('SELECT general_response FROM portal_review_submissions WHERE id=?', revisionRequest.review_submission_id);
@@ -105,6 +108,12 @@ export function createIssuedQuotationService(db, options = {}) {
     if(conflictingIssue)throw issueProblem("This Estimate revision was already issued from another reviewed preparation. Nothing was sent. Open the issued Estimate, or create a new revision for changes.",409,"estimate_revision_already_issued",{issuedQuotationId:conflictingIssue.id,estimateId:row.estimate_id,estimateRevision:row.estimate_revision});
     const existingCommunication = await communications.repository.get(row.communication_message_id);
     if (existingCommunication?.status === "sent" && existingCommunication.providerMessageId) return finalize(row, existingCommunication);
+    const currentRequest=await db.get("SELECT id,verified_at FROM supplier_revision_requests WHERE successor_estimate_id=? ORDER BY created_at DESC LIMIT 1",row.estimate_id);
+    if(currentRequest){
+      const outstandingSuppliers=await outstandingSupplierRevisionRequests(db,currentRequest.id);
+      if(outstandingSuppliers.length)throw issueProblem(`Supplier revision documents are still outstanding from ${[...new Set(outstandingSuppliers.map(item=>item.supplier_name))].join(', ')}. Nothing was sent. Review those requests before issuing the customer Estimate.`,409,'supplier_revision_responses_outstanding',{outstandingSuppliers});
+      if(!currentRequest.verified_at)throw issueProblem('The supplier revision review is incomplete. Nothing was sent. Complete the review before issuing the customer Estimate.',409,'supplier_revision_verification_required');
+    }
     const document = await documents.get(row.document_id), requestedRecipient = requiredText(overrides.recipient ?? row.recipient, "Recipient"), recipient = delivery.enabled ? delivery.assertRecipient(requestedRecipient, "customer") : requestedRecipient, subject = customerSubject(requiredText(overrides.subject ?? row.subject, "Subject")), bodyHtml = requiredText(overrides.bodyHtml ?? existingCommunication?.bodyHtml, "Email body");
     try {
       const communication = await communications.sendMessage({ ...existingCommunication, id: row.communication_message_id, to: [recipient], subject, bodyHtml, bodyText: bodyHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(), folder: "sent", links: existingCommunication.links, attachments: [{ ...(existingCommunication.attachments?.[0] || {}), fileName: document.fileName, mediaType: document.mediaType, sizeBytes: document.sizeBytes, storageKey: document.storageKey, sha256: document.sha256 }] });

@@ -5,7 +5,7 @@ import { createCommunicationsService } from '../communications/communicationsSer
 import { createTestDeliveryPolicy } from './testDeliveryPolicy.js';
 import { createCustomerLifecycleDocumentService } from './customerLifecycleDocumentService.js';
 import { createSupplierRevisionChangeDocumentService } from './supplierRevisionChangeDocumentService.js';
-import { recordSupplierResponseState } from './supplierResponseState.js';
+import { recordSupplierResponseState, outstandingSupplierRevisionRequests } from './supplierResponseState.js';
 
 const text = (value) => String(value ?? '').trim();
 const hash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -294,10 +294,11 @@ export function createLifecycleService(db, options = {}) {
     const covered = new Set((await db.all(`SELECT DISTINCT estimate_position_id FROM revision_change_checks WHERE supplier_revision_request_id=? AND change_kind='requested'`, requestId)).map((row) => row.estimate_position_id));
     const missingRequestedPositions = requestedPositions.map((row) => row.estimate_position_id).filter((positionId) => !covered.has(positionId));
     const generalCovered = generalReview?.general_response !== 'amendment_requested' || Boolean(await db.get(`SELECT id FROM revision_change_checks WHERE supplier_revision_request_id=? AND change_kind='requested' AND estimate_position_id IS NULL`, requestId));
-    const unresolved = Number((await db.get(`SELECT COUNT(*) count FROM revision_change_checks WHERE supplier_revision_request_id=? AND status IN ('not_implemented','needs_review','change_detected')`, requestId))?.count || 0) + missingRequestedPositions.length + (generalCovered ? 0 : 1);
+    const outstandingSuppliers=await outstandingSupplierRevisionRequests(db,requestId);
+    const unresolved = Number((await db.get(`SELECT COUNT(*) count FROM revision_change_checks WHERE supplier_revision_request_id=? AND status IN ('not_implemented','needs_review','change_detected')`, requestId))?.count || 0) + missingRequestedPositions.length + (generalCovered ? 0 : 1) + outstandingSuppliers.length;
     await db.run("UPDATE supplier_revision_requests SET verified_at=?,status=?,updated_at=? WHERE id=?", unresolved ? null : at, unresolved ? 'approved' : 'approved', at, requestId);
     await event('supplier.revision.verified', `${requestId}:${hash(checks)}`, [{ kind: 'supplier_revision_request', id: requestId }, { kind: 'estimate', id: request.successor_estimate_id }]);
-    return { requestId, checks: await db.all('SELECT * FROM revision_change_checks WHERE supplier_revision_request_id=? ORDER BY change_kind,estimate_position_id,field_key', requestId), missingRequestedPositions, generalRequestCovered: generalCovered, unresolved, issueAllowed: unresolved === 0 };
+    return { requestId, checks: await db.all('SELECT * FROM revision_change_checks WHERE supplier_revision_request_id=? ORDER BY change_kind,estimate_position_id,field_key', requestId), missingRequestedPositions, generalRequestCovered: generalCovered, outstandingSuppliers, unresolved, issueAllowed: unresolved === 0 };
   }
 
   async function approveOrder(orderId, input = {}) {
