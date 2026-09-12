@@ -328,6 +328,22 @@ test("customer acceptance creates one canonical Order and factory commitment rem
   assert.equal((await lifecycle.orderJourney(accepted.orderId)).factoryDraft.bodyText,edit.bodyText);
   assert.equal((await createCommunicationRepository(source.db).get(opened.communicationMessageId)).attachments.length,1,'Editing must preserve previous attachment metadata');
   const currentMessage=await createCommunicationRepository(source.db).get(saved.communicationMessageId);assert.match(currentMessage.bodyHtml,/&lt;dimensions&gt; &amp; reply\.<br>/);assert.equal(currentMessage.attachments.length,1);assert.equal(currentMessage.snippet,edit.bodyText);assert.equal(currentMessage.providerMessageId,null);assert.equal(currentMessage.threadId,null);
+  await source.db.run("INSERT INTO integration_oauth_connections(provider,account_id,status,updated_at) VALUES('google_workspace','test-owned-account','connected',?)",new Date().toISOString());
+  await source.db.run("INSERT INTO canonical_documents(id,provider,provider_account_id,provider_file_id,client_id,project_id,document_type,file_name,checksum,discovered_at,last_seen_at,updated_at) VALUES('factory-support','google_drive','test-owned-account','provider-support','client-a','project-a1','project_drawing','Reviewed drawing.pdf',?,?,?,?)",'a'.repeat(64),new Date().toISOString(),new Date().toISOString(),new Date().toISOString());
+  const filesEdit={...edit,expectedCommunicationId:saved.communicationMessageId,additionalDocumentIds:['factory-support']};
+  await assert.rejects(()=>lifecycle.prepareFactoryOrder(accepted.orderId,filesEdit),error=>error.code==='factory_attachment_review_required');
+  await assert.rejects(()=>lifecycle.prepareFactoryOrder(accepted.orderId,{...filesEdit,additionalDocumentIds:['document-safe'],documentsReviewed:true}),error=>error.code==='factory_attachment_review_required');
+  await lifecycle.prepareFactoryOrder(accepted.orderId,{...filesEdit,documentsReviewed:true});const selected=(await lifecycle.orderJourney(accepted.orderId)).factoryDraft;assert.equal(selected.additionalFiles[0].id,'factory-support');assert.equal(selected.needsPreparation,false);
+  const selectedMessage=await createCommunicationRepository(source.db).get(selected.communicationMessageId);assert.equal(selectedMessage.attachments.length,2);assert.ok(selectedMessage.attachments.some(file=>file.driveFileId==='provider-support'&&file.sha256==='a'.repeat(64)));
+  await assert.rejects(()=>source.db.run('DELETE FROM factory_attachment_reviews WHERE communication_message_id=?',selected.communicationMessageId),/immutable/);
+  await source.db.run("UPDATE canonical_documents SET checksum=? WHERE id='factory-support'",'b'.repeat(64));
+  await assert.rejects(()=>lifecycle.prepareFactoryOrder(accepted.orderId,{...filesEdit,expectedCommunicationId:selected.communicationMessageId}),error=>error.code==='factory_attachment_review_required');
+  for(const [column,value] of [['provider_account_id','another-account'],['client_id','client-b'],['project_id','project-a2']]) {
+    const before=await source.db.get('SELECT * FROM canonical_documents WHERE id=?','factory-support');
+    await source.db.run(`UPDATE canonical_documents SET ${column}=? WHERE id=?`,value,'factory-support');
+    await assert.rejects(()=>lifecycle.prepareFactoryOrder(accepted.orderId,{...filesEdit,expectedCommunicationId:selected.communicationMessageId,documentsReviewed:true}),error=>error.code==='factory_attachment_review_required');
+    await source.db.run(`UPDATE canonical_documents SET ${column}=? WHERE id=?`,before[column],'factory-support');
+  }
 });
 
 test("accepted Positions remain a fail-closed gate through factory confirmation and final customer sign-off",async t=>{

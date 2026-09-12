@@ -6,6 +6,7 @@ import { createTestDeliveryPolicy } from './testDeliveryPolicy.js';
 import { createCustomerLifecycleDocumentService } from './customerLifecycleDocumentService.js';
 import { createSupplierRevisionChangeDocumentService } from './supplierRevisionChangeDocumentService.js';
 import { recordSupplierResponseState, outstandingSupplierRevisionRequests, outstandingSupplierResponseReviews, supplierReviewSourceIdentity, staleSupplierReviewCount } from './supplierResponseState.js';
+import {factoryAttachmentOptions,savedFactoryAttachments,reviewFactoryAttachments,assertFactoryAttachmentsCurrent,factoryCommunicationAttachments} from './factoryAttachmentReview.js';
 
 const text = (value) => String(value ?? '').trim();
 const hash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -376,12 +377,13 @@ export function createLifecycleService(db, options = {}) {
     let factoryDraft = null;
     if (request) {
       const message = await communications.get(request.communication_message_id);
+      const additionalFiles=await savedFactoryAttachments(db,request.communication_message_id);
       const attachments = [];
       for (const id of parse(request.document_ids_json, [])) {
         const document = await customerDocuments.get(id);
         if (document?.orderId === orderId && message?.attachments?.some(item => item.storageKey === document.storageKey && item.sha256 === document.sha256)) attachments.push({ id: document.id, fileName: document.fileName, sha256: document.sha256, downloadUrl: `/api/lifecycle/documents/${encodeURIComponent(document.id)}`, priceFree: document.context?.audience === 'factory-price-free-v1' });
       }
-      factoryDraft = { id: request.id, communicationMessageId: request.communication_message_id, status: request.status, recipient: request.recipient, subject: request.subject, bodyText: request.body_text, updatedAt: request.updated_at, attachments, needsPreparation: !message || message.attachments.length !== 1 || attachments.length !== 1 || !attachments[0].priceFree, sentAt: message?.sentAt || null };
+      factoryDraft = { additionalFiles,availableFiles:await factoryAttachmentOptions(db,order),id: request.id, communicationMessageId: request.communication_message_id, status: request.status, recipient: request.recipient, subject: request.subject, bodyText: request.body_text, updatedAt: request.updated_at, attachments, needsPreparation: !message || message.attachments.length !== 1+additionalFiles.length || attachments.length !== 1 || !attachments[0].priceFree, sentAt: message?.sentAt || null };
     }
     const confirmations = await db.all(`SELECT fc.*,r.id release_id,r.released_at,s.id signoff_id,s.approved_at signoff_approved_at,s.signed_pdf_document_id
       FROM factory_confirmations fc LEFT JOIN factory_confirmation_releases r ON r.factory_confirmation_id=fc.id
@@ -405,10 +407,12 @@ export function createLifecycleService(db, options = {}) {
         if (text(input.expectedCommunicationId) !== existing.communication_message_id) throw problem('This factory draft changed in another window. Reopen it before saving; your entered text has not been discarded.', 409, 'factory_draft_changed');
         const recipient = text(input.recipient), subject = text(input.subject), bodyText = text(input.bodyText);
         if (!/^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(recipient) || !subject || /[\r\n]/.test(subject) || !bodyText) throw problem('Enter one valid recipient, a subject and a message before saving.');
-        if (recipient === existing.recipient && subject === existing.subject && bodyText === existing.body_text) return { id: existing.id, status: 'draft', unchanged: true };
+        const previousFiles=await savedFactoryAttachments(db,existing.communication_message_id),selectedFiles=await reviewFactoryAttachments(db,order,input,previousFiles);
+        if (recipient === existing.recipient && subject === existing.subject && bodyText === existing.body_text && JSON.stringify(selectedFiles)===JSON.stringify(previousFiles)) return { id: existing.id, status: 'draft', unchanged: true };
         const prior = await communications.get(existing.communication_message_id);
         if (!prior) throw problem('The saved message is unavailable. Prepare the factory preview again before editing.',409,'factory_order_communication_missing');
-        const message = await communications.save({ ...prior, id: randomUUID(), createdAt: stamp(), provider: 'quotesuite_preview', providerMessageId: null, threadId: null, sentAt: null, error: null, attachments: (prior.attachments || []).map(item => ({ ...item, id: randomUUID() })), folder: 'drafts', status: 'draft', to: [recipient], cc: [], bcc: [], subject, bodyText, snippet: bodyText, bodyHtml: `<p>${bodyText.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('\n','<br>')}</p>` });
+        const message = await communications.save({ ...prior, id: randomUUID(), createdAt: stamp(), provider: 'quotesuite_preview', providerMessageId: null, threadId: null, sentAt: null, error: null, attachments: [...(prior.attachments || []).filter(item=>item.storageKey),...factoryCommunicationAttachments(selectedFiles)].map(item => ({ ...item, id: randomUUID() })), folder: 'drafts', status: 'draft', to: [recipient], cc: [], bcc: [], subject, bodyText, snippet: bodyText, bodyHtml: `<p>${bodyText.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('\n','<br>')}</p>` });
+        await db.run('INSERT INTO factory_attachment_reviews(communication_message_id,order_id,files_json,reviewed_by,reviewed_at) VALUES(?,?,?,?,?)',message.id,orderId,JSON.stringify(selectedFiles),text(input.createdBy)||existing.created_by,stamp());
         const changed = await db.run("UPDATE factory_order_requests SET recipient=?,subject=?,body_text=?,communication_message_id=?,updated_at=? WHERE id=? AND communication_message_id=? AND status='draft'",recipient,subject,bodyText,message.id,stamp(),existing.id,existing.communication_message_id);
         if (!changed.changes) throw problem('The factory draft changed while saving. Reopen it to review the current version; no message was sent.',409,'factory_draft_changed');
         await event('factory.order.draft_reviewed',message.id,[{kind:'order',id:orderId},{kind:'communication',id:message.id}]);
@@ -417,7 +421,8 @@ export function createLifecycleService(db, options = {}) {
       const retained = await Promise.all(parse(existing.document_ids_json, []).map(id => customerDocuments.get(id)));
       const factoryDocument = retained.find(document => document?.orderId === orderId && document.context?.audience === 'factory-price-free-v1');
       const priorDraft = await communications.get(existing.communication_message_id);
-      const safeDraft = factoryDocument && priorDraft?.attachments?.length === 1 && priorDraft.attachments[0].sha256 === factoryDocument.sha256 && priorDraft.attachments[0].storageKey === factoryDocument.storageKey;
+      const additionalFiles=await savedFactoryAttachments(db,existing.communication_message_id);
+      const safeDraft = factoryDocument && priorDraft?.attachments?.length === 1+additionalFiles.length && priorDraft.attachments.some(item=>item.sha256===factoryDocument.sha256&&item.storageKey===factoryDocument.storageKey) && additionalFiles.every(file=>priorDraft.attachments.some(item=>item.driveFileId===file.providerFileId&&item.sha256===file.checksum));
       if (existing.status !== 'sent' && !safeDraft) {
         if (input.send === true) throw problem('This older factory draft contains a customer document. Prepare the factory preview again to replace its attachment with a price-free schedule, review it, then send.', 409, 'factory_draft_requires_safe_schedule');
         const document = await customerDocuments.createFactoryOrderDocument(orderId);
@@ -430,6 +435,7 @@ export function createLifecycleService(db, options = {}) {
         const prior = await communications.get(existing.communication_message_id);
         if (!prior) throw problem('Prepared factory Order correspondence was not found.', 409, 'factory_order_communication_missing');
         delivery.assertRecipient(existing.recipient, 'factory');
+        await assertFactoryAttachmentsCurrent(db,order,additionalFiles);
         const sent = await communicationService.sendMessage({ ...prior, provider:'google_workspace',folder:'sent',status:'sending' });
         const at=stamp();
         await db.run("UPDATE factory_order_requests SET status='sent',updated_at=? WHERE id=?",at,existing.id);

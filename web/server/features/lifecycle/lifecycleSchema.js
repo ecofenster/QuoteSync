@@ -174,4 +174,9 @@ export async function initializeLifecycleSchema(db) {
     FOREIGN KEY(request_id) REFERENCES supplier_revision_requests(id) ON DELETE RESTRICT)`);
   for(const action of ['UPDATE','DELETE'])await db.exec(`CREATE TRIGGER IF NOT EXISTS trg_supplier_revision_review_history_${action.toLowerCase()} BEFORE ${action} ON supplier_revision_review_history BEGIN SELECT RAISE(ABORT,'Supplier review history is immutable'); END`);
   for (const table of immutable) await db.exec(`CREATE TRIGGER IF NOT EXISTS trg_${table}_delete_evidence BEFORE DELETE ON ${table} BEGIN SELECT RAISE(ABORT,'Lifecycle evidence must be superseded, not deleted'); END`);
+  await db.exec(`CREATE TABLE IF NOT EXISTS factory_attachment_reviews (
+    communication_message_id TEXT PRIMARY KEY,order_id TEXT NOT NULL,files_json TEXT NOT NULL,
+    reviewed_by TEXT NOT NULL,reviewed_at TEXT NOT NULL,
+    FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE RESTRICT)`);
+  for(const action of ['UPDATE','DELETE'])await db.exec(`CREATE TRIGGER IF NOT EXISTS trg_factory_attachment_reviews_${action.toLowerCase()} BEFORE ${action} ON factory_attachment_reviews BEGIN SELECT RAISE(ABORT,'Factory attachment review history is immutable'); END`);
 }
