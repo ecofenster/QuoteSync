@@ -127,6 +127,12 @@ test('a filed canonical supplier document opens one idempotent extraction review
   assert.equal((await db.get("SELECT COUNT(*) count FROM supplier_quote_attachments WHERE source_canonical_document_id='canonical-document'")).count, 1);
   assert.equal((await db.get('SELECT COUNT(*) count FROM project_calculator_estimate_product_rows')).count, 0);
   assert.equal(first.review.documents.length, 1);
+  await assert.rejects(()=>supplier.stageCanonicalDocumentForReview({...input,bytes:Buffer.from('%PDF-1.4\nrevised provider content')}),error=>error.status===409&&error.code==='canonical_document_content_changed');
+  await assert.rejects(()=>supplier.stageCanonicalDocumentForReview({...input,bytes:Buffer.alloc(0)}),error=>error.code==='empty_file');
+  await calculator.saveSupplierCommercialDefault({supplierCode:'OTHER',supplierName:'Other supplier',policy:{pricingMethod:'parity_1_to_1'},pricingDisplayPolicy:{}});
+  await assert.rejects(()=>supplier.stageCanonicalDocumentForReview({...input,supplierCode:'OTHER'}),error=>error.code==='canonical_document_supplier_conflict');
+  assert.equal((await db.get('SELECT COUNT(*) count FROM supplier_quote_attachments')).count,1);
+  assert.deepEqual(await fs.readFile(path.join(root,(await db.get('SELECT storage_key FROM supplier_quote_attachments WHERE id=?',first.documents[0].attachmentId)).storage_key)),input.bytes);
   await db.run("UPDATE supplier_quote_attachments SET source_canonical_document_id=NULL WHERE id=?",first.documents[0].attachmentId);
   const priorUploadMatch=await supplier.stageCanonicalDocumentForReview({...input,canonicalDocumentId:'canonical-document-from-email'});
   assert.equal(priorUploadMatch.duplicate,true);assert.equal(priorUploadMatch.matchedBy,'content_sha256');assert.equal(priorUploadMatch.documents[0].attachmentId,first.documents[0].attachmentId);
