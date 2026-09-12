@@ -1473,6 +1473,11 @@ export default function App() {
     async function syncClientsForSettings() {
       setClientsLoaded(false);
       setDemoModeWarning("");
+      // Reset before hydration: a later completion (including StrictMode's
+      // overlapping initial load) must not erase the restored Estimate route.
+      setSelectedClientId(null);
+      setSelectedEstimateId(null);
+      setEstimatePickerClientId(null);
 
       try {
         const apiResult = await refreshClientsFromApi();
@@ -1520,9 +1525,6 @@ export default function App() {
         setClientsLoaded(true);
       }
 
-      setSelectedClientId(null);
-      setSelectedEstimateId(null);
-      setEstimatePickerClientId(null);
     }
 
     syncClientsForSettings();

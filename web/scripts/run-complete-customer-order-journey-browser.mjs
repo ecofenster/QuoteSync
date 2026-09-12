@@ -104,7 +104,13 @@ async function connect() {
 
 async function click(tab, label) {
   const result = await tab.evaluate(`(()=>{const element=[...document.querySelectorAll('button,a,.app-sidebar-item')].find(item=>item.textContent.trim().includes(${JSON.stringify(label)}));if(!element)return false;element.click();return true})()`);
-  assert.equal(result, true, `Could not find action: ${label}`);
+  assert.equal(result, true, `Could not find action: ${label}${result?'':`: ${await tab.evaluate('document.body.innerText')}`}`);
+}
+async function reloadWorkingEstimate(tab){
+  const previousOrigin=await tab.evaluate('performance.timeOrigin');
+  await tab.send('Page.reload',{ignoreCache:true});
+  try{await waitFor(()=>tab.evaluate(`performance.timeOrigin!==${previousOrigin}&&document.readyState==='complete'&&[...document.querySelectorAll('button')].some(item=>item.textContent.includes('Request supplier estimate / revision'))`),'Exact working Estimate did not reopen after reload')}
+  catch(error){throw new Error(`${error.message}: ${JSON.stringify({body:await tab.evaluate('document.body.innerText'),failures:tab.failures,diagnostics:tab.diagnostics})}`)}
 }
 async function input(tab, selector, value) {
   const result = await tab.evaluate(`(()=>{const element=document.querySelector(${JSON.stringify(selector)});if(!element)return false;const proto=element instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:element instanceof HTMLSelectElement?HTMLSelectElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value').set.call(element,${JSON.stringify(value)});element.dispatchEvent(new Event(element instanceof HTMLSelectElement?'change':'input',{bubbles:true}));return true})()`);
@@ -214,7 +220,9 @@ async function run() {
     await waitFor(()=>tab.evaluate("[...document.querySelectorAll('button')].some(item=>item.textContent.includes('Import to Project Costing')&&!item.disabled)"),'Final import remains blocked; review genuine-source diagnostics');
     await click(tab,'Import to Project Costing');
     await waitFor(async()=>{const db=await open({filename:databasePath,driver:sqlite3.Database,mode:sqlite3.OPEN_READONLY});try{return (await db.get('SELECT COUNT(*) count FROM supplier_quote_positions')).count===5}finally{await db.close()}},'Final import did not persist five source positions',90000);
-    await tab.send('Page.reload',{ignoreCache:true});await waitFor(()=>tab.evaluate("document.body.innerText.includes('Project Costing')"),'Working Estimate did not reload after import');
+    await waitFor(()=>tab.evaluate("!document.querySelector('[aria-labelledby=\"manufacturer-import-title\"]')&&document.body.innerText.includes('Project Costing')"),'First import did not finish its UI handoff',90000);
+    await reloadWorkingEstimate(tab);
+    let retainedImportSnapshot;
     const persisted=await open({filename:databasePath,driver:sqlite3.Database,mode:sqlite3.OPEN_READONLY});
     try{
       const source=await persisted.get('SELECT storage_key FROM supplier_quote_attachments WHERE sha256=?',sha256(originalSource));assert.ok(source,'Retained genuine source metadata is missing');assert.equal(sha256(await readFile(path.join(attachmentRoot,source.storage_key))),sha256(originalSource));
@@ -222,8 +230,27 @@ async function run() {
       for(const row of rows){const snapshot=JSON.parse(row.source_snapshot_json);assert.equal(snapshot.commercialSupplier.supplierCode,'EKO');assert.equal(snapshot.manufacturerEvidence.sourceVisual.status,'available');}
       const operations=await persisted.all('SELECT status FROM supplier_quote_import_operations');assert.ok(operations.length>0&&operations.every(operation=>operation.status==='confirmed'),'Final import did not confirm persisted postconditions');
       assert.equal((await persisted.get('SELECT status FROM estimates WHERE id=?',fixture.estimateId)).status,'Issued','Original issued Estimate was changed');
+      retainedImportSnapshot={attachments:await persisted.all('SELECT id,sha256,storage_key FROM supplier_quote_attachments ORDER BY id'),positions:await persisted.all('SELECT id FROM supplier_quote_positions ORDER BY id'),costing:await persisted.all('SELECT id,source_position_id,total_price_amount FROM project_calculator_estimate_product_rows ORDER BY id')};
     }finally{await persisted.close()}
-    if(process.argv.includes('--stop-after-manufacturer-import')){console.log(JSON.stringify({scope:'Normal application through genuine-source final Manufacturer Import and reload',positions:5,sourceSha256:sha256(originalSource),exchangeRate:'explicit disposable fixture',twoSupplierReviewAndReissueVerified:false}));return;}
+    await waitFor(()=>tab.evaluate("[...document.querySelectorAll('button')].some(item=>item.textContent.trim()==='Import Manufacturer Quote')"),'Reloaded costing did not expose Manufacturer Import');
+    await click(tab,'Import Manufacturer Quote');
+    await waitFor(()=>tab.evaluate("document.body.innerText.includes('Upload & Analyse')"),'Repeat import did not reopen the normal upload');
+    const repeatDom=await tab.send('DOM.getDocument',{depth:-1,pierce:true}),repeatInput=await tab.send('DOM.querySelector',{nodeId:repeatDom.root.nodeId,selector:'.manufacturer-quote-upload input[type=file]'});
+    assert.ok(repeatInput.nodeId,'Repeat import file input is missing');
+    await tab.send('DOM.setFileInputFiles',{nodeId:repeatInput.nodeId,files:[sourcePath]});await click(tab,'Upload & Analyse');
+    await waitFor(()=>tab.evaluate("document.body.innerText.includes('Confirm Manufacturer Quote')"),'Repeated genuine source did not reopen identity review',90000);
+    await click(tab,'Confirm & Extract Quote');
+    await waitFor(()=>tab.evaluate("[...document.querySelectorAll('button')].some(item=>item.textContent.includes('Import to Project Costing')&&!item.disabled)"),'Repeated source did not reach reviewed import',90000);
+    await click(tab,'Import to Project Costing');
+    await waitFor(()=>tab.evaluate("!document.querySelector('[aria-labelledby=\"manufacturer-import-title\"]')&&document.body.innerText.includes('Project Costing')"),'Repeated import did not report completion',90000);
+    await reloadWorkingEstimate(tab);
+    const replayDb=await open({filename:databasePath,driver:sqlite3.Database,mode:sqlite3.OPEN_READONLY});
+    try{
+      assert.deepEqual(await replayDb.all('SELECT id,sha256,storage_key FROM supplier_quote_attachments ORDER BY id'),retainedImportSnapshot.attachments,'Repeat upload duplicated or replaced retained source');
+      assert.deepEqual(await replayDb.all('SELECT id FROM supplier_quote_positions ORDER BY id'),retainedImportSnapshot.positions,'Repeat import duplicated or replaced canonical positions');
+      assert.deepEqual(await replayDb.all('SELECT id,source_position_id,total_price_amount FROM project_calculator_estimate_product_rows ORDER BY id'),retainedImportSnapshot.costing,'Repeat import duplicated or changed costing evidence');
+    }finally{await replayDb.close()}
+    if(process.argv.includes('--stop-after-manufacturer-import')){console.log(JSON.stringify({scope:'Normal application through genuine-source final Manufacturer Import, repeat upload/import and reload',positions:5,sourceSha256:sha256(originalSource),repeatPreservedSourceAndPositionIdentities:true,exchangeRate:'explicit disposable fixture',twoSupplierReviewAndReissueVerified:false}));return;}
 
     const queue = await staff("/api/lifecycle/changes-requested", null, "GET"), reviewId = queue.find((item) => item.client_ref === `TEST-CL-${fixture.suffix.toUpperCase()}`)?.review_submission_id; assert.ok(reviewId, "Disposable change request was absent from the staff queue");
     const changeDetail = await staff(`/api/lifecycle/changes-requested/${reviewId}`, null, "GET"), revisionRequest = changeDetail.supplierRevision; assert.ok(revisionRequest?.id, "Staff UI did not persist the supplier revision request");
