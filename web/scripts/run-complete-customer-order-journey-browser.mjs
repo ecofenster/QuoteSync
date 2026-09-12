@@ -32,6 +32,7 @@ const DEBUG_PORT = 9416;
 const CUSTOMER = "customer.journey@example.test";
 const FACTORY = "factory.journey@example.test";
 const OUTPUT = path.resolve("test-output/complete-customer-order-journey");
+const providerJourneyRequested=['--stop-after-supplier-filing','--stop-after-supplier-review','--stop-after-multi-supplier-review'].some(flag=>process.argv.includes(flag));
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const reachable = async (url) => { try { return (await fetch(url)).ok; } catch { return false; } };
 const waitFor = async (fn, message, timeout = 60_000) => { const started = Date.now(); while (Date.now() - started < timeout) { const result = await fn().catch(() => false); if (result) return result; await delay(150); } throw new Error(message); };
@@ -66,7 +67,7 @@ async function seed(databasePath, attachmentRoot) {
   await initializePortalSecuritySchema(db);
   await initializeLifecycleSchema(db);
   const suffix = Date.now().toString(36), clientId = randomUUID(), projectId = randomUUID(), estimateId = randomUUID(), issuedId = randomUUID(), now = "2026-09-10T09:00:00.000Z";
-  const providerJourney=process.argv.includes('--stop-after-supplier-filing');
+  const providerJourney=providerJourneyRequested;
   const estimateReference = providerJourney?'EF-EST-2026-901':`TEST-EST-${suffix.toUpperCase()}`;
   const clientReference=providerJourney?'EF-CL-901':`TEST-CL-${suffix.toUpperCase()}`;
   const customerProjection = projection(estimateReference, 1);
@@ -165,7 +166,7 @@ async function run() {
     const isolation=await initializeIsolatedJourneyDatabase({databasePath,attachmentRoot});
     console.log(JSON.stringify({journeyIsolation:isolation}));
     const fixture=await seed(databasePath,attachmentRoot);
-    const providerJourney=process.argv.includes('--stop-after-supplier-filing'),providerKey=createHash('sha256').update(randomUUID()).digest('hex');
+    const providerJourney=providerJourneyRequested,providerKey=createHash('sha256').update(randomUUID()).digest('hex');
     if(providerJourney)await writeFile(path.join(root,'provider-source.pdf'),await readFile(path.resolve('docs/Supplier_Quotes/John_Wingfield/web-26-1133450.pdf')));
     api = spawn(process.execPath, ["--import",pathToFileURL(path.resolve('tests/fixtures/isolatedJourneyExchangeRate.mjs')).href,...(providerJourney?['--import',pathToFileURL(path.resolve('tests/fixtures/isolatedJourneyGoogle.mjs')).href]:[]),"server/index.js"], { cwd: process.cwd(), env: { ...process.env, ...(providerJourney?{QUOTESUITE_INTEGRATION_ENCRYPTION_KEY:providerKey}:{}), QUOTESUITE_DB_PATH: databasePath, QUOTESYNC_ATTACHMENT_ROOT: attachmentRoot, PORT: "3104", NODE_ENV: "development", QUOTESUITE_APP_ORIGINS: APP_URL, QUOTESUITE_TEST_JOURNEY: "1", QUOTESUITE_TEST_DELIVERY_ENABLED: "0", QUOTESUITE_TEST_CUSTOMER_EMAIL: CUSTOMER, QUOTESUITE_TEST_FACTORY_EMAIL: FACTORY }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     let apiStartupLog='';for(const stream of [api.stdout,api.stderr])stream.on('data',chunk=>{apiStartupLog=(apiStartupLog+String(chunk)).slice(-5000)});
@@ -201,6 +202,13 @@ async function run() {
     const preparedContext=await staff(`/api/lifecycle/projects/${fixture.projectId}/supplier-enquiries`,null,'GET');
     assert.equal(preparedContext.enquiries.length,1);assert.equal(preparedContext.enquiries[0].requestKind,'revision');assert.notEqual(preparedContext.enquiries[0].status,'sent');
     await click(tab,'Continue editing');await waitFor(()=>tab.evaluate("document.querySelector('.supplier-rfq input[type=email]')?.value==="+JSON.stringify(FACTORY)),'Prepared supplier request could not reopen');
+    if(process.argv.includes('--stop-after-multi-supplier-review')){
+      await input(tab,'.supplier-rfq select','TEST-JOURNEY-SUPPLIER');
+      await click(tab,'Prepare for review');
+      await waitFor(()=>tab.evaluate("document.querySelector('.supplier-rfq__result')?.innerText.includes('Prepared for review — not sent')"),'Second supplier request was not retained');
+      const secondContext=await staff(`/api/lifecycle/projects/${fixture.projectId}/supplier-enquiries`,null,'GET');assert.equal(secondContext.enquiries.length,2);assert.ok(secondContext.enquiries.every(item=>item.status!=='sent'));
+      await click(tab,'Continue editing');
+    }
     if(process.argv.includes('--stop-after-supplier-draft')){
       console.log(JSON.stringify({scope:'Normal application customer changes → working revision → reviewed supplier draft/reopen only',supplierRequests:1,preparedNotSent:true,sourceImportAndReissueVerified:false}));return;
     }
@@ -268,7 +276,7 @@ async function run() {
       await click(tab,'Request supplier estimate / revision');
       await waitFor(()=>tab.evaluate("[...document.querySelectorAll('summary')].some(item=>item.textContent==='Review an incoming supplier reply')"),'Saved supplier request did not expose reply review');
       await tab.evaluate("[...document.querySelectorAll('summary')].find(item=>item.textContent==='Review an incoming supplier reply').click()");
-      await tab.evaluate("[...document.querySelectorAll('.supplier-rfq__history button')].find(item=>item.textContent.includes('request 1')).click()");
+      await tab.evaluate("[...document.querySelectorAll('.supplier-rfq__history button')].find(item=>item.textContent.includes('EKO-OKNA')&&item.textContent.includes('request 1')).click()");
       await click(tab,'Find replies');await waitFor(()=>tab.evaluate("document.body.innerText.includes('Disposable supplier PDF response')"),'Disposable provider reply did not appear');
       await click(tab,'Disposable supplier PDF response');await waitFor(()=>tab.evaluate("document.body.innerText.includes('This exact message contains')"),'Exact supplier body did not open');
       await click(tab,'Review and file selected document');
@@ -283,7 +291,33 @@ async function run() {
         assert.ok(response);assert.equal(response.supplier_enquiry_id,preparedContext.enquiries[0].id);assert.match(response.folder_path,/Suppliers\/EKO/i);assert.equal(response.file_name,'web-26-1133450.pdf');
         const retained=await filedDb.all('SELECT id,source_canonical_document_id FROM supplier_quote_attachments');assert.equal(retained.length,1);assert.equal(retained[0].source_canonical_document_id,response.canonical_document_id);
       }finally{await filedDb.close()}
-      console.log(JSON.stringify({scope:'Normal supplier request → exact provider reply → reviewed commercial Drive filing → canonical document → genuine Manufacturer Import review',provider:'disposable transport; no live OAuth or delivery',reusedOriginalSource:true,multiSupplierReissueVerified:false}));return;
+      console.log(JSON.stringify({scope:'Normal supplier request → exact provider reply → reviewed commercial Drive filing → canonical document → genuine Manufacturer Import review',provider:'disposable transport; no live OAuth or delivery',reusedOriginalSource:true,multiSupplierReissueVerified:false}));
+      if(process.argv.includes('--stop-after-supplier-filing'))return;
+      await tab.evaluate("document.querySelector('[aria-labelledby=\"manufacturer-import-title\"] header button').click()");
+      await click(tab,'Client Portal');
+      await waitFor(()=>tab.evaluate(`[...document.querySelectorAll('article')].some(item=>item.textContent.includes(${JSON.stringify(fixture.clientReference)})&&item.querySelector('button'))`),'Customer revision request did not reopen');
+      await tab.evaluate(`[...document.querySelectorAll('article')].find(item=>item.textContent.includes(${JSON.stringify(fixture.clientReference)})).querySelector('button').click()`);
+      await waitFor(()=>tab.evaluate("[...document.querySelectorAll('legend')].some(item=>item.textContent==='Supplier response reviews')"),'Filed source was not discoverable in customer revision review');
+      assert.equal(await tab.evaluate("document.querySelector('.portal-operation-detail__stage h4')?.textContent"),'EF-EST-2026-901-02');
+      const supplierSelector="[...document.querySelectorAll('fieldset')].find(item=>item.querySelector('legend')?.textContent==='Supplier response reviews')";
+      await tab.evaluate(`(()=>{const select=${supplierSelector}.querySelector('select');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,${JSON.stringify(preparedContext.enquiries[0].id)});select.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+      await waitFor(()=>tab.evaluate("document.body.innerText.includes('Save supplier review')"),'Source-backed supplier field form did not open');
+      await tab.evaluate(`(()=>{const section=${supplierSelector};for(const [label,value] of [['Field','quotation_reference'],['Before','Original disposable issued quotation'],['Requested','A new revised quotation reference'],['Returned','WEB/26/1133450'],['Before source / page','Disposable issued Estimate overview'],['Returned source / page','web-26-1133450.pdf, page 1, quotation reference']]){const field=[...section.querySelectorAll('label')].find(item=>item.textContent===label).querySelector('input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(field,value);field.dispatchEvent(new Event('input',{bubbles:true}))}})()`);
+      await click(tab,'Save supplier review');
+      await waitFor(()=>tab.evaluate("document.body.innerText.includes('field(s) still need resolution')"),'Unresolved source review did not explain remaining work');
+      const reviewDb=await open({filename:databasePath,driver:sqlite3.Database,mode:sqlite3.OPEN_READONLY});
+      try{
+        const saved=await reviewDb.get('SELECT * FROM supplier_response_reviews');assert.equal(saved.supplier_enquiry_id,preparedContext.enquiries[0].id);assert.equal(saved.unresolved,1);assert.equal(JSON.parse(saved.checks_json)[0].afterValue,'WEB/26/1133450');
+        assert.equal((await reviewDb.get('SELECT verified_at FROM supplier_revision_requests')).verified_at,null,'Receipt or unresolved review approved customer reissue');
+        assert.equal((await reviewDb.get('SELECT COUNT(*) count FROM issued_quotations')).count,1,'Source review issued another customer quotation');
+      }finally{await reviewDb.close()}
+      if(process.argv.includes('--stop-after-multi-supplier-review')){
+        await tab.evaluate(`(()=>{const select=${supplierSelector}.querySelector('select');const other=[...select.options].find(item=>item.textContent.includes('TEST Journey Supplier'));if(!other)throw new Error('Second supplier review is missing');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,other.value);select.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+        await waitFor(()=>tab.evaluate("document.body.innerText.includes('No retained revised document is linked to this supplier request')"),'Outstanding supplier was incorrectly treated as reviewed');
+        await tab.evaluate(`(()=>{const select=${supplierSelector}.querySelector('select');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,${JSON.stringify(preparedContext.enquiries[0].id)});select.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+        await waitFor(()=>tab.evaluate(`${supplierSelector}&&[...${supplierSelector}.querySelectorAll('label')].find(item=>item.textContent==='Returned')?.querySelector('input')?.value==='WEB/26/1133450'`),'Switching supplier lost the saved source review');
+      }
+      console.log(JSON.stringify({scope:'Normal source-bound supplier field review after exact filing',unresolvedReviewPersisted:true,customerReissueStillBlocked:true,secondSupplierRemainsOutstanding:process.argv.includes('--stop-after-multi-supplier-review'),approvedReissueVerified:false}));return;
     }
 
     const queue = await staff("/api/lifecycle/changes-requested", null, "GET"), reviewId = queue.find((item) => item.client_ref === `TEST-CL-${fixture.suffix.toUpperCase()}`)?.review_submission_id; assert.ok(reviewId, "Disposable change request was absent from the staff queue");
