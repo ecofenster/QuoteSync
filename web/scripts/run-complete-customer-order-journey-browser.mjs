@@ -206,6 +206,8 @@ async function run() {
     const preparedContext=await staff(`/api/lifecycle/projects/${fixture.projectId}/supplier-enquiries`,null,'GET');
     assert.equal(preparedContext.enquiries.length,1);assert.equal(preparedContext.enquiries[0].requestKind,'revision');assert.notEqual(preparedContext.enquiries[0].status,'sent');
     await click(tab,'Continue editing');await waitFor(()=>tab.evaluate("document.querySelector('.supplier-rfq input[type=email]')?.value==="+JSON.stringify(FACTORY)),'Prepared supplier request could not reopen');
+    assert.equal(await tab.evaluate("[...document.querySelectorAll('.supplier-rfq__history article')].some(item=>item.innerText.includes('Invalid Date'))"),false,'Newly prepared request lost its persisted date before refresh');
+    assert.equal(await tab.evaluate(`[...document.querySelectorAll('.supplier-rfq__history article')].some(item=>item.innerText.includes(new Date(${JSON.stringify(preparedContext.enquiries[0].createdAt)}).toLocaleString('en-GB')))`),true,'Immediate history does not show the canonical saved date');
     if(multiSupplierReview){
       await input(tab,'.supplier-rfq select',receivedSupplierReviews?'ZYLE':'TEST-JOURNEY-SUPPLIER');
       await click(tab,'Prepare for review');

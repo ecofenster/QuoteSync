@@ -37,6 +37,14 @@ test("supplier RFQ preview snapshots canonical files and preserves one record ac
   assert.equal(context.project.clientReference,"TEST-CL-1");assert.equal(context.suppliers[0].name,"Zyle Fenster");assert.equal(context.documents[0].fileName,"Approved drawing.pdf");assert.equal(context.delivery.deliveryMode,"preview_only");
   const created=await service.prepareSupplierEnquiry("project-1",request),replay=await service.prepareSupplierEnquiry("project-1",request);
   assert.equal(created.status,"draft");assert.equal(created.revisionNo,1);assert.equal(created.documents[0].providerRevision,"7");assert.equal(replay.id,created.id);assert.equal(replay.idempotentReplay,true);
+  const persisted=await db.get('SELECT created_at,updated_at FROM supplier_enquiry_drafts WHERE id=?',created.id);
+  const reopened=(await service.supplierEnquiryContext("project-1","estimate-1")).enquiries[0];
+  assert.equal(created.createdAt,persisted.created_at);assert.equal(created.updatedAt,persisted.updated_at);
+  assert.equal(Number.isFinite(Date.parse(created.createdAt)),true);
+  for(const field of Object.keys(reopened)){
+    assert.deepEqual(created[field],reopened[field],`New response must match reopened ${field}`);
+    assert.deepEqual(replay[field],reopened[field],`Retry must match reopened ${field}`);
+  }
   assert.equal((await db.get("SELECT COUNT(*) count FROM supplier_enquiry_drafts")).count,1);assert.equal((await db.get("SELECT COUNT(*) count FROM communication_messages")).count,1);
   await db.run("UPDATE canonical_documents SET file_name='Externally renamed drawing.pdf',provider_revision='8' WHERE id='document-1'");
   assert.equal((await service.supplierEnquiryContext("project-1","estimate-1")).enquiries[0].documentSnapshot[0].fileName,"Approved drawing.pdf");
