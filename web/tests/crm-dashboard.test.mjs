@@ -19,12 +19,16 @@ async function fixture(t) {
     CREATE TABLE workflow_events(id TEXT PRIMARY KEY,event_name TEXT,occurred_at TEXT,links_json TEXT);
     CREATE TABLE issued_quotations(id TEXT PRIMARY KEY,estimate_id TEXT,status TEXT);
     CREATE TABLE estimate_archives(estimate_id TEXT PRIMARY KEY);
+    CREATE TABLE estimate_revision_releases(id TEXT PRIMARY KEY,client_id TEXT,project_id TEXT,estimate_id TEXT);
+    CREATE TABLE supplier_revision_requests(id TEXT PRIMARY KEY,review_submission_id TEXT,source_release_id TEXT,successor_estimate_id TEXT,status TEXT,workflow_state TEXT,response_due_at TEXT,responsible_user_id TEXT,created_at TEXT);
     INSERT INTO clients VALUES('c1','EF-CL-900','Alex Example','','','alex@example.test','2026-09-01T09:00:00.000Z','2026-09-10T09:00:00.000Z',NULL);
     INSERT INTO enquiries VALUES('en1','EF-ENQ-900','new','Alex Example','','alex@example.test','Test House','2026-09-10T09:00:00.000Z','2026-09-10T09:00:00.000Z',NULL,NULL);
     INSERT INTO projects VALUES('p1','c1','Test House','1 Test Road','2026-09-01T09:00:00.000Z','2026-09-10T09:00:00.000Z',NULL);
     INSERT INTO estimates VALUES('e1','c1','p1','EF-EST-TEST-001','Open','Draft','[]','{}','2026-09-01T09:00:00.000Z','2026-09-10T09:00:00.000Z',NULL);
     INSERT INTO followups VALUES('f1','c1','e1','Call Alex','Discuss options','2026-09-10T12:00:00.000Z','pending',NULL,'2026-09-10T09:00:00.000Z');
     INSERT INTO crm_record_work_states VALUES('enquiry','en1','user-1','User','new_enquiry','none','Review and qualify enquiry','2026-09-11T12:00:00.000Z',NULL,'2026-09-10T09:00:00.000Z','2026-09-10T09:00:00.000Z');
+    INSERT INTO estimate_revision_releases VALUES('rel1','c1','p1','e1');
+    INSERT INTO supplier_revision_requests VALUES('sr1','review1','rel1','e1','approved','prepared_for_review',NULL,'user-1','2026-09-11T09:30:00.000Z');
   `);
   const app = express(); app.use(express.json());
   app.use("/api/crm", createCrmDashboardRouter({ databasePromise: Promise.resolve(db), serviceOptions: { now: () => new Date("2026-09-11T10:00:00.000Z") } }));
@@ -44,6 +48,8 @@ test("dashboard projects canonical overdue, unanswered and exact-record actions"
   assert.equal(dashboard.summary.overdue, 1);
   assert.equal(dashboard.summary.dueToday, 1);
   assert.equal(dashboard.summary.unansweredEnquiries, 1);
+  assert.equal(dashboard.summary.revisionsRequested, 1);
+  assert.deepEqual(dashboard.attention.find((item) => item.id === "revision:sr1").target, { kind: "revision_request", id: "review1", clientId: "c1", projectId: "p1", estimateId: "e1" });
   assert.deepEqual(dashboard.attention.find((item) => item.id === "followup:f1").target, { kind: "followup", id: "f1", clientId: "c1", estimateId: "e1", projectId: "p1", dueAt: "2026-09-10T12:00:00.000Z" });
   assert.equal(dashboard.pipeline.find((stage) => stage.id === "draft_estimate").count, 1);
 

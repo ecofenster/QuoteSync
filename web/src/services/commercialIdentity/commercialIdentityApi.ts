@@ -79,6 +79,9 @@ export type EnquiryRecord = {
   nextAction: string;
   nextActionDueAt: string | null;
   lastContactAt: string | null;
+  responsibleTeamId: string | null;
+  responsibleTeamName: string | null;
+  assignmentState: "assigned" | "unassigned" | "retained";
 };
 
 export type ProjectRecord = {

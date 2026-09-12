@@ -122,13 +122,41 @@ export async function initializeLifecycleSchema(db) {
   await ensureColumn(db, 'supplier_revision_requests', 'returned_revision', 'TEXT');
   await ensureColumn(db, 'supplier_revision_requests', 'returned_source_kind', "TEXT NOT NULL DEFAULT 'canonical_document' CHECK(returned_source_kind IN ('canonical_document','supplier_quote_attachment'))");
   await ensureColumn(db, 'supplier_revision_requests', 'verified_at', 'TEXT');
+  await ensureColumn(db, 'supplier_revision_requests', 'workflow_state', "TEXT NOT NULL DEFAULT 'revision_requested'");
+  await ensureColumn(db, 'supplier_revision_requests', 'responsible_user_id', 'TEXT');
+  await ensureColumn(db, 'supplier_revision_requests', 'sent_at', 'TEXT');
+  await ensureColumn(db, 'supplier_revision_requests', 'response_due_at', 'TEXT');
+  await ensureColumn(db, 'supplier_revision_requests', 'received_at', 'TEXT');
+  await ensureColumn(db, 'supplier_revision_requests', 'completed_at', 'TEXT');
+  await db.exec(`UPDATE supplier_revision_requests
+    SET workflow_state = CASE
+      WHEN status = 'sent' THEN 'sent_to_supplier'
+      WHEN status = 'approved' AND communication_message_id IS NOT NULL THEN 'prepared_for_review'
+      WHEN status = 'cancelled' THEN 'cancelled'
+      ELSE workflow_state
+    END
+    WHERE workflow_state = 'revision_requested'`);
   await ensureColumn(db, 'supplier_enquiry_drafts', 'document_snapshot_json', "TEXT NOT NULL DEFAULT '[]'");
   await ensureColumn(db, 'supplier_enquiry_drafts', 'idempotency_key', 'TEXT');
   await ensureColumn(db, 'supplier_enquiry_drafts', 'content_sha256', 'TEXT');
   await ensureColumn(db, 'supplier_enquiry_drafts', 'revision_no', 'INTEGER NOT NULL DEFAULT 1');
   await ensureColumn(db, 'supplier_enquiry_drafts', 'supersedes_id', 'TEXT');
+  await ensureColumn(db, 'supplier_enquiry_drafts', 'request_kind', "TEXT NOT NULL DEFAULT 'initial'");
+  await ensureColumn(db, 'supplier_enquiry_drafts', 'revision_request_id', 'TEXT');
+  await ensureColumn(db, 'supplier_enquiry_drafts', 'sent_at', 'TEXT');
+  await ensureColumn(db, 'supplier_enquiry_drafts', 'response_due_at', 'TEXT');
+  await ensureColumn(db, 'supplier_enquiry_drafts', 'response_state', "TEXT NOT NULL DEFAULT 'outstanding'");
+  await ensureColumn(db, 'supplier_enquiry_drafts', 'received_at', 'TEXT');
+  await ensureColumn(db, 'supplier_enquiry_drafts', 'completed_at', 'TEXT');
+  await ensureColumn(db, 'supplier_enquiry_drafts', 'followup_due_at', 'TEXT');
+  await ensureColumn(db, 'supplier_enquiry_drafts', 'followup_attempted_at', 'TEXT');
+  await ensureColumn(db, 'supplier_enquiry_drafts', 'followup_sent_at', 'TEXT');
+  await ensureColumn(db, 'supplier_enquiry_drafts', 'followup_message_id', 'TEXT');
+  await ensureColumn(db, 'supplier_enquiry_drafts', 'followup_failure', "TEXT NOT NULL DEFAULT ''");
   await db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_supplier_enquiry_idempotency ON supplier_enquiry_drafts(idempotency_key) WHERE idempotency_key IS NOT NULL');
   await db.exec('CREATE INDEX IF NOT EXISTS idx_supplier_enquiry_project_estimate ON supplier_enquiry_drafts(project_id,estimate_id,created_at DESC)');
+  await db.exec('CREATE INDEX IF NOT EXISTS idx_supplier_revision_followup_due ON supplier_enquiry_drafts(request_kind,status,response_state,followup_due_at)');
+  await db.exec('CREATE INDEX IF NOT EXISTS idx_supplier_revision_parent ON supplier_enquiry_drafts(revision_request_id,created_at DESC)');
   await ensureColumn(db, 'revision_change_checks', 'change_kind', "TEXT NOT NULL DEFAULT 'requested' CHECK(change_kind IN ('requested','unrelated_material_change'))");
   for (const table of immutable) await db.exec(`CREATE TRIGGER IF NOT EXISTS trg_${table}_delete_evidence BEFORE DELETE ON ${table} BEGIN SELECT RAISE(ABORT,'Lifecycle evidence must be superseded, not deleted'); END`);
 }

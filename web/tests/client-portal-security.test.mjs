@@ -285,6 +285,24 @@ test("supplier enquiry preview and returned evidence stay linked to one canonica
   await assert.rejects(()=>lifecycle.prepareSupplierEnquiry("project-a2",{estimateId:"estimate-a2",supplierId:"TEST-SUPPLIER",recipient:"factory@example.test",subject:"Wrong Project",bodyText:"No",documentIds:["document-safe"],createdBy:"staff-1"}),error=>error.code==="supplier_enquiry_document_invalid");
 });
 
+test("one tracked supplier revision draft reopens, sends once and follows up once after seven calendar days",async t=>{
+  const source=await fixture(t),auth=await authenticated(t,source),communications=createCommunicationRepository(source.db);let clock=Date.parse("2026-09-06T10:00:00.000Z"),sendCount=0,failNext=false;
+  const communicationService={repository:communications,sendMessage:async message=>{if(failNext){failNext=false;throw new Error("TEST supplier delivery unavailable")}sendCount+=1;return communications.save({...message,provider:"fixture",providerMessageId:`sent-${sendCount}`,folder:"sent",status:"sent",sentAt:new Date(clock).toISOString()})}};
+  const deliveryPolicy={publicStatus:()=>({deliveryMode:"test_allowlist"}),assertRecipient(value){assert.equal(value,"factory@example.test");return value}};
+  const lifecycle=createLifecycleService(source.db,{portal:source.service,communications,communicationService,documentOptions:source.options.documentOptions,deliveryPolicy,now:()=>new Date(clock)});
+  const review=await source.service.submitReview(auth.session,{projectId:"project-a1",estimateReleaseId:source.release.id,idempotencyKey:"tracked-revision-review",generalResponse:"amendment_requested",generalComment:"Change the finish.",positions:[{estimatePositionId:"position-a",positionReference:"W1",response:"amendment_requested",comment:"Black outside."}]});
+  const parent=await lifecycle.prepareSupplierRevision({reviewSubmissionId:review.reviewSubmissionId,createdBy:"staff-1",createdByName:"Staff User"}),context=await lifecycle.supplierEnquiryContext("project-a1",parent.successorEstimateId);assert.equal(context.requestMode,"revision");assert.equal(context.revisionRequest.id,parent.id);
+  const payload={estimateId:parent.successorEstimateId,supplierId:"TEST-SUPPLIER",recipient:"factory@example.test",subject:"TEST revised estimate",bodyText:"Please revise W1.",documentIds:["document-safe"],createdBy:"staff-1",requestKind:"revision",revisionRequestId:parent.id,idempotencyKey:"tracked-supplier-draft"};
+  const prepared=await lifecycle.prepareSupplierEnquiry("project-a1",payload);assert.equal(prepared.status,"draft");assert.equal((await lifecycle.supplierRevisionDetail(parent.id)).status,"prepared_for_review");
+  const sent=await lifecycle.prepareSupplierEnquiry("project-a1",{...payload,send:true});assert.equal(sent.status,"sent");assert.equal(sent.responseDueAt,"2026-09-13T10:00:00.000Z");assert.equal(sendCount,1);
+  const replay=await lifecycle.prepareSupplierEnquiry("project-a1",{...payload,send:true});assert.equal(replay.idempotentReplay,true);assert.equal(sendCount,1);
+  clock=Date.parse("2026-09-13T10:01:00.000Z");failNext=true;const failedFollowup=await lifecycle.processDueSupplierRevisionFollowups();assert.deepEqual(failedFollowup,{processed:1,sent:0,failed:1});assert.equal(sendCount,1);
+  const queued=await lifecycle.retrySupplierRevisionFollowup(sent.id);assert.equal(queued.followupFailure,"");
+  const followup=await lifecycle.processDueSupplierRevisionFollowups();assert.deepEqual(followup,{processed:1,sent:1,failed:0});assert.equal(sendCount,2);
+  assert.deepEqual(await lifecycle.processDueSupplierRevisionFollowups(),{processed:0,sent:0,failed:0});assert.equal(sendCount,2);
+  const portal=await source.service.getProjectPortal(auth.session,"project-a1");assert.equal(portal.revisionRequests[0].status,"Updated Estimate being prepared");assert.equal(JSON.stringify(portal.revisionRequests).includes("factory@example.test"),false);
+});
+
 test("HTTP boundary is fail-closed by default and requires authentication plus CSRF when explicitly test-enabled",async t=>{
   const source=await fixture(t),app=express();app.use(express.json());app.use("/api/client-portal",createClientPortalRouter({databasePromise:Promise.resolve(source.db)}));
   const server=createServer(app);await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));

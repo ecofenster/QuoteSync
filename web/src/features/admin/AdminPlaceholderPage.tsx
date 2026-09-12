@@ -18,6 +18,7 @@ import AdminSectionTabs from "./AdminSectionTabs";
 import DevelopmentRoadmapWorkspace from "../developmentRoadmap/DevelopmentRoadmapWorkspace";
 import CalculatorAdminCatalogue from "../projectCalculatorLab/CalculatorAdminCatalogue";
 import AdminManufacturerDocuments from "./AdminManufacturerDocuments";
+import AdminServiceConfiguration from "../service/AdminServiceConfiguration";
 import "./AdminPlaceholderPage.css";
 
 type AdminSectionKey =
@@ -25,6 +26,7 @@ type AdminSectionKey =
   | "project_preferences"
   | "feature_controls"
   | "installation"
+  | "teams_service"
   | "configurator_controls"
   | "branding"
   | "integrations"
@@ -49,6 +51,7 @@ const sectionList: Array<{ key: AdminSectionKey; label: string; description: str
   { key: "project_preferences", label: "Project Preferences", description: "Project Calculator, commercial presentation and project defaults." },
   { key: "feature_controls", label: "Feature Controls", description: "Enable or disable major system capabilities." },
   { key: "installation", label: "Installation", description: "Installation companies, installers, teams, programme rules and rates." },
+  { key: "teams_service", label: "Teams & Service", description: "Responsibility routing, Service teams and internal or approved customer targets." },
   { key: "configurator_controls", label: "Configurator Controls", description: "Manufacturers, window types, and render-definition controls." },
   { key: "branding", label: "Branding", description: "Brand identity, logo, colours, and document identity." },
   { key: "integrations", label: "Integrations", description: "Maps, what3words, and future third-party services." },
@@ -64,6 +67,7 @@ const editableKeys = new Set<string>([
   "system.loadDemoForecast",
   "references.clientPrefix",
   "references.estimatePrefix",
+  "references.servicePrefix",
 ]);
 
 const settingLabels: Record<string, string> = {
@@ -73,6 +77,7 @@ const settingLabels: Record<string, string> = {
   "system.loadDemoForecast": "Load demo Forecast",
   "references.clientPrefix": "Client reference prefix",
   "references.estimatePrefix": "Estimate reference prefix",
+  "references.servicePrefix": "Service reference prefix",
 };
 
 function formatGroupTitle(groupName: string) {
@@ -439,6 +444,8 @@ export default function AdminPlaceholderPage(props: {
       <AdminFeatureControls />
     ) : activeSection === "installation" ? (
       <CalculatorAdminCatalogue />
+    ) : activeSection === "teams_service" ? (
+      <AdminServiceConfiguration />
     ) : activeSection === "configurator_controls" ? (
       <AdminConfiguratorCatalogWorkspace
         initialTab={props.initialConfiguratorTab}

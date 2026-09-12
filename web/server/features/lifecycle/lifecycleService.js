@@ -11,6 +11,7 @@ const hash = (value) => createHash('sha256').update(JSON.stringify(value)).diges
 const problem = (message, status = 422, code = 'lifecycle_invalid') => Object.assign(new Error(message), { status, code });
 const normalized = (value) => text(value).toLocaleLowerCase('en-GB').replace(/\s+/g, ' ');
 const parse = (value, fallback = []) => { try { return JSON.parse(value || ''); } catch { return fallback; } };
+const plusCalendarDays = (value, days) => { const date = new Date(value); date.setUTCDate(date.getUTCDate() + days); return date.toISOString(); };
 
 export function deriveRevisionCheck(input = {}) {
   const before = text(input.beforeValue), expected = text(input.expectedValue), after = text(input.afterValue);
@@ -35,6 +36,7 @@ export function createLifecycleService(db, options = {}) {
   const customerDocuments = options.customerDocuments || createCustomerLifecycleDocumentService(db, options.documentOptions);
   const supplierChangeDocuments = options.supplierChangeDocuments || createSupplierRevisionChangeDocumentService(db, options.documentOptions);
   const stamp = () => now().toISOString();
+  const revisionWorkflowState=(row)=>row?.workflow_state==='sent_to_supplier'&&row.response_due_at&&new Date(row.response_due_at)<now()?'supplier_response_overdue':row?.workflow_state||row?.status||'revision_requested';
   const deliverOrSave = (message, send) => send === true ? communicationService.sendMessage(message) : communications.save(message);
 
   async function event(eventName, evidenceId, links) {
@@ -46,7 +48,7 @@ export function createLifecycleService(db, options = {}) {
     const rows = await db.all(`SELECT r.id review_submission_id,r.estimate_release_id,r.status,r.general_comment,r.submitted_at,
       rel.estimate_id,rel.estimate_revision,rel.client_id,rel.project_id,c.client_ref,c.name client_name,p.name project_name,
       (SELECT COUNT(*) FROM portal_review_position_entries e WHERE e.review_submission_id=r.id AND e.response='amendment_requested') amendment_count,
-      sr.id supplier_revision_request_id,sr.status supplier_revision_status,sr.successor_estimate_id
+      sr.id supplier_revision_request_id,COALESCE(sr.workflow_state,sr.status) supplier_revision_status,sr.successor_estimate_id
       FROM portal_review_submissions r JOIN estimate_revision_releases rel ON rel.id=r.estimate_release_id
       JOIN clients c ON c.id=rel.client_id JOIN projects p ON p.id=rel.project_id
       LEFT JOIN supplier_revision_requests sr ON sr.review_submission_id=r.id
@@ -57,7 +59,7 @@ export function createLifecycleService(db, options = {}) {
 
   async function changeRequestDetail(reviewId) {
     const review = await db.get(`SELECT r.*,rel.estimate_id,rel.estimate_revision,rel.client_id,rel.project_id,rel.customer_projection_json,
-      c.client_ref,c.name client_name,p.name project_name,sr.id supplier_revision_request_id,sr.status supplier_revision_status,sr.recipient,sr.subject,sr.body_text,sr.successor_estimate_id,sr.returned_document_id,sr.returned_revision,sr.verified_at
+      c.client_ref,c.name client_name,p.name project_name,sr.id supplier_revision_request_id,COALESCE(sr.workflow_state,sr.status) supplier_revision_status,sr.recipient,sr.subject,sr.body_text,sr.successor_estimate_id,sr.returned_document_id,sr.returned_revision,sr.verified_at
       FROM portal_review_submissions r JOIN estimate_revision_releases rel ON rel.id=r.estimate_release_id
       JOIN clients c ON c.id=rel.client_id JOIN projects p ON p.id=rel.project_id
       LEFT JOIN supplier_revision_requests sr ON sr.review_submission_id=r.id WHERE r.id=?`, reviewId);
@@ -75,7 +77,8 @@ export function createLifecycleService(db, options = {}) {
     if (!request) throw problem('Supplier revision request was not found.', 404, 'supplier_revision_request_not_found');
     const hasSupplierAttachments = Boolean(await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='supplier_quote_attachments'"));
     const supplierDocuments = hasSupplierAttachments ? await db.all(`SELECT a.id,a.original_file_name file_name,COALESCE(r.supplier_revision,CAST(r.revision_sequence AS TEXT)) revision,r.id revision_id FROM supplier_quote_attachments a JOIN supplier_quote_revisions r ON r.id=a.revision_id WHERE a.estimate_id=? ORDER BY a.created_at DESC`, request.successor_estimate_id) : [];
-    return { id: request.id, status: request.status, reviewSubmissionId: request.review_submission_id, sourceReleaseId: request.source_release_id, successorEstimateId: request.successor_estimate_id, successorEstimateRef: request.successor_estimate_ref, clientId: request.client_id, clientName: request.client_name, projectId: request.project_id, projectName: request.project_name, recipient: request.recipient, subject: request.subject, bodyText: request.body_text, summary: parse(request.summary_json, {}), documentIds: parse(request.document_ids_json, []), communicationMessageId: request.communication_message_id, returnedDocumentId: request.returned_document_id, returnedSourceKind: request.returned_source_kind, returnedRevision: request.returned_revision, verifiedAt: request.verified_at, checks: await db.all('SELECT * FROM revision_change_checks WHERE supplier_revision_request_id=? ORDER BY change_kind,estimate_position_id,field_key', requestId), supplierDocuments };
+    const supplierRequests=await db.all(`SELECT se.*,s.supplier_name FROM supplier_enquiry_drafts se LEFT JOIN supplier_commercial_defaults s ON s.supplier_code=se.supplier_id WHERE se.revision_request_id=? ORDER BY se.created_at`,requestId);
+    return { id: request.id, status: revisionWorkflowState(request), reviewSubmissionId: request.review_submission_id, sourceReleaseId: request.source_release_id, successorEstimateId: request.successor_estimate_id, successorEstimateRef: request.successor_estimate_ref, clientId: request.client_id, clientName: request.client_name, projectId: request.project_id, projectName: request.project_name, responsibleUserId:request.responsible_user_id||null,recipient: request.recipient, subject: request.subject, bodyText: request.body_text, summary: parse(request.summary_json, {}), documentIds: parse(request.document_ids_json, []), communicationMessageId: request.communication_message_id,sentAt:request.sent_at||null,responseDueAt:request.response_due_at||null,receivedAt:request.received_at||null,completedAt:request.completed_at||null,supplierRequests:supplierRequests.map(supplierEnquiryView), returnedDocumentId: request.returned_document_id, returnedSourceKind: request.returned_source_kind, returnedRevision: request.returned_revision, verifiedAt: request.verified_at, checks: await db.all('SELECT * FROM revision_change_checks WHERE supplier_revision_request_id=? ORDER BY change_kind,estimate_position_id,field_key', requestId), supplierDocuments };
   }
 
   const supplierEnquiryView = (row) => ({
@@ -93,6 +96,18 @@ export function createLifecycleService(db, options = {}) {
     documentIds: parse(row.document_ids_json, []),
     documentSnapshot: parse(row.document_snapshot_json, []),
     communicationMessageId: row.communication_message_id,
+    idempotencyKey: row.idempotency_key || null,
+    requestKind: row.request_kind || 'initial',
+    revisionRequestId: row.revision_request_id || null,
+    sentAt: row.sent_at || null,
+    responseDueAt: row.response_due_at || null,
+    responseState: row.response_state || 'outstanding',
+    receivedAt: row.received_at || null,
+    completedAt: row.completed_at || null,
+    followupDueAt: row.followup_due_at || null,
+    followupAttemptedAt: row.followup_attempted_at || null,
+    followupSentAt: row.followup_sent_at || null,
+    followupFailure: row.followup_failure || '',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
@@ -115,6 +130,13 @@ export function createLifecycleService(db, options = {}) {
     const enquiries = await db.all(`SELECT se.*,s.supplier_name FROM supplier_enquiry_drafts se
       LEFT JOIN supplier_commercial_defaults s ON s.supplier_code=se.supplier_id
       WHERE se.project_id=? AND (?='' OR se.estimate_id=?) ORDER BY se.created_at DESC LIMIT 50`, projectId, selectedEstimateId, selectedEstimateId);
+    const revisionRequest = selectedEstimateId ? await db.get(`SELECT sr.*,r.submitted_at FROM supplier_revision_requests sr
+      JOIN portal_review_submissions r ON r.id=sr.review_submission_id
+      WHERE sr.successor_estimate_id=? AND sr.status<>'cancelled' ORDER BY sr.created_at DESC LIMIT 1`, selectedEstimateId).catch(()=>null) : null;
+    const legacyPrepared = selectedEstimateId ? await db.all(`SELECT a.id,a.status,a.request_json,a.created_at,q.supplier_name
+      FROM estimate_procurement_actions a LEFT JOIN supplier_quotes q ON q.id=a.supplier_quote_id
+      WHERE a.estimate_id=? AND a.action_type='request_supplier_revision' ORDER BY a.created_at DESC LIMIT 20`, selectedEstimateId).catch(()=>[]) : [];
+    const recommendedDocumentIds = documents.filter((item) => /drawing|schedule|price.?free|without.?prices/i.test(`${item.document_type} ${item.file_name}`)).map((item) => item.id);
     return {
       project: { id: project.id, clientId: project.client_id, clientName: project.client_name, clientReference: project.client_ref, name: project.name },
       selectedEstimateId: selectedEstimateId || null,
@@ -122,35 +144,56 @@ export function createLifecycleService(db, options = {}) {
       suppliers,
       documents: documents.map((item) => ({ id: item.id, fileName: item.file_name, mediaType: item.mime_type, sizeBytes: Number(item.size_bytes || 0), documentType: item.document_type, providerFileId: item.provider_file_id, providerRevision: item.provider_revision, checksum: item.checksum, folderPath: item.folder_path })),
       enquiries: enquiries.map(supplierEnquiryView),
+      requestMode: revisionRequest ? 'revision' : 'initial',
+      revisionRequest: revisionRequest ? { id:revisionRequest.id,status:revisionWorkflowState(revisionRequest),sourceReleaseId:revisionRequest.source_release_id,summary:parse(revisionRequest.summary_json,{}),submittedAt:revisionRequest.submitted_at,responseDueAt:revisionRequest.response_due_at||null } : null,
+      legacyPrepared: legacyPrepared.map((item)=>({id:item.id,status:item.status,supplierName:item.supplier_name||null,request:parse(item.request_json,{}),createdAt:item.created_at})),
+      recommendedDocumentIds,
       delivery: delivery.publicStatus(),
     };
   }
 
   async function prepareSupplierEnquiry(projectId, input = {}) {
-    const actor=text(input.createdBy),recipient=text(input.recipient),subject=text(input.subject),bodyText=text(input.bodyText),estimateId=text(input.estimateId),supplierId=text(input.supplierId),documentIds=[...new Set((input.documentIds||[]).map(text).filter(Boolean))];
+    const actor=text(input.createdBy),recipient=text(input.recipient),subject=text(input.subject),bodyText=text(input.bodyText),estimateId=text(input.estimateId),supplierId=text(input.supplierId),documentIds=[...new Set((input.documentIds||[]).map(text).filter(Boolean))],requestKind=input.requestKind==='revision'?'revision':'initial',revisionRequestId=text(input.revisionRequestId)||null;
     if(!actor||!recipient||!subject||!bodyText)throw problem('Project, factory recipient, subject, message and staff identity are required.');
     const project=await db.get('SELECT p.id,p.client_id,p.name FROM projects p WHERE p.id=? AND p.deleted_at IS NULL',projectId);if(!project)throw problem('Project was not found.',404,'project_not_found');
     if(!estimateId||!await db.get('SELECT id FROM estimates WHERE id=? AND project_id=? AND deleted_at IS NULL',estimateId,projectId))throw problem('Choose a current working Estimate for this Project.',422,'supplier_enquiry_estimate_invalid');
     const supplier=await db.get(`SELECT supplier_code,supplier_name FROM supplier_commercial_defaults WHERE supplier_code=?
       AND NOT (upper(trim(supplier_name))='ANY' AND upper(trim(supplier_code)) IN ('FACTORY PRICE','1 TO 1 PRICING','STAGED DISCOUNT'))`,supplierId);
     if(!supplier)throw problem('Choose a current supplier from Administration.',422,'supplier_enquiry_supplier_invalid');
+    const revisionRequest=revisionRequestId?await db.get(`SELECT sr.*,rel.project_id FROM supplier_revision_requests sr JOIN estimate_revision_releases rel ON rel.id=sr.source_release_id WHERE sr.id=? AND sr.successor_estimate_id=? AND rel.project_id=? AND sr.status<>'cancelled'`,revisionRequestId,estimateId,projectId):null;
+    if(requestKind==='revision'&&!revisionRequest)throw problem('The supplier revision request is no longer linked to this working Estimate. Reopen the customer change request and try again.',409,'supplier_revision_context_invalid');
     const documents=documentIds.length?await db.all(`SELECT id,file_name,mime_type,size_bytes,provider_file_id,provider_revision,checksum,folder_path,document_type FROM canonical_documents WHERE project_id=? AND removed_at IS NULL AND trashed=0 AND id IN (${documentIds.map(()=>'?').join(',')})`,projectId,...documentIds):[];
     if(documents.length!==documentIds.length)throw problem('Every selected supplier-enquiry file must be a current canonical document for this Project.',422,'supplier_enquiry_document_invalid');
     if(input.send===true)delivery.assertRecipient(recipient,'factory');
     const documentSnapshot=documents.map(document=>({id:document.id,fileName:document.file_name,mediaType:document.mime_type,sizeBytes:Number(document.size_bytes||0),providerFileId:document.provider_file_id,providerRevision:document.provider_revision,checksum:document.checksum,folderPath:document.folder_path,documentType:document.document_type}));
-    const contentSha256=hash({projectId,estimateId,supplierId,recipient:normalized(recipient),subject,bodyText,documentSnapshot:documentSnapshot.map(document=>({id:document.id,providerFileId:document.providerFileId,providerRevision:document.providerRevision,checksum:document.checksum}))});
+    const contentSha256=hash({projectId,estimateId,supplierId,recipient:normalized(recipient),subject,bodyText,requestKind,revisionRequestId,documentSnapshot:documentSnapshot.map(document=>({id:document.id,providerFileId:document.providerFileId,providerRevision:document.providerRevision,checksum:document.checksum}))});
     const idempotencyKey=text(input.idempotencyKey)||`content:${contentSha256}`;
     const existing=await db.get('SELECT se.*,s.supplier_name FROM supplier_enquiry_drafts se LEFT JOIN supplier_commercial_defaults s ON s.supplier_code=se.supplier_id WHERE se.idempotency_key=?',idempotencyKey);
-    if(existing){if(existing.content_sha256&&existing.content_sha256!==contentSha256)throw problem('This RFQ retry key belongs to different reviewed content. Close and reopen the RFQ to start a new revision.',409,'supplier_enquiry_idempotency_conflict');return{...supplierEnquiryView(existing),documents:parse(existing.document_snapshot_json,[]),delivery:delivery.publicStatus(),idempotentReplay:true,nextAction:'Review the saved Email draft or wait for the supplier response.'};}
+    if(existing){
+      if(existing.content_sha256&&existing.content_sha256!==contentSha256)throw problem('This request retry key belongs to different reviewed content. Start a new request revision if the reviewed content changed.',409,'supplier_enquiry_idempotency_conflict');
+      if(input.send===true&&existing.status!=='sent'){
+        delivery.assertRecipient(recipient,'factory');
+        const prepared=await communications.get(existing.communication_message_id);if(!prepared)throw problem('The prepared Email draft could not be found. The supplier request is still retained; open its details and prepare a replacement draft.',409,'supplier_enquiry_communication_missing');
+        const sent=await communicationService.sendMessage({...prepared,provider:'google_workspace',folder:'sent',status:'sending'}),sentAt=sent.sentAt||stamp(),responseDueAt=requestKind==='revision'?plusCalendarDays(sentAt,7):null;
+        await db.run("UPDATE supplier_enquiry_drafts SET status='sent',sent_at=?,response_due_at=?,followup_due_at=?,followup_failure='',updated_at=? WHERE id=?",sentAt,responseDueAt,responseDueAt,sentAt,existing.id);
+        if(revisionRequestId)await db.run("UPDATE supplier_revision_requests SET status='sent',workflow_state='sent_to_supplier',sent_at=COALESCE(sent_at,?),response_due_at=?,updated_at=? WHERE id=?",sentAt,responseDueAt,sentAt,revisionRequestId);
+        await event(requestKind==='revision'?'supplier.revision.sent':'supplier.enquiry.sent',existing.id,[{kind:'project',id:projectId},{kind:'communication',id:sent.id},{kind:'estimate',id:estimateId},...(revisionRequestId?[{kind:'supplier_revision_request',id:revisionRequestId}]:[])]);
+        const refreshed=await db.get('SELECT se.*,s.supplier_name FROM supplier_enquiry_drafts se LEFT JOIN supplier_commercial_defaults s ON s.supplier_code=se.supplier_id WHERE se.id=?',existing.id);
+        return{...supplierEnquiryView(refreshed),documents:parse(refreshed.document_snapshot_json,[]),delivery:delivery.publicStatus(),idempotentReplay:false,nextAction:responseDueAt?`Supplier response due ${responseDueAt.slice(0,10)}. The request remains open until the revised document is reviewed.`:'Wait for the supplier response.'};
+      }
+      return{...supplierEnquiryView(existing),documents:parse(existing.document_snapshot_json,[]),delivery:delivery.publicStatus(),idempotentReplay:true,nextAction:existing.status==='sent'?'Wait for the supplier response.':'Review the saved Email draft, then send it when ready.'};
+    }
     const latest=await db.get('SELECT id,COALESCE(MAX(revision_no),0) revision_no FROM supplier_enquiry_drafts WHERE project_id=? AND estimate_id=? AND supplier_id=?',projectId,estimateId,supplierId);
     const revisionNo=Number(latest?.revision_no||0)+1,id=randomUUID(),communicationId=`supplier-rfq-${createHash('sha256').update(idempotencyKey).digest('hex').slice(0,24)}`,at=stamp();
-    const message={id:communicationId,provider:input.send===true?'google_workspace':'quotesuite_preview',direction:'outbound',folder:input.send===true?'sent':'drafts',status:input.send===true?'sending':'draft',from:[],to:[recipient],cc:[],bcc:[],subject,bodyText,bodyHtml:`<p>${bodyText.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('\n','<br>')}</p>`,links:[{kind:'project',id:projectId},{kind:'estimate',id:estimateId},{kind:'supplier',id:supplierId}],attachments:documents.map(document=>({id:`${communicationId}:${document.id}`,fileName:document.file_name,mediaType:document.mime_type,sizeBytes:Number(document.size_bytes||0),driveFileId:document.provider_file_id,sha256:document.checksum}))};
+    let changeDocument=null;if(revisionRequestId){const request=await supplierRevisionDetail(revisionRequestId),review=await changeRequestDetail(request.reviewSubmissionId);changeDocument=await supplierChangeDocuments.create(revisionRequestId,{clientName:request.clientName,projectName:request.projectName,estimateReference:request.summary.sourceEstimateRef,estimateRevision:request.summary.sourceRevision,submittedAt:review.submittedAt,generalComment:review.generalComment,generalResponse:review.generalResponse,positions:review.positions});}
+    const message={id:communicationId,provider:input.send===true?'google_workspace':'quotesuite_preview',direction:'outbound',folder:input.send===true?'sent':'drafts',status:input.send===true?'sending':'draft',from:[],to:[recipient],cc:[],bcc:[],subject,bodyText,bodyHtml:`<p>${bodyText.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('\n','<br>')}</p>`,links:[{kind:'project',id:projectId},{kind:'estimate',id:estimateId},{kind:'supplier',id:supplierId},...(revisionRequestId?[{kind:'supplier_revision_request',id:revisionRequestId}]:[])],attachments:[...(changeDocument?[{id:`${communicationId}:changes`,fileName:changeDocument.fileName,mediaType:changeDocument.mediaType,sizeBytes:changeDocument.sizeBytes,storageKey:changeDocument.storageKey,sha256:changeDocument.sha256}]:[]),...documents.map(document=>({id:`${communicationId}:${document.id}`,fileName:document.file_name,mediaType:document.mime_type,sizeBytes:Number(document.size_bytes||0),driveFileId:document.provider_file_id,sha256:document.checksum}))]};
     const communication=await deliverOrSave(message,input.send);
-    const status=input.send===true?'sent':'draft';
-    try{await db.run(`INSERT INTO supplier_enquiry_drafts(id,project_id,estimate_id,supplier_id,recipient,subject,body_text,document_ids_json,document_snapshot_json,communication_message_id,status,idempotency_key,content_sha256,revision_no,supersedes_id,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,id,projectId,estimateId,supplierId,recipient,subject,bodyText,JSON.stringify(documentIds),JSON.stringify(documentSnapshot),communicationId,status,idempotencyKey,contentSha256,revisionNo,latest?.id||null,actor,at,at);}
+    const status=input.send===true?'sent':'draft',sentAt=input.send===true?(communication.sentAt||at):null,responseDueAt=sentAt&&requestKind==='revision'?plusCalendarDays(sentAt,7):null;
+    try{await db.run(`INSERT INTO supplier_enquiry_drafts(id,project_id,estimate_id,supplier_id,recipient,subject,body_text,document_ids_json,document_snapshot_json,communication_message_id,status,idempotency_key,content_sha256,revision_no,supersedes_id,created_by,created_at,updated_at,request_kind,revision_request_id,sent_at,response_due_at,followup_due_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,id,projectId,estimateId,supplierId,recipient,subject,bodyText,JSON.stringify(documentIds),JSON.stringify(documentSnapshot),communicationId,status,idempotencyKey,contentSha256,revisionNo,latest?.id||null,actor,at,at,requestKind,revisionRequestId,sentAt,responseDueAt,responseDueAt);}
     catch(cause){throw Object.assign(new Error(`${input.send===true?'The RFQ was sent':'The Email draft was saved'}, but QuoteSuite could not finish its RFQ record. Retry with the same RFQ open; completed work will be reused.`),{status:409,code:'supplier_enquiry_partial_success',cause,details:{communicationMessageId:communication.id,idempotencyKey}});}
-    await event(input.send===true?'supplier.enquiry.sent':'supplier.enquiry.prepared',id,[{kind:'project',id:projectId},{kind:'communication',id:communicationId},{kind:'estimate',id:estimateId},{kind:'supplier',id:supplierId}]);
-    return{id,projectId,estimateId,supplierId,supplierName:supplier.supplier_name,status,revisionNo,supersedesId:latest?.id||null,recipient,subject,bodyText,documentIds,documentSnapshot,documents:documentSnapshot,communicationMessageId:communication.id,delivery:delivery.publicStatus(),idempotentReplay:false,nextAction:input.send===true?'Wait for the supplier response, then file and review the returned quotation.':'Review the saved Email draft before sending.'};
+    if(revisionRequestId)await db.run("UPDATE supplier_revision_requests SET workflow_state=?,status=?,communication_message_id=?,recipient=?,subject=?,body_text=?,sent_at=COALESCE(sent_at,?),response_due_at=COALESCE(?,response_due_at),updated_at=? WHERE id=?",input.send===true?'sent_to_supplier':'prepared_for_review',input.send===true?'sent':'approved',communication.id,recipient,subject,bodyText,sentAt,responseDueAt,at,revisionRequestId);
+    await event(input.send===true?(requestKind==='revision'?'supplier.revision.sent':'supplier.enquiry.sent'):(requestKind==='revision'?'supplier.revision.prepared_for_review':'supplier.enquiry.prepared'),id,[{kind:'project',id:projectId},{kind:'communication',id:communicationId},{kind:'estimate',id:estimateId},{kind:'supplier',id:supplierId},...(revisionRequestId?[{kind:'supplier_revision_request',id:revisionRequestId}]:[])]);
+    return{id,projectId,estimateId,supplierId,supplierName:supplier.supplier_name,status,revisionNo,supersedesId:latest?.id||null,recipient,subject,bodyText,documentIds,documentSnapshot,documents:documentSnapshot,communicationMessageId:communication.id,idempotencyKey,requestKind,revisionRequestId,sentAt,responseDueAt,delivery:delivery.publicStatus(),idempotentReplay:false,nextAction:input.send===true?(responseDueAt?`Supplier response due ${responseDueAt.slice(0,10)}. The request remains open until the revised document is reviewed.`:'Wait for the supplier response, then file and review the returned quotation.'):'Review the saved Email draft before sending.'};
   }
 
   async function linkManufacturerResponse(projectId,input={}){
@@ -163,10 +206,16 @@ export function createLifecycleService(db, options = {}) {
     if(supplierEnquiryId&&!await db.get('SELECT id FROM supplier_enquiry_drafts WHERE id=? AND project_id=? AND estimate_id IS ?',supplierEnquiryId,projectId,estimateId))throw problem('The selected supplier request does not belong to this Project and working Estimate.',422,'manufacturer_response_supplier_enquiry_invalid');
     const existing=await db.get('SELECT * FROM manufacturer_response_links WHERE project_id=? AND communication_message_id=? AND canonical_document_id IS ?',projectId,communicationId,documentId);if(existing)return{...existing,idempotentReplay:true};
     const id=randomUUID(),at=stamp();await db.run(`INSERT INTO manufacturer_response_links(id,project_id,estimate_id,supplier_enquiry_id,communication_message_id,canonical_document_id,status,created_by,created_at) VALUES(?,?,?,?,?,?,'ready_for_import',?,?)`,id,projectId,estimateId,supplierEnquiryId,communicationId,documentId,actor,at);
+    if(supplierEnquiryId){
+      const responseState=documentId?'revised_document_received':'acknowledgement_received';
+      await db.run("UPDATE supplier_enquiry_drafts SET response_state=?,received_at=COALESCE(received_at,?),followup_due_at=NULL,followup_failure='',updated_at=? WHERE id=?",responseState,at,at,supplierEnquiryId);
+      const request=await db.get("SELECT revision_request_id FROM supplier_enquiry_drafts WHERE id=?",supplierEnquiryId);
+      if(request?.revision_request_id)await db.run("UPDATE supplier_revision_requests SET workflow_state=?,received_at=COALESCE(received_at,?),updated_at=? WHERE id=?",documentId?'revised_document_received':'supplier_reply_received',at,at,request.revision_request_id);
+    }
     await communications.addLink(communicationId,{kind:'project',id:projectId});if(estimateId)await communications.addLink(communicationId,{kind:'estimate',id:estimateId});
     await event('supplier.response.linked',id,[{kind:'project',id:projectId},{kind:'communication',id:communicationId},...(documentId?[{kind:'document',id:documentId}]:[]),...(estimateId?[{kind:'estimate',id:estimateId}]:[])]);
     await event('supplier.quote_returned',id,[{kind:'project',id:projectId},{kind:'communication',id:communicationId},...(documentId?[{kind:'document',id:documentId}]:[]),...(estimateId?[{kind:'estimate',id:estimateId}]:[]),...(supplierEnquiryId?[{kind:'supplier_enquiry',id:supplierEnquiryId}]:[])]);
-    return{id,projectId,estimateId,canonicalDocumentId:documentId,status:'ready_for_import',nextAction:'Review with Manufacturer Import',idempotentReplay:false};
+    return{id,projectId,estimateId,canonicalDocumentId:documentId,status:'ready_for_import',responseState:documentId?'revised_document_received':'acknowledgement_received',nextAction:documentId?'Review with Manufacturer Import':'Review the acknowledgement and record a revised expected-return date if needed.',idempotentReplay:false};
   }
 
   async function prepareSupplierRevision(input = {}) {
@@ -183,7 +232,7 @@ export function createLifecycleService(db, options = {}) {
     const successor = await portal.createNextEstimateRevision({ estimateReleaseId: review.release_id, createdBy: actor, createdByName: text(input.createdByName) || actor, reason: 'customer_amendment' });
     const summary = { clientName: review.client_name, projectName: review.project_name, sourceEstimateRef: review.estimate_ref, sourceRevision: Number(review.estimate_revision), successorEstimateId: successor.id, successorEstimateRef: successor.estimate_ref, generalComment: review.general_comment, positions: entries.map((entry) => ({ positionId: entry.estimate_position_id, reference: entry.position_reference, request: entry.comment })) };
     const id = randomUUID(), at = stamp(), recipient = text(input.recipient), subject = text(input.subject) || `Requested Estimate changes · ${review.project_name}`;
-    await db.run(`INSERT INTO supplier_revision_requests(id,review_submission_id,source_release_id,successor_estimate_id,status,recipient,subject,summary_json,document_ids_json,created_by,created_at,updated_at) VALUES(?,?,?,?,'draft',?,?,?,?,?,?,?)`, id, reviewId, review.release_id, successor.id, recipient, subject, JSON.stringify(summary), JSON.stringify(input.documentIds || []), actor, at, at);
+    await db.run(`INSERT INTO supplier_revision_requests(id,review_submission_id,source_release_id,successor_estimate_id,status,recipient,subject,summary_json,document_ids_json,created_by,created_at,updated_at,workflow_state,responsible_user_id) VALUES(?,?,?,?,'draft',?,?,?,?,?,?,?,'revision_requested',?)`, id, reviewId, review.release_id, successor.id, recipient, subject, JSON.stringify(summary), JSON.stringify(input.documentIds || []), actor, at, at, actor);
     await event('supplier.revision_request.prepared', id, [{ kind: 'estimate_release', id: review.release_id }, { kind: 'estimate', id: successor.id }, { kind: 'project', id: review.project_id }]);
     return { id, status: 'draft', recipient, subject, summary, documentIds: input.documentIds || [], successorEstimateId: successor.id };
   }
@@ -222,7 +271,7 @@ export function createLifecycleService(db, options = {}) {
       ? await db.get(`SELECT a.id,a.original_file_name file_name,COALESCE(r.supplier_revision,CAST(r.revision_sequence AS TEXT)) provider_revision,a.sha256 checksum FROM supplier_quote_attachments a JOIN supplier_quote_revisions r ON r.id=a.revision_id WHERE a.id=? AND a.estimate_id=?`, documentId, request.successorEstimateId)
       : await db.get('SELECT id,file_name,provider_revision,checksum FROM canonical_documents WHERE id=? AND project_id=? AND removed_at IS NULL AND trashed=0', documentId, request.projectId);
     if (!document) throw problem('The returned supplier revision must be a current canonical document for this Project.', 422, 'supplier_revision_return_document_invalid');
-    await db.run("UPDATE supplier_revision_requests SET returned_document_id=?,returned_source_kind=?,returned_revision=?,status='approved',updated_at=? WHERE id=?", document.id, sourceKind, revision, stamp(), requestId);
+    const receivedAt=stamp();await db.run("UPDATE supplier_revision_requests SET returned_document_id=?,returned_source_kind=?,returned_revision=?,status='approved',workflow_state='revised_document_received',received_at=COALESCE(received_at,?),updated_at=? WHERE id=?", document.id, sourceKind, revision,receivedAt,receivedAt, requestId);
     await event('supplier.revision.returned_document_linked', `${requestId}:${document.id}:${revision}`, [{ kind: 'supplier_revision_request', id: requestId }, { kind: sourceKind, id: document.id }, { kind: 'estimate', id: request.successorEstimateId }]);
     return { ...(await supplierRevisionDetail(requestId)), returnedDocument: { id: document.id, sourceKind, fileName: document.file_name, revision, checksum: document.checksum } };
   }
@@ -418,5 +467,42 @@ export function createLifecycleService(db, options = {}) {
     } catch(error){await db.exec('ROLLBACK').catch(()=>{});throw error;}
   }
 
-  return { deliveryStatus: () => delivery.publicStatus(), changesRequestedQueue, changeRequestDetail, supplierRevisionDetail, supplierEnquiryContext, prepareSupplierEnquiry, linkManufacturerResponse, prepareSupplierRevision, prepareSupplierRevisionCorrespondence, attachSupplierRevisionDocument, verifySupplierRevision, orderJourney, approveOrder, prepareFactoryOrder, recordFactoryConfirmation, releaseFactoryConfirmation, recordReviewedSignedApproval, customerDocuments };
+  async function updateSupplierResponseDue(supplierEnquiryId,input={}){
+    const dueAt=text(input.responseDueAt),parsedDue=new Date(dueAt);if(!dueAt||Number.isNaN(parsedDue.getTime()))throw problem('Choose a valid revised supplier response date.',422,'supplier_response_due_invalid');
+    const row=await db.get("SELECT * FROM supplier_enquiry_drafts WHERE id=? AND request_kind='revision' AND status='sent'",supplierEnquiryId);if(!row)throw problem('The sent supplier revision request was not found.',404,'supplier_revision_dispatch_not_found');
+    if(row.response_state==='revised_document_received'||row.completed_at)throw problem('This supplier revision has already been received or completed.',409,'supplier_revision_already_received');
+    const at=stamp();await db.run("UPDATE supplier_enquiry_drafts SET response_due_at=?,followup_due_at=?,followup_attempted_at=NULL,followup_failure='',updated_at=? WHERE id=?",parsedDue.toISOString(),parsedDue.toISOString(),at,row.id);
+    if(row.revision_request_id)await db.run("UPDATE supplier_revision_requests SET response_due_at=?,workflow_state='sent_to_supplier',updated_at=? WHERE id=?",parsedDue.toISOString(),at,row.revision_request_id);
+    return supplierEnquiryView(await db.get("SELECT se.*,s.supplier_name FROM supplier_enquiry_drafts se LEFT JOIN supplier_commercial_defaults s ON s.supplier_code=se.supplier_id WHERE se.id=?",row.id));
+  }
+
+  async function retrySupplierRevisionFollowup(supplierEnquiryId){
+    const row=await db.get("SELECT * FROM supplier_enquiry_drafts WHERE id=? AND request_kind='revision' AND status='sent'",supplierEnquiryId);
+    if(!row)throw problem('The sent supplier revision request was not found.',404,'supplier_revision_dispatch_not_found');
+    if(row.response_state!=='outstanding'||row.completed_at)throw problem('A supplier response has already been recorded, so no follow-up is required.',409,'supplier_revision_response_recorded');
+    if(row.followup_sent_at)throw problem('The supplier follow-up was already sent.',409,'supplier_revision_followup_already_sent');
+    if(!row.followup_failure)throw problem('There is no failed follow-up to retry.',409,'supplier_revision_followup_not_failed');
+    const at=stamp();
+    await db.run("UPDATE supplier_enquiry_drafts SET followup_due_at=?,followup_attempted_at=NULL,followup_failure='',updated_at=? WHERE id=?",at,at,row.id);
+    await event('supplier.revision.followup_retry_queued',row.id,[{kind:'supplier_enquiry',id:row.id}]);
+    return supplierEnquiryView(await db.get("SELECT se.*,s.supplier_name FROM supplier_enquiry_drafts se LEFT JOIN supplier_commercial_defaults s ON s.supplier_code=se.supplier_id WHERE se.id=?",row.id));
+  }
+
+  async function processDueSupplierRevisionFollowups(){
+    if(delivery.publicStatus().deliveryMode!=='test_allowlist')return{processed:0,sent:0,failed:0,skipped:'Automatic supplier follow-up delivery is not enabled.'};
+    const at=stamp(),rows=await db.all(`SELECT * FROM supplier_enquiry_drafts WHERE request_kind='revision' AND status='sent' AND response_state='outstanding' AND followup_due_at IS NOT NULL AND followup_due_at<=? AND followup_attempted_at IS NULL AND followup_sent_at IS NULL ORDER BY followup_due_at LIMIT 25`,at);let sentCount=0,failed=0;
+    for(const candidate of rows){
+      const claimed=await db.run(`UPDATE supplier_enquiry_drafts SET followup_attempted_at=?,updated_at=? WHERE id=? AND status='sent' AND response_state='outstanding' AND followup_attempted_at IS NULL AND followup_sent_at IS NULL`,at,at,candidate.id);if(Number(claimed.changes||0)!==1)continue;
+      try{
+        const current=await db.get("SELECT * FROM supplier_enquiry_drafts WHERE id=?",candidate.id);if(!current||current.response_state!=='outstanding'||current.status!=='sent')continue;
+        delivery.assertRecipient(current.recipient,'factory');const original=await communications.get(current.communication_message_id);if(!original)throw problem('The original sent supplier request could not be reopened.',409,'supplier_followup_original_missing');
+        const followupId=`supplier-followup-${current.id}`,bodyText=`Please could you provide an update on the requested revised estimate for ${current.subject}?`;
+        const sent=await communicationService.sendMessage({id:followupId,provider:'google_workspace',direction:'outbound',folder:'sent',status:'sending',from:[],to:[current.recipient],cc:[],bcc:[],subject:`Follow-up: ${current.subject}`,bodyText,bodyHtml:`<p>${bodyText}</p>`,inReplyToProviderMessageId:original.providerMessageId||null,links:[{kind:'project',id:current.project_id},{kind:'estimate',id:current.estimate_id},{kind:'supplier_enquiry',id:current.id},...(current.revision_request_id?[{kind:'supplier_revision_request',id:current.revision_request_id}]:[])]});
+        const sentAt=sent.sentAt||stamp();await db.run("UPDATE supplier_enquiry_drafts SET followup_sent_at=?,followup_message_id=?,followup_failure='',updated_at=? WHERE id=?",sentAt,sent.id,sentAt,current.id);await event('supplier.revision.followup_sent',current.id,[{kind:'supplier_enquiry',id:current.id},{kind:'communication',id:sent.id}]);sentCount+=1;
+      }catch(error){failed+=1;await db.run("UPDATE supplier_enquiry_drafts SET followup_failure=?,updated_at=? WHERE id=?",error instanceof Error?error.message:'Follow-up delivery failed.',stamp(),candidate.id);}
+    }
+    return{processed:rows.length,sent:sentCount,failed};
+  }
+
+  return { deliveryStatus: () => delivery.publicStatus(), changesRequestedQueue, changeRequestDetail, supplierRevisionDetail, supplierEnquiryContext, prepareSupplierEnquiry, linkManufacturerResponse, prepareSupplierRevision, prepareSupplierRevisionCorrespondence, attachSupplierRevisionDocument, verifySupplierRevision, updateSupplierResponseDue, retrySupplierRevisionFollowup, processDueSupplierRevisionFollowups, orderJourney, approveOrder, prepareFactoryOrder, recordFactoryConfirmation, releaseFactoryConfirmation, recordReviewedSignedApproval, customerDocuments };
 }

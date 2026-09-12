@@ -6,5 +6,5 @@ import "../../src/styles/base.css";
 import "../../src/styles/ui.css";
 import "../../src/features/estimateCommercial/estimateCommercialWorkspace.css";
 
-function Acceptance(){const [open,setOpen]=useState(false);return <main data-testid="supplier-rfq-acceptance"><button className="ui-button ui-button--primary" onClick={()=>setOpen(true)}>Request supplier quote</button>{open?<SupplierRfqDialog projectId="project-1" estimateId="estimate-1" estimateRef="TEST-EST-1" onClose={()=>setOpen(false)}/>:null}</main>}
+function Acceptance(){const [open,setOpen]=useState(true);return <main data-testid="supplier-rfq-acceptance"><button className="ui-button ui-button--primary" onClick={()=>setOpen(true)}>Request supplier estimate / revision</button>{open?<SupplierRfqDialog projectId="project-1" estimateId="estimate-1" estimateRef="TEST-EST-1" onClose={()=>setOpen(false)}/>:null}</main>}
 createRoot(document.getElementById("root")!).render(<Acceptance/>);

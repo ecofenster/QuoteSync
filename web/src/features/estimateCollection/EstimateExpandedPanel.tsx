@@ -9,6 +9,7 @@ import {
 import OrderInstallationsBlock from "../estimatePicker/tabs/OrderInstallationsBlock";
 import { Button, Pill, Small } from "../estimatePicker/tabs/shared";
 import EstimateCollectionActions from "./EstimateCollectionActions";
+import InstallationSafetyPanel from "../installationSafety/InstallationSafetyPanel";
 import type { EstimateCollectionItem } from "./EstimateCollectionItem";
 
 const DISABLED_ESTIMATE_CONFIGURATOR_MESSAGE =
@@ -214,6 +215,8 @@ function EstimateExpandedPanelContent(props: Props) {
         setSendModalOpen={setSendModalOpen}
         importSupplierEstimate={importSupplierEstimate}
       />
+
+      <InstallationSafetyPanel estimateId={item.id} recordKind={currentOutcome === "Order" ? "Order" : "Estimate"} />
 
       {activeImportedFiles.length > 0 && (
         <div className="ep-estimate-files">

@@ -34,6 +34,7 @@ export type MenuKey =
   | "orders"
   | "lost"
   | "installation"
+  | "service"
   | "estimate_map"
   | "project_map"
   | "completed_projects"

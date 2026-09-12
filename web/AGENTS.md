@@ -101,6 +101,13 @@
 
 - Enquiry is the first operational stage. QuoteSuite should safely automate Enquiry → RFQ → Supplier Quote → Estimate → Client Review → Revision → Acceptance → Supplier Order → Supplier Confirmation → Customer Final Confirmation → Payment → Delivery / Installation, while commercial decisions, issued-document changes, customer acceptance and supplier-confirmation differences remain explicit governed approval points.
 - Issued customer revisions and accepted Order evidence are immutable. Client amendments create a new editable Estimate revision; returned supplier documents are linked and deduplicated by canonical communication/document and commercial revision identities, then compared field-by-field against the customer-approved revision before approval.
+- Supplier estimate and revision correspondence uses one reviewed action. Preparing a supplier request, creating an editable Estimate revision and sending an Email are distinct states and actions; “prepared” never means “sent”. Customer change evidence remains linked to its exact issued Estimate revision, working successor and each supplier-specific request/response. Successful supplier-revision delivery records the provider-confirmed sent time and a reviewable response deadline; any automatic follow-up is persistent, idempotent, rechecked immediately before sending and governed by the existing delivery permissions.
+
+## Installation competence and RAMS evidence
+
+- Installer qualifications belong in the canonical Add/Edit Installer workflow. Qualification validity and evidence verification are independent: an uploaded in-date card is not verified merely because a file exists. Retain valid-from/expiry, renewal history, provider-backed evidence and attendance-date snapshots; reject reversed dates and keep unknown or missing competence explicit.
+- Basic RAMS is part of the core installation workflow and remains a competent-person-reviewed draft until explicitly issued. It reuses the exact Estimate/Order revision, programme, workforce, materials, equipment and site evidence; unknowns are never invented. Issued PDFs and briefing evidence are immutable, later source changes require review, and RAMS is not described as automatically compliant or as a substitute for a Construction Phase Plan or specialist assessment.
+- Commercial RAMS authoring is a separate optional module boundary. Core users retain access to externally prepared and previously issued RAMS regardless of module entitlement; disabling authoring must not remove historical evidence.
 
 ## Manufacturer quotation ingestion reliability
 

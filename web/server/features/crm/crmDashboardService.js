@@ -104,7 +104,7 @@ export function createCrmDashboardService(db, { now = () => new Date() } = {}) {
   async function dashboard() {
     const current = now();
     const today = dateOnly(current.toISOString());
-    const [followups, states, communications, enquiries, pipelineRows, orderCountRow] = await Promise.all([
+    const [followups, states, communications, enquiries, pipelineRows, orderCountRow, serviceCases, serviceEvents, revisionRequests] = await Promise.all([
       db.all(`SELECT f.*,c.client_ref,c.name client_name,c.company_name,c.contact_name,e.estimate_ref,e.project_id
         FROM followups f JOIN clients c ON c.id=f.client_id AND c.deleted_at IS NULL
         LEFT JOIN estimates e ON e.id=f.estimate_id AND e.deleted_at IS NULL
@@ -119,6 +119,14 @@ export function createCrmDashboardService(db, { now = () => new Date() } = {}) {
         WHERE e.deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM estimate_archives ea WHERE ea.estimate_id=e.id)
         ORDER BY e.updated_at DESC LIMIT 500`),
       db.get("SELECT COUNT(*) count FROM orders"),
+      db.all(`SELECT sc.*,(SELECT MIN(due_at) FROM service_case_timers t WHERE t.service_case_id=sc.id AND t.completed_at IS NULL AND t.state<>'paused') target_due_at
+        FROM service_cases sc WHERE sc.status NOT IN ('closed') ORDER BY CASE sc.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,COALESCE(sc.next_action_due_at,target_due_at,sc.created_at) LIMIT 100`).catch(() => []),
+      db.all("SELECT e.id,e.service_case_id,e.event_type,e.body,e.occurred_at,sc.client_id,sc.project_id FROM service_case_events e JOIN service_cases sc ON sc.id=e.service_case_id ORDER BY e.occurred_at DESC LIMIT 20").catch(() => []),
+      db.all(`SELECT sr.id,sr.review_submission_id,sr.successor_estimate_id,sr.workflow_state,sr.response_due_at,sr.responsible_user_id,sr.created_at,
+        rel.client_id,rel.project_id,c.client_ref,c.name client_name,p.name project_name,e.estimate_ref
+        FROM supplier_revision_requests sr JOIN estimate_revision_releases rel ON rel.id=sr.source_release_id
+        JOIN clients c ON c.id=rel.client_id JOIN projects p ON p.id=rel.project_id JOIN estimates e ON e.id=sr.successor_estimate_id
+        WHERE sr.status<>'cancelled' AND sr.workflow_state<>'revised_customer_estimate_issued' ORDER BY COALESCE(sr.response_due_at,sr.created_at) LIMIT 100`).catch(()=>[]),
     ]);
 
     const attention = [];
@@ -127,6 +135,10 @@ export function createCrmDashboardService(db, { now = () => new Date() } = {}) {
     let unansweredEnquiryCount = 0;
     let waitingOnCustomerCount = 0;
     let waitingOnSupplierCount = 0;
+    let serviceNewUnassigned = 0;
+    let serviceRequiringStaff = 0;
+    let serviceOverdue = 0;
+    let revisionsRequested = 0;
     for (const row of followups) {
       const due = dateOnly(row.due_at);
       const item = {
@@ -154,6 +166,24 @@ export function createCrmDashboardService(db, { now = () => new Date() } = {}) {
       const item = workItemFromState({ ...row, last_contact_at: latestContact }, reason || "next_action");
       if (due === today && !schedule.some((entry) => entry.id === item.id)) schedule.push(item);
       if (reason && !seen.has(item.id)) { attention.push(item); seen.add(item.id); }
+    }
+    for (const row of serviceCases) {
+      const targetDue = row.target_due_at || row.next_action_due_at || null, dueTime = targetDue ? new Date(targetDue).getTime() : null;
+      const overdue = dueTime !== null && dueTime < current.getTime(), unassigned = !row.team_id, waiting = text(row.waiting_on);
+      if (row.status === "new" || unassigned) serviceNewUnassigned += 1;
+      if (waiting === "none" || waiting === "internal") serviceRequiringStaff += 1;
+      if (overdue) serviceOverdue += 1;
+      if (waiting === "customer") waitingOnCustomerCount += 1;
+      if (waiting === "supplier") waitingOnSupplierCount += 1;
+      const reason = unassigned ? "service_unassigned" : overdue ? "service_target_overdue" : waiting === "customer" ? "service_waiting_on_customer" : waiting === "supplier" ? "service_waiting_on_supplier" : row.status === "new" ? "new_service_case" : "service_action_required";
+      const item = { id:`service:${row.id}`,reason,title:text(row.service_ref),context:text(row.issue_summary),ownerName:text(row.assignee_name||row.team_name)||"Unassigned",stage:`Service · ${text(row.status)}`,waitingFor:waiting,nextAction:text(row.next_action)||"Review Service case",dueAt:targetDue,lastContactAt:null,target:{kind:"service",id:text(row.id),clientId:text(row.client_id),projectId:text(row.project_id)||null} };
+      if (!seen.has(item.id) && (unassigned || overdue || row.status === "new" || waiting !== "customer" && waiting !== "supplier")) { attention.push(item); seen.add(item.id); }
+      if (dateOnly(row.next_action_due_at) === today) schedule.push(item);
+    }
+    for(const row of revisionRequests){
+      revisionsRequested+=1;const dueTime=row.response_due_at?new Date(row.response_due_at).getTime():null,overdue=dueTime!==null&&dueTime<current.getTime(),state=overdue&&row.workflow_state==='sent_to_supplier'?'supplier_response_overdue':row.workflow_state;
+      const item={id:`revision:${row.id}`,reason:overdue?'supplier_response_overdue':'revision_requested',title:text(row.estimate_ref),context:[text(row.client_ref),clientName(row),text(row.project_name)].filter(Boolean).join(' · '),ownerName:text(row.responsible_user_id)||CURRENT_APP_USER.name,stage:text(state),waitingFor:['sent_to_supplier','supplier_response_overdue'].includes(state)?'supplier':'staff',nextAction:state==='revision_requested'?'Review the customer changes and prepare the supplier request':state==='prepared_for_review'?'Review and send the prepared supplier request':state==='revised_document_received'?'Review and process the revised supplier document':overdue?'Review the overdue supplier response':'Continue the tracked revision request',dueAt:row.response_due_at||null,lastContactAt:null,target:{kind:'revision_request',id:text(row.review_submission_id),clientId:text(row.client_id),projectId:text(row.project_id),estimateId:text(row.successor_estimate_id)}};
+      if(!seen.has(item.id)){attention.push(item);seen.add(item.id)}
     }
 
     let installationsToday = 0;
@@ -186,6 +216,7 @@ export function createCrmDashboardService(db, { now = () => new Date() } = {}) {
     }
     const workflowRows = await db.all("SELECT id,event_name,occurred_at,links_json FROM workflow_events ORDER BY occurred_at DESC LIMIT 20").catch(() => []);
     for (const row of workflowRows) recentActivity.push({ id: `workflow:${row.id}`, kind: "workflow", title: text(row.event_name).replaceAll(".", " "), detail: "Workflow update", occurredAt: text(row.occurred_at), target: targetFromLinks(row.links_json) });
+    for (const row of serviceEvents) recentActivity.push({ id:`service:${row.id}`,kind:"service",title:text(row.event_type).replaceAll("_"," "),detail:text(row.body)||"Service update",occurredAt:text(row.occurred_at),target:{kind:"service",id:text(row.service_case_id),clientId:text(row.client_id),projectId:text(row.project_id)||null} });
     recentActivity.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
 
     attention.sort((a, b) => String(a.dueAt || "9999").localeCompare(String(b.dueAt || "9999")));
@@ -202,6 +233,10 @@ export function createCrmDashboardService(db, { now = () => new Date() } = {}) {
         installationsToday,
         invoicesDueToday,
         ordersNeedingAttention,
+        serviceNewUnassigned,
+        serviceRequiringStaff,
+        serviceOverdue,
+        revisionsRequested,
       },
       attention: attention.slice(0, 40),
       today: schedule.slice(0, 30),

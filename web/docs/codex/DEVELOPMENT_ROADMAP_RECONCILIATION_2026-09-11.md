@@ -5,11 +5,11 @@
 | Status | Previous display | Reconciled | Meaning |
 | --- | ---: | ---: | --- |
 | Complete | 23 | 23 | Implemented and complete for the stated bounded scope |
-| In progress | 24 | 73 | Some implementation exists; remaining work and acceptance are explicit |
-| Not started | 201 | 142 | No material implementation evidence |
+| In progress | 24 | 77 | Some implementation exists; remaining work and acceptance are explicit |
+| Not started | 201 | 140 | No material implementation evidence |
 | Blocked | not represented | 3 | Cannot progress to release/acceptance until named dependencies exist |
 | Superseded / legacy | not represented | 10 | Retained until governed replacement/removal |
-| **Total** | **248** | **251** | Three net entries were added to represent previously invisible governance/release gates |
+| **Total** | **248** | **253** | Five net entries were added to represent previously invisible governance/release gates and the separately requested Basic/Commercial RAMS scope |
 
 The underlying typed entries now drive all five displayed totals. A Roadmap item can also state implementation, technical verification and user acceptance separately.
 
@@ -22,6 +22,8 @@ The underlying typed entries now drive all five displayed totals. A Roadmap item
 - communications children `1`, `3`, `14`, `15`: Not started → In progress. Email provider, push-signal reconciliation, supplier intake and controlled delivery evidence exist; other channels remain Not started.
 - document-storage children `1`, `3`–`7`, `11`, `12`: Not started → In progress. Google Drive, configured hierarchy, issued copies and version/conflict foundations exist; OneDrive and broader taxonomy remain untouched.
 - `survey-delivery-installation`, `workforce-domain`, `platform-programme`: Not started → In progress because bounded implementation foundations exist; their generated capability children remain Not started unless separately evidenced.
+- `workforce-domain-1` and `service-warranty-domain`: Not started → In progress after the installer-form qualification and canonical Service/team/target foundations gained focused persistence evidence. Neither is user-accepted.
+- `survey-delivery-installation-basic-rams`: new In progress entry for the bounded core authoring/issue foundation. `survey-delivery-installation-commercial-rams`: new Not started entry recording the optional module boundary only.
 - `guided-ux-staged-review`, children Email, Clients/Projects, Files and Estimates: Not started → In progress. Governance and bounded review/repairs exist, but ordinary-user acceptance is pending. Comparisons, Portal and Orders remain Not started.
 - `payment-invoicing`: Not started → Blocked. Required accounting, VAT, cancellation/refund and reconciliation authorities are undefined.
 - `saas`: Not started → Blocked. Core tenant ownership and clean package boundaries do not exist. `saas-clean-customer-provisioning` is In progress only because clean DB/storage initialization passes; `saas-tenant-isolation-acceptance` is Blocked.

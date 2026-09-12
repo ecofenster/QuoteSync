@@ -844,6 +844,37 @@ const tables = [
     FOREIGN KEY(team_id) REFERENCES installation_teams(id) ON DELETE CASCADE,
     FOREIGN KEY(installer_id) REFERENCES installation_installers(id) ON DELETE RESTRICT
   )`,
+  `CREATE TABLE IF NOT EXISTS installation_qualification_types (
+    code TEXT PRIMARY KEY, label TEXT NOT NULL, occupation_supported INTEGER NOT NULL DEFAULT 0 CHECK(occupation_supported IN(0,1)),
+    active INTEGER NOT NULL DEFAULT 1 CHECK(active IN(0,1)), created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS installation_installer_qualifications (
+    id TEXT PRIMARY KEY, installer_id TEXT NOT NULL, qualification_type_code TEXT NOT NULL, qualification_type_label TEXT NOT NULL,
+    occupation_category TEXT, reference TEXT, issuer TEXT, issue_date TEXT, expiry_date TEXT,
+    evidence_document_id TEXT, evidence_file_name TEXT, verification_status TEXT NOT NULL DEFAULT 'recorded_unverified'
+      CHECK(verification_status IN('recorded_unverified','verified','not_supplied')),
+    verified_by TEXT, verified_at TEXT, verification_notes TEXT,
+    supersedes_qualification_id TEXT, renewal_sequence INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+    FOREIGN KEY(installer_id) REFERENCES installation_installers(id) ON DELETE RESTRICT,
+    FOREIGN KEY(qualification_type_code) REFERENCES installation_qualification_types(code) ON DELETE RESTRICT,
+    FOREIGN KEY(supersedes_qualification_id) REFERENCES installation_installer_qualifications(id) ON DELETE RESTRICT
+  )`,
+  `CREATE TABLE IF NOT EXISTS installation_qualification_evidence_history (
+    id TEXT PRIMARY KEY, qualification_id TEXT NOT NULL, canonical_document_id TEXT NOT NULL,
+    file_name TEXT NOT NULL, provider TEXT NOT NULL, provider_file_id TEXT NOT NULL,
+    is_current INTEGER NOT NULL DEFAULT 1 CHECK(is_current IN(0,1)), recorded_at TEXT NOT NULL, replaced_at TEXT,
+    FOREIGN KEY(qualification_id) REFERENCES installation_installer_qualifications(id) ON DELETE RESTRICT,
+    FOREIGN KEY(canonical_document_id) REFERENCES canonical_documents(id) ON DELETE RESTRICT
+  )`,
+  `CREATE TABLE IF NOT EXISTS installation_qualification_snapshots (
+    id TEXT PRIMARY KEY, record_kind TEXT NOT NULL CHECK(record_kind IN('estimate','order','installer_pack')),
+    record_id TEXT NOT NULL, record_revision INTEGER NOT NULL, team_id TEXT NOT NULL,
+    attendance_start TEXT NOT NULL, attendance_end TEXT NOT NULL, snapshot_json TEXT NOT NULL,
+    created_by TEXT NOT NULL, created_at TEXT NOT NULL,
+    UNIQUE(record_kind,record_id,record_revision,team_id,attendance_start,attendance_end),
+    FOREIGN KEY(team_id) REFERENCES installation_teams(id) ON DELETE RESTRICT
+  )`,
   `CREATE TABLE IF NOT EXISTS project_calculator_lab_options (
     scenario_id TEXT PRIMARY KEY, project_type TEXT NOT NULL DEFAULT 'new_build', crew_size INTEGER NOT NULL DEFAULT 2,
     use_illbruck INTEGER NOT NULL DEFAULT 0, brackets_required INTEGER NOT NULL DEFAULT 0, stay_away INTEGER NOT NULL DEFAULT 0,
@@ -881,6 +912,9 @@ const indexes = [
   'CREATE INDEX IF NOT EXISTS idx_supplier_applications_position ON supplier_position_applications(estimate_id, supplier_quote_position_id, created_at)',
   'CREATE UNIQUE INDEX IF NOT EXISTS idx_supplier_applications_one_active ON supplier_position_applications(estimate_id, supplier_quote_position_id) WHERE active = 1',
   'CREATE INDEX IF NOT EXISTS idx_project_calculators_estimate ON project_calculators(estimate_id, archived_at)',
+  'CREATE INDEX IF NOT EXISTS idx_installation_qualifications_installer ON installation_installer_qualifications(installer_id,qualification_type_code,expiry_date)',
+  'CREATE INDEX IF NOT EXISTS idx_installation_qualification_evidence ON installation_qualification_evidence_history(qualification_id,is_current,recorded_at)',
+  'CREATE INDEX IF NOT EXISTS idx_installation_qualification_snapshots_record ON installation_qualification_snapshots(record_kind,record_id,record_revision)',
   'CREATE UNIQUE INDEX IF NOT EXISTS idx_project_calculators_one_active ON project_calculators(estimate_id) WHERE archived_at IS NULL',
   'CREATE INDEX IF NOT EXISTS idx_project_cost_items_calculator ON project_cost_items(estimate_id, calculator_id)',
   'CREATE INDEX IF NOT EXISTS idx_project_cost_items_supplier_source ON project_cost_items(estimate_id, supplier_quote_revision_id, supplier_position_id)',
@@ -1015,6 +1049,9 @@ export async function initializeSupplierCommercialSchema(db) {
   if(!supplierCommercialDefaultColumns.some(item=>item.name==='active'))await db.exec('ALTER TABLE supplier_commercial_defaults ADD COLUMN active INTEGER NOT NULL DEFAULT 1');
   if(!supplierCommercialDefaultColumns.some(item=>item.name==='import_customs_defaults_json'))await db.exec("ALTER TABLE supplier_commercial_defaults ADD COLUMN import_customs_defaults_json TEXT NOT NULL DEFAULT '{}'");
   const now=new Date().toISOString();
+  for (const [code,label,occupationSupported] of [
+    ['cscs','CSCS card',1],['sssts','SSSTS certificate',0],['smsts','SMSTS certificate',0],
+  ]) await db.run('INSERT OR IGNORE INTO installation_qualification_types(code,label,occupation_supported,created_at,updated_at) VALUES(?,?,?,?,?)',code,label,occupationSupported,now,now);
   for(const [id,category,label,rateType,price,variant] of CALCULATOR_CATALOGUE_DEFAULTS){
     await db.run('INSERT OR IGNORE INTO project_calculator_admin_catalogue_items(id,category,label,rate_type,price_amount,currency,variant_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)',id,category,label,rateType,price,'GBP',JSON.stringify(variant||{}),now,now);
     await db.run('UPDATE project_calculator_admin_catalogue_items SET category=?,label=?,rate_type=?,currency=?,variant_json=?,updated_at=? WHERE id=? AND version=1 AND price_amount IS NULL',category,label,rateType,'GBP',JSON.stringify(variant||{}),now,id);
@@ -1132,5 +1169,6 @@ export const supplierCommercialTableNames = Object.freeze([
   'project_calculator_lab_revisions',
   'project_calculator_admin_catalogue_items','project_calculator_admin_catalogue_migrations','project_calculator_admin_rules','project_calculator_admin_package_rules',
   'project_calculator_lab_catalogue_snapshots','project_calculator_lab_options',
+  'installation_qualification_snapshots','installation_qualification_evidence_history','installation_installer_qualifications','installation_qualification_types',
   'installation_team_members','installation_teams','installation_installers','installation_companies',
 ]);

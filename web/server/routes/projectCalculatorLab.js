@@ -1,7 +1,9 @@
 import express from 'express';
+import multer from 'multer';
 import { createProjectCalculatorLabService } from '../features/projectCalculatorLab/projectCalculatorLabService.js';
 import { createCalculatorAdminService } from '../features/projectCalculatorLab/calculatorAdminService.js';
 import { createInstallationWorkforceService } from '../features/projectCalculatorLab/installationWorkforceService.js';
+import { createInstallationQualificationEvidenceService } from '../features/projectCalculatorLab/installationQualificationEvidenceService.js';
 import { createVatTreatmentService } from '../features/projectCalculatorLab/vatTreatmentService.js';
 
 const fail=(res,status,code,message)=>res.status(status).json({code,error:message});
@@ -11,6 +13,7 @@ export async function createProjectCalculatorLabRouter({dbPromise, exchangeRateP
   const service=createProjectCalculatorLabService(await dbPromise,{exchangeRateProvider});
   const admin=createCalculatorAdminService(await dbPromise);
   const workforce=createInstallationWorkforceService(await dbPromise);
+  const qualificationEvidence=createInstallationQualificationEvidenceService(await dbPromise);
   const vatTreatment=createVatTreatmentService(await dbPromise);
   router.get('/admin-configuration',async(_req,res,next)=>{try{res.json(await admin.getConfiguration());}catch(error){next(error);}});
   router.get('/supplier-commercial-defaults',async(_req,res,next)=>{try{res.json(await service.listSupplierCommercialDefaults());}catch(error){next(error);}});
@@ -25,6 +28,12 @@ export async function createProjectCalculatorLabRouter({dbPromise, exchangeRateP
   router.put('/installation-workforce/companies/:id',async(req,res,next)=>{try{res.json(await workforce.saveCompany({...req.body,id:req.params.id==='new'?undefined:req.params.id}));}catch(error){if(error.code==='invalid_installation_workforce')return fail(res,400,error.code,error.message);next(error);}});
   router.put('/installation-workforce/installers/:id',async(req,res,next)=>{try{res.json(await workforce.saveInstaller({...req.body,id:req.params.id==='new'?undefined:req.params.id}));}catch(error){if(error.code==='invalid_installation_workforce')return fail(res,400,error.code,error.message);next(error);}});
   router.put('/installation-workforce/teams/:id',async(req,res,next)=>{try{res.json(await workforce.saveTeam({...req.body,id:req.params.id==='new'?undefined:req.params.id}));}catch(error){if(error.code==='invalid_installation_workforce')return fail(res,400,error.code,error.message);next(error);}});
+  router.put('/installation-workforce/qualification-types/:code',async(req,res,next)=>{try{res.json(await workforce.saveQualificationType({...req.body,code:req.params.code==='new'?req.body?.code:req.params.code}));}catch(error){if(error.code==='invalid_installation_workforce')return fail(res,400,error.code,error.message);next(error);}});
+  router.put('/installation-workforce/qualifications/:id',async(req,res,next)=>{try{res.json(await workforce.saveQualification({...req.body,id:req.params.id==='new'?undefined:req.params.id}));}catch(error){if(error.code==='invalid_installation_workforce')return fail(res,400,error.code,error.message);next(error);}});
+  const qualificationUpload=multer({storage:multer.memoryStorage(),limits:{files:1,fileSize:20*1024*1024}});
+  router.post('/installation-workforce/qualifications/:id/evidence',(req,res)=>qualificationUpload.single('file')(req,res,async uploadError=>{try{if(uploadError)throw Object.assign(new Error(uploadError.code==='LIMIT_FILE_SIZE'?'Qualification evidence must be 20 MB or smaller.':'The qualification file could not be received.'),{status:uploadError.code==='LIMIT_FILE_SIZE'?413:400});res.status(201).json(await qualificationEvidence.upload(req.params.id,req.file))}catch(error){res.status(Number(error?.status)||500).json({error:error instanceof Error?error.message:'Qualification evidence could not be uploaded.',code:error?.code||'qualification_evidence_failed'})}}));
+  router.get('/installation-workforce/teams/:id/qualification-check',async(req,res,next)=>{try{res.json(await workforce.qualificationCheck(req.params.id,{attendanceStart:req.query.attendance_start,attendanceEnd:req.query.attendance_end,requiredTypes:String(req.query.required_types||'').split(',').filter(Boolean)}));}catch(error){if(error.code==='invalid_installation_workforce')return fail(res,400,error.code,error.message);next(error);}});
+  router.post('/installation-workforce/qualification-snapshots',async(req,res,next)=>{try{res.status(201).json(await workforce.snapshotQualificationCheck(req.body||{}));}catch(error){if(error.code==='invalid_installation_workforce')return fail(res,400,error.code,error.message);next(error);}});
   router.get('/import-sources',async(req,res,next)=>{try{res.json(await service.listImportSources(req.query.estimate_id||null));}catch(error){next(error);}});
   router.get('/scenarios',async(req,res,next)=>{try{res.json(await service.listScenarios(req.query.estimate_id||null));}catch(error){next(error);}});
   router.post('/scenarios',async(req,res,next)=>{try{const origin=req.body?.origin??(req.body?.extractionRunId?'supplier_import':null);if(!['supplier_import','estimate','manual','mixed'].includes(origin))return fail(res,400,'invalid_scenario','A recognized scenario origin is required.');res.status(201).json(await service.createScenario({...req.body,origin}));}catch(error){if(['source_not_found','source_has_no_selected_items','invalid_scenario','origin_unavailable','feature_unavailable','exchange_rate_unavailable','estimate_not_found'].includes(error.code)){const status=['source_not_found','estimate_not_found'].includes(error.code)?404:['source_has_no_selected_items','origin_unavailable','feature_unavailable'].includes(error.code)?409:error.code==='exchange_rate_unavailable'?503:400;return fail(res,status,error.code,error.message);}next(error);}});

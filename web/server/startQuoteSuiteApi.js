@@ -25,11 +25,14 @@ import { createClientPortalRouter } from './routes/clientPortal.js';
 import { createEstimateProcurementActionsRouter } from './routes/estimateProcurementActions.js';
 import { createLifecycleRouter } from './routes/lifecycle.js';
 import { createCrmDashboardRouter } from './routes/crmDashboard.js';
+import { createServiceRouter } from './routes/service.js';
+import { createInstallationSafetyRouter } from './routes/installationSafety.js';
 import { fetchCentralExchangeRate } from './features/projectCalculatorLab/exchangeRateProvider.js';
 import { dbPromise } from './db.js';
 import { startApiServer } from './apiServerStartup.js';
 import { createRuntimeHealthHandler } from './features/runtimeHealth/runtimeHealth.js';
 import { createPortalTestAdapter } from './features/clientPortal/portalTestAdapter.js';
+import { startSupplierRevisionFollowupWorker } from './features/lifecycle/supplierRevisionFollowupWorker.js';
 
 const app = express();
 const configuredOrigins = new Set(String(process.env.QUOTESUITE_APP_ORIGINS || '').split(',').map(value => value.trim()).filter(Boolean));
@@ -49,6 +52,8 @@ app.use('/api/client-notes', clientNotesRoute);
 app.use('/api/estimate-notes', estimateNotesRoute);
 app.use('/api/followups', followupsRoute);
 app.use('/api/crm', createCrmDashboardRouter({ databasePromise: dbPromise }));
+app.use('/api/service', createServiceRouter({ databasePromise: dbPromise }));
+app.use('/api/installation-safety', createInstallationSafetyRouter({ databasePromise: dbPromise }));
 app.use('/api/notes', notesRoute);
 app.use('/api/settings', settingsRoute);
 app.use('/api/integrations', integrationsRoute);
@@ -67,6 +72,7 @@ app.use('/api/lifecycle', createLifecycleRouter({ databasePromise: dbPromise }))
 app.use('/api/estimates', await createSupplierQuotesRouter({ dbPromise }));
 app.use('/api/admin/supplier-import-lab', await createSupplierImportLabRouter({ dbPromise }));
 app.use('/api/admin/project-calculator-lab', await createProjectCalculatorLabRouter({ dbPromise }));
+startSupplierRevisionFollowupWorker({ databasePromise: dbPromise });
 
 app.get('/api/fx-rate', async (req, res) => {
   const from = String(req.query.from || 'EUR').trim() || 'EUR';

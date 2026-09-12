@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { allocateCanonicalReference } from "./referenceAllocator.js";
 import { CURRENT_APP_USER } from "../../currentUser.js";
+import { createResponsibilityService } from "../service/responsibilityService.js";
 
 const timestamp = (now) => now().toISOString();
 const clean = (value) => String(value || "").trim();
@@ -38,11 +39,15 @@ function mapEnquiry(row) {
     workStage: row.work_stage || (row.status === "new" ? "new_enquiry" : row.status), waitingFor: row.waiting_for || "none",
     nextAction: row.next_action || (row.status === "new" ? "Review and qualify enquiry" : ""), nextActionDueAt: row.work_due_at || null,
     lastContactAt: row.last_contact_at || null,
+    responsibleTeamId: row.responsible_team_id || null, responsibleTeamName: row.responsible_team_name || null,
+    assignmentState: row.assignment_state || "unassigned",
   };
 }
 
-const enquirySelect = `SELECT e.*,w.owner_user_id,w.owner_name,w.stage work_stage,w.waiting_for,w.next_action,w.due_at work_due_at,w.last_contact_at
-  FROM enquiries e LEFT JOIN crm_record_work_states w ON w.record_kind='enquiry' AND w.record_id=e.id`;
+const enquirySelect = `SELECT e.*,w.owner_user_id,w.owner_name,w.stage work_stage,w.waiting_for,w.next_action,w.due_at work_due_at,w.last_contact_at,
+  a.team_id responsible_team_id,a.team_name responsible_team_name,a.routing_state assignment_state
+  FROM enquiries e LEFT JOIN crm_record_work_states w ON w.record_kind='enquiry' AND w.record_id=e.id
+  LEFT JOIN record_assignments a ON a.record_kind='enquiry' AND a.record_id=e.id`;
 
 function mapProject(row) {
   if (!row) return null;
@@ -89,6 +94,7 @@ export function createCommercialIdentityService(db, { now = () => new Date(), id
         VALUES(?,?,'new',?,?,?,?,?,?,?,?,?,?,'pending','{}',?,?)`, enquiryId, enquiryRef, clean(input.source), clean(input.leadSource), displayName, clean(input.companyName), clean(input.email), clean(input.telephone), clean(input.projectName), clean(input.siteAddress), json(input.siteAddressJson), clean(input.notes), createdAt, createdAt);
       await db.run(`INSERT INTO crm_record_work_states(record_kind,record_id,owner_user_id,owner_name,stage,waiting_for,next_action,due_at,last_contact_at,created_at,updated_at)
         VALUES('enquiry',?,?,?,?,'none',?,?,NULL,?,?)`, enquiryId, clean(input.ownerUserId) || CURRENT_APP_USER.id, clean(input.ownerName) || CURRENT_APP_USER.name, "new_enquiry", clean(input.nextAction) || "Review and qualify enquiry", clean(input.nextActionDueAt) || createdAt, createdAt, createdAt);
+      await createResponsibilityService(db, { id, clock: now }).route({ recordKind: "enquiry", recordId: enquiryId, responsibilityArea: "enquiries", transitionKey: "registered", actorId: CURRENT_APP_USER.id });
       return mapEnquiry(await db.get(`${enquirySelect} WHERE e.id=?`, enquiryId));
     });
     if (driveTransitions?.provisionEnquiry) driveTransitions.provisionEnquiry(enquiryId).then(async (drive) => {

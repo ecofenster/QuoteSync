@@ -35,6 +35,7 @@ const tableStatements = [
     enquiries_root_folder_id TEXT,
     estimates_root_folder_id TEXT,
     orders_root_folder_id TEXT,
+    workforce_root_folder_id TEXT,
     folder_template_json TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -351,6 +352,7 @@ export async function initializeWorkflowSchema(db) {
   await allowSharedDriveFolderMappings(db);
   await ensureColumn(db, "drive_project_folders", "provider_account_id", "TEXT");
   await ensureColumn(db, "integration_provider_config", "enquiries_root_folder_id", "TEXT");
+  await ensureColumn(db, "integration_provider_config", "workforce_root_folder_id", "TEXT");
   await ensureColumn(db, "drive_project_folders", "provider_parent_folder_id", "TEXT");
   await ensureColumn(db, "drive_project_folders", "folder_path", "TEXT");
   await ensureColumn(db, "drive_project_folders", "last_seen_at", "TEXT");

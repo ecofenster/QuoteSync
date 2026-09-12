@@ -12,7 +12,7 @@ test("roadmap typed data is complete, unique and deterministically countable", (
   assert.ok(all.length >= 100);
   const counts = roadmapStatusCounts(ROADMAP_ITEMS);
   assert.equal(Object.values(counts).reduce((sum, value) => sum + value, 0), all.length);
-  assert.deepEqual(counts, { complete: 23, in_progress: 74, not_started: 141, blocked: 3, legacy: 10 });
+  assert.deepEqual(counts, { complete: 23, in_progress: 77, not_started: 140, blocked: 3, legacy: 10 });
 });
 
 test("Administration exposes Development and the QuoteSuite Roadmap workspace", async () => {
@@ -34,10 +34,10 @@ test("status rendering uses accessible text as well as colour", async () => {
 });
 
 test("chronology remains ordered and displays the current checkpoint", () => {
-  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 154 }, (_, index) => index + 1));
+  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 156 }, (_, index) => index + 1));
   assert.equal([...ROADMAP_CHRONOLOGY].reverse().find((entry) => entry.checkpointSha)?.checkpointSha, ROADMAP_CHECKPOINT_SHA);
   assert.equal(ROADMAP_CHRONOLOGY.find((entry) => entry.title === "Browser automation process-lifecycle hardening")?.sequence, 75);
-  assert.equal(ROADMAP_CHRONOLOGY.at(-1)?.title, "Guided Enquiry context, compact Dashboard and map/theme correction");
+  assert.equal(ROADMAP_CHRONOLOGY.at(-1)?.title, "Consolidated supplier estimate and revision requests");
   assert.equal(ROADMAP_CHECKPOINT_SHA, "5f3cb01");
 });
 

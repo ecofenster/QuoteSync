@@ -20,7 +20,7 @@ type WorkItem = {
 type DashboardProjection = {
   generatedAt: string;
   user: { id: string; name: string; role: string };
-  summary: { overdue: number; dueToday: number; unansweredEnquiries: number; waitingOnCustomer: number; waitingOnSupplier: number; installationsToday: number; invoicesDueToday: number; ordersNeedingAttention: number };
+  summary: { overdue: number; dueToday: number; unansweredEnquiries: number; waitingOnCustomer: number; waitingOnSupplier: number; installationsToday: number; invoicesDueToday: number; ordersNeedingAttention: number;serviceNewUnassigned:number;serviceRequiringStaff:number;serviceOverdue:number;revisionsRequested:number };
   attention: WorkItem[];
   today: WorkItem[];
   pipeline: Array<{ id: string; label: string; count: number }>;
@@ -111,7 +111,7 @@ export default function MainDashboard({ activeUserName = "User", onOpenMenu, onO
     if (onOpenRecord) { onOpenRecord(target); return; }
     const estimateId = target.estimateId || (target.kind === "estimate" ? target.id : null);
     if (estimateId && target.clientId && onOpenEstimate) { onOpenEstimate(target.clientId as ClientId, estimateId as EstimateId); return; }
-    const menu: Partial<Record<string, MenuKey>> = { followup: "follow_ups", enquiry: "enquiries", client: "client_database", project: "client_database", estimate: "estimates", order: "orders", communication: "email" };
+    const menu: Partial<Record<string, MenuKey>> = { followup: "follow_ups", enquiry: "enquiries", client: "client_database", project: "client_database", estimate: "estimates", order: "orders", communication: "email", service: "service",revision_request:"client_portal" };
     onOpenMenu?.(menu[target.kind] || "dashboard");
   }, [onOpenEstimate, onOpenMenu, onOpenRecord]);
 
@@ -150,6 +150,9 @@ export default function MainDashboard({ activeUserName = "User", onOpenMenu, onO
         <button type="button" onClick={() => onOpenMenu?.("installation")}><strong>{projection.summary.installationsToday}</strong><span>Installations today</span></button>
         <button type="button" onClick={() => onOpenMenu?.("orders")}><strong>{projection.summary.invoicesDueToday}</strong><span>Invoices due today</span></button>
         <button type="button" onClick={() => onOpenMenu?.("orders")}><strong>{projection.summary.ordersNeedingAttention}</strong><span>Orders need dates</span></button>
+        <button type="button" onClick={() => onOpenMenu?.("service")}><strong>{projection.summary.serviceNewUnassigned}</strong><span>New / unassigned Service</span></button>
+        <button type="button" onClick={() => onOpenMenu?.("service")}><strong>{projection.summary.serviceOverdue}</strong><span>Service targets overdue</span></button>
+        <button type="button" onClick={() => onOpenMenu?.("client_portal")}><strong>{projection.summary.revisionsRequested}</strong><span>Revisions requested</span></button>
       </section>
 
       <div className="qs-dashboard-columns">

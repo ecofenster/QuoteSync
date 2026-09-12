@@ -3,6 +3,7 @@ import { createPortalSecurityService, PORTAL_SESSION_COOKIE } from "../features/
 import { CURRENT_APP_USER } from "../currentUser.js";
 import { createCustomerQuotationDocumentService } from "../features/customerQuotations/customerQuotationDocumentService.js";
 import { createCustomerLifecycleDocumentService } from "../features/lifecycle/customerLifecycleDocumentService.js";
+import { createServiceCaseService } from "../features/service/serviceCaseService.js";
 
 function cookieValue(header, name) {
   const prefix = `${name}=`;
@@ -69,6 +70,18 @@ export function createClientPortalRouter({ databasePromise, externalAccessEnable
   });
   router.get("/external/session", async (req, res) => { try { return res.json({ session: await (await service()).externalSessionContext(req.portalSession) }); } catch (error) { return fail(res, error); } });
   router.get("/external/projects/:projectId", async (req, res) => { try { return res.json(await (await service()).getProjectPortal(req.portalSession, req.params.projectId)); } catch (error) { return fail(res, error); } });
+  const portalServiceCases = async (req) => {
+    const portal = await service();
+    const projection = await portal.getProjectPortal(req.portalSession, req.params.projectId);
+    if (!projection.features.some((item) => item.featureKey === "service" && item.enabled)) throw Object.assign(new Error("Service reporting is not enabled for this Portal."), { status: 403, code: "portal_service_disabled" });
+    return createServiceCaseService(await databasePromise, { tenantId: req.portalSession.tenantId });
+  };
+  router.get("/external/projects/:projectId/service-cases", async (req,res)=>{try{const cases=await portalServiceCases(req);return res.json(await cases.list({}, {tenantId:req.portalSession.tenantId,clientId:req.portalSession.clientId,projectId:req.params.projectId}));}catch(error){return fail(res,error);}});
+  router.post("/external/projects/:projectId/service-cases", async (req,res)=>{try{const cases=await portalServiceCases(req);return res.status(201).json(await cases.create(req.body,{type:"customer",id:req.portalSession.portalContactId},{tenantId:req.portalSession.tenantId,clientId:req.portalSession.clientId,projectId:req.params.projectId}));}catch(error){return fail(res,error);}});
+  router.get("/external/projects/:projectId/service-cases/:caseId", async (req,res)=>{try{const cases=await portalServiceCases(req);return res.json(await cases.get(req.params.caseId,{tenantId:req.portalSession.tenantId,clientId:req.portalSession.clientId,projectId:req.params.projectId},{includeInternal:false}));}catch(error){return fail(res,error);}});
+  router.post("/external/projects/:projectId/service-cases/:caseId/comments", async (req,res)=>{try{const cases=await portalServiceCases(req);return res.status(201).json(await cases.addUpdate(req.params.caseId,req.body,{type:"customer",id:req.portalSession.portalContactId},{tenantId:req.portalSession.tenantId,clientId:req.portalSession.clientId,projectId:req.params.projectId}));}catch(error){return fail(res,error);}});
+  router.post("/external/projects/:projectId/service-cases/:caseId/attachments", async (req,res)=>{try{const cases=await portalServiceCases(req);return res.status(201).json(await cases.addAttachment(req.params.caseId,req.body,{type:"customer",id:req.portalSession.portalContactId},{tenantId:req.portalSession.tenantId,clientId:req.portalSession.clientId,projectId:req.params.projectId}));}catch(error){return fail(res,error);}});
+  router.get("/external/projects/:projectId/service-cases/:caseId/attachments/:attachmentId", async (req,res)=>{try{const cases=await portalServiceCases(req),file=await cases.attachment(req.params.caseId,req.params.attachmentId,{tenantId:req.portalSession.tenantId,clientId:req.portalSession.clientId,projectId:req.params.projectId},false);res.set("Content-Type",file.mediaType);res.set("Content-Disposition",`inline; filename="${file.fileName.replaceAll('"','')}"`);res.set("Content-Length",String(file.bytes.length));return res.send(file.bytes);}catch(error){return fail(res,error);}});
   router.get("/external/projects/:projectId/estimates/:releaseId", async (req, res) => { try { return res.json(await (await service()).getReleasedEstimate(req.portalSession, req.params.projectId, req.params.releaseId)); } catch (error) { return fail(res, error); } });
   router.get("/external/projects/:projectId/documents/:documentId", async (req, res) => { try { return res.json(await (await service()).getReleasedDocument(req.portalSession, req.params.projectId, req.params.documentId)); } catch (error) { return fail(res, error); } });
   router.get("/external/projects/:projectId/documents/:documentId/content", async (req, res) => {

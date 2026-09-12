@@ -10,6 +10,8 @@ import { initializeQuoteComparisonSchema } from './features/quoteComparisons/quo
 import { initializePortalSecuritySchema } from './features/clientPortal/portalSecuritySchema.js';
 import { initializeEstimateProcurementActionSchema } from './features/estimates/estimateProcurementActionSchema.js';
 import { initializeLifecycleSchema } from './features/lifecycle/lifecycleSchema.js';
+import { initializeServiceSchema } from './features/service/serviceSchema.js';
+import { initializeInstallationSafetySchema } from './features/installationSafety/installationSafetySchema.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1480,6 +1482,8 @@ export const dbPromise = openDatabaseWithRecovery(dbPath).then(async (db) => {
   await initializePortalSecuritySchema(db);
   await initializeEstimateProcurementActionSchema(db);
   await initializeLifecycleSchema(db);
+  await initializeServiceSchema(db);
+  await initializeInstallationSafetySchema(db);
 
   await ensureTable(
     db,
@@ -1939,6 +1943,11 @@ export const dbPromise = openDatabaseWithRecovery(dbPath).then(async (db) => {
   await seedSetting(db, 'system.loadDemoForecast', { enabled: false }, 'system');
   await seedSetting(db, 'references.estimatePrefix', { value: 'EF-EST' }, 'references');
   await seedSetting(db, 'references.clientPrefix', { value: 'EF-CL' }, 'references');
+  const clientReferenceSetting = await db.get("SELECT value FROM settings WHERE key='references.clientPrefix'");
+  let configuredClientPrefix = '';
+  try { configuredClientPrefix = String(JSON.parse(clientReferenceSetting?.value || '{}')?.value || ''); } catch { configuredClientPrefix = ''; }
+  const configuredWorkspacePrefix = configuredClientPrefix.replace(/-CL$/i, '').trim().toUpperCase();
+  if (configuredWorkspacePrefix) await seedSetting(db, 'references.servicePrefix', { value: `${configuredWorkspacePrefix}-SER` }, 'references');
   await seedSetting(db, 'configurator.defaultDimensions', { width: 1000, height: 1200 }, 'configurator');
   await seedSetting(db, 'configurator.showDimensions', { enabled: true }, 'configurator');
   await seedSetting(db, 'integrations.googleMaps.enabled', { enabled: true }, 'integrations');

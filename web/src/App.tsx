@@ -128,6 +128,7 @@ import EstimateCollectionView from "./features/estimateCollection/EstimateCollec
 import type { EstimateCollectionViewMode } from "./features/estimateCollection/EstimateCollectionView";
 import mapGlobalEstimateToCollectionItem from "./features/estimateCollection/adapters/mapGlobalEstimateToCollectionItem";
 import ClientPortalStaffWorkspace from "./features/clientPortal/ClientPortalStaffWorkspace";
+import ServiceWorkspace from "./features/service/ServiceWorkspace";
 import { INTERNAL_PORTAL_NAVIGATION_EVENT, type InternalPortalNavigationDetail } from "./features/clientPortal/portalInternalNavigation";
 
 /* =========================
@@ -2211,6 +2212,16 @@ function openEstimateDefaults(clientId: Models.ClientId, estimateId: Models.Esti
 }
 
 function openCrmRecord(target: CrmRecordTarget) {
+  if (target.kind === "revision_request") {
+    selectMenu("client_portal");
+    window.setTimeout(() => window.dispatchEvent(new CustomEvent("quotesuite:open-revision-request", { detail: target })), 0);
+    return;
+  }
+  if (target.kind === "service") {
+    selectMenu("service");
+    window.setTimeout(() => window.dispatchEvent(new CustomEvent("quotesuite:open-service-case", { detail: target })), 0);
+    return;
+  }
   if (target.kind === "followup") {
     selectMenu("follow_ups");
     window.setTimeout(() => window.dispatchEvent(new CustomEvent("quotesuite:open-followup", { detail: target })), 0);
@@ -4552,6 +4563,7 @@ return (
                 <SidebarItem label="Orders" active={menu === "orders"} onClick={() => selectMenu("orders")} />
                 <SidebarItem label="Lost" active={menu === "lost"} onClick={() => selectMenu("lost")} />
                 <SidebarItem label="Installation" active={menu === "installation"} onClick={() => selectMenu("installation")} />
+                <SidebarItem label="Service" active={menu === "service"} onClick={() => selectMenu("service")} />
                 <SidebarItem label="Project Map" active={menu === "project_map"} onClick={() => selectMenu("project_map")} />
                 <SidebarItem label="Completed Projects" active={menu === "completed_projects"} onClick={() => selectMenu("completed_projects")} />
                 <SidebarItem label="Recycle Bin" active={menu === "recycle_bin"} onClick={() => selectMenu("recycle_bin")} />
@@ -5154,6 +5166,7 @@ return (
             )}
 
             {menu === "installation" && view === "customers" && renderInstallationBoard()}
+            {menu === "service" && view === "customers" && <ServiceWorkspace clients={clients} />}
 
             {/* ESTIMATE WORKSPACE */}
             {topShellPage === "app" && view === "estimate_workspace" && selectedClient && selectedEstimate && (
@@ -5259,7 +5272,7 @@ return (
             )}
 
             {/* Fallback for other menus */}
-            {menu !== "dashboard" && menu !== "enquiries" && menu !== "client_database" && menu !== "client_portal" && menu !== "follow_ups" && menu !== "email" && menu !== "estimates" && menu !== "orders" && menu !== "lost" && menu !== "installation" && menu !== "project_map" && menu !== "completed_projects" && menu !== "recycle_bin" && menu !== "project_preferences" && (
+            {menu !== "dashboard" && menu !== "enquiries" && menu !== "client_database" && menu !== "client_portal" && menu !== "follow_ups" && menu !== "email" && menu !== "estimates" && menu !== "orders" && menu !== "lost" && menu !== "installation" && menu !== "service" && menu !== "project_map" && menu !== "completed_projects" && menu !== "recycle_bin" && menu !== "project_preferences" && (
               <Card className="qs-migrated-2">
                 <H2>{menu.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase())}</H2>
                 <Small>Placeholder screen.</Small>
