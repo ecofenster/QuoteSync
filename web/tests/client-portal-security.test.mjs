@@ -426,7 +426,7 @@ test("supplier enquiry preview and returned evidence stay linked to one canonica
 
 test("one tracked supplier revision draft reopens, sends once and follows up once after seven calendar days",async t=>{
   const source=await fixture(t),auth=await authenticated(t,source),communications=createCommunicationRepository(source.db);let clock=Date.parse("2026-09-06T10:00:00.000Z"),sendCount=0,failNext=false;
-  const communicationService={repository:communications,sendMessage:async message=>{if(failNext){failNext=false;throw new Error("TEST supplier delivery unavailable")}sendCount+=1;return communications.save({...message,provider:"fixture",providerMessageId:`sent-${sendCount}`,folder:"sent",status:"sent",sentAt:new Date(clock).toISOString()})}};
+  const communicationService={repository:communications,sendMessage:async message=>{if(failNext){const outcome=failNext===true?'not_sent':failNext;failNext=false;throw Object.assign(new Error("TEST supplier delivery unavailable"),{deliveryOutcome:outcome})}sendCount+=1;return communications.save({...message,provider:"fixture",providerMessageId:`sent-${sendCount}`,folder:"sent",status:"sent",sentAt:new Date(clock).toISOString()})}};
   const deliveryPolicy={publicStatus:()=>({deliveryMode:"test_allowlist"}),assertRecipient(value){assert.equal(value,"factory@example.test");return value}};
   const lifecycle=createLifecycleService(source.db,{portal:source.service,communications,communicationService,documentOptions:source.options.documentOptions,deliveryPolicy,now:()=>new Date(clock)});
   const review=await source.service.submitReview(auth.session,{projectId:"project-a1",estimateReleaseId:source.release.id,idempotencyKey:"tracked-revision-review",generalResponse:"amendment_requested",generalComment:"Change the finish.",positions:[{estimatePositionId:"position-a",positionReference:"W1",response:"amendment_requested",comment:"Black outside."}]});
@@ -449,6 +449,17 @@ test("one tracked supplier revision draft reopens, sends once and follows up onc
   assert.deepEqual(await restarted.processDueSupplierRevisionFollowups(),{processed:1,sent:0,failed:0});
   assert.equal(sendCount,3);
   assert.equal((await source.db.get('SELECT followup_due_at FROM supplier_enquiry_drafts WHERE id=?',second.id)).followup_due_at,null);
+  await source.db.run("UPDATE supplier_revision_requests SET status='sent',workflow_state='sent_to_supplier' WHERE id=?",parent.id);
+  const uncertain=await lifecycle.prepareSupplierEnquiry('project-a1',{...payload,subject:'Uncertain follow-up',idempotencyKey:'uncertain-followup',send:true});
+  clock+=8*24*60*60*1000;failNext='uncertain';
+  assert.deepEqual(await lifecycle.processDueSupplierRevisionFollowups(),{processed:1,sent:0,failed:1});
+  const claimed=await source.db.get('SELECT followup_attempted_at FROM supplier_enquiry_drafts WHERE id=?',uncertain.id);
+  await assert.rejects(()=>lifecycle.retrySupplierRevisionFollowup(uncertain.id),error=>error.code==='supplier_followup_delivery_unconfirmed');
+  await lifecycle.updateSupplierResponseDue(uncertain.id,{responseDueAt:new Date(clock-1000).toISOString()});
+  assert.equal((await source.db.get('SELECT followup_attempted_at FROM supplier_enquiry_drafts WHERE id=?',uncertain.id)).followup_attempted_at,claimed.followup_attempted_at,'Deadline adjustment cleared uncertain claim');
+  assert.deepEqual(await restarted.processDueSupplierRevisionFollowups(),{processed:0,sent:0,failed:0});
+  assert.equal(sendCount,4,'Uncertain follow-up sent another copy after service restart');
+  assert.equal((await lifecycle.supplierEnquiryContext('project-a1',parent.successorEstimateId)).enquiries.find(row=>row.id===uncertain.id).followupDeliveryState,'uncertain');
 });
 
 test("HTTP boundary is fail-closed by default and requires authentication plus CSRF when explicitly test-enabled",async t=>{

@@ -35,6 +35,7 @@ const CUSTOMER = "customer.journey@example.test";
 const FACTORY = "factory.journey@example.test";
 const OUTPUT = path.resolve("test-output/complete-customer-order-journey");
 const sourceFactoryReconcile=process.argv.includes('--stop-after-source-backed-factory-reconcile');
+const supplierFollowup=process.argv.includes('--stop-after-supplier-followup');
 const sourceFactorySend=sourceFactoryReconcile||process.argv.includes('--stop-after-source-backed-factory-send');
 const sourceStaffOrder=sourceFactorySend||process.argv.includes('--stop-after-source-backed-staff-order');
 const sourceCustomerOrder=sourceStaffOrder||process.argv.includes('--stop-after-source-backed-customer-order');
@@ -43,7 +44,7 @@ const sourceCustomerPreparation=sourceCustomerReissue||process.argv.includes('--
 const overallSourceReview=sourceCustomerPreparation||process.argv.includes('--stop-after-source-backed-overall-review');
 const receivedSupplierReviews=process.argv.includes('--stop-after-received-supplier-reviews');
 const multiSupplierReview=receivedSupplierReviews||process.argv.includes('--stop-after-multi-supplier-review');
-const providerJourneyRequested=overallSourceReview||receivedSupplierReviews||['--stop-after-supplier-filing','--stop-after-supplier-review','--stop-after-multi-supplier-review'].some(flag=>process.argv.includes(flag));
+const providerJourneyRequested=supplierFollowup||overallSourceReview||receivedSupplierReviews||['--stop-after-supplier-filing','--stop-after-supplier-review','--stop-after-multi-supplier-review'].some(flag=>process.argv.includes(flag));
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const reachable = async (url) => { try { return (await fetch(url)).ok; } catch { return false; } };
 const waitFor = async (fn, message, timeout = 60_000) => { const started = Date.now(); while (Date.now() - started < timeout) { const result = await fn().catch(() => false); if (result) return result; await delay(150); } throw new Error(message); };
@@ -190,7 +191,7 @@ async function run() {
     const providerJourney=providerJourneyRequested,providerKey=createHash('sha256').update(randomUUID()).digest('hex');
     if(providerJourney)await writeFile(path.join(root,'provider-source.pdf'),await readFile(path.resolve('docs/Supplier_Quotes/John_Wingfield/web-26-1133450.pdf')));
     if(receivedSupplierReviews)await writeFile(path.join(root,'provider-second-source.docx'),await readFile(path.resolve('docs/Supplier_Quotes/343117-3_EF-EST-2026-004 - Luke.docx')));
-api = spawn(process.execPath, ["--import",pathToFileURL(path.resolve('tests/fixtures/isolatedJourneyExchangeRate.mjs')).href,...(providerJourney?['--import',pathToFileURL(path.resolve('tests/fixtures/isolatedJourneyGoogle.mjs')).href]:[]),"server/index.js"], { cwd: process.cwd(), env: { ...process.env, ...(providerJourney?{QUOTESUITE_INTEGRATION_ENCRYPTION_KEY:providerKey}:{}), QUOTESUITE_DB_PATH: databasePath, QUOTESYNC_ATTACHMENT_ROOT: attachmentRoot, PORT: "3104", NODE_ENV: "development", QUOTESUITE_APP_ORIGINS: APP_URL, QUOTESUITE_TEST_JOURNEY: "1", QUOTESUITE_TEST_DELIVERY_ENABLED: sourceCustomerReissue?"1":"0", QUOTESUITE_DISPOSABLE_PROVIDER_DELIVERY:sourceFactoryReconcile?'factory-reconcile':sourceFactorySend?'factory-send':sourceCustomerReissue?'customer-reissue':'', QUOTESUITE_TEST_CUSTOMER_EMAIL: CUSTOMER, QUOTESUITE_TEST_FACTORY_EMAIL: FACTORY }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+api = spawn(process.execPath, ["--import",pathToFileURL(path.resolve('tests/fixtures/isolatedJourneyExchangeRate.mjs')).href,...(providerJourney?['--import',pathToFileURL(path.resolve('tests/fixtures/isolatedJourneyGoogle.mjs')).href]:[]),"server/index.js"], { cwd: process.cwd(), env: { ...process.env, ...(providerJourney?{QUOTESUITE_INTEGRATION_ENCRYPTION_KEY:providerKey}:{}), QUOTESUITE_DB_PATH: databasePath, QUOTESYNC_ATTACHMENT_ROOT: attachmentRoot, PORT: "3104", NODE_ENV: "development", QUOTESUITE_APP_ORIGINS: APP_URL, QUOTESUITE_TEST_JOURNEY: "1", QUOTESUITE_TEST_DELIVERY_ENABLED: (sourceCustomerReissue||supplierFollowup)?"1":"0", QUOTESUITE_DISPOSABLE_PROVIDER_DELIVERY:supplierFollowup?'supplier-followup':sourceFactoryReconcile?'factory-reconcile':sourceFactorySend?'factory-send':sourceCustomerReissue?'customer-reissue':'', QUOTESUITE_TEST_CUSTOMER_EMAIL: CUSTOMER, QUOTESUITE_TEST_FACTORY_EMAIL: FACTORY }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     let apiStartupLog='';for(const stream of [api.stdout,api.stderr])stream.on('data',chunk=>{apiStartupLog=(apiStartupLog+String(chunk)).slice(-5000)});
     vite = spawn(process.execPath, [path.resolve("node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", "5276"], { cwd: process.cwd(), env: { ...process.env, VITE_API_BASE_URL: API_URL }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     try{await waitFor(() => reachable(`${API_URL}/api/health`), "Disposable journey API did not start")}catch(error){throw new Error(`${error.message}: ${apiStartupLog}`)} await waitFor(() => reachable(APP_URL), "Disposable journey UI did not start");
@@ -219,7 +220,10 @@ api = spawn(process.execPath, ["--import",pathToFileURL(path.resolve('tests/fixt
     await waitFor(()=>tab.evaluate("document.querySelector('.supplier-rfq input[type=email]')&&!document.body.innerText.includes('Loading supplier request context')"),'Supplier composer did not load');
     await input(tab,'.supplier-rfq select','EKO');await input(tab,'.supplier-rfq input[type=email]',FACTORY);
     assert.equal(await tab.evaluate("document.querySelectorAll('.supplier-rfq input[name=supplier-request-kind]')[1]?.checked"),true,'Customer context did not preselect revision mode');
-    assert.equal(await tab.evaluate(sourceCustomerReissue?"document.querySelector('.supplier-rfq__send input')?.checked===false":"document.querySelector('.supplier-rfq')?.innerText.includes('Preview only')"),true);
+    assert.equal(await tab.evaluate((sourceCustomerReissue||supplierFollowup)?"document.querySelector('.supplier-rfq__send input')?.checked===false":"document.querySelector('.supplier-rfq')?.innerText.includes('Preview only')"),true);
+    // This delivery gate includes the generated change-summary PDF, not the
+    // preview-only fixture's metadata placeholders for optional Project files.
+    if(supplierFollowup)await tab.evaluate("document.querySelectorAll('.supplier-rfq__documents input:checked').forEach(input=>input.click())");
     await click(tab,'Prepare for review');await waitFor(()=>tab.evaluate("document.querySelector('.supplier-rfq__result')?.innerText.includes('Prepared for review — not sent')"),'Reviewed supplier request was not saved');
     const preparedContext=await staff(`/api/lifecycle/projects/${fixture.projectId}/supplier-enquiries`,null,'GET');
     assert.equal(preparedContext.enquiries.length,1);assert.equal(preparedContext.enquiries[0].requestKind,'revision');assert.notEqual(preparedContext.enquiries[0].status,'sent');
@@ -298,6 +302,36 @@ api = spawn(process.execPath, ["--import",pathToFileURL(path.resolve('tests/fixt
       }finally{await providerDb.close()}
       await staff('/api/communications/sync',{folder:'inbox'});
       await click(tab,'Request supplier estimate / revision');
+      if(supplierFollowup){
+        await waitFor(()=>tab.evaluate("document.body.innerText.includes('Reopen prepared request')"),'Prepared supplier request did not reopen');
+        await click(tab,'Reopen prepared request');
+        await tab.evaluate("document.querySelector('.supplier-rfq__send input').click()");
+        await click(tab,'Send supplier request');
+        await waitFor(()=>tab.evaluate("document.querySelector('.supplier-rfq__result')?.textContent.includes('Supplier request sent')"),'Supplier send did not show confirmed result');
+        const followupDb=await open({filename:databasePath,driver:sqlite3.Database,mode:sqlite3.OPEN_READONLY});
+        try{
+          const sent=await followupDb.get('SELECT * FROM supplier_enquiry_drafts WHERE id=?',preparedContext.enquiries[0].id);assert.equal(sent.status,'sent');assert.equal(Date.parse(sent.response_due_at)-Date.parse(sent.sent_at),7*24*60*60*1000);
+          await click(tab,'Done');await click(tab,'Request supplier estimate / revision');
+          await waitFor(()=>tab.evaluate("[...document.querySelectorAll('summary')].some(item=>item.textContent.startsWith('View or reopen previous requests'))"),'Supplier history did not load');
+          await tab.evaluate("[...document.querySelectorAll('summary')].find(item=>item.textContent.startsWith('View or reopen previous requests')).click()");
+          await waitFor(()=>tab.evaluate("document.body.innerText.includes('Adjust response deadline')"),'Sent supplier history did not reopen');
+          await tab.evaluate("[...document.querySelectorAll('summary')].find(item=>item.textContent==='Adjust response deadline').click()");
+          await tab.evaluate("(()=>{const input=document.querySelector('input[type=datetime-local]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'2026-01-01T09:00');input.dispatchEvent(new Event('input',{bubbles:true}))})()");
+          await click(tab,'Save reviewed deadline');
+          await waitFor(()=>tab.evaluate("document.body.innerText.includes('Supplier response deadline updated')"),'Reviewed deadline did not save');
+          await waitFor(async()=>Boolean((await followupDb.get('SELECT followup_sent_at FROM supplier_enquiry_drafts WHERE id=?',sent.id)).followup_sent_at),'Persistent worker did not send due follow-up',100000);
+          const completed=await followupDb.get('SELECT * FROM supplier_enquiry_drafts WHERE id=?',sent.id);assert.equal(completed.followup_delivery_state,'sent');assert.ok(completed.followup_attempted_at);
+          const evidence=JSON.parse(await readFile(path.join(root,'disposable-delivery-evidence.json'),'utf8'));assert.equal(evidence.sent.length,2);assert.deepEqual(evidence.sent.map(item=>item.recipients),[[FACTORY],[FACTORY]]);
+          assert.match(Buffer.from(evidence.sent[1].raw,'base64url').toString(),/Please could you provide an update/);
+          await click(tab,'Close');await click(tab,'Request supplier estimate / revision');
+          await waitFor(()=>tab.evaluate("[...document.querySelectorAll('summary')].some(item=>item.textContent.startsWith('View or reopen previous requests'))"),'Sent follow-up history did not load');
+          await tab.evaluate("[...document.querySelectorAll('summary')].find(item=>item.textContent.startsWith('View or reopen previous requests')).click()");
+          await waitFor(()=>tab.evaluate("document.body.innerText.includes('Follow-up sent')"),'Persisted follow-up outcome was not visible after reopen');
+          assert.equal(await tab.evaluate("document.body.innerText.includes('Retry follow-up safely')"),false);
+          console.log(JSON.stringify({scope:'Normal supplier composer → confirmed test send → seven-calendar-day deadline → reviewed due adjustment → persistent scheduled worker → reopened outcome',provider:'no-network disposable transport',providerMessages:2,liveDelivery:false,restartVerified:false,uncertainRecoveryVerified:false}));
+        }finally{await followupDb.close()}
+        return;
+      }
       await waitFor(()=>tab.evaluate("[...document.querySelectorAll('summary')].some(item=>item.textContent==='Review an incoming supplier reply')"),'Saved supplier request did not expose reply review');
       await tab.evaluate("[...document.querySelectorAll('summary')].find(item=>item.textContent==='Review an incoming supplier reply').click()");
       await tab.evaluate("[...document.querySelectorAll('.supplier-rfq__history button')].find(item=>item.textContent.includes('EKO-OKNA')&&item.textContent.includes('request 1')).click()");

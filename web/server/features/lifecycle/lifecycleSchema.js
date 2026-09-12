@@ -155,6 +155,7 @@ export async function initializeLifecycleSchema(db) {
   await ensureColumn(db, 'supplier_enquiry_drafts', 'followup_sent_at', 'TEXT');
   await ensureColumn(db, 'supplier_enquiry_drafts', 'followup_message_id', 'TEXT');
   await ensureColumn(db, 'supplier_enquiry_drafts', 'followup_failure', "TEXT NOT NULL DEFAULT ''");
+  await ensureColumn(db, 'supplier_enquiry_drafts', 'followup_delivery_state', "TEXT NOT NULL DEFAULT ''");
   await db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_supplier_enquiry_idempotency ON supplier_enquiry_drafts(idempotency_key) WHERE idempotency_key IS NOT NULL');
   await db.exec('CREATE INDEX IF NOT EXISTS idx_supplier_enquiry_project_estimate ON supplier_enquiry_drafts(project_id,estimate_id,created_at DESC)');
   await db.exec('CREATE INDEX IF NOT EXISTS idx_supplier_revision_followup_due ON supplier_enquiry_drafts(request_kind,status,response_state,followup_due_at)');

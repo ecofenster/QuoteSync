@@ -121,6 +121,7 @@ export function createLifecycleService(db, options = {}) {
     followupAttemptedAt: row.followup_attempted_at || null,
     followupSentAt: row.followup_sent_at || null,
     followupFailure: row.followup_failure || '',
+    followupDeliveryState: row.followup_sent_at ? 'sent' : row.followup_delivery_state || (row.followup_attempted_at ? 'uncertain' : 'pending'),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
@@ -573,7 +574,7 @@ export function createLifecycleService(db, options = {}) {
     const dueAt=text(input.responseDueAt),parsedDue=new Date(dueAt);if(!dueAt||Number.isNaN(parsedDue.getTime()))throw problem('Choose a valid revised supplier response date.',422,'supplier_response_due_invalid');
     const row=await db.get("SELECT * FROM supplier_enquiry_drafts WHERE id=? AND request_kind='revision' AND status='sent'",supplierEnquiryId);if(!row)throw problem('The sent supplier revision request was not found.',404,'supplier_revision_dispatch_not_found');
     if(row.response_state==='revised_document_received'||row.completed_at)throw problem('This supplier revision has already been received or completed.',409,'supplier_revision_already_received');
-    const at=stamp();await db.run("UPDATE supplier_enquiry_drafts SET response_due_at=?,followup_due_at=?,followup_attempted_at=NULL,followup_failure='',updated_at=? WHERE id=?",parsedDue.toISOString(),parsedDue.toISOString(),at,row.id);
+    const at=stamp();await db.run("UPDATE supplier_enquiry_drafts SET response_due_at=?,followup_due_at=?,updated_at=? WHERE id=?",parsedDue.toISOString(),parsedDue.toISOString(),at,row.id);
     if(row.revision_request_id)await db.run("UPDATE supplier_revision_requests SET response_due_at=?,workflow_state='sent_to_supplier',updated_at=? WHERE id=?",parsedDue.toISOString(),at,row.revision_request_id);
     return supplierEnquiryView(await db.get("SELECT se.*,s.supplier_name FROM supplier_enquiry_drafts se LEFT JOIN supplier_commercial_defaults s ON s.supplier_code=se.supplier_id WHERE se.id=?",row.id));
   }
@@ -584,8 +585,10 @@ export function createLifecycleService(db, options = {}) {
     if(row.response_state!=='outstanding'||row.completed_at)throw problem('A supplier response has already been recorded, so no follow-up is required.',409,'supplier_revision_response_recorded');
     if(row.followup_sent_at)throw problem('The supplier follow-up was already sent.',409,'supplier_revision_followup_already_sent');
     if(!row.followup_failure)throw problem('There is no failed follow-up to retry.',409,'supplier_revision_followup_not_failed');
+    if(row.followup_delivery_state!=='not_sent')throw problem('The follow-up delivery outcome is uncertain. Do not send another copy. Check the connected mailbox and retain this request for delivery review.',409,'supplier_followup_delivery_unconfirmed');
     const at=stamp();
-    await db.run("UPDATE supplier_enquiry_drafts SET followup_due_at=?,followup_attempted_at=NULL,followup_failure='',updated_at=? WHERE id=?",at,at,row.id);
+    const retry=await db.run("UPDATE supplier_enquiry_drafts SET followup_due_at=?,followup_attempted_at=NULL,followup_failure='',followup_delivery_state='',updated_at=? WHERE id=? AND followup_delivery_state='not_sent' AND followup_sent_at IS NULL AND response_state='outstanding' AND completed_at IS NULL",at,at,row.id);
+    if(!retry.changes)throw problem('The follow-up changed while retrying. Reopen the request to see its current outcome.',409,'supplier_followup_changed');
     await event('supplier.revision.followup_retry_queued',row.id,[{kind:'supplier_enquiry',id:row.id}]);
     return supplierEnquiryView(await db.get("SELECT se.*,s.supplier_name FROM supplier_enquiry_drafts se LEFT JOIN supplier_commercial_defaults s ON s.supplier_code=se.supplier_id WHERE se.id=?",row.id));
   }
@@ -594,22 +597,33 @@ export function createLifecycleService(db, options = {}) {
     if(delivery.publicStatus().deliveryMode!=='test_allowlist')return{processed:0,sent:0,failed:0,skipped:'Automatic supplier follow-up delivery is not enabled.'};
     const at=stamp(),rows=await db.all(`SELECT * FROM supplier_enquiry_drafts WHERE request_kind='revision' AND status='sent' AND response_state='outstanding' AND followup_due_at IS NOT NULL AND followup_due_at<=? AND followup_attempted_at IS NULL AND followup_sent_at IS NULL ORDER BY followup_due_at LIMIT 25`,at);let sentCount=0,failed=0;
     for(const candidate of rows){
-      const claimed=await db.run(`UPDATE supplier_enquiry_drafts SET followup_attempted_at=?,updated_at=? WHERE id=? AND status='sent' AND response_state='outstanding' AND followup_attempted_at IS NULL AND followup_sent_at IS NULL`,at,at,candidate.id);if(Number(claimed.changes||0)!==1)continue;
+      const claimed=await db.run(`UPDATE supplier_enquiry_drafts SET followup_attempted_at=?,followup_delivery_state='sending',updated_at=? WHERE id=? AND status='sent' AND response_state='outstanding' AND followup_attempted_at IS NULL AND followup_sent_at IS NULL AND completed_at IS NULL AND followup_due_at<=?`,at,at,candidate.id,at);if(Number(claimed.changes||0)!==1)continue;
+      let providerStarted=false,confirmed;
       try{
-        const current=await db.get("SELECT * FROM supplier_enquiry_drafts WHERE id=?",candidate.id);if(!current||current.response_state!=='outstanding'||current.status!=='sent')continue;
+        const current=await db.get("SELECT * FROM supplier_enquiry_drafts WHERE id=?",candidate.id);if(!current||current.response_state!=='outstanding'||current.status!=='sent'){
+          if(current)await db.run("UPDATE supplier_enquiry_drafts SET followup_due_at=NULL,followup_delivery_state='cancelled',updated_at=? WHERE id=?",stamp(),current.id);
+          continue;
+        }
         delivery.assertRecipient(current.recipient,'factory');const original=await communications.get(current.communication_message_id);if(!original)throw problem('The original sent supplier request could not be reopened.',409,'supplier_followup_original_missing');
         const eligible=await db.get(`SELECT se.id FROM supplier_enquiry_drafts se
           JOIN supplier_revision_requests sr ON sr.id=se.revision_request_id
           WHERE se.id=? AND se.status='sent' AND se.response_state='outstanding'
-          AND se.completed_at IS NULL AND se.followup_sent_at IS NULL
+          AND se.completed_at IS NULL AND se.followup_sent_at IS NULL AND se.followup_due_at<=?
           AND sr.status<>'cancelled' AND sr.completed_at IS NULL
           AND sr.workflow_state NOT IN ('cancelled','superseded','revised_customer_estimate_issued')
-          AND NOT EXISTS(SELECT 1 FROM supplier_enquiry_drafts successor WHERE successor.supersedes_id=se.id AND successor.status<>'cancelled')`,current.id);
-        if(!eligible){await db.run('UPDATE supplier_enquiry_drafts SET followup_due_at=NULL,updated_at=? WHERE id=?',stamp(),current.id);continue;}
+          AND NOT EXISTS(SELECT 1 FROM supplier_enquiry_drafts successor WHERE successor.supersedes_id=se.id AND successor.status<>'cancelled')`,current.id,stamp());
+        if(!eligible){await db.run("UPDATE supplier_enquiry_drafts SET followup_due_at=CASE WHEN followup_due_at>? THEN followup_due_at ELSE NULL END,followup_attempted_at=NULL,followup_delivery_state='',updated_at=? WHERE id=?",stamp(),stamp(),current.id);continue;}
         const followupId=`supplier-followup-${current.id}`,bodyText=`Please could you provide an update on the requested revised estimate for ${current.subject}?`;
-        const sent=await communicationService.sendMessage({id:followupId,provider:'google_workspace',direction:'outbound',folder:'sent',status:'sending',from:[],to:[current.recipient],cc:[],bcc:[],subject:`Follow-up: ${current.subject}`,bodyText,bodyHtml:`<p>${bodyText}</p>`,inReplyToProviderMessageId:original.providerMessageId||null,links:[{kind:'project',id:current.project_id},{kind:'estimate',id:current.estimate_id},{kind:'supplier_enquiry',id:current.id},...(current.revision_request_id?[{kind:'supplier_revision_request',id:current.revision_request_id}]:[])]});
-        const sentAt=sent.sentAt||stamp();await db.run("UPDATE supplier_enquiry_drafts SET followup_sent_at=?,followup_message_id=?,followup_failure='',updated_at=? WHERE id=?",sentAt,sent.id,sentAt,current.id);await event('supplier.revision.followup_sent',current.id,[{kind:'supplier_enquiry',id:current.id},{kind:'communication',id:sent.id}]);sentCount+=1;
-      }catch(error){failed+=1;await db.run("UPDATE supplier_enquiry_drafts SET followup_failure=?,updated_at=? WHERE id=?",error instanceof Error?error.message:'Follow-up delivery failed.',stamp(),candidate.id);}
+        providerStarted=true;
+        const sent=await communicationService.sendMessage({id:followupId,provider:'google_workspace',direction:'outbound',folder:'sent',status:'sending',from:[],to:[current.recipient],cc:[],bcc:[],subject:`Follow-up: ${current.subject}`,bodyText,bodyHtml:`<p>${bodyText.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')}</p>`,threadId:original.threadId||null,inReplyToProviderMessageId:original.providerMessageId||null,links:[{kind:'project',id:current.project_id},{kind:'estimate',id:current.estimate_id},{kind:'supplier_enquiry',id:current.id},...(current.revision_request_id?[{kind:'supplier_revision_request',id:current.revision_request_id}]:[])]});
+        if(!sent?.providerMessageId)throw new Error('The provider did not confirm the follow-up message identity.');
+        confirmed=sent;
+        const sentAt=sent.sentAt||stamp();await db.run("UPDATE supplier_enquiry_drafts SET followup_sent_at=?,followup_message_id=?,followup_delivery_state='sent',followup_failure='',updated_at=? WHERE id=?",sentAt,sent.id,sentAt,current.id);await event('supplier.revision.followup_sent',current.id,[{kind:'supplier_enquiry',id:current.id},{kind:'communication',id:sent.id}]);sentCount+=1;
+      }catch(error){
+        const providerConfirmed=confirmed?.providerMessageId||(error.deliveryOutcome==='sent'&&error.providerMessageId),state=providerConfirmed?'sent':!providerStarted||error.deliveryOutcome==='not_sent'?'not_sent':'uncertain';
+        const message=state==='sent'?'The provider confirmed the follow-up, but local completion needs review. Do not resend.':state==='not_sent'?`Nothing was sent. ${error.message||'Correct the reported issue and retry.'}`:'Follow-up delivery could not be confirmed. Do not resend; check the connected mailbox and request delivery review.';
+        failed+=1;await db.run("UPDATE supplier_enquiry_drafts SET followup_delivery_state=?,followup_sent_at=COALESCE(followup_sent_at,?),followup_message_id=COALESCE(followup_message_id,?),followup_failure=?,updated_at=? WHERE id=?",state,providerConfirmed?confirmed?.sentAt||stamp():null,providerConfirmed?`supplier-followup-${candidate.id}`:null,message,stamp(),candidate.id);
+      }
     }
     return{processed:rows.length,sent:sentCount,failed};
   }
