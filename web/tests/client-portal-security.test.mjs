@@ -228,6 +228,16 @@ test("customer changes produce a carried-forward working revision, attached chan
   await assert.rejects(()=>issuance.prepare(issueInput),error=>error.code==='supplier_revision_responses_outstanding'&&error.details.outstandingSuppliers.length===1&&error.details.outstandingSuppliers[0].id===second.id&&error.message.includes('Second Supplier'));
   await lifecycle.linkManufacturerResponse("project-a1",{estimateId:successor.id,supplierEnquiryId:second.id,communicationMessageId:"second-revision-reply",canonicalDocumentId:"document-safe",createdBy:"staff-1"});
   const terms=await issuance.saveCustomerTerms(successor.id,{validityDays:30,terms:["Final dimensions are subject to survey."],exclusions:["Building work by others."],reviewedBy:"staff-1"});projection.commercialTerms={validityDays:terms.validityDays,terms:terms.terms,exclusions:terms.exclusions,reviewed:true,reviewedAt:terms.reviewedAt};const prepared=await issuance.prepare(issueInput);assert.equal(prepared.status,"prepared_not_sent");
+  assert.equal((await issuance.prepare(issueInput)).id,prepared.id);
+  const preparedEvidence=await source.db.get('SELECT supplier_review_snapshot,document_id,communication_message_id FROM issued_quotations WHERE id=?',prepared.id);
+  assert.ok(preparedEvidence.supplier_review_snapshot);
+  await lifecycle.attachSupplierRevisionDocument(request.id,{sourceKind:'canonical_document',canonicalDocumentId:'document-safe',revision:'4',reviewedBy:'staff-1'});
+  await lifecycle.verifySupplierRevision(request.id,{reviewedBy:'staff-1',checks:currentReview.checks.filter(row=>row.change_kind==='requested').map(recheck),unrelatedChanges:currentReview.checks.filter(row=>row.change_kind==='unrelated_material_change').map(recheck)});
+  await assert.rejects(()=>issuance.send(prepared.id),error=>error.code==='supplier_review_changed_after_preparation'&&error.message.includes('Nothing was sent'));
+  assert.deepEqual(await source.db.get('SELECT supplier_review_snapshot,document_id,communication_message_id FROM issued_quotations WHERE id=?',prepared.id),preparedEvidence);
+  assert.equal((await messages.get(preparedEvidence.communication_message_id)).status,'draft');
+  const refreshedPreparation=await issuance.prepare(issueInput);
+  assert.notEqual(refreshedPreparation.id,prepared.id);assert.equal((await issuance.prepare(issueInput)).id,refreshedPreparation.id);
   await lifecycle.prepareSupplierEnquiry("project-a1",{...dispatchInput,supplierId:"SECOND-SUPPLIER",subject:"Further reviewed supplier changes",idempotencyKey:"multi-after-preparation"});
   await assert.rejects(()=>issuance.send(prepared.id),error=>error.code==='supplier_revision_responses_outstanding'&&error.message.includes('Nothing was sent'));
   assert.equal((await source.db.get('SELECT status FROM issued_quotations WHERE id=?',prepared.id)).status,'prepared_not_sent');

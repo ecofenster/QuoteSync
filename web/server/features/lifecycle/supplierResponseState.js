@@ -17,6 +17,25 @@ export async function staleSupplierReviewCount(db, request) {
   return Number(row?.count || 0);
 }
 
+// Freeze the exact review behind a prepared customer document. New supplier work
+// must never make an older prepared PDF sendable merely by becoming verified.
+export async function supplierReviewPreparationSnapshot(db, request) {
+  if (!request) return null;
+  const checks=await db.all(`SELECT estimate_position_id,field_key,requested_change,before_value,expected_value,
+    after_value,status,before_source_reference,after_source_reference,resolution_note,resolved_by,resolved_at,change_kind,source_identity
+    FROM revision_change_checks WHERE supplier_revision_request_id=? ORDER BY estimate_position_id,field_key,id`,request.id);
+  const suppliers=await db.all(`SELECT se.id,se.supplier_id,se.response_state
+    FROM supplier_enquiry_drafts se WHERE se.revision_request_id=? AND se.status<>'cancelled'
+    AND NOT EXISTS(SELECT 1 FROM supplier_enquiry_drafts next WHERE next.supersedes_id=se.id AND next.status<>'cancelled')
+    ORDER BY se.id`,request.id);
+  const responses=[];
+  for(const supplier of suppliers)responses.push({supplier,documents:await db.all(`SELECT link.id,link.communication_message_id,link.canonical_document_id,
+    doc.provider_revision,doc.checksum,doc.removed_at,doc.trashed
+    FROM manufacturer_response_links link JOIN canonical_documents doc ON doc.id=link.canonical_document_id
+    WHERE link.supplier_enquiry_id=? ORDER BY link.id`,supplier.id)});
+  return JSON.stringify({requestId:request.id,source:supplierReviewSourceIdentity(request),verifiedAt:request.verified_at,status:request.status,checks,responses});
+}
+
 // Shared by reviewed reply linking and provider-confirmed filing; safe on retry.
 export async function recordSupplierResponseState(db, { supplierEnquiryId, documentId, receivedAt }) {
   if (!supplierEnquiryId) return;

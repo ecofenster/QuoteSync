@@ -368,6 +368,7 @@ export async function initializeWorkflowSchema(db) {
   await ensureColumn(db, "followups", "issued_quotation_id", "TEXT");
   await ensureColumn(db, "followups", "communication_message_id", "TEXT");
   await ensureColumn(db, "followups", "origin_event_id", "TEXT");
+  await ensureColumn(db, "issued_quotations", "supplier_review_snapshot", "TEXT");
   for (const statement of indexes) await db.exec(statement);
   for (const name of ["trg_customer_quotation_documents_immutable_update","trg_customer_quotation_documents_immutable_delete","trg_issued_quotations_immutable_after_issue","trg_issued_quotations_no_delete_after_issue","trg_issued_quotation_lifecycle_immutable_update","trg_issued_quotation_lifecycle_immutable_delete"]) await db.exec(`DROP TRIGGER IF EXISTS ${name}`);
   for (const statement of triggers) await db.exec(statement);
