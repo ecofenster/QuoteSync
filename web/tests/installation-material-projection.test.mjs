@@ -6,6 +6,15 @@ import {projectInstallationDocument} from '../server/features/installationSafety
 import {renderInstallationDocumentPdf} from '../server/features/installationSafety/installationDocumentRenderer.js';
 import {getDocument} from 'pdfjs-dist/legacy/build/pdf.mjs';
 
+test('membrane area uses selected saved width and required length once, not labels or rounded purchases',()=>{
+  const input={positions:[{id:'p',quantity:2,widthMm:1000,heightMm:1200,framePerimeterMetres:8.8,includedInCurrentEstimate:true}],rules:{},options:{materialSelections:{ME508:{required:true,productId:'membrane'}}},catalogue:[{id:'membrane',category:'illbruck_me508',active:true,label:'Retained membrane',rateType:'roll',currency:'GBP',priceAmount:'50',variant:{rollLengthM:25,rollWidthMm:250}}]};
+  const calculation=calculateInstallationMaterials(input),before=JSON.stringify(calculation),membrane=projectInstallationMaterials(calculation).rows.find(item=>item.code==='ME508');
+  assert.equal(membrane.rollWidthMm,250);assert.equal(membrane.linearMetres,10.12);assert.equal(membrane.areaSquareMetres,2.53);assert.equal(membrane.quantity,1);assert.match(membrane.areaBasis,/not net installed coverage/);
+  input.catalogue[0].variant.rollWidthMm=100;assert.equal(projectInstallationMaterials(calculation).rows.find(item=>item.code==='ME508').areaSquareMetres,2.53,'Later catalogue edits cannot rewrite retained calculation evidence');
+  assert.equal(JSON.stringify(calculation),before);
+  for(const width of [null,0,-1,'unknown']){const missing=structuredClone(calculation);missing.simpleMaterials.find(item=>item.code==='ME508').rollWidthMm=width;assert.equal(projectInstallationMaterials(missing).rows.find(item=>item.code==='ME508').areaSquareMetres,null);}
+});
+
 test('actual saved material calculation projects units and quantities without commercial fields in installer PDF',async()=>{
   const catalogue=[{id:'membrane',category:'illbruck_me508',active:true,label:'ME508 100 mm',rateType:'roll',currency:'GBP',priceAmount:'8765.43',variant:{rollLengthM:25}},{id:'gun',category:'tool',active:true,label:'AA270',currency:'GBP',priceAmount:'9876.54',variant:{productCode:'AA270'}}];
   const result=calculateInstallationMaterials({positions:[{id:'p',displayReference:'W01',quantity:2,widthMm:1000,heightMm:1200,framePerimeterMetres:8.8,includedInCurrentEstimate:true}],rules:{},options:{materialSelections:{ME508:{required:true,productId:'membrane'},AA270:{required:true,productId:'gun'}}},catalogue});

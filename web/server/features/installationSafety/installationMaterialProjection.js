@@ -9,6 +9,11 @@ const basis=item=>{
   }
   return number(item.contingencyPercent)!==null?`Saved installation-joint perimeter plus ${item.contingencyPercent}% linear contingency; whole-unit rounding`:'Calculation basis not confirmed';
 };
+const membraneArea=item=>{
+  const width=number(item.rollWidthMm),length=number(item.requiredLengthM);
+  if(!['ME508','ME501'].includes(item.code)||!item.productId||!(width>0)||length===null)return {};
+  return {rollWidthMm:width,areaSquareMetres:Number((length*width/1000).toFixed(6)),areaBasis:'Saved linear requirement including its contingency × selected membrane width; not net installed coverage or whole-roll purchased area'};
+};
 
 // Installer-safe operational projection only. Never copy catalogue or purchasing objects wholesale.
 export function projectInstallationMaterials(result){
@@ -17,7 +22,7 @@ export function projectInstallationMaterials(result){
     code:text(item.code),name:text(item.variantLabel||item.label)||'Not confirmed',
     quantity:number(item.purchaseUnits),unit:text(item.purchaseUnit)||'Not confirmed',
     linearMetres:number(item.requiredLengthM),baseLinearMetres:result.perimeterStatus==='available'?number(item.baseLinearMetres):null,
-    areaSquareMetres:null,rolls:number(item.rollsRequired),rollLengthMetres:number(item.rollLengthM),cans:number(item.purchasedCans),
+    areaSquareMetres:null,...membraneArea(item),rolls:number(item.rollsRequired),rollLengthMetres:number(item.rollLengthM),cans:number(item.purchasedCans),
     contingencyPercent:number(item.contingencyPercent),basis:basis(item),status:status(item.status),
   }));
   for(const [key,name] of [['brackets','Brackets'],['frameScrews','Bracket-to-frame screws'],['substrateFixings','Substrate fixings']]){

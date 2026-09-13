@@ -203,6 +203,8 @@ export function calculateInstallationMaterials({ positions, rules, options, cata
     if(unresolvedPerimeter)return{...base,rollsRequired:null,packsRequired:null,purchaseUnits:null,purchaseUnit:"roll",quantity:null,purchaseCost:null,status:"Perimeter review required"};
     if(!selected)return{...base,productId:null,variantLabel:null,rollsRequired:null,packsRequired:null,purchaseUnits:null,purchaseUnit:"roll",quantity:null,purchaseCost:null,status:"Variant / joint specification required"};
     const rollLength=number(selected.variant?.rollLengthM),rollsPerPack=number(selected.variant?.rollsPerBox??selected.variant?.packQuantity??1);
+    // Operational evidence from this selected catalogue snapshot, not a parsed label.
+    if(['ME508','ME501'].includes(code)&&number(selected.variant?.rollWidthMm)>0)base.rollWidthMm=number(selected.variant.rollWidthMm);
     if(!rollLength)return{...base,label:selected.label,rollsRequired:null,packsRequired:null,purchaseUnits:null,purchaseUnit:"roll",quantity:null,purchaseCost:null,status:"Roll length specification required"};
     const rollsRequired=Math.ceil(requiredLengthM/rollLength),packsRequired=Math.ceil(rollsRequired/Math.max(1,rollsPerPack)),pricedQuantity=selected.rateType==="roll"?rollsRequired:packsRequired;
     const currency=String(selected.currency??"GBP").toUpperCase(),currencyReady=currency==="GBP";

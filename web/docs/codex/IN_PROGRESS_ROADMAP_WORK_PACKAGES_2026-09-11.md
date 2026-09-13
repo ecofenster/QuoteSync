@@ -1,5 +1,13 @@
 # In-progress Roadmap completion programme
 
+## 13 September — saved membrane width and area allowance
+
+ME508 and ME501 calculations now retain explicit rollWidthMm from their selected catalogue snapshot. Installer material projection uses required linear metres × width once, with the linear calculation's existing contingency. The PDF calls this Membrane area allowance and explains that it is not net installed coverage or whole-roll purchased area. Missing/invalid width or length stays unknown; product labels are not parsed for geometry. Required roll quantities, purchase costs and pricing remain unchanged. Later Administration changes do not rewrite the retained calculation or previously prepared documents.
+
+Seven focused projection/PDF checks, forty-two existing installation-material rule/snapshot/API regressions and full typecheck pass. Normal WinPro browser session 78286 exits 0 through twelve-position genuine-source import/repeat/reload, ordinary ME508 250 mm selection, document preparation failure/retry, client separation, history paging/retry and smaller-screen actions. It verifies saved projection width 250 mm, area equal to saved linear requirement × 0.25, and the exact square-metre value and basis in independently read PDF. Installer PDF SHA256 3df142e0167ff9def1b20949ab7512c7a431ed0956a1c10614294297cf3e46b6 has six pages. All twelve manufacturer weights/openings remain passing. Shared finally cleanup performs independent post-cleanup process/profile counts: both zero; user API 87691867-55b0-49b6-8af6-c5411032cfe3 remains unchanged during acceptance under its existing watcher.
+
+Existing survey-delivery-installation stays partial/unaccepted with unchanged original-73 mapping and counts. Next: support/material details, drawing selection and installer travel/crew workflow, while genuine missing-weight normal-route coverage remains open. Survey approval and reviewed delivery remain incomplete. No live data/provider/email changes. Existing AGENTS material-snapshot and unknown-evidence rules apply without duplication. Local checkpoint only; push remains permission-blocked.
+
 ## 13 September — positive WinPro normal-route installation evidence
 
 The shared owned browser journey now supports a separate immutable WinPro source profile using --stop-after-winpro-installation-documents; the existing WEB source mode remains available. Both profiles retain explicit reviewed source hashes, Position counts and commercial totals rather than deriving test expectations from the output being tested.
