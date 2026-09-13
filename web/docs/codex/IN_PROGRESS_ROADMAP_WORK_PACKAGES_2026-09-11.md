@@ -1,5 +1,11 @@
 # In-progress Roadmap completion programme
 
+## 13 September — watcher recovery verification
+
+Checkpoint e1431d3 is pushed. The focused runtime suite now has six passing tests, including a real owned child recovering after imported dependency deletion/restoration and a syntax error/correction. Each replacement follows the preceding child's exit; repeated stop calls leave no child alive, and later file edits do not restart a stopped watcher. All files and processes are disposable and cleaned in finally. This adds technical recovery evidence to platform-web, not user acceptance or adoption in the existing native-watch session. The Order full-reload runtime gate remains open. No new permanent rule is required.
+
+Read-only runtime comparison found the existing native-watch supervisor still at PID 29604, but its API instance changed from f80cdee1-4a5e-4ec3-bcdf-4ad46114583c to 358d62ce-2954-4320-8fd4-eaed22262de4 during this work. Codex did not stop or replace it. Therefore this session does not claim unchanged user API instance evidence; the disposable watcher tests pass independently, while rollout remains outstanding.
+
 ## 13 September — content-aware development watcher implemented
 
 The platform-web prerequisite now replaces native --watch for future combined-supervisor starts with a content-aware owned watcher. It tracks actual require/import dependency reports from the installed Node runtime, watches their directories for signals and compares settled SHA-256 content before restart. An early test exposed transient truncation during an identical rewrite; comparison now happens after debounce rather than treating intermediate bytes as restart evidence. Restarts serialize termination of the exact owned child before replacement. API/runtime ownership and occupied-port refusal remain unchanged.
