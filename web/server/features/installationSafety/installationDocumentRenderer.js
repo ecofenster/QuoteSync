@@ -1,0 +1,24 @@
+import pdfMake from 'pdfmake/build/pdfmake.js';
+import pdfFonts from 'pdfmake/build/vfs_fonts.js';
+pdfMake.addVirtualFileSystem(pdfFonts);
+const value=(input,unit='')=>input===null||input===undefined||input===''?'Not confirmed':`${input}${unit?` ${unit}`:''}`;
+const money=input=>input===null||input===undefined?'Not confirmed':new Intl.NumberFormat('en-GB',{style:'currency',currency:'GBP'}).format(input);
+const table=rows=>({table:{widths:[145,'*'],body:rows},layout:'lightHorizontalLines',margin:[0,5,0,10]});
+
+export function installationDocumentDefinition(document){
+  const installer=document.audience==='installer',title=installer?'Installer pack':'Schedule without prices';
+  const content=[{text:title,style:'title'},{text:'DRAFT — review required',bold:true,color:'#8a5b00',margin:[0,4,0,4]},{text:`${document.reference} · Revision ${document.revision}`,margin:[0,4,0,12]},table([['Client',value(document.clientName)],['Project',value(document.projectName)],['Site address',value(document.siteAddress)]]),{text:'Selected schedule',style:'heading'},
+    ...document.positions.flatMap(item=>[{text:value(item.reference),bold:true,margin:[0,8,0,3]},table([['Quantity',value(item.quantity)],['Scheduled dimensions',`${value(item.widthMm,'mm')} × ${value(item.heightMm,'mm')}`],['Manufacturer / system',`${value(item.manufacturer)} / ${value(item.system)}`],['Opening',value(item.opening)],['Room / floor',`${value(item.room)} / ${value(item.floor)}`]])]),
+    {text:'Schedule totals',style:'heading'},table([['Windows',String(document.totals.windows)],['Doors',String(document.totals.doors)],['Sliding doors',String(document.totals.slidingDoors)],['Lift-and-slide doors',String(document.totals.liftAndSlideDoors)],['Bifolds',String(document.totals.bifolds)],['Category not confirmed',String(document.totals.notConfirmed)]])];
+  if(installer){const item=document.installation,a=item.allowances,t=item.travel;
+    content.push({text:'Installer operational allowances',style:'heading'},table([['Installer / team',`${value(item.companyName)} / ${value(item.teamName)}`],['Productivity crew',value(item.productivityCrewSize,'people')],['Costed attendance crew',value(item.costedCrewSize,'people')],['Installation',value(item.installationDays,'days')],['Programme',value(item.programmeDays,'days')],['Food allowance',`${money(item.foodAllowance)} · ${value(a.costedPersonDays,'person-days')}`],['Accommodation',`${money(item.accommodationAllowance)} · ${value(a.accommodationPersonNights,'person-nights')} at ${money(a.accommodationRate)} per person/night`],['Nights away',value(a.nights,'nights')],['Window-cill fitting',`${value(a.cillApplicableQuantity,'cills')} at ${money(a.cillInstallationRate)} per cill · total ${money(item.cillAllowance)}`]]),
+      {text:'Travel',style:'heading'},table([['Departure',value(t.departure)],['Destination',value(t.destination)],['One-way travel time',t.oneWayMinutes===null?'Travel time not confirmed':value(t.oneWayMinutes,'minutes')],['Return travel time',t.returnMinutes===null?'Travel time not confirmed':value(t.returnMinutes,'minutes')],['Journey pattern',t.pattern==='daily_travel'?'Daily return travel':t.pattern==='stay_away'?'Outward and return around an overnight stay':'Not confirmed'],['Route basis',value(t.basis)]]),
+      {text:'Provision',style:'heading'},table(Object.entries(item.inclusions).map(([key,included])=>[{food:'Food',accommodation:'Accommodation',cillInstallation:'Window-cill fitting',liftingEquipment:'Lifting equipment',skipHire:'Skip'}[key],included===null?'Not confirmed':included?'Included':'Excluded'])),
+      {text:'Team qualifications',style:'heading'},...(item.qualificationSummary.length?item.qualificationSummary.map(member=>({text:`${member.name}: ${member.summary}`,margin:[0,3,0,3]})):[{text:'Not confirmed'}]),
+      {text:'Review before attending',style:'heading'},{text:'Position weights, material quantities, drawings, support details and any unconfirmed fields require review before this pack is ready for use. This preparation does not confirm lifting loads or authorise installation.'});
+  }
+  return {pageSize:'A4',pageMargins:[38,38,38,44],defaultStyle:{font:'Roboto',fontSize:9,color:'#17211d'},styles:{title:{fontSize:20,bold:true,color:'#17211d'},heading:{fontSize:13,bold:true,color:'#17211d',margin:[0,12,0,5]}},footer:(page,total)=>({text:`${document.reference} · R${document.revision} · ${page} / ${total}`,margin:[38,10,38,0],fontSize:7,color:'#58645e'}),content};
+}
+export async function renderInstallationDocumentPdf(document){
+  return new Promise((resolve,reject)=>{try{pdfMake.createPdf(installationDocumentDefinition(document)).getBuffer(bytes=>resolve(Buffer.from(bytes)))}catch(error){reject(error)}});
+}
