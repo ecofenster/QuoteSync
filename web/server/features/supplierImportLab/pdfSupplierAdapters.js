@@ -1009,7 +1009,22 @@ function parseEkoWebItemised(document) {
     const colour=colourBlocks.length===1?colourBlocks[0]:null;
     const colourValue=colour?String(colour.text).trim().replace(/^Colour\s*:\s*/i,''):null;
     const colourFieldId=`eko-web-${marker.reference}-colour`;
-    const sourceSpecification=colour?{version:'manufacturer-source-specification-v1',supplierInterpretation:'eko_web_itemised_colour_v1',sourceAttachmentId:document.attachmentId,sourceAttachmentHash:document.sourceSha256,sourcePage:marker.page.pageNumber,sourcePages:[marker.page.pageNumber],coordinateSpace:'pdf_points',fieldCount:1,sections:[{name:'Finish',fields:[{id:colourFieldId,ordinal:0,section:'Finish',label:'Colour',rawValue:colourValue,sourceText:colour.text,sourcePage:marker.page.pageNumber,boundingRegion:colour.boundingBox,coordinateSpace:'pdf_points',evidenceClass:'explicit',confidence:'strong',reviewStatus:'mapped_automatic',sourceBlockIds:[colour.id]}]}],canonical:{finish:{value:colourValue,manufacturerSourceValue:colourValue,sourceFieldIds:[colourFieldId]}}}:null;
+    let sourceSpecification=colour?{version:'manufacturer-source-specification-v1',supplierInterpretation:'eko_web_itemised_colour_v1',sourceAttachmentId:document.attachmentId,sourceAttachmentHash:document.sourceSha256,sourcePage:marker.page.pageNumber,sourcePages:[marker.page.pageNumber],coordinateSpace:'pdf_points',fieldCount:1,sections:[{name:'Finish',fields:[{id:colourFieldId,ordinal:0,section:'Finish',label:'Colour',rawValue:colourValue,sourceText:colour.text,sourcePage:marker.page.pageNumber,boundingRegion:colour.boundingBox,coordinateSpace:'pdf_points',evidenceClass:'explicit',confidence:'strong',reviewStatus:'mapped_automatic',sourceBlockIds:[colour.id]}]}],canonical:{finish:{value:colourValue,manufacturerSourceValue:colourValue,sourceFieldIds:[colourFieldId]}}}:null;
+    // This WEB layout owns a specification page only when its Position marker is unique.
+    // Reuse positioned table extraction, but do not promote unrelated specifications or
+    // continuation-page/quotation totals through this bounded weight correction.
+    if (markers.filter(item=>item.page.pageNumber===marker.page.pageNumber).length===1) {
+      const specification=extractEkoOknaSourceSpecification(document,positionBlocks.filter(block=>block.pageNumber===marker.page.pageNumber),marker.page.pageNumber);
+      const weights=(specification?.sections??[]).flatMap(section=>section.fields).filter(field=>field.label==='Unit weight');
+      const weight=weights.length===1&&/^\d+(?:[.,]\d+)?\s*kg$/i.test(weights[0].rawValue)&&Number(weights[0].normalizedValue)>0?weights[0]:null;
+      if(weight){
+        sourceSpecification??={version:'manufacturer-source-specification-v1',sourceAttachmentId:document.attachmentId,sourceAttachmentHash:document.sourceSha256,sourcePage:marker.page.pageNumber,sourcePages:[marker.page.pageNumber],coordinateSpace:'pdf_points',fieldCount:0,sections:[],canonical:{}};
+        sourceSpecification.supplierInterpretation='eko_web_itemised_colour_weight_v2';
+        sourceSpecification.sections.push({name:'Performance',fields:[weight]});
+        sourceSpecification.fieldCount+=1;
+        sourceSpecification.canonical.weightKg={value:weight.normalizedValue,manufacturerSourceValue:weight.rawValue,sourceFieldId:weight.id};
+      }
+    }
     const dimensions = ekoWebOverallDimensions(marker.page, markerIndex);
     const priceLabel = positionBlocks.findIndex((block) => /^Price$/i.test(block.text));
     const priceBlock = priceLabel >= 0 ? positionBlocks.slice(priceLabel + 1, priceLabel + 8).find((block) => /^[£€$]\s*[\d,.]+$/.test(block.text)) : null;

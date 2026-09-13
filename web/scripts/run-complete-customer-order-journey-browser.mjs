@@ -377,6 +377,17 @@ const startApi=()=>spawn(process.execPath, ["--import",pathToFileURL(path.resolv
       assert.deepEqual(await replayDb.all('SELECT id FROM supplier_quote_positions ORDER BY id'),retainedImportSnapshot.positions,'Repeat import duplicated or replaced canonical positions');
       assert.deepEqual(await replayDb.all('SELECT id,source_position_id,total_price_amount FROM project_calculator_estimate_product_rows ORDER BY id'),retainedImportSnapshot.costing,'Repeat import duplicated or changed costing evidence');
     }finally{await replayDb.close()}
+    if(process.argv.includes('--stop-after-source-weight-documents')){
+      await verifyInstallationDocuments({tab,click,waitFor,databasePath,output:OUTPUT,inspectPdf});
+      const weightsDb=await open({filename:databasePath,driver:sqlite3.Database,mode:sqlite3.OPEN_READONLY});
+      try{
+        const prepared=await weightsDb.get("SELECT projection_json FROM installation_prepared_documents WHERE audience='installer'"),projection=JSON.parse(prepared.projection_json);
+        const rows=await weightsDb.all('SELECT estimate_position_id,source_snapshot_json FROM project_calculator_estimate_product_rows');let confirmed=0;
+        for(const row of rows){const evidence=JSON.parse(row.source_snapshot_json).manufacturerEvidence,canonical=evidence?.canonicalSpecification,field=(evidence?.sourceSpecification?.sections||[]).flatMap(section=>section.fields||[]).find(item=>item.id===canonical?.weightKg?.sourceFieldId&&item.label==='Unit weight');if(!field)continue;const position=projection.positions.find(item=>item.id===row.estimate_position_id);assert.ok(position,'Source-owned Position is absent from installer PDF');assert.equal(position.weight.status,'manufacturer_stated_unit');assert.equal(position.weight.unitKg,Number(field.normalizedValue));assert.equal(position.weight.source.page,field.sourcePage);await inspectPdf(path.join(OUTPUT,'installer-pack-draft.pdf'),[`${Number(field.normalizedValue)} kg per unit`],[]);confirmed++;}
+        assert.equal(confirmed,5,'Every genuine source Position must retain its verified per-unit weight evidence');console.log(JSON.stringify({scope:'Genuine source upload/review/import/repeat/reload → material selection → retained installer PDF with exact manufacturer unit weights',sourceSha256:sha256(originalSource),sourceWeightPositions:confirmed,sent:false}));
+      }finally{await weightsDb.close();}
+      return;
+    }
     if(process.argv.includes('--stop-after-manufacturer-import')){console.log(JSON.stringify({scope:'Normal application through genuine-source final Manufacturer Import, repeat upload/import and reload',positions:5,sourceSha256:sha256(originalSource),repeatPreservedSourceAndPositionIdentities:true,exchangeRate:'explicit disposable fixture',twoSupplierReviewAndReissueVerified:false}));return;}
     if(providerJourney){
       const providerDb=await open({filename:databasePath,driver:sqlite3.Database});
