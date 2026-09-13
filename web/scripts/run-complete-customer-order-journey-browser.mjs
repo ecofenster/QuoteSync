@@ -50,7 +50,8 @@ const sourceCustomerReissue=sourceCustomerOrder||process.argv.includes('--stop-a
 const sourceCustomerPreparation=sourceCustomerReissue||process.argv.includes('--stop-after-source-backed-customer-preparation');
 const sourceReviewCorrection=process.argv.includes('--stop-after-source-review-correction');
 const overallSourceReview=sourceReviewCorrection||sourceCustomerPreparation||process.argv.includes('--stop-after-source-backed-overall-review');
-const receivedSupplierReviews=process.argv.includes('--stop-after-received-supplier-reviews');
+const multiSourceFields=process.argv.includes('--stop-after-multi-source-field-review');
+const receivedSupplierReviews=multiSourceFields||process.argv.includes('--stop-after-received-supplier-reviews');
 const multiSupplierReview=receivedSupplierReviews||process.argv.includes('--stop-after-multi-supplier-review');
 const providerJourneyRequested=supplierFollowup||overallSourceReview||receivedSupplierReviews||['--stop-after-supplier-filing','--stop-after-supplier-review','--stop-after-multi-supplier-review'].some(flag=>process.argv.includes(flag));
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
@@ -662,6 +663,24 @@ const startApi=()=>spawn(process.execPath, ["--import",pathToFileURL(path.resolv
           const replies=await bothDb.all('SELECT DISTINCT canonical_document_id FROM manufacturer_response_links');assert.equal(replies.length,2);
           assert.equal((await bothDb.get('SELECT verified_at FROM supplier_revision_requests')).verified_at,null);assert.equal((await bothDb.get('SELECT COUNT(*) count FROM issued_quotations')).count,1);
         }finally{await bothDb.close()}
+        if(multiSourceFields){
+          await tab.evaluate("(()=>{const select=[...document.querySelectorAll('label')].find(item=>item.textContent.startsWith('Source kind')||item.textContent.startsWith('Source')).querySelector('select');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,'canonical_document');select.dispatchEvent(new Event('change',{bubbles:true}))})()");
+          await tab.evaluate("(()=>{const select=[...document.querySelectorAll('label')].find(item=>item.textContent.startsWith('Reviewed document')).querySelector('select'),option=[...select.options].find(item=>item.textContent.includes('web-26-1133450.pdf'));Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,option.value);select.dispatchEvent(new Event('change',{bubbles:true}))})()");
+          await click(tab,'Link returned revision');await waitFor(()=>tab.evaluate("document.body.innerText.includes('Choose the returned document supporting each field')"),'Per-field supplier source choices missing');
+          const fieldSection="[...document.querySelectorAll('fieldset')].find(item=>item.querySelector('legend')?.textContent==='Requested-change verification')";
+          const fieldCount=await tab.evaluate(`(${fieldSection}).querySelectorAll('article').length`);
+          for(let index=0;index<fieldCount;index++)for(const [label,value] of [['Before','Original issued schedule'],['After','Position mapping not confirmed'],['Before source','Disposable issued schedule'],['After source','Retained source; Position correspondence remains unreviewed']])await tab.evaluate(`(()=>{const input=[...(${fieldSection}).querySelectorAll('article')[${index}].querySelectorAll('label')].find(item=>item.textContent===${JSON.stringify(label)}).querySelector('input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(value)});input.dispatchEvent(new Event('input',{bubbles:true}))})()`);
+          assert.equal(await tab.evaluate(`([...(${fieldSection}).querySelectorAll('button')].find(item=>item.textContent==='Verify changes')).disabled`),false,'Complete field inputs must enable verification');
+          await click(tab,'Verify changes');await waitFor(()=>tab.evaluate("document.body.innerText.includes('Choose the source document for each field')"),'Ambiguous multi-source submission was not explained');
+          const selectedFieldSources=await tab.evaluate("(()=>{const section=[...document.querySelectorAll('fieldset')].find(item=>item.querySelector('legend')?.textContent==='Requested-change verification'),selects=[...section.querySelectorAll('select')];return selects.map((select,index)=>{const option=[...select.options].find(item=>item.textContent.includes(index===0?'web-26-1133450.pdf':'343117-3'));Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,option.value);select.dispatchEvent(new Event('change',{bubbles:true}));return option.value})})()");
+          assert.equal(new Set(selectedFieldSources).size,2);await click(tab,'Verify changes');await waitFor(()=>tab.evaluate("document.body.innerText.includes('item(s) still need attention')"),'Unreviewed Position mapping was incorrectly approved');
+          const fieldDb=await open({filename:databasePath,driver:sqlite3.Database,mode:sqlite3.OPEN_READONLY});try{const checks=await fieldDb.all('SELECT * FROM revision_change_checks');assert.equal(new Set(checks.map(row=>row.source_document_id)).size,2);assert.ok(checks.every(row=>row.status==='needs_review'&&row.source_document_name&&JSON.parse(row.source_identity)[1]===row.source_document_id));assert.equal((await fieldDb.get('SELECT verified_at FROM supplier_revision_requests')).verified_at,null);assert.equal((await fieldDb.get('SELECT COUNT(*) count FROM issued_quotations')).count,1)}finally{await fieldDb.close()}
+          const origin=await tab.evaluate('performance.timeOrigin');await tab.send('Page.reload');await waitFor(()=>tab.evaluate(`performance.timeOrigin!==${origin}&&document.body.innerText.includes('Client Portal')`),'Staff reload did not complete');
+          await click(tab,'Client Portal');await waitFor(()=>tab.evaluate("document.body.innerText.includes('Review changes')"),'Saved customer change was absent after reload');await click(tab,'Review changes');
+          await waitFor(()=>tab.evaluate("document.body.innerText.includes('Choose the returned document supporting each field')"),'Saved field sources did not reopen');
+          assert.deepEqual((await tab.evaluate(`[...(${fieldSection}).querySelectorAll('select')].map(item=>item.value)`)).sort(),[...selectedFieldSources].sort(),'Reload must preserve each selected source');
+          console.log(JSON.stringify({scope:'Two genuine supplier files → exact per-field source choices → persisted unresolved review',distinctSourceDocuments:2,positionComplianceNotAssumed:true,customerReissue:false,liveDelivery:false}));
+        }
       }
       console.log(JSON.stringify({scope:'Normal source-bound supplier field review after exact filing',unresolvedReviewPersisted:true,customerReissueStillBlocked:true,secondSupplierRemainsOutstanding:process.argv.includes('--stop-after-multi-supplier-review'),bothSupplierResolutionsSaved:receivedSupplierReviews,approvedReissueVerified:false}));return;
     }
@@ -717,6 +736,7 @@ const startApi=()=>spawn(process.execPath, ["--import",pathToFileURL(path.resolv
     assert.equal(proof.originalEstimateStatus, "Issued"); assert.equal(proof.successorRevision, 2); assert.equal(proof.orderStatus, "customer_final_confirmation_approved"); assert.equal(proof.signedPdfReviewCount, 1);
     console.log(JSON.stringify({ mode: "development_test_adapter", delivery: "preview_only", addresses: { customerConfigured: true, factoryConfigured: true }, journey: proof, contentAgreement: { immutableEstimateSha256: issuedRow.sha256, downloadSha256: pdfEvidence[0].sha256, portalDownloadSha256: successorPortalEstimateHash.hash, releaseDocumentId: releaseRow.document_id, issuedDocumentId: issuedRow.id, emailAttachmentSha256: emailAttachment.sha256, emailAttachmentStorageKey: emailAttachment.storage_key, previewAndIssueShareRenderer: true }, pdfEvidence: [...pdfEvidence, previewEvidence], screenshots: OUTPUT, browserCleanup: { ownedProcesses: cleanup.ownedBrowserProcessesRemaining, ownedProfiles: cleanup.ownedTemporaryProfilesRemaining } }, null, 2));
   } catch(error) {
+    console.error(JSON.stringify({journeyError:error instanceof Error?error.stack:String(error)}));
     if(tab){
       try{console.error(JSON.stringify({journeyFailureUi:await tab.evaluate('document.body.innerText'),browserErrors:tab.diagnostics,failedRequests:tab.failures}));}catch{}
     }

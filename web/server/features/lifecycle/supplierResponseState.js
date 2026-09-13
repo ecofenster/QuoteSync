@@ -18,21 +18,31 @@ export function supplierReviewSourceIdentity(request) {
   return JSON.stringify([request.returned_source_kind || 'canonical_document', request.returned_document_id, request.returned_revision, request.returned_checksum || null]);
 }
 
+export const returnedFieldSourceIdentity=document=>JSON.stringify(['canonical_document',document.id,document.provider_revision||null,document.checksum||null]);
+export async function returnedReviewDocuments(db,requestId){
+  return db.all(`SELECT DISTINCT doc.id,doc.file_name,doc.provider_revision,doc.checksum FROM supplier_enquiry_drafts se
+    JOIN manufacturer_response_links link ON link.supplier_enquiry_id=se.id AND link.project_id=se.project_id AND link.estimate_id=se.estimate_id
+    JOIN canonical_documents doc ON doc.id=link.canonical_document_id AND doc.project_id=se.project_id
+    WHERE se.revision_request_id=? AND se.status<>'cancelled' AND doc.removed_at IS NULL AND doc.trashed=0
+    AND NOT EXISTS(SELECT 1 FROM supplier_enquiry_drafts next WHERE next.supersedes_id=se.id AND next.status<>'cancelled') ORDER BY doc.file_name,doc.id`,requestId);
+}
+
 export async function staleSupplierReviewCount(db, request) {
-  const row=await db.get('SELECT COUNT(*) count FROM revision_change_checks WHERE supplier_revision_request_id=? AND source_identity IS NOT ?',request.id,supplierReviewSourceIdentity(request));
+  const documents=await returnedReviewDocuments(db,request.id),checks=await db.all('SELECT source_document_id,source_identity FROM revision_change_checks WHERE supplier_revision_request_id=?',request.id);
+  const stale=checks.filter(check=>{const source=documents.find(doc=>doc.id===check.source_document_id);return check.source_document_id?!source||check.source_identity!==returnedFieldSourceIdentity(source):check.source_identity!==supplierReviewSourceIdentity(request)}).length;
   const later=await db.get(`SELECT COUNT(*) count FROM supplier_response_reviews review JOIN supplier_enquiry_drafts se ON se.id=review.supplier_enquiry_id
     WHERE se.revision_request_id=? AND se.status<>'cancelled' AND review.created_at>?
     AND NOT EXISTS(SELECT 1 FROM supplier_enquiry_drafts next WHERE next.supersedes_id=se.id AND next.status<>'cancelled')`,request.id,request.verified_at||'');
-  return Number(row?.count || 0)+Number(later?.count||0);
+  return stale+Number(later?.count||0);
 }
 
 // Freeze the exact review behind a prepared customer document. New supplier work
 // must never make an older prepared PDF sendable merely by becoming verified.
 export async function supplierReviewPreparationSnapshot(db, request) {
   if (!request) return null;
-  const checks=await db.all(`SELECT estimate_position_id,field_key,requested_change,before_value,expected_value,
-    after_value,status,before_source_reference,after_source_reference,resolution_note,resolved_by,resolved_at,change_kind,source_identity
-    FROM revision_change_checks WHERE supplier_revision_request_id=? ORDER BY estimate_position_id,field_key,id`,request.id);
+  const checks=(await db.all(`SELECT estimate_position_id,field_key,requested_change,before_value,expected_value,
+    after_value,status,before_source_reference,after_source_reference,resolution_note,resolved_by,resolved_at,change_kind,source_identity,source_document_id,source_document_name
+    FROM revision_change_checks WHERE supplier_revision_request_id=? ORDER BY estimate_position_id,field_key,id`,request.id)).map(({source_document_id,source_document_name,...check})=>source_document_id?{...check,source_document_id,source_document_name}:check);
   const suppliers=await db.all(`SELECT se.id,se.supplier_id,se.response_state
     FROM supplier_enquiry_drafts se WHERE se.revision_request_id=? AND se.status<>'cancelled'
     AND NOT EXISTS(SELECT 1 FROM supplier_enquiry_drafts next WHERE next.supersedes_id=se.id AND next.status<>'cancelled')

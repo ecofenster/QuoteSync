@@ -7,6 +7,7 @@ export type SavedSupplierCheck = {
   before_source_reference: string | null; after_source_reference: string | null;
   resolution_note: string | null; status: string; change_kind: "requested" | "unrelated_material_change";
   resolved_by?: string | null; resolved_at?: string | null; source_identity?: string | null;
+  source_document_id?:string|null;source_document_name?:string|null;
 };
 type HistoryPage = { total: number; offset: number; items: Array<{ id: string; recordedAt: string; recordedBy: string; sourceLabel?:string; checks: SavedSupplierCheck[] }> };
 
@@ -32,6 +33,7 @@ export default function SupplierReviewHistory({ requestId, supplierId }: { reque
         {item.sourceLabel?<p>{item.sourceLabel}</p>:null}
         {item.checks.map((check, index) => <article key={index} className="portal-operation-detail__check">
           <p>{check.field_key} · {check.status.replaceAll("_", " ")}</p>
+          {check.source_document_name?<p>Returned document: {check.source_document_name}</p>:null}
           <p>Before: {check.before_value || "Not recorded"} · Requested: {check.expected_value || "Not recorded"} · After: {check.after_value || "Not recorded"}</p>
           <p>Before source: {check.before_source_reference || "Not recorded"} · Returned source: {check.after_source_reference || "Not recorded"}</p>
           {check.resolution_note ? <p>{check.resolution_note}</p> : null}

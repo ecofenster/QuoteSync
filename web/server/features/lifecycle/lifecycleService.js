@@ -5,7 +5,7 @@ import { createCommunicationsService } from '../communications/communicationsSer
 import { createTestDeliveryPolicy } from './testDeliveryPolicy.js';
 import { createCustomerLifecycleDocumentService } from './customerLifecycleDocumentService.js';
 import { createSupplierRevisionChangeDocumentService } from './supplierRevisionChangeDocumentService.js';
-import { recordSupplierResponseState, outstandingSupplierRevisionRequests, outstandingSupplierResponseReviews, supplierReviewSourceIdentity, staleSupplierReviewCount } from './supplierResponseState.js';
+import { recordSupplierResponseState, outstandingSupplierRevisionRequests, outstandingSupplierResponseReviews, supplierReviewSourceIdentity, staleSupplierReviewCount,returnedReviewDocuments,returnedFieldSourceIdentity } from './supplierResponseState.js';
 import {factoryAttachmentOptions,savedFactoryAttachments,reviewFactoryAttachments,assertFactoryAttachmentsCurrent,factoryCommunicationAttachments} from './factoryAttachmentReview.js';
 import {factoryDeliveryState,sendFactoryOnce} from './factoryDelivery.js';
 import {sendSupplierOnce} from './supplierDelivery.js';
@@ -73,6 +73,7 @@ export function createLifecycleService(db, options = {}) {
     const checks = review.supplier_revision_request_id ? await db.all('SELECT * FROM revision_change_checks WHERE supplier_revision_request_id=? ORDER BY change_kind,estimate_position_id,field_key', review.supplier_revision_request_id) : [];
     const documents = await db.all('SELECT id,file_name,document_type,provider_revision revision,provider_modified_at modified_at FROM canonical_documents WHERE project_id=? AND removed_at IS NULL AND trashed=0 ORDER BY provider_modified_at DESC', review.project_id);
     const supplierRevision=review.supplier_revision_request_id?await supplierRevisionDetail(review.supplier_revision_request_id):null;
+    if(supplierRevision)supplierRevision.returnedReviewDocuments=await returnedReviewDocuments(db,supplierRevision.id);
     return { reviewSubmissionId: review.id, estimateReleaseId: review.estimate_release_id, estimateId: review.estimate_id, estimateRevision: Number(review.estimate_revision), clientId: review.client_id, clientReference: review.client_ref, clientName: review.client_name, projectId: review.project_id, projectName: review.project_name, status: review.status, generalComment: review.general_comment, generalResponse: review.general_response, submittedAt: review.submitted_at, positions: entries.map((entry) => ({ id: entry.id, estimatePositionId: entry.estimate_position_id, reference: entry.position_reference, response: entry.response, comment: entry.comment })), supplierRevision, checks, documents };
   }
 
@@ -303,8 +304,13 @@ export function createLifecycleService(db, options = {}) {
     if(checks.length>500)throw problem('Review up to 500 fields at a time.',422,'supplier_revision_checks_invalid');
     const reviewPositions=new Set((await db.all('SELECT estimate_position_id FROM portal_review_position_entries WHERE review_submission_id=?',request.review_submission_id)).map(row=>row.estimate_position_id));
     const fields=new Set();
+    const fieldDocuments=await returnedReviewDocuments(db,requestId);
+    const preceding=await db.all('SELECT * FROM revision_change_checks WHERE supplier_revision_request_id=? ORDER BY id',requestId);
     // Validate the entire submission before archiving or changing saved approval.
     for(const check of checks){
+      const documentId=text(check.sourceDocumentId),document=fieldDocuments.find(item=>item.id===documentId);
+      if(documentId&&!document)throw problem('Choose a returned document for this exact customer revision and active supplier request. No other Project or supplier file can be substituted; your saved review has not changed.',422,'supplier_revision_field_source_invalid');
+      if(!documentId&&(fieldDocuments.length>1||preceding.some(row=>row.source_document_id&&row.estimate_position_id===(text(check.estimatePositionId)||null)&&row.field_key===text(check.fieldKey))))throw problem('Choose the source document for each field before verifying. A previously selected source cannot be silently replaced by the overall document; your saved review has not changed.',422,'supplier_revision_field_source_required');
       const positionId=text(check.estimatePositionId)||null,fieldKey=text(check.fieldKey);
       if(positionId&&!reviewPositions.has(positionId))throw problem('A reviewed Position does not belong to this issued customer revision. Reopen the customer change request and select its Position. Your saved review has not changed.',422,'supplier_revision_position_invalid');
       const identity=JSON.stringify([positionId,fieldKey]);
@@ -314,19 +320,20 @@ export function createLifecycleService(db, options = {}) {
     }
     const at = stamp();
     const sourceIdentity=supplierReviewSourceIdentity(request);
-    const preceding=await db.all('SELECT * FROM revision_change_checks WHERE supplier_revision_request_id=? ORDER BY id',requestId);
     if(preceding.length)await db.run('INSERT INTO supplier_revision_review_history(id,request_id,source_identity,checks_json,reviewed_by,reviewed_at) VALUES(?,?,?,?,?,?)',randomUUID(),requestId,JSON.stringify([...new Set(preceding.map(check=>check.source_identity||'legacy-unrecorded'))]),JSON.stringify(preceding),text(input.reviewedBy),at);
     await db.run('UPDATE supplier_revision_requests SET verified_at=NULL,updated_at=? WHERE id=?',at,requestId);
     for (const check of checks) {
+      const fieldDocument=fieldDocuments.find(item=>item.id===text(check.sourceDocumentId)),fieldIdentity=fieldDocument?returnedFieldSourceIdentity(fieldDocument):sourceIdentity;
       const status = check.approvedDifference === true && text(check.resolutionNote) ? 'approved_difference' : deriveRevisionCheck(check);
       const existingCheck=await db.get('SELECT id FROM revision_change_checks WHERE supplier_revision_request_id=? AND estimate_position_id IS ? AND field_key=?',requestId,text(check.estimatePositionId)||null,text(check.fieldKey));
       if(existingCheck){
         await db.run('UPDATE revision_change_checks SET requested_change=?,before_value=?,expected_value=?,before_source_reference=?,after_value=?,status=?,after_source_reference=?,resolution_note=?,resolved_by=?,resolved_at=?,change_kind=?,source_identity=? WHERE supplier_revision_request_id=? AND estimate_position_id IS ? AND field_key=?',text(check.requestedChange),text(check.beforeValue)||null,text(check.expectedValue)||null,text(check.beforeSourceReference)||null,text(check.afterValue)||null,status,text(check.afterSourceReference)||null,text(check.resolutionNote),text(input.reviewedBy),at,check.changeKind,sourceIdentity,requestId,text(check.estimatePositionId)||null,text(check.fieldKey));
+        await db.run('UPDATE revision_change_checks SET source_identity=?,source_document_id=?,source_document_name=? WHERE id=?',fieldIdentity,fieldDocument?.id||null,fieldDocument?.file_name||null,existingCheck.id);
         continue;
       }
       await db.run(`INSERT INTO revision_change_checks(id,supplier_revision_request_id,estimate_position_id,field_key,requested_change,before_value,expected_value,after_value,status,before_source_reference,after_source_reference,resolution_note,resolved_by,resolved_at,created_at,change_kind)
         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(supplier_revision_request_id,estimate_position_id,field_key) DO UPDATE SET requested_change=excluded.requested_change,before_value=excluded.before_value,expected_value=excluded.expected_value,before_source_reference=excluded.before_source_reference,after_value=excluded.after_value,status=excluded.status,after_source_reference=excluded.after_source_reference,resolution_note=excluded.resolution_note,resolved_by=excluded.resolved_by,resolved_at=excluded.resolved_at,change_kind=excluded.change_kind`, randomUUID(), requestId, text(check.estimatePositionId) || null, text(check.fieldKey), text(check.requestedChange), text(check.beforeValue) || null, text(check.expectedValue) || null, text(check.afterValue) || null, status, text(check.beforeSourceReference) || null, text(check.afterSourceReference) || null, text(check.resolutionNote), text(input.reviewedBy) || null, input.reviewedBy ? at : null, at, check.changeKind);
-      await db.run('UPDATE revision_change_checks SET source_identity=? WHERE supplier_revision_request_id=? AND estimate_position_id IS ? AND field_key=?',sourceIdentity,requestId,text(check.estimatePositionId)||null,text(check.fieldKey));
+      await db.run('UPDATE revision_change_checks SET source_identity=?,source_document_id=?,source_document_name=? WHERE supplier_revision_request_id=? AND estimate_position_id IS ? AND field_key=?',fieldIdentity,fieldDocument?.id||null,fieldDocument?.file_name||null,requestId,text(check.estimatePositionId)||null,text(check.fieldKey));
     }
     const requestedPositions = await db.all(`SELECT e.estimate_position_id FROM portal_review_position_entries e WHERE e.review_submission_id=? AND e.response='amendment_requested'`, request.review_submission_id);
     const generalReview = await db.get('SELECT general_response FROM portal_review_submissions WHERE id=?', request.review_submission_id);

@@ -163,6 +163,8 @@ export async function initializeLifecycleSchema(db) {
   await db.exec('CREATE INDEX IF NOT EXISTS idx_supplier_revision_parent ON supplier_enquiry_drafts(revision_request_id,created_at DESC)');
   await ensureColumn(db, 'revision_change_checks', 'change_kind', "TEXT NOT NULL DEFAULT 'requested' CHECK(change_kind IN ('requested','unrelated_material_change'))");
   await ensureColumn(db, 'revision_change_checks', 'source_identity', 'TEXT');
+  await ensureColumn(db, 'revision_change_checks', 'source_document_id', 'TEXT');
+  await ensureColumn(db, 'revision_change_checks', 'source_document_name', 'TEXT');
   await db.exec(`CREATE TABLE IF NOT EXISTS supplier_response_reviews (
     id TEXT PRIMARY KEY,supplier_enquiry_id TEXT NOT NULL,idempotency_key TEXT NOT NULL,
     content_hash TEXT NOT NULL,evidence_identity TEXT NOT NULL,canonical_document_id TEXT NOT NULL,

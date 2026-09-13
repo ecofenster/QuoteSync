@@ -14,6 +14,7 @@ import { createPortalSecurityService } from "../server/features/clientPortal/por
 import { initializeLifecycleSchema } from "../server/features/lifecycle/lifecycleSchema.js";
 import { createLifecycleService, deriveConfirmationCheck, deriveRevisionCheck } from "../server/features/lifecycle/lifecycleService.js";
 import { saveSupplierResponseReview, supplierResponseReviewContext, supplierResponseReviewHistory } from "../server/features/lifecycle/supplierResponseReviews.js";
+import {staleSupplierReviewCount} from '../server/features/lifecycle/supplierResponseState.js';
 import { createCommunicationRepository } from "../server/features/communications/communicationRepository.js";
 import { createCommunicationsService } from "../server/features/communications/communicationsService.js";
 import { createTestDeliveryPolicy } from "../server/features/lifecycle/testDeliveryPolicy.js";
@@ -226,7 +227,7 @@ test("customer changes produce a carried-forward working revision, attached chan
   assert.deepEqual(await source.db.get('SELECT COUNT(*) count FROM supplier_revision_review_history WHERE request_id=?',request.id),protectedHistory);
   await lifecycle.attachSupplierRevisionDocument(request.id,{sourceKind:'canonical_document',canonicalDocumentId:'document-safe',revision:'3',reviewedBy:'staff-1'});
   assert.equal((await source.db.get('SELECT verified_at FROM supplier_revision_requests WHERE id=?',request.id)).verified_at,null);
-  const recheck=row=>({estimatePositionId:row.estimate_position_id,fieldKey:row.field_key,requestedChange:row.requested_change,beforeValue:row.before_value,expectedValue:row.expected_value,afterValue:row.after_value,beforeSourceReference:row.before_source_reference,afterSourceReference:'Revision 3 reviewed source',approvedDifference:row.status==='approved_difference',resolutionNote:row.resolution_note});
+  const recheck=row=>({estimatePositionId:row.estimate_position_id,fieldKey:row.field_key,requestedChange:row.requested_change,beforeValue:row.before_value,expectedValue:row.expected_value,afterValue:row.after_value,beforeSourceReference:row.before_source_reference,afterSourceReference:'Revision 3 reviewed source',approvedDifference:row.status==='approved_difference',resolutionNote:row.resolution_note,sourceDocumentId:row.source_document_id||'document-safe'});
   const partiallyRechecked=await lifecycle.verifySupplierRevision(request.id,{reviewedBy:'staff-1',checks:[recheck(verified.checks.find(row=>row.field_key==='external_finish'))]});
   assert.equal(partiallyRechecked.issueAllowed,false);assert.equal(partiallyRechecked.staleChecks,2);
   await assert.rejects(()=>issuance.prepare({estimateId:successor.id,clientId:'client-a',estimateRevision:2,quotationRevision:1,projection,recipient:'a@example.test'}),error=>error.code==='supplier_revision_verification_required');
@@ -293,7 +294,18 @@ test("customer changes produce a carried-forward working revision, attached chan
   assert.equal(firstHistory.total,11);assert.equal(firstHistory.items.length,10);
   assert.equal((await supplierResponseReviewHistory(source.db,request.id,first.id,10)).items.length,1);
   assert.ok(firstHistory.items.every(item=>item.checks.every(check=>check.after_value==='Black')));
+  const retainedBeforeBadSource=await source.db.all('SELECT * FROM revision_change_checks WHERE supplier_revision_request_id=? ORDER BY id',request.id);
+  await assert.rejects(()=>lifecycle.verifySupplierRevision(request.id,{reviewedBy:'staff-1',checks:[{...recheck(currentReview.checks[0]),sourceDocumentId:''}]}),error=>error.code==='supplier_revision_field_source_required');
+  await assert.rejects(()=>lifecycle.verifySupplierRevision(request.id,{reviewedBy:'staff-1',checks:[{...recheck(currentReview.checks[0]),sourceDocumentId:'unrelated-document'}]}),error=>error.code==='supplier_revision_field_source_invalid');
+  assert.deepEqual(await source.db.all('SELECT * FROM revision_change_checks WHERE supplier_revision_request_id=? ORDER BY id',request.id),retainedBeforeBadSource);
+  currentReview.checks.find(row=>row.estimate_position_id===null).source_document_id='document-unreleased';
   await lifecycle.verifySupplierRevision(request.id,{reviewedBy:'staff-1',checks:currentReview.checks.filter(row=>row.change_kind==='requested').map(recheck),unrelatedChanges:currentReview.checks.filter(row=>row.change_kind==='unrelated_material_change').map(recheck)});
+  const mapped=await source.db.all('SELECT source_document_id,source_document_name,source_identity FROM revision_change_checks WHERE supplier_revision_request_id=?',request.id);assert.equal(new Set(mapped.map(row=>row.source_document_id)).size,2);assert.ok(mapped.every(row=>row.source_document_name));
+  const currentRequest=await source.db.get('SELECT * FROM supplier_revision_requests WHERE id=?',request.id);assert.equal(await staleSupplierReviewCount(source.db,currentRequest),0);
+  await source.db.run("UPDATE canonical_documents SET checksum='second-document-changed-again' WHERE id='document-unreleased'");
+  assert.equal(await staleSupplierReviewCount(source.db,currentRequest),1,'Only the check owned by the changed second source should become stale');
+  assert.deepEqual(await source.db.all('SELECT source_document_id,source_document_name,source_identity FROM revision_change_checks WHERE supplier_revision_request_id=?',request.id),mapped,'Freshness detection rewrote saved evidence');
+  await source.db.run("UPDATE canonical_documents SET checksum='changed-second-response' WHERE id='document-unreleased'");
   const terms=await issuance.saveCustomerTerms(successor.id,{validityDays:30,terms:["Final dimensions are subject to survey."],exclusions:["Building work by others."],reviewedBy:"staff-1"});projection.commercialTerms={validityDays:terms.validityDays,terms:terms.terms,exclusions:terms.exclusions,reviewed:true,reviewedAt:terms.reviewedAt};const prepared=await issuance.prepare(issueInput);assert.equal(prepared.status,"prepared_not_sent");
   assert.equal((await issuance.prepare(issueInput)).id,prepared.id);
   const preparedEvidence=await source.db.get('SELECT supplier_review_snapshot,document_id,communication_message_id FROM issued_quotations WHERE id=?',prepared.id);
