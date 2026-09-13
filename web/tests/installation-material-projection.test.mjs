@@ -12,11 +12,19 @@ test('actual saved material calculation projects units and quantities without co
   const before=JSON.stringify(result),materials=projectInstallationMaterials(result),membrane=materials.rows.find(item=>item.code==='ME508');
   assert.equal(membrane.linearMetres,10.12);assert.equal(membrane.quantity,1);assert.equal(membrane.unit,'roll');assert.equal(membrane.rollLengthMetres,25);assert.equal(materials.rows.find(item=>item.code==='AA270').quantity,1);assert.equal(membrane.areaSquareMetres,null,'No derived surface area without a reviewed basis');assert.equal(JSON.stringify(result),before);
   assert.doesNotMatch(JSON.stringify(materials),/8765|9876|purchaseCost|unitCost|priceAmount/);
+  assert.match(membrane.basis,/15% linear contingency/);assert.equal(materials.rows.find(item=>item.code==='AA270').basis,'One per order; no contingency');
   const revision={estimateId:'estimate',estimateReference:'TEST-MATERIALS',revision:1,positions:[{id:'p',reference:'W01',quantity:2,widthMm:1000,heightMm:1200}]},scenario={estimateId:'estimate',installationMaterials:result};
   for(const audience of ['installer','client']){
     const model=projectInstallationDocument({audience,revision,scenario}),bytes=await renderInstallationDocumentPdf(model),task=getDocument({data:new Uint8Array(bytes),useSystemFonts:true});
     try{const pdf=await task.promise;let output='';for(let i=1;i<=pdf.numPages;i++)output+=(await(await pdf.getPage(i)).getTextContent()).items.map(item=>item.str).join(' ');assert.doesNotMatch(output,/8765|9876|8,765|9,876|purchaseCost|unitCost/);if(audience==='installer'){assert.match(output,/ME508/);assert.match(output,/10.12 m/);assert.match(output,/AA270/);}else assert.doesNotMatch(output,/ME508|AA270|Installation materials|Food allowance/);}finally{await task.destroy();}
   }
+});
+test('fixing variants retain exact selected identity and foam retains its distinct basis without pricing',()=>{
+  const catalogue=[{id:'chosen',category:'bracket',active:true,label:'Selected 250 mm bracket',priceAmount:'8765.43',variant:{bracketLengthMm:250,packQuantity:10}},{id:'other',category:'bracket',active:true,label:'Other bracket',priceAmount:'1111.22',variant:{bracketLengthMm:250,packQuantity:10}},{id:'foam',category:'illbruck_fm330',active:true,label:'FM330',priceAmount:'9876.54',currency:'GBP',variant:{productCode:'FM330'}}];
+  const result=calculateInstallationMaterials({positions:[{displayReference:'W01',widthMm:1000,heightMm:1200,framePerimeterMetres:4.4,quantity:1,includedInCurrentEstimate:true}],rules:{},options:{bracketProductId:'chosen',materialSelections:{FM330:{required:true,productId:'foam'}}},catalogue});
+  assert.equal(result.purchasing.brackets.productId,'chosen');const model=projectInstallationMaterials(result),bracket=model.rows.find(item=>item.code==='brackets'),foam=model.rows.find(item=>item.code==='FM330');
+  assert.equal(bracket.specification,'Selected 250 mm bracket');assert.equal(bracket.quantity,null,'Unknown fixing rules must not become confirmed quantities');assert.equal(foam.unit,'box');assert.equal(foam.cans,12);assert.match(foam.basis,/92 mm joint depth × 20 mm joint width/);assert.match(foam.basis,/45 litres per can; 12 cans per box/);assert.doesNotMatch(foam.basis,/15%/);assert.doesNotMatch(JSON.stringify(model),/8765|9876|1111|Other bracket|priceAmount/);
+  delete result.purchasing.brackets.productLabel;assert.equal(projectInstallationMaterials(result).rows.find(item=>item.code==='brackets').specification,'Not confirmed','Historical calculations must not infer a currently configured variant');
 });
 test('unknown material evidence remains unknown and excluded materials do not appear',()=>{
   assert.deepEqual(projectInstallationMaterials(null),{status:'Not confirmed',rows:[]});

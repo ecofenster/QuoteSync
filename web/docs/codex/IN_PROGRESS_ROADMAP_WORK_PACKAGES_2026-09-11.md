@@ -1,5 +1,13 @@
 # In-progress Roadmap completion programme
 
+## 13 September — material specification and quantity basis
+
+The material calculator now returns the exact selected bracket/frame-screw/substrate-fixing identity and label alongside its existing quantity evidence. This is additive metadata, not a new selection or pricing algorithm. Installer projection exposes the retained selected specification, never the catalogue cost; absent historical labels remain Not confirmed. PDF rows explain the recorded quantity basis: saved perimeter plus linear contingency and rounding for linear materials, retained FM330 depth/width/yield/box assumptions without a second contingency, fixed one-per-order tools, and per-Position fixing quantities with whole-pack rounding. Missing fixing rules still produce unknown quantities even when a product is selected.
+
+Ten focused document/material/Order tests, all 42 existing material-rule tests, and full application typecheck pass. Tests include explicit selected-versus-other bracket identity, unknown historical specification, actual FM330 box/can quantities and distinct basis, commercial exclusion, accepted-scope recalculation and unchanged source evidence. The wider suite covers saved-cost snapshots, explicit current-catalogue adoption, rollback and supplier-installation substitution. No new normal-browser material-selection acceptance is claimed; the earlier watched-runtime gate remains open for that work. Existing user supervisor PID 29604 remains in place; no user API was deliberately replaced or stopped, and no live business/provider/email mutation occurred.
+
+Existing survey-delivery-installation remains partial/unaccepted. Continue with normal-route material selection-to-PDF, membrane area/support specification, position weights, drawings, travel and survey/delivery. Old issued PDFs and saved Order plans are not rewritten. No new AGENTS rule is needed: saved catalogue authority, exact evidence and commercial exclusion already govern this implementation.
+
 ## 13 September — installer material quantity projection
 
 Installer drafts now include an allowlisted operational materials section from the saved calculation: required sealing/tool items retain their provision unit, roll/can quantities and linear requirement; fixing and packer quantities retain explicit unresolved states. No purchase prices, unit costs, selling values or margins are copied. Client price-free schedules omit this section. Reviewed Order proposals recalculate materials for only the exact accepted operational scope using saved rules/catalogue/options; the sold scenario is unchanged. Previously retained plan/document projections are not backfilled or rewritten.
