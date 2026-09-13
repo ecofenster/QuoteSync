@@ -327,9 +327,11 @@ const startApi=()=>spawn(process.execPath, ["--import",pathToFileURL(path.resolv
     }
 
     await click(tab,'Cancel');
-    const originalSource=await readFile(path.resolve('docs/Supplier_Quotes/John_Wingfield/web-26-1133450.pdf'));
-    assert.equal(sha256(originalSource),'d1f34d3fd36ef40e4fb1b3ccbddc96b96837fdfd86f598af9c2b189f674f1899','Genuine supplier source changed; review its expected evidence before acceptance');
-    const sourcePath=path.join(root,'web-26-1133450.pdf');await writeFile(sourcePath,originalSource);
+    const winproDocuments=process.argv.includes('--stop-after-winpro-installation-documents');
+    const sourceProfile=winproDocuments?{file:'docs/Supplier_Quotes/Eko_Example/Kosztorys - OF_25_2263569.pdf',hash:'be0d783701c6286b639dfd1da7cb55228fd591fbd5334d36751ce8022720d5e6',positions:12,total:'5989.85',displayTotal:'5,989.85'}:{file:'docs/Supplier_Quotes/John_Wingfield/web-26-1133450.pdf',hash:'d1f34d3fd36ef40e4fb1b3ccbddc96b96837fdfd86f598af9c2b189f674f1899',positions:5,total:'7885.45',displayTotal:'7,885.45'};
+    const originalSource=await readFile(path.resolve(sourceProfile.file));
+    assert.equal(sha256(originalSource),sourceProfile.hash,'Genuine supplier source changed; review its expected evidence before acceptance');
+    const sourcePath=path.join(root,path.basename(sourceProfile.file));await writeFile(sourcePath,originalSource);
     await click(tab,'Import Manufacturer Quote');
     await waitFor(()=>tab.evaluate("document.body.innerText.includes('Upload & Analyse')"),'Normal Manufacturer Import upload did not open');
     await tab.send('DOM.enable');const dom=await tab.send('DOM.getDocument',{depth:-1,pierce:true});
@@ -338,7 +340,7 @@ const startApi=()=>spawn(process.execPath, ["--import",pathToFileURL(path.resolv
     await waitFor(()=>tab.evaluate("document.body.innerText.includes('Confirm Manufacturer Quote')"),'Genuine supplier source did not reach identity review',90000);
     await click(tab,'Confirm & Extract Quote');
     await waitFor(()=>tab.evaluate("document.body.innerText.includes('Extraction / Commercial Review')"),'Genuine supplier source did not reach extraction review',90000);
-    const extractedText=await tab.evaluate('document.body.innerText');assert.ok(extractedText.includes('7,885.45'),'Genuine source reconciliation is missing');
+    const extractedText=await tab.evaluate('document.body.innerText');assert.ok(extractedText.includes(sourceProfile.displayTotal),'Genuine source reconciliation is missing');
     const preImportDb=await open({filename:databasePath,driver:sqlite3.Database,mode:sqlite3.OPEN_READONLY});
     try{
       assert.equal((await preImportDb.get('SELECT COUNT(*) count FROM supplier_quote_positions')).count,0,'Analysis changed canonical positions before approval');
@@ -346,14 +348,14 @@ const startApi=()=>spawn(process.execPath, ["--import",pathToFileURL(path.resolv
     }finally{await preImportDb.close()}
     await waitFor(()=>tab.evaluate("[...document.querySelectorAll('button')].some(item=>item.textContent.includes('Import to Project Costing')&&!item.disabled)"),'Final import remains blocked; review genuine-source diagnostics');
     await click(tab,'Import to Project Costing');
-    await waitFor(async()=>{const db=await open({filename:databasePath,driver:sqlite3.Database,mode:sqlite3.OPEN_READONLY});try{return (await db.get('SELECT COUNT(*) count FROM supplier_quote_positions')).count===5}finally{await db.close()}},'Final import did not persist five source positions',90000);
+    await waitFor(async()=>{const db=await open({filename:databasePath,driver:sqlite3.Database,mode:sqlite3.OPEN_READONLY});try{return (await db.get('SELECT COUNT(*) count FROM supplier_quote_positions')).count===sourceProfile.positions}finally{await db.close()}},'Final import did not persist the expected source positions',90000);
     await waitFor(()=>tab.evaluate("!document.querySelector('[aria-labelledby=\"manufacturer-import-title\"]')&&document.body.innerText.includes('Project Costing')"),'First import did not finish its UI handoff',90000);
     await reloadWorkingEstimate(tab);
     let retainedImportSnapshot;
     const persisted=await open({filename:databasePath,driver:sqlite3.Database,mode:sqlite3.OPEN_READONLY});
     try{
       const source=await persisted.get('SELECT storage_key FROM supplier_quote_attachments WHERE sha256=?',sha256(originalSource));assert.ok(source,'Retained genuine source metadata is missing');assert.equal(sha256(await readFile(path.join(attachmentRoot,source.storage_key))),sha256(originalSource));
-      const rows=await persisted.all('SELECT total_price_amount,source_position_id,source_snapshot_json FROM project_calculator_estimate_product_rows');assert.equal(rows.length,5);assert.equal(new Set(rows.map(row=>row.source_position_id)).size,5);assert.equal(rows.reduce((sum,row)=>sum+Number(row.total_price_amount),0).toFixed(2),'7885.45');
+      const rows=await persisted.all('SELECT total_price_amount,source_position_id,source_snapshot_json FROM project_calculator_estimate_product_rows');assert.equal(rows.length,sourceProfile.positions);assert.equal(new Set(rows.map(row=>row.source_position_id)).size,sourceProfile.positions);assert.equal(rows.reduce((sum,row)=>sum+Number(row.total_price_amount),0).toFixed(2),sourceProfile.total);
       for(const row of rows){const snapshot=JSON.parse(row.source_snapshot_json);assert.equal(snapshot.commercialSupplier.supplierCode,'EKO');assert.equal(snapshot.manufacturerEvidence.sourceVisual.status,'available');}
       const operations=await persisted.all('SELECT status FROM supplier_quote_import_operations');assert.ok(operations.length>0&&operations.every(operation=>operation.status==='confirmed'),'Final import did not confirm persisted postconditions');
       assert.equal((await persisted.get('SELECT status FROM estimates WHERE id=?',fixture.estimateId)).status,'Issued','Original issued Estimate was changed');
@@ -377,16 +379,17 @@ const startApi=()=>spawn(process.execPath, ["--import",pathToFileURL(path.resolv
       assert.deepEqual(await replayDb.all('SELECT id FROM supplier_quote_positions ORDER BY id'),retainedImportSnapshot.positions,'Repeat import duplicated or replaced canonical positions');
       assert.deepEqual(await replayDb.all('SELECT id,source_position_id,total_price_amount FROM project_calculator_estimate_product_rows ORDER BY id'),retainedImportSnapshot.costing,'Repeat import duplicated or changed costing evidence');
     }finally{await replayDb.close()}
-    if(process.argv.includes('--stop-after-source-weight-documents')){
+    if(winproDocuments||process.argv.includes('--stop-after-source-weight-documents')){
       await verifyInstallationDocuments({tab,click,waitFor,databasePath,output:OUTPUT,inspectPdf});
       const weightsDb=await open({filename:databasePath,driver:sqlite3.Database,mode:sqlite3.OPEN_READONLY});
       try{
         const prepared=await weightsDb.get("SELECT projection_json FROM installation_prepared_documents WHERE audience='installer'"),projection=JSON.parse(prepared.projection_json);
-        assert.equal(projection.totals.windows,5,'All five explicitly labelled supplier Windows must reach the schedule totals');
-        assert.equal(projection.positions.filter(position=>position.manufacturer==='EKO-OKNA').length,5,'Each imported Position must retain its actual manufacturer, not the document issuer');
+        assert.equal(projection.totals.windows,sourceProfile.positions,'All five explicitly labelled supplier Windows must reach the schedule totals');
+        assert.equal(projection.positions.filter(position=>position.manufacturer==='EKO-OKNA').length,sourceProfile.positions,'Each imported Position must retain its actual manufacturer, not the document issuer');
+        if(winproDocuments){const first=projection.positions.find(position=>position.reference==='001');assert.equal(first.opening,'1.01: Side Hung - Turn; 2.01: Fix in frame');await inspectPdf(path.join(OUTPUT,'installer-pack-draft.pdf'),['1.01: Side Hung - Turn; 2.01: Fix in frame'],[]);}
         const rows=await weightsDb.all('SELECT estimate_position_id,source_snapshot_json FROM project_calculator_estimate_product_rows');let confirmed=0;
         for(const row of rows){const evidence=JSON.parse(row.source_snapshot_json).manufacturerEvidence,canonical=evidence?.canonicalSpecification,field=(evidence?.sourceSpecification?.sections||[]).flatMap(section=>section.fields||[]).find(item=>item.id===canonical?.weightKg?.sourceFieldId&&item.label==='Unit weight');if(!field)continue;const position=projection.positions.find(item=>item.id===row.estimate_position_id);assert.ok(position,'Source-owned Position is absent from installer PDF');assert.equal(position.weight.status,'manufacturer_stated_unit');assert.equal(position.weight.unitKg,Number(field.normalizedValue));assert.equal(position.weight.source.page,field.sourcePage);await inspectPdf(path.join(OUTPUT,'installer-pack-draft.pdf'),[`${Number(field.normalizedValue)} kg per unit`],[]);confirmed++;}
-        assert.equal(confirmed,5,'Every genuine source Position must retain its verified per-unit weight evidence');console.log(JSON.stringify({scope:'Genuine source upload/review/import/repeat/reload → material selection → retained installer PDF with exact manufacturer unit weights',sourceSha256:sha256(originalSource),sourceWeightPositions:confirmed,sent:false}));
+        assert.equal(confirmed,sourceProfile.positions,'Every genuine source Position must retain its verified per-unit weight evidence');console.log(JSON.stringify({scope:'Genuine source upload/review/import/repeat/reload → material selection → retained installer PDF with exact manufacturer unit weights',sourceSha256:sha256(originalSource),sourceWeightPositions:confirmed,sent:false}));
       }finally{await weightsDb.close();}
       return;
     }
