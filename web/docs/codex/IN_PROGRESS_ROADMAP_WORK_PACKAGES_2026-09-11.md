@@ -1,5 +1,13 @@
 # In-progress Roadmap completion programme
 
+## 13 September — material PDF pagination repair
+
+Material heading, specification, quantity, basis and review now form one table group. Compact groups stay on one page; long or multiline retained evidence can flow with a repeated material heading rather than being clipped or discarded. No source text or prior generated PDF is rewritten. A small follow-on wording correction removes internal fixing keys from printed headings, retaining familiar material names and genuine product codes.
+
+Ten focused generated-PDF/material tests pass, including eighteen groups across multiple pages, long source evidence retained through its final review, repeated heading context and no internal substrateFixings heading. Full application typecheck passes. Normal browser run df6f1785-1845-4e7f-817a-e2f6779ef772 exits 0 through ME508 selection, snapshot equality, preparation failure/retry, separate PDF audiences, history and smaller-screen action access. User API instance 16e4aeb7-2d36-453a-8684-2dbf993852a8 stays unchanged; exact owned browser/profile remnants are zero. Visual inspection of its final-page raster confirms the formerly isolated Review row now remains with its material heading and specification. The internal-key wording correction after this run has generated-PDF test evidence, not a second browser run.
+
+Existing survey-delivery-installation stays partial and unaccepted. The print-grouping defect is technically corrected; next are remaining membrane area/support details, Position weight evidence/fallback, drawings, installer travel, survey approval and reviewed delivery, plus remaining stale-source recovery coverage. Push remains permission-blocked as recorded above; retain local checkpoints without retrying external egress. No live business, provider or email writes occurred. Existing print/guided-UX and evidence rules apply; no duplicate AGENTS requirement was added.
+
 ## 13 September — normal-route material selection-to-document verification
 
 Checkpoint/push restriction: the session permission reviewer rejected the combined git checkpoint/push operation because it could not verify external source/roadmap egress to the remote. A local-only checkpoint was permitted. The read-only remote check shows origin https://github.com/ecofenster/QuoteSync.git, on the existing backup/post-phase-9-working-2026-08-04 branch. Do not retry or route around the denied push without the required destination approval; continue independent work and retain local checkpoints. Last confirmed pushed checkpoint before this restriction is 503bc2f.

@@ -4,6 +4,13 @@ pdfMake.addVirtualFileSystem(pdfFonts);
 const value=(input,unit='')=>input===null||input===undefined||input===''?'Not confirmed':`${input}${unit?` ${unit}`:''}`;
 const money=input=>input===null||input===undefined?'Not confirmed':new Intl.NumberFormat('en-GB',{style:'currency',currency:'GBP'}).format(input);
 const table=rows=>({table:{widths:[145,'*'],body:rows},layout:'lightHorizontalLines',margin:[0,5,0,10]});
+function materialBlock(material){
+  const rows=[...(material.specification?[['Specification',material.specification]]:[]),['Required provision',value(material.quantity,material.unit)],...(material.linearMetres!=null?[['Linear requirement',value(material.linearMetres,'m')]]:[]),...(material.rolls!=null?[['Rolls',`${value(material.rolls,'rolls')} · ${value(material.rollLengthMetres,'m per roll')}`]]:[]),...(material.cans!=null?[['Cans in provision',value(material.cans,'cans')]]:[]),...(material.packs!=null?[['Whole packs',value(material.packs,'packs')]]:[]),['Quantity basis',value(material.basis)],['Review',value(material.status)]];
+  const heading={text:['brackets','frameScrews','substrateFixings','packers'].includes(material.code)?material.name:`${material.code} · ${material.name}`,bold:true,colSpan:2,margin:[0,4,0,2]};
+  // Small groups stay together. Long retained text may flow, with its material heading repeated.
+  const compact=JSON.stringify(rows).length+heading.text.length<1200&&!rows.some(row=>row.some(cell=>/[\r\n]/.test(String(cell))))&&!/[\r\n]/.test(heading.text);
+  return {...table([[heading,{}],...rows]),unbreakable:compact,table:{widths:[145,'*'],headerRows:1,body:[[heading,{}],...rows]}};
+}
 
 export function installationDocumentDefinition(document){
   const installer=document.audience==='installer',title=installer?'Installer pack':'Schedule without prices';
@@ -15,7 +22,7 @@ export function installationDocumentDefinition(document){
       {text:'Travel',style:'heading'},table([['Departure',value(t.departure)],['Destination',value(t.destination)],['One-way travel time',t.oneWayMinutes===null?'Travel time not confirmed':value(t.oneWayMinutes,'minutes')],['Return travel time',t.returnMinutes===null?'Travel time not confirmed':value(t.returnMinutes,'minutes')],['Journey pattern',t.pattern==='daily_travel'?'Daily return travel':t.pattern==='stay_away'?'Outward and return around an overnight stay':'Not confirmed'],['Route basis',value(t.basis)]]),
       {text:'Provision',style:'heading'},table(Object.entries(item.inclusions).map(([key,included])=>[{food:'Food',accommodation:'Accommodation',cillInstallation:'Window-cill fitting',liftingEquipment:'Lifting equipment',skipHire:'Skip'}[key],included===null?'Not confirmed':included?'Included':'Excluded'])),
       {text:'Installation materials',style:'heading'},{text:item.materials?.status||'Not confirmed'},
-      ...(item.materials?.rows?.length?item.materials.rows.flatMap(material=>[{text:`${material.code} · ${material.name}`,bold:true,margin:[0,6,0,2]},table([...(material.specification?[['Specification',material.specification]]:[]),['Required provision',value(material.quantity,material.unit)],...(material.linearMetres!=null?[['Linear requirement',value(material.linearMetres,'m')]]:[]),...(material.rolls!=null?[['Rolls',`${value(material.rolls,'rolls')} · ${value(material.rollLengthMetres,'m per roll')}`]]:[]),...(material.cans!=null?[['Cans in provision',value(material.cans,'cans')]]:[]),...(material.packs!=null?[['Whole packs',value(material.packs,'packs')]]:[]),['Quantity basis',value(material.basis)],['Review',material.status]])]):[{text:'No material quantities confirmed for this document.'}]),
+      ...(item.materials?.rows?.length?item.materials.rows.map(materialBlock):[{text:'No material quantities confirmed for this document.'}]),
       {text:'Team qualifications',style:'heading'},...(item.qualificationSummary.length?item.qualificationSummary.map(member=>({text:`${member.name}: ${member.summary}`,margin:[0,3,0,3]})):[{text:'Not confirmed'}]),
       {text:'Review before attending',style:'heading'},{text:'Position weights, material quantities, drawings, support details and any unconfirmed fields require review before this pack is ready for use. This preparation does not confirm lifting loads or authorise installation.'});
   }
