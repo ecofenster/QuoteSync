@@ -1,5 +1,13 @@
 # In-progress Roadmap completion programme
 
+## 13 September — source-field installer opening projection
+
+Read-only WEB source inspection confirms no explicit opening field in its retained text; hardware-angle notes and drawings cannot substitute. Existing WinPro source evidence does contain sash-specific Fitting and explicit Fix in frame Profile fields. Installer projection now uses those exact source IDs, matching raw values, sash sections, source pages and field references through the shared Position/quantity/dimension guard. Missing parts remain Not confirmed; duplicate references or stale dimensions reject the fallback. Explicit revision opening values retain precedence, client output is unchanged, and no issued document is rewritten.
+
+Seven focused tests and full typecheck pass. Genuine WinPro PDF extraction through the installer renderer independently verifies 1.01: Side Hung - Turn; 2.01: Fix in frame. Tests cover partial missing fields, duplicate references, stale dimensions, source preservation and explicit reviewed opening precedence. This is genuine extraction/service/generated-PDF evidence, not positive WinPro final-import/normal-browser acceptance. No browser/API infrastructure was started for this turn and no new browser pass is claimed.
+
+Existing survey-delivery-installation remains partial/unaccepted. Counts and original-73 mapping are unchanged. Next: positive multi-source normal-route acceptance for retained openings and missing-weight fallback, then material area/support, drawing selection, installer travel/crew, survey approval and reviewed delivery. The WEB source's absent opening description remains a source limitation requiring review, not a reason to fabricate it. Live business/provider/email data remains untouched. Existing AGENTS evidence/immutable/guided-UX rules apply; local checkpoint only while push permission remains blocked.
+
 ## 13 September — exact-source installer manufacturer/system projection
 
 Installer manufacturer details were blank because the basic canonical schedule does not retain manufacturerName, while the saved supplier row does. Manufacturer/system fallback now uses the same shared exact Position ID, quantity and dimension guard as weight, and requires a retained source-row identity. Only the explicit manufacturer role and supplied product system are projected; dealer/issuer names and arbitrary source objects are excluded. Explicit revision values retain precedence. Client price-free output and existing saved documents/Order plans are unchanged.

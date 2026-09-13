@@ -17,3 +17,26 @@ export function installerManufacturerDetails(position,scenario){
   // Never substitute document issuer, dealer, commercial supplier or a product brand.
   return {manufacturer:text(evidence?.manufacturerName),system:text(evidence?.productSystem)};
 }
+
+export function installerOpeningDetails(position,scenario){
+  const {row}=installationPositionSource(position,scenario);
+  if(!row?.sourceRowId)return '';
+  const evidence=row.sourceSnapshot?.manufacturerEvidence,spec=evidence?.sourceSpecification;
+  const canonical=evidence?.canonicalSpecification||spec?.canonical,sashes=canonical?.sashes;
+  if(!Array.isArray(sashes)||!sashes.length||sashes.length>100)return '';
+  const fields=(spec?.sections||[]).flatMap(section=>Array.isArray(section.fields)?section.fields:[]);
+  const references=new Set();let confirmed=0;
+  const parts=[];
+  for(const sash of sashes){
+    const reference=typeof sash.sourceElementReference==='string'?sash.sourceElementReference.trim():'';
+    if(!reference||references.has(reference))return '';
+    references.add(reference);
+    const value=typeof sash.fitting==='string'&&sash.fitting.trim()?sash.fitting:sash.profile==='Fix in frame'?sash.profile:null;
+    const label=value===sash.fitting?'Fitting':'Profile';
+    const matches=value&&Array.isArray(sash.sourceFieldIds)?fields.filter(field=>sash.sourceFieldIds.includes(field.id)&&field.label===label&&/^Sash(?: \d+)?$/.test(field.section||'')&&field.rawValue===value&&Number.isInteger(field.sourcePage)&&field.sourcePage>0):[];
+    const supplied=matches.length===1?value:null;
+    if(supplied)confirmed++;
+    parts.push(`${reference}: ${supplied||'Not confirmed'}`);
+  }
+  return confirmed?parts.join('; '):'';
+}

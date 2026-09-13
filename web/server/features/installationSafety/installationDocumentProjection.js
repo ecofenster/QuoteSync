@@ -1,7 +1,7 @@
 import {installationQualificationSummary} from '../../../shared/installationQualificationSummary.js';
 import {projectInstallationMaterials} from './installationMaterialProjection.js';
 import {projectInstallationPositionWeight} from './installationPositionWeight.js';
-import {installerManufacturerDetails} from './installationPositionSource.js';
+import {installerManufacturerDetails,installerOpeningDetails} from './installationPositionSource.js';
 
 const text=value=>typeof value==='string'?value.trim():'';
 const amount=value=>value===null||value===undefined||value===''||!Number.isFinite(Number(value))||Number(value)<0?null:Number(value);
@@ -43,6 +43,7 @@ export function projectInstallationDocument({audience,revision,scenario,qualific
     const supplied=installerManufacturerDetails(position,scenario);
     if(!position.manufacturer)position.manufacturer=supplied?.manufacturer||'';
     if(!position.system)position.system=supplied?.system||'';
+    if(!position.opening)position.opening=installerOpeningDetails(position,scenario);
   }
   const programme=scenario?.installationProgramme,profile=scenario?.options?.installationProfile||{},allowances=programme?.allowances,route=(scenario?.routeSnapshots||[]).find(item=>item.id===profile.route?.snapshotId);
   const departure=text(route?.origin?.label),destination=text(route?.destination?.label);
