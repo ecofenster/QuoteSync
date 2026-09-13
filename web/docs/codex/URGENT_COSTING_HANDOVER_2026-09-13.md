@@ -1,10 +1,20 @@
 # Urgent costing checkpoint and pause — 13 September 2026
 
+## STOP — failed user acceptance supersedes readiness claims
+
+The user reported **FAILED acceptance at checkpoint `ad66b927a5a4cd3e625a6fc0a36acd480206a584`**: sections no longer collapse; Yes/No sliders do not move; the urgent repair has worsened the normal application experience. The previous “ready to review/send” claim and review/send instructions are superseded. Customer sending is **not confirmed**. Historical technical tests passed but did not establish working behaviour in the user's actual session; they are not user acceptance.
+
+Only this factual handover/Roadmap correction is authorised now. No repair, rollback, test run, live-data change or broader programme work is permitted before the user returns. Current code, worktree and business data are preserved.
+
+Exact next task on return: reproduce both collapse and slider failures in the exact application/runtime the user is using for EF-EST-2026-053; establish why the disposable acceptance tests missed them; then propose a bounded repair. Do not assume the tested successor route represents the user's current state. Preserve issued evidence and do not resume the 73-item programme or full-address travel.
+
+Documentation-only shutdown inspection found no known owned test runners, no browsers for the three completed urgent-run profiles, all three profiles absent, and no listeners on the owned journey/Configurator test ports. No process termination was necessary; user-owned services were not stopped. No tests or application requests were run for this correction. Four unrelated tracked changes and 101 untracked entries remain local and excluded from the checkpoint. Resolve this correction's commit with `git log -1 --format=%H -- docs/codex/URGENT_COSTING_HANDOVER_2026-09-13.md` and compare with the approved remote branch; the parent checkpoint is the failed `ad66b927a5a4cd3e625a6fc0a36acd480206a584`.
+
 ## Authority and exact restart point
 
 Only the urgent EF-EST-2026-053 costing repair and corrections to the shutdown handover were resumed. The 73-item programme and full-address installer travel remain suspended. After this checkpoint, STOP. On return read repository/web AGENTS.md, the authoritative Roadmap, this handover and the historical pause inventory; verify branch/HEAD/worktree before doing anything. Do not replay live filing, send emails, change live figures, or treat technical checks as user acceptance.
 
-Next unfinished user step: open EF-EST-2026-053, read its issued-release warning, explicitly choose **Create editable Estimate revision** if figures need changing, then review the retained costing, site postcode, inclusion choices, route/manual basis, customer PDF and unsent composer. Only the user may submit/send. Full-address travel is not the next automatically authorised implementation task.
+Next unfinished step is the exact-runtime failure reproduction and test-gap investigation above, followed by a bounded repair proposal on the user's return. The former customer review/send sequence is withdrawn pending that investigation. Full-address travel is not the next automatically authorised implementation task.
 
 ## Checkpoint identity
 
@@ -46,7 +56,7 @@ Completed technical verification:
 - `check:design-system` remains failing on four **unchanged pre-existing** findings: two colours in `features/customerQuotation/documentBrand.ts`, inline styles in `EstimateCommercial/SupplierReplyReview.tsx` and `SupplierRfqDialog.tsx`. None was expanded into an unrelated repair. A final pristine-checkout verification remains unperformed.
 - Final live read-only check retained Estimate update `2026-09-04T18:05:06.521Z`, scenario revision 26/update `2026-09-06T14:43:25.855Z`, and the original release/document identities. Options SHA-256 `6998a20535de4d98671cd88132bfa2a6e695b47face4fdc415869f1e675c7609`; updated `2026-09-06T14:43:25.851Z`. Active GET returns `editability.editable=false`, exact release/date and Materials `priced`. This check is not a claim that the user's successor figures or real customer send have been accepted.
 
-User acceptance remains outstanding: review the copied real-source commercial figures; confirm actual site and office versus installer travel; choose inclusion; inspect the customer PDF; review and personally send the Email. The broader intake/conflict workflow and original 73 entries are not complete or accepted.
+User acceptance FAILED at ad66b927a5a4cd3e625a6fc0a36acd480206a584: sections cannot collapse and Yes/No sliders do not move in the user's normal session. Technical evidence above remains historical, not proof of usable live-session behaviour. Customer sending is not confirmed. The broader intake/conflict workflow and original 73 entries are not complete or accepted.
 
 ## Corrected shutdown audit
 
@@ -72,7 +82,7 @@ Bounded disposable verification command: `node scripts/run-complete-customer-ord
 
 ## Paste on return
 
-Read AGENTS.md, the authoritative Roadmap and docs/codex/URGENT_COSTING_HANDOVER_2026-09-13.md. Verify the approved branch, final local/remote checkpoint and preserved worktree. Report the current urgent-task/user-acceptance state before changing anything. Do not resume the wider programme or full-address travel without my explicit instruction.
+Read AGENTS.md, the authoritative Roadmap and docs/codex/URGENT_COSTING_HANDOVER_2026-09-13.md. Verify the approved branch, final local/remote checkpoint and preserved worktree. First reproduce the failed collapse and Yes/No slider behaviour in my exact application/runtime for EF-EST-2026-053, establish why the acceptance tests missed it, and propose a bounded repair. Do not repeat the ready-to-send claim or resume the wider programme/full-address travel.
 
 ## Final checkpoint receipt — 13 September 2026, 11:38 BST
 
