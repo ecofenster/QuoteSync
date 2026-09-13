@@ -8,6 +8,8 @@ On return read `AGENTS.md`, `src/features/developmentRoadmap/roadmap.data.ts`, `
 
 ## Checkpoint identities
 
+Shutdown result: checkpoint `85eb315b75cdcf260b65d9eb5b4270b48875de3d` (completed code plus handover) was successfully pushed to the approved branch. Independent `git ls-remote` returned that exact local SHA on 13 September. The earlier push permission blocker is resolved. This final receipt is a documentation-only successor; resolve its enclosing SHA using the command below and compare it with the final report/remote. Shutdown Roadmap validation passes all 28 tests and `git diff --check` passes. The five unrelated tracked changes remain unchanged, test ports remain absent, and user API PID 17268 remains untouched. No owned background work remains; programme paused, safe to close Codex and shut down normally.
+
 - Repository: `C:\Github\QuoteSync`, working directory `C:\Github\QuoteSync\web`.
 - Approved branch: `backup/post-phase-9-working-2026-08-04`.
 - Completed implementation HEAD at handover preparation: `8ef01e28cedce4fc568cc271f35ada425e1fc6e5` — Configure and snapshot reviewed installer mileage policies.
