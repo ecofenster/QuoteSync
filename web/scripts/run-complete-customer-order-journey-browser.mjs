@@ -31,6 +31,7 @@ import {parsePdfSupplierFields} from '../server/features/supplierImportLab/pdfSu
 import mammoth from 'mammoth';
 import {verifyRamsJourney} from './rams-journey-browser.mjs';
 import {verifyInstallationDocuments} from './installation-documents-journey-browser.mjs';
+import {verifyOrderInstallationDocuments} from './order-installation-documents-journey-browser.mjs';
 import {verifyInstallerQualifications} from './installer-qualification-journey-browser.mjs';
 
 const APP_URL = "http://127.0.0.1:5276";
@@ -233,6 +234,7 @@ const startApi=()=>spawn(process.execPath, ["--import",pathToFileURL(path.resolv
     await input(tab, "input[type=email]", CUSTOMER); await click(tab, "Continue securely"); await waitFor(() => tab.evaluate(`document.body.innerText.includes(${JSON.stringify(fixture.estimateReference)})`), "Customer session did not open the issued Estimate");
     const originalPortalEstimateHash = await tab.evaluate(`(async()=>{const link=[...document.querySelectorAll('a')].find(item=>item.textContent.includes('View issued Estimate'));const response=await fetch(link.href,{credentials:'include'}),bytes=await response.arrayBuffer(),digest=await crypto.subtle.digest('SHA-256',bytes);return {status:response.status,type:response.headers.get('content-type'),hash:[...new Uint8Array(digest)].map(value=>value.toString(16).padStart(2,'0')).join('')}})()`);
     assert.deepEqual({ status: originalPortalEstimateHash.status, type: originalPortalEstimateHash.type, hash: originalPortalEstimateHash.hash }, { status: 200, type: "application/pdf", hash: fixture.document.sha256 });
+    if(process.argv.includes('--stop-after-order-installation-documents')){await verifyOrderInstallationDocuments({tab,click,waitFor,databasePath,output:OUTPUT,inspectPdf,fixture,appUrl:APP_URL});return;}
     await click(tab, "Review Estimate"); await waitFor(() => tab.evaluate("document.body.innerText.includes('Review every Position')"), "Customer Position review did not open");
     await input(tab, ".portal-external__positions fieldset:first-child select", "amendment_requested"); await input(tab, ".portal-external__positions fieldset:first-child textarea", overallSourceReview?"Change the external finish from White to RAL: 7016 (Anthracite grey) Matt.":"Change the external finish from white to black.");
     if(multiCustomerReissue){await input(tab,'.portal-external__positions fieldset:nth-child(2) select','amendment_requested');await input(tab,'.portal-external__positions fieldset:nth-child(2) textarea','Change the external finish from White to ALU painted matt color RAL 7003.');}

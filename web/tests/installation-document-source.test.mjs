@@ -17,6 +17,7 @@ test('Order source uses retained accepted Positions instead of the amended worki
   const db={get:async sql=>sql.includes('FROM estimates')?estimate:order,all:async(sql,id)=>{assert.match(sql,/AND accepted=1/);assert.equal(id,'acceptance-a');return[{estimate_position_id:'accepted-position'}]}};
   const source=await loadInstallationDocumentRevision(db,{estimateId:'estimate-a',revision:2,orderId:'order-a'});
   assert.deepEqual(source.positions,[{id:'accepted-position',widthMm:1200}]);assert.equal(source.clientName,'Retained client');assert.equal(source.sourceReleaseId,'release-a');assert.equal(source.siteAddress,'','Do not silently take an amended site address for a retained release');
+  order.estimate_snapshot_json=JSON.stringify({projectAddress:'Retained original site'});estimate.project_address='Changed working site';assert.equal((await loadInstallationDocumentRevision(db,{estimateId:'estimate-a',revision:2,orderId:'order-a'})).siteAddress,'Retained original site');
   order.release_client_id='another-client';await assert.rejects(()=>loadInstallationDocumentRevision(db,{estimateId:'estimate-a',revision:2,orderId:'order-a'}),/relationships/);
 });
 

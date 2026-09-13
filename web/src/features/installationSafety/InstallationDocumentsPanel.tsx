@@ -4,8 +4,8 @@ import './installationDocuments.css';
 
 type Saved={id:string;fileName:string;audience:string;revision:number;createdAt:string};
 type Context={clientId:string;estimateReference:string;revision:number;scenarios:Array<{id:string;name:string;revision:number}>;orders:Array<{id:string;reference:string;revision:number}>;documents:Saved[];total:number;offset:number;limit:number};
-export default function InstallationDocumentsPanel({estimateId,selectedScenarioId}:{estimateId:string;selectedScenarioId?:string}){
-  const [open,setOpen]=useState(false),[context,setContext]=useState<Context|null>(null),[audience,setAudience]=useState('installer'),[orderId,setOrderId]=useState(''),[scenarioId,setScenarioId]=useState(selectedScenarioId||''),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[error,setError]=useState(false),[saved,setSaved]=useState<Saved|null>(null);
+export default function InstallationDocumentsPanel({estimateId,selectedScenarioId,selectedOrderId}:{estimateId:string;selectedScenarioId?:string;selectedOrderId?:string}){
+  const [open,setOpen]=useState(false),[context,setContext]=useState<Context|null>(null),[audience,setAudience]=useState('installer'),[orderId,setOrderId]=useState(selectedOrderId||''),[scenarioId,setScenarioId]=useState(selectedScenarioId||''),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[error,setError]=useState(false),[saved,setSaved]=useState<Saved|null>(null);
   const running=useRef(false),loadSequence=useRef(0),request=useRef<{choices:string;key:string}|null>(null),base=`/api/installation-documents/estimates/${encodeURIComponent(estimateId)}`;
   const load=async(offset=0)=>{const sequence=++loadSequence.current;const value=await apiFetch(`${base}?offset=${offset}`) as Context;if(sequence===loadSequence.current)setContext(value);return value;};
   useEffect(()=>{if(!selectedScenarioId)return;setScenarioId(current=>current||selectedScenarioId);if(open){setMessage('Refreshing the saved calculation choices…');void load().then(()=>setMessage('Saved calculation choices refreshed. Nothing has been sent.')).catch(()=>{setError(true);setMessage('Saved calculation choices could not refresh. Retry loading to continue.');});}},[selectedScenarioId]);
@@ -13,6 +13,7 @@ export default function InstallationDocumentsPanel({estimateId,selectedScenarioI
   const prepare=async()=>{
     if(running.current||!context)return;
     const order=context.orders.find(item=>item.id===orderId),scenario=context.scenarios.find(item=>item.id===scenarioId);
+    if(orderId&&!order){setError(true);setMessage('The selected Order is unavailable in these choices. Reopen that Order; its accepted revision has not been replaced with the working Estimate.');return;}
     const body={clientId:context.clientId,audience,revision:order?.revision??context.revision,orderId:order?.id||null,scenarioId:audience==='installer'?scenario?.id:null,scenarioRevision:audience==='installer'?scenario?.revision:null};
     const choices=JSON.stringify(body);if(request.current?.choices!==choices)request.current={choices,key:crypto.randomUUID()};
     running.current=true;setBusy(true);setError(false);setSaved(null);setMessage('Preparing document…');
@@ -27,7 +28,7 @@ export default function InstallationDocumentsPanel({estimateId,selectedScenarioI
     {message?<p role={error?'alert':'status'} className="ui-status">{message}</p>:null}
     {!context?<button type="button" className="ui-button" disabled={busy} onClick={()=>void show()}>Retry loading</button>:<>
       <label>Document<select className="ui-input" value={audience} disabled={busy} onChange={event=>setAudience(event.currentTarget.value)}><option value="installer">Installer pack — draft</option><option value="client">Client schedule without prices — draft</option></select></label>
-      <label>Source revision<select className="ui-input" value={orderId} disabled={busy} onChange={event=>setOrderId(event.currentTarget.value)}><option value="">{context.estimateReference} · Revision {context.revision}</option>{context.orders.map(item=><option key={item.id} value={item.id}>{item.reference} · accepted Estimate revision {item.revision}</option>)}</select></label>
+      <label>Source revision<select className="ui-input" value={orderId} disabled={busy||!!selectedOrderId} onChange={event=>setOrderId(event.currentTarget.value)}><option value="">{context.estimateReference} · Revision {context.revision}</option>{context.orders.map(item=><option key={item.id} value={item.id}>{item.reference} · accepted Estimate revision {item.revision}</option>)}</select></label>
       {audience==='installer'?<label>Saved installation calculation<select className="ui-input" value={scenarioId} disabled={busy} onChange={event=>setScenarioId(event.currentTarget.value)}><option value="">Choose the saved calculation</option>{context.scenarios.map(item=><option key={item.id} value={item.id}>{item.name} · Revision {item.revision}</option>)}</select></label>:null}
       {audience==='installer'&&!context.scenarios.length?<p>No saved calculation is available yet. <button type="button" className="ui-button" disabled={busy} onClick={()=>void show()}>Refresh choices</button></p>:null}
       <button type="button" className="ui-button ui-button--primary" disabled={busy||(audience==='installer'&&!context.scenarios.some(item=>item.id===scenarioId))} onClick={()=>void prepare()}>{busy?'Preparing…':'Prepare draft PDF'}</button>
