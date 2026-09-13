@@ -1,0 +1,75 @@
+# Urgent costing checkpoint and pause — 13 September 2026
+
+## Authority and exact restart point
+
+Only the urgent EF-EST-2026-053 costing repair and corrections to the shutdown handover were resumed. The 73-item programme and full-address installer travel remain suspended. After this checkpoint, STOP. On return read repository/web AGENTS.md, the authoritative Roadmap, this handover and the historical pause inventory; verify branch/HEAD/worktree before doing anything. Do not replay live filing, send emails, change live figures, or treat technical checks as user acceptance.
+
+Next unfinished user step: open EF-EST-2026-053, read its issued-release warning, explicitly choose **Create editable Estimate revision** if figures need changing, then review the retained costing, site postcode, inclusion choices, route/manual basis, customer PDF and unsent composer. Only the user may submit/send. Full-address travel is not the next automatically authorised implementation task.
+
+## Checkpoint identity
+
+- Approved branch: `backup/post-phase-9-working-2026-08-04`.
+- Starting local/upstream checkpoint: `330e39f636bdf9339c25853da90cc6581ee0875d`.
+- Remote: `https://github.com/ecofenster/QuoteSync.git`.
+- Ending code/documentation commit and verified remote receipt: recorded in the final checkpoint receipt below. A handover cannot embed its own commit SHA; resolve the enclosing checkpoint with `git log -1 --format=%H -- docs/codex/URGENT_COSTING_HANDOVER_2026-09-13.md` and compare `git rev-parse HEAD` with `git ls-remote --heads origin backup/post-phase-9-working-2026-08-04`.
+
+## Live diagnosis — read-only, separate from disposable tests
+
+- Exact Estimate: `EF-EST-2026-053`, ID `42be2ec116d2581a06cc41e90`; Client `fac23ef5196de819e8c8452ed`; Project `45958360-2810-48be-826b-c75e7e6b81ef`.
+- Scenario `bc948cd3-0b79-4b13-9300-6c00e9c279dc`. Legacy Estimate status is Draft, but release `52af6f0b-a540-49d2-9865-f303737eef7e` exists for revision 0, released `2026-09-08T18:57:23.260Z`, document `2bf0747a-0491-40d6-b938-5053bd1d1c6e`. No guard was removed. No live successor was created by Codex.
+- The UI previously synchronized costing on open and presented editable controls despite that release. Writes to guarded costing tables raise `SQLITE_CONSTRAINT: Issued Estimate revision costing is immutable`; the router previously converted that into the generic 500 message. The old live failed request's server-log transcript was not available; do not describe a disposable reproduction as a captured live exception.
+- A separate Materials mismatch submitted the whole historical selection for a Yes/No change, triggering current-catalogue selection validation. Inclusion now sends only `enabled` and retains saved selections, rates and calculation snapshot without adopting current defaults.
+- Read-only provider computations succeeded: KY4 9FA and MK43 0LW geocode; the office-to-site route returned 637.14 km / 392 minutes. These were not saved to live costing. The site was a clearly identified Client-address fallback requiring review. Ecoglaze's saved installer base RG9 1XP is distinct; the office route must not replace installer travel.
+
+## Delivered scope and relevant paths
+
+- Canonical release-aware costing read-only state and actionable 409 errors; no auto-sync write when opening an issued scenario. User-triggered successor creation reuses the established lineage/costing clone service and reopens that exact working Estimate; retries reuse its identity.
+- All three inclusion controls have progress/outcome feedback and preserve configured values on exclusion. Materials toggling is independent of catalogue amendment. The lower project-cost display now uses the same complete canonical cost as the headline, rather than a subtotal omitting Materials/equipment/travel.
+- Office Site Visit travel explains the site confirmation, retains missing distance/time as unconfirmed in the UI, supports reviewed paired manual values with required basis and validates before writes. Provider credentials/configuration and installer-base travel contracts are unchanged.
+- `server/routes/projectCalculatorLab.js`; `server/features/projectCalculatorLab/costingEditability.js`, `projectCalculatorLabService.js`, `siteVisitCosting.js`.
+- `src/features/projectCalculatorLab/ProjectCalculatorLabWorkspace.tsx`, `ScenarioCostingWorksheet.tsx`, `SiteVisitTravelPanel.tsx`, `ConfigureInstallation.tsx`, domain types/CSS; `src/features/estimateCommercial/EstimateCommercialWorkspace.tsx`, `EstimateCommercialHeaderRows.tsx`.
+- `tests/urgent-costing-repair.test.mjs`; `scripts/urgent-costing-acceptance.mjs`; bounded `--stop-after-urgent-costing` branch in the existing owned-browser journey runner.
+
+## Validation and user acceptance
+
+Validation is reported in the final receipt; intermediate failed browser runs are not overall acceptance passes. The tests use fresh schema-only disposable databases, not copies of Ecofenster data, and no live delivery. Static/design-system limitations and exact browser cleanup must remain explicit.
+
+Completed technical verification:
+
+- Ten focused tests pass: urgent release/manual-basis/historical-inclusion cases; actual-schema route persistence; installer travel policies; material projection/PDF regressions. `npm run typecheck`, production build, focused ESLint and diff whitespace checks pass. Build retains the existing large-chunk warning.
+- Roadmap validation: 28/28 after the update. Totals remain **23 complete / 77 in progress / 140 not started / 3 blocked / 10 legacy = 253**. No status was promoted. Updated IDs: `costing-operational-categories`, `quotation-4`, `guided-ux-staged-review-4`; chronology 157 and checkpoint display updated. Existing AGENTS immutability, guided feedback, retained evidence and process-ownership rules already cover this repair; no permanent-rule change was needed.
+- `--stop-after-urgent-costing` exited 0, run `fe93de70-2a51-4278-b3f9-0150729183ac`. Normal Estimate route shows the release warning, loads read-only Materials, creates/reopens one successor, preserves issued options, and verifies all three toggles both ways through reload. Test selling total GBP 1,353.58 changes to 1,053.58 without Import / Customs, 1,218.50 without Materials and 435.08 without Installation; restoring each returns exactly 1,353.58. Header and summary project costs agree.
+- Office manual recovery rejects missing basis, retains entries, then saves reviewed 100 miles / 2 hours **disposable test values only**, yielding 200 return miles / 4 driving hours. They are not a real KY4→MK43 route. After saved test travel: preview, downloaded PDF and prepared unsent Email agree on GBP 1,474.58 ex VAT / 294.92 VAT / 1,769.50 inclusive. Five-page PDF SHA-256 `6e3a5a1bdba22dcafcf99f796ae70deb7a6e165a8e52339f559761ad19af112d`. Report: `test-output/complete-customer-order-journey/urgent-costing-report.json`; PDF/images: `urgent-downloads-mtzntwq9/`. These ignored artifacts remain local.
+- The existing `--stop-after-installation-manual-travel` regression also exited 0, run `14277817-55ca-4ffa-a659-d09c9d52cc3c`: blocked provider; incomplete manual evidence; retained entries; failed adoption/retry; exact installer route pair and overnight costing; failed document preparation/retry, installer/client PDFs and 11-document history at a small viewport. This validates the attributable ConfigureInstallation feedback without implementing full-address travel. No live messages were sent.
+- Exact owned profiles `run-SQBkF8` (root PID 39100) and `run-9jX6kR` (root PID 12860) were independently verified absent, with zero exact-profile browser processes and absent root processes after final exit. All current urgent test runners and 3104/5276/9416 listeners were absent; Configurator 3313/5413/9313 also absent. Earlier failed urgent attempts were selector/reload synchronization errors, a launch-permission failure, or one concurrent native-watcher restart; they are not reported as overall passes.
+- Final urgent browser repeat exited 0, run `bf25b781-a354-4ad7-82a1-cde908587453`, including the assertion that every issued costing section stays expanded/readable. All prior toggle/manual/PDF/composer checks passed again. Its latest report replaces `urgent-costing-report.json`; PDF directory `urgent-downloads-mtzo9u0m/`, five-page PDF SHA-256 `a1a83688daffb38a3b465cf2217b2f234687b8297e00e67ed6cf0e516388b7ae`, with the same saved totals. Independent post-exit inspection found profile `run-rEVB3k` absent, root PID 2960 absent, zero exact-profile processes, zero owned journey/Configurator runners and zero test listeners. A final defensive `finally` releases the office-route busy state even if reviewed manual values prevent adoption; focused ESLint and full typecheck passed after that one-line adjustment. The final production build passed before that defensive adjustment; a clean-checkout browser gate remains outstanding.
+- `check:design-system` remains failing on four **unchanged pre-existing** findings: two colours in `features/customerQuotation/documentBrand.ts`, inline styles in `EstimateCommercial/SupplierReplyReview.tsx` and `SupplierRfqDialog.tsx`. None was expanded into an unrelated repair. A final pristine-checkout verification remains unperformed.
+- Final live read-only check retained Estimate update `2026-09-04T18:05:06.521Z`, scenario revision 26/update `2026-09-06T14:43:25.855Z`, and the original release/document identities. Options SHA-256 `6998a20535de4d98671cd88132bfa2a6e695b47face4fdc415869f1e675c7609`; updated `2026-09-06T14:43:25.851Z`. Active GET returns `editability.editable=false`, exact release/date and Materials `priced`. This check is not a claim that the user's successor figures or real customer send have been accepted.
+
+User acceptance remains outstanding: review the copied real-source commercial figures; confirm actual site and office versus installer travel; choose inclusion; inspect the customer PDF; review and personally send the Email. The broader intake/conflict workflow and original 73 entries are not complete or accepted.
+
+## Corrected shutdown audit
+
+ConfigureInstallation.tsx's pre-existing 23 additions/15 deletions were authored during the previous Codex run, not by unrelated user work. They introduce explicit info/success/error status classification, checking/saving progress and recoverable team/type/advanced-save messages. They are included only as attributable feedback changes, without expanding installation functionality.
+
+The earlier blanket cleanup assertion was unsupported. Historical Configurator runner 73204 failed with a cleanup child not confirmed exited and EBUSY temporary database deletion; 35824 reported browser/profile cleanup but still had a running terminal identifier and no final exit record. Later passing runs did not prove those earlier runners had stopped. The pause check examined 3104/5276/9416, not Configurator 3313/5413/9313. Exact historical exit time is unknown. The subsequent read-only audit found those terminal IDs unavailable, no matching running Configurator process and no listeners on its ports. A residual owned historical database remained at `C:\Users\PC\AppData\Local\Temp\quotesuite-configurator-theme-w63QDy\acceptance.db`; it was not deleted during this repair. Current process checks must not be backdated as evidence of historical cleanup.
+
+Repeated pause replies came from automatic continuations of the still-active original programme goal (29 between 10:30:11 and 10:31:59 BST), not implementation or completed work. This handover explicitly preserves the pause instruction; an automatic continuation is not fresh permission.
+
+Clean-checkout limitation: validation uses the shared dirty workspace. Attributable ConfigureInstallation feedback is now inventoried, but no isolated pristine clone of the final remote commit has been fully browser-validated. Existing unrelated/private content remains local; do not claim a remote clone can reproduce all local assets or evidence.
+
+## Preserved work and runtime — no secrets
+
+Four original tracked changes remain excluded: `../code_unfinished.txt` deletion; `../quotesync-tree.txt` deletion; `_project/Test/Europa 92 Alu Clad/3 Field/Hor - 3 Field Tilt Turn Right- Fixed - Tilt Turn Left/B92_EQUAL_FIELD_DATUM_CONSOLIDATED_CLOSEOUT.md`; `_project/Test/Europa 92 Alu Clad/generated-summary.md`. Their ownership is not reassigned to this task. Original untracked private assets, source documents, audit scripts and reports remain as listed in PAUSE_WORKTREE_INVENTORY_2026-09-13.md. They are not remotely backed up by this checkpoint. Neither are ignored databases, attachments, credentials, `.quotesuite-acceptance/` or `test-output/`.
+
+The actual normal database is `C:\Github\QuoteSync\web\quotesync.db`. The similarly named `web/server/quotesync.db` is not the default active database; an initial read-only inspection of it was corrected before any task mutation. Do not switch databases.
+
+At urgent-task start port 3001 was user-owned API PID 40360, parent native watcher 29604, supervisor 3156, runtime-health v15, instance `80b12a63-d11d-44b1-a6a2-4888c2f75904`; Vite 5173 PID 30188. The user's watcher naturally replaces API children on changes; never infer ownership from a later PID alone. Codex did not stop/replace the supervisor or database. Record final ownership in the receipt.
+
+Normal restart from `C:\Github\QuoteSync\web`: inspect port 3001 and reuse a compatible existing API; otherwise `npm run dev:quotesuite`. API-only: `npm run api` from web, or `node index.js` from web/server. Persistent isolated acceptance: `npm run dev:acceptance` after checking ports, retaining `.quotesuite-acceptance/quotesync-acceptance.db` and its attachments. Gmail/Drive connections belong to that workspace; use designated test accounts/roots and existing infrastructure encryption, never copy live tokens. Delivery stays disabled/allowlisted under existing controls. Do not expose secret values in restart notes.
+
+Bounded disposable verification command: `node scripts/run-complete-customer-order-journey-browser.mjs --stop-after-urgent-costing --require-existing-user-api`. It owns only 3104/5276/9416 and its unique temporary profile. Do not run concurrently with builds/API-source edits that restart the pre-existing native watcher; require final exit plus independent exact-process/profile checks. Process-launch restrictions require the permitted approval path, never a self-approved prompt or bypass.
+
+## Paste on return
+
+Read AGENTS.md, the authoritative Roadmap and docs/codex/URGENT_COSTING_HANDOVER_2026-09-13.md. Verify the approved branch, final local/remote checkpoint and preserved worktree. Report the current urgent-task/user-acceptance state before changing anything. Do not resume the wider programme or full-address travel without my explicit instruction.

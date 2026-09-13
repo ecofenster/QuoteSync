@@ -110,7 +110,22 @@ export default function EstimateCommercialWorkspace({
       setScenarioId(scenario.id),
     );
   }, [estimateId, estimateRef, positionRevision]);
-  const createRevision=async()=>{if(!currentScenario||creatingRevision)return;setCreatingRevision(true);setRevisionStatus("");try{const updated=await projectCalculatorLabApi.createRevision(currentScenario.id);setCurrentScenario(updated);setCustomerValue(deriveProjectCostingCommercialResult(updated).actualSale);window.dispatchEvent(new CustomEvent("quotesuite:costing-updated",{detail:updated}));setRevisionStatus("Revision created.")}catch(error){setRevisionStatus(error instanceof Error?error.message:"Revision could not be created.")}finally{setCreatingRevision(false)}};
+  const createRevision=async()=>{
+    if(!currentScenario||creatingRevision)return;
+    const issued=currentScenario.editability?.editable===false;
+    if(issued&&!window.confirm("Create an editable Estimate revision with the saved positions and costing? The issued Estimate and its evidence will remain unchanged."))return;
+    setCreatingRevision(true);setRevisionStatus(issued?"Creating editable Estimate revision…":"Saving costing revision…");
+    try{
+      if(issued){
+        const result=await apiFetch(`/api/admin/project-calculator-lab/scenarios/${encodeURIComponent(currentScenario.id)}/working-estimate`,{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"}) as {estimateId:string;clientId:string;estimateRef:string};
+        setRevisionStatus(`${result.estimateRef} is saved. Opening the editable revision…`);
+        window.location.hash=`/estimate/${encodeURIComponent(result.clientId)}/${encodeURIComponent(result.estimateId)}`;
+        window.location.reload();
+        return;
+      }
+      const updated=await projectCalculatorLabApi.createRevision(currentScenario.id);setCurrentScenario(updated);setCustomerValue(deriveProjectCostingCommercialResult(updated).actualSale);window.dispatchEvent(new CustomEvent("quotesuite:costing-updated",{detail:updated}));setRevisionStatus("Costing revision saved. No customer Estimate has been issued.");
+    }catch(error){setRevisionStatus(error instanceof Error?error.message:"Revision could not be created. Retry safely; any saved working revision will be reused.")}finally{setCreatingRevision(false)}
+  };
   const supplierPolicies=((currentScenario as (CalculatorScenario & {supplierCommercialPolicies?:SupplierCommercialResult[]})|null)?.supplierCommercialPolicies??[]);
   const reviewCustomerQuotation=()=>{if(!client||!estimate)return;setQuotationReviewed(true);setQuotationOpen(true)};
   return (
@@ -127,8 +142,9 @@ export default function EstimateCommercialWorkspace({
         onBack={onBack}
         scenarioId={currentScenario?.id ?? ""}
         supplierPolicies={supplierPolicies}
-        nextActionMessage={nextAction?.reason ?? "Review the current commercial worksheet."}
-        nextActionLabel={nextAction?.label}
+        nextActionMessage={currentScenario?.editability?.reason ?? nextAction?.reason ?? "Review the current commercial worksheet."}
+        nextActionLabel={currentScenario?.editability?.editable===false ? `Issued release${currentScenario.editability.releasedAt ? ` · ${new Date(currentScenario.editability.releasedAt).toLocaleDateString("en-GB")}` : ""} · read-only` : nextAction?.label}
+        issuedReadOnly={currentScenario?.editability?.editable===false}
         revisionStatus={revisionStatus}
         creatingRevision={creatingRevision}
         onCreateRevision={() => void createRevision()}

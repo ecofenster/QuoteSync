@@ -21,6 +21,7 @@ export default function EstimateCommercialHeaderRows({
   nextActionLabel,
   revisionStatus,
   creatingRevision,
+  issuedReadOnly = false,
   onCreateRevision,
   onOpenDocuments,
   onRequestSupplierQuote,
@@ -42,6 +43,7 @@ export default function EstimateCommercialHeaderRows({
   nextActionLabel?: string;
   revisionStatus?: string;
   creatingRevision: boolean;
+  issuedReadOnly?: boolean;
   onCreateRevision: () => void;
   onOpenDocuments: () => void;
   onRequestSupplierQuote?: () => void;
@@ -69,7 +71,7 @@ export default function EstimateCommercialHeaderRows({
     <aside className="estimate-commercial__next-action" data-project-costing-order="next-action">
       <div><strong>Next Action</strong>{nextActionLabel?<b>{nextActionLabel}</b>:null}<span>{nextActionMessage}</span>{revisionStatus ? <small role="status">{revisionStatus}</small> : null}</div>
       <div className="estimate-commercial__next-actions">
-        <button type="button" className="ui-button" disabled={!scenarioId || creatingRevision} onClick={onCreateRevision}>{creatingRevision ? "Creating…" : "Create Revision"}</button>
+        <button type="button" className="ui-button" disabled={!scenarioId || creatingRevision} onClick={onCreateRevision}>{creatingRevision ? "Creating…" : issuedReadOnly ? "Create editable Estimate revision" : "Create Revision"}</button>
         <button type="button" className="ui-button" onClick={onOpenDocuments}>Files / Documents</button>
         <button type="button" className="ui-button" disabled={!projectId} onClick={onRequestSupplierQuote}>Request supplier estimate / revision</button>
         <button type="button" className="ui-button ui-button--primary" disabled={!canReviewCustomerQuotation} onClick={onReviewCustomerQuotation}>Review Customer Quotation</button>

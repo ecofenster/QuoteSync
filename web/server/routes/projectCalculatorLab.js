@@ -5,6 +5,10 @@ import { createCalculatorAdminService } from '../features/projectCalculatorLab/c
 import { createInstallationWorkforceService } from '../features/projectCalculatorLab/installationWorkforceService.js';
 import { createInstallationQualificationEvidenceService } from '../features/projectCalculatorLab/installationQualificationEvidenceService.js';
 import { createVatTreatmentService } from '../features/projectCalculatorLab/vatTreatmentService.js';
+import { costingEditability } from '../features/projectCalculatorLab/costingEditability.js';
+import { isEstimateRevisionImmutableError } from '../features/estimates/estimateRevisionPolicy.js';
+import { createPortalSecurityService } from '../features/clientPortal/portalSecurityService.js';
+import { CURRENT_APP_USER } from '../currentUser.js';
 
 const fail=(res,status,code,message)=>res.status(status).json({code,error:message});
 
@@ -15,6 +19,28 @@ export async function createProjectCalculatorLabRouter({dbPromise, exchangeRateP
   const workforce=createInstallationWorkforceService(await dbPromise);
   const qualificationEvidence=createInstallationQualificationEvidenceService(await dbPromise);
   const vatTreatment=createVatTreatmentService(await dbPromise);
+  const workingRevisions=new Map();
+  router.post('/scenarios/:scenarioId/working-estimate', async(req,res,next)=>{
+    try {
+      const db=await dbPromise, scenario=await db.get('SELECT estimate_id FROM project_calculator_lab_scenarios WHERE id=?',req.params.scenarioId);
+      if(!scenario)return fail(res,404,'scenario_not_found','Project Costing record not found.');
+      const state=await costingEditability(db,scenario.estimate_id);
+      if(state.editable)return fail(res,409,'estimate_already_editable','This Estimate is already editable. Reload Project Costing.');
+      let pending=workingRevisions.get(state.releaseId);
+      if(!pending){pending=createPortalSecurityService(db).createNextEstimateRevision({estimateReleaseId:state.releaseId,createdBy:CURRENT_APP_USER.id,createdByName:CURRENT_APP_USER.name,reason:'staff_costing_amendment'}).finally(()=>workingRevisions.delete(state.releaseId));workingRevisions.set(state.releaseId,pending);}
+      const estimate=await pending;
+      res.json({estimateId:estimate.id,clientId:estimate.client_id,estimateRef:estimate.estimate_ref});
+    }catch(error){next(error)}
+  });
+  router.use('/scenarios/:scenarioId', async(req,res,next)=>{
+    try {
+      const db=await dbPromise, scenario=await db.get('SELECT estimate_id FROM project_calculator_lab_scenarios WHERE id=?',req.params.scenarioId);
+      const state=await costingEditability(db,scenario?.estimate_id);
+      if(!['GET','HEAD','OPTIONS'].includes(req.method)&&req.path!=='/installation-recommendations'&&!state.editable)return fail(res,409,'estimate_revision_immutable',state.reason);
+      res.locals.costingEditability=state;
+      next();
+    }catch(error){next(error)}
+  });
   router.get('/admin-configuration',async(_req,res,next)=>{try{res.json(await admin.getConfiguration());}catch(error){next(error);}});
   router.get('/supplier-commercial-defaults',async(_req,res,next)=>{try{res.json(await service.listSupplierCommercialDefaults());}catch(error){next(error);}});
   router.put('/supplier-commercial-defaults/:supplierCode',async(req,res,next)=>{try{res.json(await service.saveSupplierCommercialDefault({...req.body,supplierCode:req.params.supplierCode}));}catch(error){if(error.code==='invalid_commercial_policy')return fail(res,400,error.code,error.message);next(error);}});
@@ -37,7 +63,7 @@ export async function createProjectCalculatorLabRouter({dbPromise, exchangeRateP
   router.get('/import-sources',async(req,res,next)=>{try{res.json(await service.listImportSources(req.query.estimate_id||null));}catch(error){next(error);}});
   router.get('/scenarios',async(req,res,next)=>{try{res.json(await service.listScenarios(req.query.estimate_id||null));}catch(error){next(error);}});
   router.post('/scenarios',async(req,res,next)=>{try{const origin=req.body?.origin??(req.body?.extractionRunId?'supplier_import':null);if(!['supplier_import','estimate','manual','mixed'].includes(origin))return fail(res,400,'invalid_scenario','A recognized scenario origin is required.');res.status(201).json(await service.createScenario({...req.body,origin}));}catch(error){if(['source_not_found','source_has_no_selected_items','invalid_scenario','origin_unavailable','feature_unavailable','exchange_rate_unavailable','estimate_not_found'].includes(error.code)){const status=['source_not_found','estimate_not_found'].includes(error.code)?404:['source_has_no_selected_items','origin_unavailable','feature_unavailable'].includes(error.code)?409:error.code==='exchange_rate_unavailable'?503:400;return fail(res,status,error.code,error.message);}next(error);}});
-  router.get('/scenarios/:scenarioId',async(req,res,next)=>{try{const value=await service.getScenario(req.params.scenarioId);const estimateId=typeof req.query.estimate_id==='string'?req.query.estimate_id:'';return value&&(!estimateId||value.estimateId===estimateId)?res.json(value):fail(res,404,'scenario_not_found','Project Costing record not found for this estimate.');}catch(error){next(error);}});
+  router.get('/scenarios/:scenarioId',async(req,res,next)=>{try{const value=await service.getScenario(req.params.scenarioId);const estimateId=typeof req.query.estimate_id==='string'?req.query.estimate_id:'';return value&&(!estimateId||value.estimateId===estimateId)?res.json({...value,editability:res.locals.costingEditability}):fail(res,404,'scenario_not_found','Project Costing record not found for this estimate.');}catch(error){next(error);}});
   router.get('/scenarios/:scenarioId/exchange-rate/live',async(req,res,next)=>{try{const value=await service.getLiveExchangeRate(req.params.scenarioId);return value?res.json(value):fail(res,404,'scenario_not_found','Project Costing record not found.');}catch(error){if(error.code==='exchange_rate_unavailable')return fail(res,503,error.code,error.message);next(error);}});
   router.post('/scenarios/:scenarioId/installation-recommendations',async(req,res,next)=>{try{const value=await service.getInstallationRecommendations(req.params.scenarioId,req.body||{});return value?res.json(value):fail(res,404,'scenario_not_found','Project Costing record not found.');}catch(error){next(error);}});
   router.post('/scenarios/:scenarioId/sync-estimate-positions',async(req,res,next)=>{try{const value=await service.syncEstimatePositions(req.params.scenarioId);return value?res.json(value):fail(res,404,'scenario_not_found','Project Costing record not found.');}catch(error){next(error);}});
@@ -62,6 +88,6 @@ export async function createProjectCalculatorLabRouter({dbPromise, exchangeRateP
   router.post('/scenarios/:scenarioId/installation-materials/use-current-catalogue',async(req,res,next)=>{try{const value=await service.useCurrentInstallationCatalogue(req.params.scenarioId,req.body||{});return value?res.json(value):fail(res,404,'scenario_not_found','Calculator scenario not found.');}catch(error){if(error.code==='invalid_options')return fail(res,400,error.code,error.message);next(error);}});
   router.patch('/scenarios/:scenarioId/package-items/:itemId',async(req,res,next)=>{try{const value=await service.updatePackageItem(req.params.scenarioId,req.params.itemId,req.body||{});return value?res.json(value):fail(res,404,'package_item_not_found','Package item not found.');}catch(error){if(error.code==='invalid_cost')return fail(res,400,error.code,error.message);next(error);}});
   router.post('/scenarios/:scenarioId/route-snapshots',async(req,res,next)=>{try{const value=await service.appendRouteSnapshot(req.params.scenarioId,req.body||{});return value?res.status(201).json(value):fail(res,404,'scenario_not_found','Calculator scenario not found.');}catch(error){if(error.code==='invalid_route')return fail(res,400,error.code,error.message);next(error);}});
-  router.use((error,req,res,_next)=>{console.error('Project Calculator Lab request failed',{method:req.method,path:req.originalUrl,code:error?.code||'calculator_lab_failure',message:error instanceof Error?error.message:String(error)});return fail(res,500,'calculator_lab_failure','Unable to complete the Project Costing operation. Please retry or contact support with the time of the failure.');});
+  router.use((error,req,res,_next)=>{if(isEstimateRevisionImmutableError(error))return fail(res,409,'estimate_revision_immutable','This Estimate has an issued release. Create an editable Estimate revision before changing Project Costing. The issued figures remain unchanged.');console.error('Project Calculator Lab request failed',{method:req.method,path:req.originalUrl,code:error?.code||'calculator_lab_failure',message:error instanceof Error?error.message:String(error)});return fail(res,500,'calculator_lab_failure','Unable to complete the Project Costing operation. Please retry or contact support with the time of the failure.');});
   return router;
 }

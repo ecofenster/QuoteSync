@@ -61,6 +61,7 @@ export function normalizeSiteVisitCosting(value, defaults = DEFAULTS) {
     reviewedOneWayMiles: source.reviewedOneWayMiles == null ? null : String(source.reviewedOneWayMiles),
     calculatedDurationMinutes: source.calculatedDurationMinutes == null ? null : Number(source.calculatedDurationMinutes),
     reviewedTravelHours: source.reviewedTravelHours == null ? null : String(source.reviewedTravelHours),
+    manualRouteBasis: String(source.manualRouteBasis ?? '').trim(),
     returnJourney: source.returnJourney !== false,
     visits: Math.max(1, Number.parseInt(source.visits ?? 1, 10) || 1),
     people: Math.max(1, Number.parseInt(source.people ?? normalizedDefaults.defaultPeople, 10) || 1),
@@ -84,6 +85,16 @@ export function normalizeSiteVisitCosting(value, defaults = DEFAULTS) {
     routeProvenance: source.routeProvenance == null ? null : String(source.routeProvenance),
     capturedDefaultsAt: source.capturedDefaultsAt == null ? null : String(source.capturedDefaultsAt),
   };
+}
+
+export function validateSiteVisitReview(value) {
+  const hasManual=value?.reviewedOneWayMiles!=null || value?.reviewedTravelHours!=null;
+  if(hasManual && (!String(value.manualRouteBasis??'').trim() || value.reviewedOneWayMiles==null || value.reviewedTravelHours==null))
+    throw Object.assign(new Error('Enter both reviewed one-way distance and time, and their basis. Your previous saved travel values are unchanged.'),{code:'invalid_options'});
+  for(const key of ['reviewedOneWayMiles','reviewedTravelHours','calculatedOneWayMiles','calculatedDurationMinutes']) {
+    if(value?.[key]!=null && (String(value[key]).trim()==='' || !Number.isFinite(Number(value[key])) || Number(value[key])<0))
+      throw Object.assign(new Error('Travel distance and time must be non-negative numbers. Missing route information must remain unconfirmed.'),{code:'invalid_options'});
+  }
 }
 
 export function calculateSiteVisitCosting(value) {

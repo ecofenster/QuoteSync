@@ -1,5 +1,11 @@
 # Shutdown handover — 13 September 2026
 
+## Correction and superseding urgent handover
+
+The audit and narrowly authorised urgent costing repair on 13 September supersede this document's shutdown receipt and next-step instruction. Read `docs/codex/URGENT_COSTING_HANDOVER_2026-09-13.md` first. The wider 73-item programme and full-address travel work remain paused. The original ending checkpoint was `330e39f636bdf9339c25853da90cc6581ee0875d`.
+
+Corrections: `ConfigureInstallation.tsx`'s 23 additions/15 deletions were authored by the previous Codex run, not unrelated user work. The blanket claim below that no owned background work remained was unsupported: two earlier failed Configurator runners had not been verified exited, and the shutdown port check did not cover their ports. The later passing browser run did not establish cleanup of those earlier runners. Historical claims below are retained as a record, not current verification. The active normal database is `web/quotesync.db`, not `web/server/quotesync.db`.
+
 ## Stop and resume contract
 
 The user has paused the entire authorised programme for approximately one week. Start no new work until the user returns. Do not treat the original 73-entry objective, broader intake/conflicts, installation programme or later customer stages as complete or user-accepted.
@@ -8,7 +14,7 @@ On return read `AGENTS.md`, `src/features/developmentRoadmap/roadmap.data.ts`, `
 
 ## Checkpoint identities
 
-Shutdown result: checkpoint `85eb315b75cdcf260b65d9eb5b4270b48875de3d` (completed code plus handover) was successfully pushed to the approved branch. Independent `git ls-remote` returned that exact local SHA on 13 September. The earlier push permission blocker is resolved. This final receipt is a documentation-only successor; resolve its enclosing SHA using the command below and compare it with the final report/remote. Shutdown Roadmap validation passes all 28 tests and `git diff --check` passes. The five unrelated tracked changes remain unchanged, test ports remain absent, and user API PID 17268 remains untouched. No owned background work remains; programme paused, safe to close Codex and shut down normally.
+Historical shutdown receipt: checkpoint `85eb315b75cdcf260b65d9eb5b4270b48875de3d` was pushed and independently matched the approved remote branch. Its final receipt commit was `330e39f636bdf9339c25853da90cc6581ee0875d`. The prior permission blocker was resolved and 28 Roadmap tests passed. The earlier assertion that all five remaining tracked changes were unrelated and that no owned background work remained was incorrect/unsupported; the ownership, cleanup evidence and exact current pause state are corrected in the urgent handover above.
 
 - Repository: `C:\Github\QuoteSync`, working directory `C:\Github\QuoteSync\web`.
 - Approved branch: `backup/post-phase-9-working-2026-08-04`.
@@ -35,7 +41,7 @@ Relevant implementation paths:
 
 Full-address travel has ONLY been investigated read-only. No unfinished implementation patch exists for it. Continue by adding a canonical full-address projection from the saved assigned Team base and selected revision's actual site, then carry that binding into reviewed routing, server adoption and installer PDF. Current journey binding is UK-postcode based and must not be described as full-address routing.
 
-Already inspected: `estimateSitePostcode.js` prioritises Estimate project address/postcode then Client project address and finally explicit Client-address fallback. `getScenario` and ConfigureInstallation's selected Team snapshot expose basePostcode but omit baseAddress in relevant projections. Team Administration already retains baseAddress.line1; Company address/postcode also exist. `installationDocumentSource.js` uses working Estimate project_address for working sources and immutable release siteAddress/projectAddress for issued/Order sources. Preserve that revision distinction. Never combine an address with a conflicting manual postcode, invent coordinates or silently rewrite saved travel. Retain explicit postcode-only/manual basis when full evidence is unavailable. Preserve unrelated ConfigureInstallation edits.
+Already inspected: `estimateSitePostcode.js` prioritises Estimate project address/postcode then Client project address and finally explicit Client-address fallback. `getScenario` and ConfigureInstallation's selected Team snapshot expose basePostcode but omit baseAddress in relevant projections. Team Administration already retains baseAddress.line1; Company address/postcode also exist. `installationDocumentSource.js` uses working Estimate project_address for working sources and immutable release siteAddress/projectAddress for issued/Order sources. Preserve that revision distinction. Never combine an address with a conflicting manual postcode, invent coordinates or silently rewrite saved travel. Retain explicit postcode-only/manual basis when full evidence is unavailable. Preserve the documented Codex-authored ConfigureInstallation feedback; do not reclassify it as unrelated user work.
 
 After implementing this bounded address change, proportionately verify exact owner/revision binding, missing/conflicting addresses, distinct directions, manual recovery, policy snapshots and normal-route PDFs; then current and Legacy Light/Dark and smaller-screen/zoom access. Reuse valid earlier evidence rather than repeating the whole programme.
 
@@ -57,15 +63,15 @@ Short pending user check: in disposable Administration configure/reopen a Compan
 
 ## Preserved local work / ownership
 
-See [PAUSE_WORKTREE_INVENTORY_2026-09-13.md](PAUSE_WORKTREE_INVENTORY_2026-09-13.md) for the exact pre-handover status inventory. Five tracked unrelated paths remain: the two root text-file deletions, two B92 reports, and ConfigureInstallation.tsx (23 insertions/15 deletions unrelated feedback). These belong to pre-existing/user work and are not included. Untracked B92/design reports, audit scripts, private supplier PDFs/assets, credentials-related files and root asset directories are preserved, ownership unconfirmed. Do not execute old live-recovery scripts on resumption merely because they exist.
+See [PAUSE_WORKTREE_INVENTORY_2026-09-13.md](PAUSE_WORKTREE_INVENTORY_2026-09-13.md) for the historical pre-handover inventory. Four tracked paths have unconfirmed/pre-existing ownership: the two root text-file deletions and two B92 reports. ConfigureInstallation.tsx (23 insertions/15 deletions) was Codex-authored feedback work and was wrongly excluded; its verification/checkpoint is accounted for in the urgent handover. Untracked B92/design reports, audit scripts, private supplier PDFs/assets, credentials-related files and root asset directories are preserved, ownership unconfirmed. Do not execute old live-recovery scripts merely because they exist.
 
-Git push backs up committed source/documentation only. It does NOT back up this unrelated dirty/untracked content or ignored `.quotesuite-acceptance/`, `server/quotesync.db`, local attachments, secrets and `test-output/`. Those remain locally intact; no purge, reset or mass add is authorised. The inventory backs up names/status, not contents. Preserve the PC disk; a clean remote clone cannot reconstruct local private data or test evidence.
+Git push backs up committed source/documentation only. It does NOT back up this unrelated dirty/untracked content or ignored `.quotesuite-acceptance/`, active `quotesync.db`, separate `server/quotesync.db`, local attachments, secrets and `test-output/`. Those remain locally intact; no purge, reset or mass add is authorised. The inventory backs up names/status, not contents. Preserve the PC disk; a clean remote clone cannot reconstruct local private data or test evidence.
 
 ## Runtime and persistent acceptance restart — no secrets
 
 At shutdown inspection the normal user-owned API listened on 3001, PID 17268 (started 13 September 10:22:36 local), parent watcher 29604, supervisor 3156 (both started 11 September). Command: Node watched `C:\Github\QuoteSync\web\server\index.js`; supervisor `scripts/run-development-workspace.mjs`. These pre-existing processes are user-owned and are not terminated by Codex. Watcher child IDs can change; recapture PID/parent/command/start/health before any runtime action. The current source health contract is v15; verify `/api/health` and the changed endpoint capability, not just files on disk. The older pre-existing native watcher may restart on notifications; do not mistake it for an owned test process.
 
-No owned test/browser/API jobs remain from the passing run; all tests started for shutdown must finish before reporting safe shutdown. Do not kill all Node/Chrome processes. PC shutdown will stop user applications normally.
+The passing run reported its own cleanup. This did not establish that all earlier failed test/browser/API jobs had exited. Use the urgent handover's separately dated process checks; do not treat this historical statement as a verified blanket cleanup. Do not kill all Node/Chrome processes.
 
 From `C:\Github\QuoteSync\web`, use `npm run dev:quotesuite` for normal full-stack development. API-only is `npm run api`, or `node index.js` from `web\server`, never from web. Inspect port 3001 first and reuse a compatible existing listener.
 
@@ -75,4 +81,4 @@ Controlled delivery stays preview-only unless its explicit enable switch AND tes
 
 ## Pasteable restart instruction
 
-Read AGENTS.md, the authoritative Development Roadmap and docs/codex/PAUSE_HANDOVER_2026-09-13.md. Verify the approved branch, shutdown checkpoint SHA and preserved worktree against its inventory. Resume only the recorded full-address installer-travel next step; reuse completed evidence, preserve unrelated/live data and delivery safeguards, and keep unaccepted work unaccepted.
+Read AGENTS.md, the authoritative Development Roadmap and docs/codex/URGENT_COSTING_HANDOVER_2026-09-13.md. Verify the approved branch, checkpoint and preserved worktree. Remain paused unless I explicitly authorise the recorded next step. Do not restart the 73-item programme or full-address travel work automatically; preserve live data, delivery safeguards and the distinction between technical verification and user acceptance.

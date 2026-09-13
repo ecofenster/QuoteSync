@@ -865,3 +865,4 @@
 .costing-sheet__secondary-row {
   background: var(--qs-bg-surface-subtle);
 }
+.costing-sheet__edit-boundary { border: 0; padding: 0; margin: 0; min-width: 0; }

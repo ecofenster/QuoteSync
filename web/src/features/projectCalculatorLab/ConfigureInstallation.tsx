@@ -36,6 +36,7 @@ export default function ConfigureInstallation({ scenario }: { scenario: Calculat
   const [workforce, setWorkforce] = useState<InstallationWorkforce | null>(null);
   const [routes, setRoutes] = useState<Record<string, RouteResult>>({});
   const [status, setStatus] = useState("");
+  const [statusKind, setStatusKind] = useState<"info" | "success" | "error">("info");
   const [busy, setBusy] = useState(false);
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
   const [selectedTeamId, setSelectedTeamId] = useState("");
@@ -67,7 +68,7 @@ export default function ConfigureInstallation({ scenario }: { scenario: Calculat
     let active = true;
     void projectCalculatorLabApi.getInstallationWorkforce()
       .then((value) => { if (active) setWorkforce(value); })
-      .catch((error) => { if (active) setStatus(error instanceof Error ? error.message : "Installation workforce could not be loaded."); });
+      .catch((error) => { if (active) { setStatusKind("error"); setStatus(error instanceof Error ? error.message : "Installation workforce could not be loaded."); } });
     return () => { active = false; };
   }, []);
 
@@ -118,14 +119,15 @@ export default function ConfigureInstallation({ scenario }: { scenario: Calculat
 
   const rankCompanies = async (automatic = false) => {
     const postcode = resolvedPostcode.trim();
-    if (!postcode) { setStatus("Distance unavailable — project/site postcode is not configured. Select an Installation Company manually."); return; }
+    if (!postcode) { setStatusKind("error"); setStatus("Distance unavailable — project/site postcode is not configured. Select an Installation Company manually."); return; }
     if (!workforce) return;
     const activeTeams = workforce.teams.filter((item) => item.active);
-    if (!activeTeams.length) { setStatus("No active Installation Teams are configured. Manual review is required."); return; }
+    if (!activeTeams.length) { setStatusKind("error"); setStatus("No active Installation Teams are configured. Add an active Team in Administration, then refresh this recommendation."); return; }
     const routable = activeTeams.filter((item) => item.basePostcode || workforce.companies.find((company) => company.id === item.companyId)?.postcode);
-    if (!routable.length) { setStatus("Distance unavailable — active Installation Companies or Teams need a postcode. Manual selection remains available."); return; }
+    if (!routable.length) { setStatusKind("error"); setStatus("Distance unavailable — active Installation Companies or Teams need a postcode. Add a postcode in Administration or select a Company manually."); return; }
     setBusy(true);
-    if (!automatic) setStatus("");
+    setStatusKind("info");
+    if (!automatic) setStatus("Checking suitable Teams and route costs…");
     try {
       const destination = await resolveRouteEndpoint(postcode, { googleMapsApiKey: "server-managed", what3wordsApiKey: "server-managed" });
       if (!destination) throw new Error();
@@ -149,8 +151,10 @@ export default function ConfigureInstallation({ scenario }: { scenario: Calculat
       setRoutes(next);
       setRecommendations(recommendation);
       setRecommendedCompanyId(recommended?.companyId ?? null);
+      setStatusKind(recommended || effectiveSavedCompanyId ? "success" : "error");
       setStatus(effectiveSavedCompanyId ? "Saved Installation Company and Team retained. Costed alternatives are available for review." : recommended ? `${recommended.companyName} · ${recommended.teamName} is recommended for review because it has the lowest estimated total Installation cost.` : "No fully costed suitable Team is available. Review capability and route evidence.");
     } catch {
+      setStatusKind("error");
       setStatus("Distance unavailable — Google Maps routing is unavailable or could not resolve these postcodes. Manual selection remains available.");
     } finally { setBusy(false); }
   };
@@ -166,9 +170,9 @@ export default function ConfigureInstallation({ scenario }: { scenario: Calculat
   }, [workforce, effectiveSavedCompanyId, resolvedPostcode, candidates, scenario.id, scenario.revisionNumber]);
 
   const persistCompanySelection = async () => {
-    if (!selectedCompany || !selectedTeam) { setStatus("Select a suitable active Installation Company and Team before saving."); return; }
-    if (selectedRecommendationCandidate?.status === "not_suitable") { setStatus(`${selectedTeam.name} is not suitable for this Installation programme. Select a suitable Team or review the programme requirements.`); return; }
-    setBusy(true); setStatus("");
+    if (!selectedCompany || !selectedTeam) { setStatusKind("error"); setStatus("Select a suitable active Installation Company and Team before saving."); return; }
+    if (selectedRecommendationCandidate?.status === "not_suitable") { setStatusKind("error"); setStatus(`${selectedTeam.name} is not suitable for this Installation programme. Select a suitable Team or review the programme requirements.`); return; }
+    setBusy(true); setStatusKind("info"); setStatus("Saving the Installation Company and Team…");
     try {
       let snapshotId: string | null = null;
       if (selectedRoute) { const withSnapshot = await projectCalculatorLabApi.addRouteSnapshot(scenario.id, selectedRoute.raw); snapshotId = withSnapshot.savedRouteSnapshotId!; }
@@ -188,13 +192,14 @@ export default function ConfigureInstallation({ scenario }: { scenario: Calculat
         route,
       });
       window.dispatchEvent(new CustomEvent("quotesuite:costing-updated", { detail: updated }));
-      setStatus(`${selectedCompany.name} and ${selectedTeam.name} saved for this costing revision.`);
-    } catch (error) { setStatus(error instanceof Error ? error.message : "Installation Company selection could not be saved."); }
+      setStatusKind("success");
+      setStatus(`${selectedCompany.name} and ${selectedTeam.name} saved for this costing revision. Next: review the Installation total and any specialist requirements.`);
+    } catch (error) { setStatusKind("error"); setStatus(`${error instanceof Error ? error.message : "Installation Company selection could not be saved."} Your selection is retained; it is safe to retry.`); }
     finally { setBusy(false); }
   };
 
   const saveAdvanced = async (form: HTMLFormElement) => {
-    setBusy(true); setStatus("");
+    setBusy(true); setStatusKind("info"); setStatus("Saving the advanced Installation assumptions…");
     try {
       const data = new FormData(form);
       const positionRequirements: Record<string, Record<string, unknown>> = { ...savedPositionRequirements };
@@ -206,23 +211,26 @@ export default function ConfigureInstallation({ scenario }: { scenario: Calculat
       const skipRequired = data.get("skipDecision") === "required";
       const updated = await projectCalculatorLabApi.updateInstallationProfile(scenario.id, { enabled: installationRequired, projectType, productivityCrewSize: numberValue(data.get("productivityCrewSize"), 2), costedCrewSize: numberValue(data.get("costedCrewSize"), 2), additionalAttendanceTravelDays: numberValue(data.get("additionalAttendanceTravelDays"), 0), additionalAttendanceTravelCost: String(data.get("additionalAttendanceTravelCost") ?? "0.00"), travelMode: String(data.get("travelMode") ?? "auto"), vehicleCount: numberValue(data.get("vehicleCount"), 1), mileageRate: String(data.get("mileageRate") ?? "0.55"), installerDayRate: String(data.get("installerDayRate") ?? "350.00"), foodPerPersonDay: String(data.get("foodPerPersonDay") ?? "30.00"), accommodationPerPersonNight: String(data.get("accommodationPerPersonNight") ?? "125.00"), mobilisationSetOutHours: data.get("mobilisationSetOutHours") === "" ? null : numberValue(data.get("mobilisationSetOutHours")), deliveryOffloadSetOutDays: data.get("deliveryOffloadSetOutDays") === "" ? null : numberValue(data.get("deliveryOffloadSetOutDays")), snaggingDays: data.get("snaggingDays") === "" ? null : numberValue(data.get("snaggingDays")), supportDays: numberValue(data.get("supportDays")), surveyDays: numberValue(data.get("surveyDays")), liftingEquipment: { required: liftingRequired, productId: liftingRequired ? String(data.get("liftingProductId") ?? "") || null : liftingSelection.productId ?? null }, skipHire:{required:skipRequired,productId:skipRequired?String(data.get("skipProductId")??"")||null:skipSelection.productId??null,quantity:numberValue(data.get("skipQuantity"),1)}, positionRequirements });
       window.dispatchEvent(new CustomEvent("quotesuite:costing-updated", { detail: updated }));
+      const remaining = updated.installationProgramme?.reviewRequired?.length ?? 0;
+      setStatusKind(remaining ? "info" : "success");
+      setStatus(`Advanced Installation assumptions saved for costing revision ${updated.revisionNumber}.${remaining ? ` ${remaining} item${remaining === 1 ? "" : "s"} still require review.` : " No specialist review is outstanding."} Next: review the Installation total.`);
       setOpen(false);
-    } catch (error) { setStatus(error instanceof Error ? error.message : "Advanced Installation changes could not be saved."); }
+    } catch (error) { setStatusKind("error"); setStatus(`${error instanceof Error ? error.message : "Advanced Installation changes could not be saved."} Your entries are retained; correct the problem and retry.`); }
     finally { setBusy(false); }
   };
 
   const savedCompanyMissing = Boolean(effectiveSavedCompanyId && !candidates.some((item) => item.id === effectiveSavedCompanyId));
   return <>
     <div className="costing-sheet__installation-context">
-      <label><span>Project installation type</span><select className="ui-input" aria-label="Project installation type" value={projectType} disabled={busy} onChange={(event) => { setBusy(true); setStatus(""); void projectCalculatorLabApi.updateInstallationProfile(scenario.id, { enabled: installationRequired, projectType: event.currentTarget.value }).then((updated) => window.dispatchEvent(new CustomEvent("quotesuite:costing-updated", { detail: updated }))).catch((error) => setStatus(error instanceof Error ? error.message : "Project installation type could not be saved.")).finally(() => setBusy(false)); }}><option value="new_build">New Build</option><option value="refurbishment_rip_out_replace">Refurbishment — Rip Out &amp; Replace</option><option value="refurbishment_straight_install">Refurbishment — Straight Install / No Removal</option>{projectType === "refurbishment" ? <option value="refurbishment">Refurbishment (legacy snapshot)</option> : null}{projectType === "other" ? <option value="other">Other (legacy snapshot)</option> : null}</select><small>Estimate-owned installation basis; changing it creates a costing revision.</small></label>
+      <label><span>Project installation type</span><select className="ui-input" aria-label="Project installation type" value={projectType} disabled={busy} onChange={(event) => { const nextLabel=event.currentTarget.selectedOptions[0]?.textContent||"Installation type";setBusy(true);setStatusKind("info");setStatus("Saving the Project installation type…");void projectCalculatorLabApi.updateInstallationProfile(scenario.id,{enabled:installationRequired,projectType:event.currentTarget.value}).then((updated)=>{window.dispatchEvent(new CustomEvent("quotesuite:costing-updated",{detail:updated}));setStatusKind("success");setStatus(`${nextLabel} saved for costing revision ${updated.revisionNumber}. Next: review the recommended Company and Team.`)}).catch((error)=>{setStatusKind("error");setStatus(`${error instanceof Error?error.message:"Project installation type could not be saved."} Your other Installation choices are unchanged; retry when ready.`)}).finally(()=>setBusy(false)); }}><option value="new_build">New Build</option><option value="refurbishment_rip_out_replace">Refurbishment — Rip Out &amp; Replace</option><option value="refurbishment_straight_install">Refurbishment — Straight Install / No Removal</option>{projectType === "refurbishment" ? <option value="refurbishment">Refurbishment (legacy snapshot)</option> : null}{projectType === "other" ? <option value="other">Other (legacy snapshot)</option> : null}</select><small>Estimate-owned installation basis; changing it creates a costing revision.</small></label>
       <div><span>Site postcode</span><b>{resolvedPostcode || "Not configured"}</b><small>{postcodeSource.replaceAll("_", " ")}</small></div>
       <label><span>Installation Company</span><select className="ui-input" aria-label="Installation Company" value={selectedCompanyId} disabled={!workforce || busy} onChange={(event) => { manualCompanyChoice.current = true; setSelectedCompanyId(event.currentTarget.value); setSelectedTeamId(""); setStatus(""); }}><option value="">Select Installation Company</option>{savedCompanyMissing ? <option value={effectiveSavedCompanyId}>{text(savedCompanySnapshot.name) || scenario.selectedInstallationTeam?.companyName || text(savedTeamSnapshot.companyName) || "Saved Installation Company"} · saved selection</option> : null}{ranked.map((company) => <option key={company.id} value={company.id}>{recommendedCompanyId === company.id && !effectiveSavedCompanyId ? "Recommended · " : ""}{company.name}</option>)}</select></label>
       <div><span>Distance from site</span><b>{displayRoute ? `${displayRoute.distanceMiles.toFixed(1)} miles` : "Distance unavailable"}</b><small>{displayRoute ? `${displayRoute.durationMinutes} min · ${displayRoute.source.replaceAll("_", " ")}` : "Manual company selection remains available"}</small>{!savedRouteUsesCurrentPostcode ? <small>Saved evidence used {text(savedRoute.sitePostcode)}; refresh before accepting the current postcode.</small> : null}</div>
       <label><span>Installation Team</span><select className="ui-input" aria-label="Installation Team" value={selectedTeamId} disabled={!selectedCompanyId || busy} onChange={(event) => { manualCompanyChoice.current = true; setSelectedTeamId(event.currentTarget.value); setStatus(""); }}><option value="">Select Installation Team</option>{(workforce?.teams ?? []).filter((item) => item.active && item.companyId === selectedCompanyId).map((team) => { const candidate = recommendations?.candidates.find((item) => item.id === team.id); return <option key={team.id} value={team.id}>{candidate?.id === recommendations?.recommendedTeamId ? "Recommended · " : ""}{team.name} · {team.normalCrewSize} people{candidate?.route ? ` · ${candidate.route.distanceMiles.toFixed(1)} mi` : ""}</option>; })}</select><small>{selectedTeam ? `${selectedTeam.normalCrewSize} people · user approval required` : "Recommendation does not select a Team"}</small></label>
       <div className="costing-sheet__installation-context-actions"><button type="button" className="ui-button ui-button--secondary" disabled={busy || !workforce || !resolvedPostcode} onClick={() => void rankCompanies(false)}>Refresh recommendation</button><button type="button" className="ui-button ui-button--primary" disabled={busy || !selectedCompany || !selectedTeam || selectedChoiceIsCurrent || selectedRecommendationCandidate?.status === "not_suitable"} onClick={() => void persistCompanySelection()}>{companyActionLabel}</button><button ref={advancedTrigger} type="button" className="ui-button ui-button--secondary" onClick={() => setOpen(true)}>Advanced Installation</button></div>
-      {status ? <p role={/could not|unavailable|required/i.test(status) ? "alert" : "status"}>{status}</p> : null}
+      {status ? <p role={statusKind === "error" ? "alert" : "status"} data-status={statusKind}>{status}</p> : null}
     </div>
-    {recommendations ? <InstallationRecommendation candidates={recommendations.candidates} recommendedTeamId={recommendations.recommendedTeamId} selectedTeamId={selectedTeamId} onSelect={(candidate) => { manualCompanyChoice.current = true; setSelectedCompanyId(candidate.companyId); setSelectedTeamId(candidate.id); setStatus(`${candidate.companyName} · ${candidate.teamName} selected for review. Use the button above to save it.`); }} /> : null}
+    {recommendations ? <InstallationRecommendation candidates={recommendations.candidates} recommendedTeamId={recommendations.recommendedTeamId} selectedTeamId={selectedTeamId} onSelect={(candidate) => { manualCompanyChoice.current = true; setSelectedCompanyId(candidate.companyId); setSelectedTeamId(candidate.id); setStatusKind("info"); setStatus(`${candidate.companyName} · ${candidate.teamName} selected for review. Use the button above to save it.`); }} /> : null}
     <InstallationTravelReview scenario={scenario} company={workforce?.companies.find(item=>item.id===effectiveSavedCompanyId)}/>
     {open && createPortal(<div className="ui-modal-backdrop" role="presentation"><section ref={advancedDialog} className="ui-modal calculator-lab__installation-modal" role="dialog" aria-modal="true" aria-labelledby="installation-config-title"><header><div><h3 id="installation-config-title">Advanced Installation</h3><small>Routine postcode, company and team choices remain in Installation. Change exceptional programme assumptions here.</small></div><button type="button" className="ui-button" autoFocus onClick={() => { setOpen(false); advancedTrigger.current?.focus(); }}>Close</button></header>
       <form onSubmit={(event) => { event.preventDefault(); void saveAdvanced(event.currentTarget); }}><div className="calculator-lab__installation-groups">

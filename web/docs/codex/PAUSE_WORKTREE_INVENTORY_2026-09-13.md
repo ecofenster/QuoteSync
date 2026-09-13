@@ -1,6 +1,6 @@
 # Preserved local work — 13 September 2026
 
-Captured before the pause handover edits. Paths are relative to web. All listed tracked changes and untracked items are pre-existing/unrelated or ownership-unconfirmed, not this bounded task. They are preserved locally and deliberately excluded from this checkpoint. This is a metadata inventory, not a backup of their contents. Ignored databases, credentials, attachments, private assets and test evidence are not backed up by Git; do not add them indiscriminately. Deleted tracked files remain recoverable from Git; their current deletion state is preserved.
+Historical inventory captured before the pause handover edits. Paths are relative to web. CORRECTION: ConfigureInstallation.tsx (23 additions/15 deletions) was authored by the previous Codex run on 12 September at 09:22:57 BST (tool call `call_PcKslGzS21xESIAn6IncLs9E`), not unrelated user work. Its status/progress/error feedback is inspected and included in the bounded urgent checkpoint after validation. The other four tracked changes and the original untracked items remain pre-existing/unrelated or ownership-unconfirmed; they are preserved and excluded. See URGENT_COSTING_HANDOVER_2026-09-13.md for the current inventory and verification. This is a metadata inventory, not a content backup. Ignored databases (including the active web/quotesync.db), credentials, attachments, private assets and test evidence are not backed up by Git. Deleted tracked files remain recoverable from Git; their deletion state is preserved.
 
 ```text
 D ../code_unfinished.txt

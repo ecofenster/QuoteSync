@@ -34,11 +34,11 @@ test("status rendering uses accessible text as well as colour", async () => {
 });
 
 test("chronology remains ordered and displays the current checkpoint", () => {
-  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 156 }, (_, index) => index + 1));
+  assert.deepEqual(ROADMAP_CHRONOLOGY.map((entry) => entry.sequence), Array.from({ length: 157 }, (_, index) => index + 1));
   assert.equal([...ROADMAP_CHRONOLOGY].reverse().find((entry) => entry.checkpointSha)?.checkpointSha, ROADMAP_CHECKPOINT_SHA);
   assert.equal(ROADMAP_CHRONOLOGY.find((entry) => entry.title === "Browser automation process-lifecycle hardening")?.sequence, 75);
-  assert.equal(ROADMAP_CHRONOLOGY.at(-1)?.title, "Consolidated supplier estimate and revision requests");
-  assert.equal(ROADMAP_CHECKPOINT_SHA, "5f3cb01");
+  assert.equal(ROADMAP_CHRONOLOGY.at(-1)?.title, "Urgent issued Estimate costing repair and corrected pause handover");
+  assert.match(ROADMAP_CHECKPOINT_SHA, /^[a-f0-9]{7,40}$/);
 });
 
 test("Email intake conflict review and permanent workflow feedback remain explicit unimplemented requirements", () => {

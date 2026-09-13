@@ -97,7 +97,7 @@ export function ensureEstimateCosting(
       .listScenarios(estimateId)
       .then(async (scenarios) =>
         scenarios[0]
-          ? projectCalculatorLabApi.syncEstimatePositions(scenarios[0].id)
+          ? projectCalculatorLabApi.getScenario(scenarios[0].id, estimateId).then(saved => saved.editability?.editable===false ? saved : projectCalculatorLabApi.syncEstimatePositions(saved.id))
           : projectCalculatorLabApi.createScenario({
               estimateId,
               origin: "estimate",

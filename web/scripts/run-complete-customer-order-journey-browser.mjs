@@ -35,6 +35,7 @@ import {verifyInstallationRouteRetry} from './installation-route-retry-journey-b
 import {verifyOrderInstallationDocuments} from './order-installation-documents-journey-browser.mjs';
 import {createProjectCalculatorLabService} from '../server/features/projectCalculatorLab/projectCalculatorLabService.js';
 import {verifyInstallerQualifications} from './installer-qualification-journey-browser.mjs';
+import {seedUrgentCosting,verifyUrgentCosting} from './urgent-costing-acceptance.mjs';
 
 const APP_URL = "http://127.0.0.1:5276";
 const API_URL = "http://127.0.0.1:3104";
@@ -136,11 +137,12 @@ async function seed(databasePath, attachmentRoot) {
   const portal = createPortalSecurityService(db, { documentOptions: { attachmentRoot } });
   for (const featureKey of CLIENT_PORTAL_FEATURES) await portal.setFeatureControl(featureKey, true, "test-staff");
   let orderInstallationScenarioId=null;
+  const urgentCostingScenarioId=process.argv.includes('--stop-after-urgent-costing')?await seedUrgentCosting(db,estimateId):null;
   if(process.argv.includes('--stop-after-order-installation-documents')){const costing=createProjectCalculatorLabService(db);let scenario=await costing.createScenario({estimateId,origin:'estimate',name:'Disposable pre-release installation',packageCode:'full_installation'});scenario=await costing.updateOptions(scenario.id,{installationRequired:true});orderInstallationScenarioId=scenario.id;}
   const release = await portal.releaseIssuedEstimate({ issuedQuotationId: issuedId, releasedBy: "test-staff" });
   const invitation = await portal.createInvitation({ clientId, projectId, email: CUSTOMER, displayName: "TEST Customer Journey", createdBy: "test-staff" });
   await db.close();
-  return { suffix, clientId, clientReference, projectId, estimateId, estimateReference, issuedId, document, projection: customerProjection, release, invitation, orderInstallationScenarioId, projectDrawingId: `test-project-drawing-${suffix}`, returnedRevisionId: `test-returned-revision-${suffix}`, factoryConfirmationDocumentId: `test-factory-confirmation-${suffix}`, signedConfirmationDocumentId: `test-signed-confirmation-${suffix}` };
+  return { suffix, clientId, clientReference, projectId, estimateId, estimateReference, issuedId, document, projection: customerProjection, release, invitation, orderInstallationScenarioId, urgentCostingScenarioId, projectDrawingId: `test-project-drawing-${suffix}`, returnedRevisionId: `test-returned-revision-${suffix}`, factoryConfirmationDocumentId: `test-factory-confirmation-${suffix}`, signedConfirmationDocumentId: `test-signed-confirmation-${suffix}` };
 }
 
 async function connect() {
@@ -234,6 +236,7 @@ const startApi=()=>spawn(process.execPath, ["--import",pathToFileURL(path.resolv
     browser = spawn("C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", ["--headless=new", `--remote-debugging-port=${DEBUG_PORT}`, `--user-data-dir=${profile}`, "--no-first-run", "--disable-gpu", "--disable-extensions", "--window-size=1920,1080", "about:blank"], { stdio: "ignore", windowsHide: true });
     controller.setRun({ child: browser }); await waitFor(() => reachable(`http://127.0.0.1:${DEBUG_PORT}/json/version`), "Owned Chrome did not start", 15_000); controller.setRun({ child: browser, userDataDir: profile, debugPort: DEBUG_PORT, profileProcessCountDuring: await countBrowserRunProfiles(profile, { platformName: process.platform }) }); tab = await connect();
 
+    if(process.argv.includes('--stop-after-urgent-costing')){await verifyUrgentCosting({tab,click,input,waitFor,databasePath,output:OUTPUT,fixture,appUrl:APP_URL,apiUrl:API_URL,inspectPdf});return;}
     await tab.send("Page.navigate", { url: `${APP_URL}/#/client-portal?token=${encodeURIComponent(fixture.invitation.token)}` }); await waitFor(() => tab.evaluate("document.body.innerText.includes('Open your Project')"), "Invitation screen did not render");
     await input(tab, "input[type=email]", CUSTOMER); await click(tab, "Continue securely"); await waitFor(() => tab.evaluate(`document.body.innerText.includes(${JSON.stringify(fixture.estimateReference)})`), "Customer session did not open the issued Estimate");
     const originalPortalEstimateHash = await tab.evaluate(`(async()=>{const link=[...document.querySelectorAll('a')].find(item=>item.textContent.includes('View issued Estimate'));const response=await fetch(link.href,{credentials:'include'}),bytes=await response.arrayBuffer(),digest=await crypto.subtle.digest('SHA-256',bytes);return {status:response.status,type:response.headers.get('content-type'),hash:[...new Uint8Array(digest)].map(value=>value.toString(16).padStart(2,'0')).join('')}})()`);

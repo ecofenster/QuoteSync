@@ -623,6 +623,7 @@ export default function ScenarioCostingWorksheet({
     >({}),
     [error, setError] = useState(""),
     [saving, setSaving] = useState(false),
+    [inclusionNotice, setInclusionNotice] = useState(""),
     [liveExchangeRates, setLiveExchangeRates] = useState<LiveExchangeRateResult | null>(null),
     [rateHistoryOpen, setRateHistoryOpen] = useState(false);
   const runtimePhase = runtimeHealth?.state.phase;
@@ -958,16 +959,20 @@ export default function ScenarioCostingWorksheet({
     }
   };
   const updateInstallationRequired = async (required: boolean) => {
+    if(saving)return;
+    setInclusionNotice("Saving Installation choice…");
     setSaving(true);
     setError("");
     try {
       const updated = await projectCalculatorLabApi.updateOptions(scenario.id, {
         installationRequired: required,
       });
+      setInclusionNotice(required ? "Installation included. Saved rates and programme retained; totals updated." : "Installation excluded from totals. Saved rates and programme retained.");
       window.dispatchEvent(
         new CustomEvent("quotesuite:costing-updated", { detail: updated }),
       );
     } catch (reason) {
+      setInclusionNotice("");
       setError(reason instanceof Error ? reason.message : "Installation requirement could not be saved.");
     } finally {
       setSaving(false);
@@ -996,12 +1001,16 @@ export default function ScenarioCostingWorksheet({
     finally { setSaving(false); }
   };
   const updateImportCustoms = async (input: Record<string, unknown>) => {
+    if(saving)return;
+    setInclusionNotice("Saving Import / Customs…");
     setSaving(true);
     setError("");
     try {
       const updated = await projectCalculatorLabApi.updateImportCustoms(scenario.id, input);
+      setInclusionNotice(updated.importCustoms?.included ? "Import / Customs saved and included in totals." : "Import / Customs excluded from totals. Configured allowance retained.");
       window.dispatchEvent(new CustomEvent("quotesuite:costing-updated", { detail: updated }));
     } catch (reason) {
+      setInclusionNotice("");
       setError(reason instanceof Error ? reason.message : "Import / Customs allowance could not be saved.");
     } finally {
       setSaving(false);
@@ -1034,18 +1043,18 @@ export default function ScenarioCostingWorksheet({
     }
   };
   const updateMaterialsRequired = async (required: boolean) => {
+    if(saving)return;
+    setInclusionNotice("Saving Installation Materials choice…");
     setSaving(true);
     setError("");
     try {
-      const current = (scenario.options?.installationMaterials ?? {}) as Record<string, unknown>;
       const updated = await projectCalculatorLabApi.updateInstallationMaterials(scenario.id, {
-        fixingMethod: current.fixingMethod ?? "brackets",
-        contingencyPercent: current.contingencyPercent ?? "15",
-        ...current,
         enabled: required,
       });
+      setInclusionNotice(required ? "Installation Materials included using the saved selections and costs." : "Installation Materials excluded from totals. Saved selections and costs retained.");
       window.dispatchEvent(new CustomEvent("quotesuite:costing-updated", { detail: updated }));
     } catch (reason) {
+      setInclusionNotice("");
       setError(reason instanceof Error ? reason.message : "Installation Materials requirement could not be saved.");
     } finally {
       setSaving(false);
@@ -1066,15 +1075,7 @@ export default function ScenarioCostingWorksheet({
     lossMaking = Number(actualSale) < Number(projectCost),
     marginStatus = belowMinimum ? "low" : resolvedMarginStatus,
     marginVarianceToTarget = Number(margin?.grossMarginPercent ?? 0) - Number(targetDraft);
-  const productOriginal = originalTotals([...includedProducts, ...includedProductSupplyCosts, ...unpricedTotals]),
-    supplierPurchaseGbp = addDecimalAmounts([
-      productGbp,
-      extrasGbp,
-      transportGbp,
-      installationGbp,
-      surveyGbp,
-      feeGbp,
-    ]);
+  const productOriginal = originalTotals([...includedProducts, ...includedProductSupplyCosts, ...unpricedTotals]);
   const actualLiveRate = liveExchangeRates?.rates.map((item) => `${item.currency} 1 = GBP ${item.rate}`).join(" · ") || "Unavailable";
   const estimateRatePairs = scenario.exchangeRates.length
     ? scenario.exchangeRates.map((item) => ({ currency: item.supplierCurrency, rate: Number(item.estimateFixedRate ?? item.supplierToGbpLiveRate) }))
@@ -1122,6 +1123,7 @@ export default function ScenarioCostingWorksheet({
   return (
     <>
       <div className={`project-costing project-costing--${commercialView}`} data-commercial-view={commercialView}>
+        <fieldset className="costing-sheet__edit-boundary" disabled={scenario.editability?.editable===false}>
         <main className="costing-sheet">
             <header className="project-costing__worksheet-header" data-project-costing-order="project-costing">
               <div className="project-costing__worksheet-title">
@@ -1168,6 +1170,7 @@ export default function ScenarioCostingWorksheet({
                 {error}
               </p>
             ) : null}
+            {inclusionNotice ? <p role="status" className="calculator-lab__message">{inclusionNotice}</p> : null}
             <div className="costing-sheet__columns" data-project-costing-order="columns">
               <span>Description</span>
               <span>
@@ -1191,7 +1194,7 @@ export default function ScenarioCostingWorksheet({
               converted={money(productGbp)}
               markup={markupDraft.product}
               sale={money(productSale)}
-              open={open === "products"}
+              open={scenario.editability?.editable===false || open === "products"}
               onToggle={() => toggle("products")}
               onMarkupChange={(value) => editMarkup("product", value)}
               onMarkupKeyDown={markupKeys("product")}
@@ -1332,7 +1335,7 @@ export default function ScenarioCostingWorksheet({
                 converted={money(extrasGbp)}
                 markup={markupDraft.extras}
                 sale={money(extrasSale)}
-                open={open === "extras"}
+                open={scenario.editability?.editable===false || open === "extras"}
                 onToggle={() => toggle("extras")}
                 onMarkupChange={(value) => editMarkup("extras", value)}
                 onMarkupKeyDown={markupKeys("extras")}
@@ -1421,7 +1424,7 @@ export default function ScenarioCostingWorksheet({
                 converted={money(transportGbp)}
                 markup={markupDraft.transport}
                 sale={money(transportSale)}
-                open={open === "transport"}
+                open={scenario.editability?.editable===false || open === "transport"}
                 onToggle={() => toggle("transport")}
                 onMarkupChange={(value) => editMarkup("transport", value)}
                 onMarkupKeyDown={markupKeys("transport")}
@@ -1630,7 +1633,7 @@ export default function ScenarioCostingWorksheet({
               converted={money(feeGbp)}
               markup={markupDraft.duties}
               sale={money(feeSale)}
-              open={open === "duties"}
+              open={scenario.editability?.editable===false || open === "duties"}
               onToggle={() => toggle("duties")}
               onMarkupChange={(value) => editMarkup("duties", value)}
               onMarkupKeyDown={markupKeys("duties")}
@@ -1659,7 +1662,7 @@ export default function ScenarioCostingWorksheet({
                   ? money(surveySale)
                   : money(addDecimalAmounts([surveySale, siteVisitSale]))
               }
-              open={open === "siteVisit"}
+              open={scenario.editability?.editable===false || open === "siteVisit"}
               onToggle={() => toggle("siteVisit")}
               onMarkupChange={(value) => editMarkup("siteVisit", value)}
               onMarkupKeyDown={markupKeys("siteVisit")}
@@ -1685,7 +1688,7 @@ export default function ScenarioCostingWorksheet({
                 converted={money(addDecimalAmounts([installationGbp,equipmentCost]))}
                 markup={markupDraft.installation}
                 sale={money(addDecimalAmounts([installationSale,equipmentSale]))}
-                open={open === "installation"}
+                open={scenario.editability?.editable===false || open === "installation"}
                 onToggle={() => toggle("installation")}
                 onMarkupChange={(value) => editMarkup("installation", value)}
                 onMarkupKeyDown={markupKeys("installation")}
@@ -1694,7 +1697,7 @@ export default function ScenarioCostingWorksheet({
                 )}
               >
                 <div className="costing-sheet__detail-list costing-sheet__section-body">
-                  <div className="costing-sheet__product-actions"><span>Installation Included?</span><Toggle ariaLabel="Installation required" value={installationRequired} onChange={(value)=>void updateInstallationRequired(value)} /></div>
+                  <div className="costing-sheet__product-actions"><span>Installation Included?</span><Toggle ariaLabel="Installation required" value={installationRequired} disabled={saving} onChange={(value)=>void updateInstallationRequired(value)} /></div>
                   {!installationRequired ? <p className="costing-sheet__excluded-note">Installation excluded from this Estimate.</p> : <>
                     {supplierInstallationEvidence.length ? <section className="costing-sheet__supplier-installation-notice"><div><b>Supplier installation price supplied</b><small>Choose whether it substitutes for Company Installation.</small></div>{supplierInstallationEvidence.map((row)=>{const included=row.includedInCurrentEstimate===true,purchase=row.commercialGbpAmount??row.gbpAmount??row.originalAmount??"0";return <div key={row.id}><span><small>Supplier</small><b>{supplierEvidenceParty(row,"installation")}</b></span><span><small>Quoted installation cost</small><b>{money(purchase)}</b></span><label><span>Use Supplier Installation?</span><Toggle ariaLabel={`Include supplier installation cost ${row.label}`} value={included} disabled={supplierChoiceStatus[row.id]?.pending===true} onChange={(value)=>void saveSupplierChoice(row.id,value,"installation")}/></label>{supplierChoiceStatus[row.id]?.error?<small className="costing-sheet__choice-error" role="alert">{supplierChoiceStatus[row.id].error}</small>:null}</div>})}</section>:null}
                     <div className="costing-sheet__installation-basis"><span>Installation Basis</span><b>{selectedSupplierInstallation.length ? "Supplier Installation" : `${companyInstallationName} Installation`}</b><small>{selectedSupplierInstallation.length ? `${supplierEvidenceParty(selectedSupplierInstallation[0],"installation")} · quoted installation` : scenario.selectedInstallationTeam ? `${scenario.selectedInstallationTeam.name} · saved user selection` : "Review and approve a recommended Company / Team"}</small></div>
@@ -1730,7 +1733,7 @@ export default function ScenarioCostingWorksheet({
                 converted={installationMaterialsReviewRequired ? "Incomplete" : money(materialsCost)}
                 markup={markupDraft.materials}
                 sale={installationMaterialsReviewRequired ? "—" : money(materialsSale)}
-                open={open === "materials"}
+                open={scenario.editability?.editable===false || open === "materials"}
                 onToggle={() => toggle("materials")}
                 onMarkupChange={(value) => editMarkup("materials", value)}
                 onMarkupKeyDown={markupKeys("materials")}
@@ -1738,7 +1741,7 @@ export default function ScenarioCostingWorksheet({
                   validateMarkupPercentage(markupDraft.materials),
                 )}
               >
-                <div className="costing-sheet__product-actions"><span>Installation Materials Included?</span><Toggle ariaLabel="Installation Materials required" value={Boolean(scenario.options?.installationMaterials&&String((scenario.options.installationMaterials as Record<string,unknown>).enabled)!=="false")} onChange={(value)=>void updateMaterialsRequired(value)}/><span>Installation substrate: <b>{String(scenario.installationMaterials?.buildingType??"Review required").replaceAll("_"," & ")}</b></span><span>Linear materials contingency: <b>{scenario.installationMaterials?.linearMaterialContingencyPercent==null?"Review required":`${scenario.installationMaterials.linearMaterialContingencyPercent}%`}</b></span></div>
+                <div className="costing-sheet__product-actions"><span>Installation Materials Included?</span><Toggle ariaLabel="Installation Materials required" disabled={saving} value={Boolean(scenario.options?.installationMaterials&&String((scenario.options.installationMaterials as Record<string,unknown>).enabled)!=="false")} onChange={(value)=>void updateMaterialsRequired(value)}/><span>Installation substrate: <b>{String(scenario.installationMaterials?.buildingType??"Review required").replaceAll("_"," & ")}</b></span><span>Linear materials contingency: <b>{scenario.installationMaterials?.linearMaterialContingencyPercent==null?"Review required":`${scenario.installationMaterials.linearMaterialContingencyPercent}%`}</b></span></div>
                 <div className="costing-sheet__detail-list">
                   {materials.map((item) => (
                     <CommercialRow
@@ -1784,8 +1787,8 @@ export default function ScenarioCostingWorksheet({
               </div> : null}
               <div className="costing-sheet__summary-categories">
                 {commercialView === "internal" ? <div className="costing-sheet__purchase-total">
-                  <strong>Actual GBP Purchase Cost</strong>
-                  <b>{money(supplierPurchaseGbp)}</b>
+                  <strong>Project cost (GBP)</strong>
+                  <b>{money(projectCost)}</b>
                 </div> : null}
                 <div>
                   <span>Products / Supply Only</span>
@@ -2092,6 +2095,7 @@ export default function ScenarioCostingWorksheet({
               </div>
             ) : null}
           </main>
+        </fieldset>
       </div>
     </>
   );
