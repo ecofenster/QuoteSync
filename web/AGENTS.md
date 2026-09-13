@@ -195,6 +195,7 @@
 - Any task that changes server-side/API code and performs live acceptance or mutation must verify the identity or required capability of the active listening API process first. Source files on disk do not prove which source the running process loaded. Advance the shared runtime contract when compatibility changes; for bounded changes within one contract, verify the changed endpoint capability directly.
 - Supported API-only starts run `server/index.js`: from `web\server`, use `node index.js`; from `web`, use `npm run api`. Normal full-stack development should use `npm run dev:quotesuite`, which owns Vite plus its watched API, applies frontend HMR, restarts its API when imported server/shared dependencies change, and never restarts SQLite. The invalid form is `node index.js` from `web`, where no root `index.js` exists.
 - The combined development supervisor must refuse to take over an existing API listener, own and clean up only the process trees it starts, and restore its initial port-ownership state. Automatic UI persistence waits for runtime recovery during a watched restart; user-triggered mutations remain fail-closed while runtime health is unavailable.
+- Development watch notifications are change signals, not proof of changed source. Compare settled imported-file content before restarting; metadata-only notifications and identical rewrites must not restart the API. Real source changes, deletion and restoration remain detectable, and restart/cleanup must preserve exact process ownership.
 
 ## Development API process ownership
 

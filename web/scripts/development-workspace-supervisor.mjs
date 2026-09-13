@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
+import {fileURLToPath} from 'node:url';
 import { setTimeout as delay } from "node:timers/promises";
 import {
   captureDevelopmentApiBaseline,
@@ -69,7 +70,7 @@ export function createDevelopmentWorkspaceSupervisor({
       baseline = await captureImpl(probeOptions);
       if (baseline.listening) throw occupiedError(baseline);
 
-      apiWatcher = spawnImpl(process.execPath, ["--watch", "--watch-preserve-output", serverEntry], {
+      apiWatcher = spawnImpl(process.execPath, [fileURLToPath(new URL('./content-aware-api-watch.mjs',import.meta.url)), serverEntry], {
         cwd,
         env: { ...environment, HOST: host, PORT: String(apiPort), QUOTESUITE_DEVELOPMENT_WATCH: "1" },
         stdio: "inherit",

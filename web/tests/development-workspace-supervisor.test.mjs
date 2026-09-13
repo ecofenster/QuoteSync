@@ -46,6 +46,11 @@ http.createServer((request,response)=>{if(request.url==="/api/health"){response.
   const ownerPid = supervisor.ownedPids().apiWatcherPid;
   assert.ok(ownerPid);
 
+  await fs.utimes(entry,new Date(),new Date(0));
+  await new Promise(resolve=>setTimeout(resolve,500));
+  const unchanged=await fetch(`http://127.0.0.1:${port}/api/health`).then(response=>response.json());
+  assert.equal(unchanged.startedAt,started.api.health.startedAt,'Metadata-only notification must not restart the owned API');
+
   await fs.appendFile(entry, `\n// controlled restart ${Date.now()}\n`);
   const restarted = await supervisor.waitForRestart(started.api.health.startedAt);
   assert.equal(restarted.compatible, true);
