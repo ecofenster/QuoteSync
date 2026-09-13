@@ -1,5 +1,13 @@
 # In-progress Roadmap completion programme
 
+## 13 September — installer document directional route binding
+
+Installer travel projection now requires the selected saved team ID/base postcode, the selected revision's site postcode, exact scenario-owned outward snapshot and installer-route provenance or explained manual evidence. Generic office routes, changed sites, wrong bases, duplicate IDs and invalid evidence cannot supply confirmed installer travel. A distinct returnSnapshotId must resolve to a valid reversed route with matching labelled coordinates; return duration is taken from that leg, never copied from outward. Journey pattern is retained only when explicitly daily_travel or stay_away. Current support follows the existing UK postcode route contract; other address formats and company-base fallback require explicit canonical binding, not guessing.
+
+Eleven focused route/projection/PDF checks and full typecheck pass. Tests cover wrong owners/addresses, ambiguous identity, missing/unexplained manual return, legitimate manual basis, distinct 300/340-minute directions, unchanged source and independently rendered PDF endpoints/pattern. The prior generic route projection fixture was updated to include actual team/scenario/direction/location evidence; its 45-minute outward assertion remains. No new normal-browser paired-route review is claimed. Existing saved documents/Order plans and commercial mileage calculations remain unchanged.
+
+Existing survey-delivery-installation stays partial/unaccepted with unchanged counts and original-73 mapping. Exact next step: add the reviewed route-pair selection/save handoff that supplies profile.route.returnSnapshotId and retains installer/site basis, then explicit versioned adoption of the installer travel-cost policy. Daily-versus-overnight costing must not double-count or reprice old snapshots silently. Preserve unrelated ConfigureInstallation.tsx edits. No live provider/business/email changes. Existing AGENTS rules apply; local checkpoint only while push is permission-blocked.
+
 ## 13 September — directional route persistence validation
 
 The existing route table supports outward and return directions, so no parallel travel store is needed. Its append endpoint previously accepted missing/invalid coordinates and durations. A shared validation boundary now rejects unnamed/unresolved endpoints, out-of-range coordinates, missing/nonfinite/negative distance or duration, invalid optional traffic time, absent source and unexplained manual override before any database access. Errors explain what to resolve; legitimate zero coordinates/distance/time are accepted. Existing stored evidence is not rewritten.

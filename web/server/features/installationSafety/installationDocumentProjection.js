@@ -2,6 +2,7 @@ import {installationQualificationSummary} from '../../../shared/installationQual
 import {projectInstallationMaterials} from './installationMaterialProjection.js';
 import {projectInstallationPositionWeight} from './installationPositionWeight.js';
 import {installerManufacturerDetails,installerOpeningDetails} from './installationPositionSource.js';
+import {projectInstallerTravel} from './installationTravelProjection.js';
 
 const text=value=>typeof value==='string'?value.trim():'';
 const amount=value=>value===null||value===undefined||value===''||!Number.isFinite(Number(value))||Number(value)<0?null:Number(value);
@@ -45,9 +46,7 @@ export function projectInstallationDocument({audience,revision,scenario,qualific
     if(!position.system)position.system=supplied?.system||'';
     if(!position.opening)position.opening=installerOpeningDetails(position,scenario);
   }
-  const programme=scenario?.installationProgramme,profile=scenario?.options?.installationProfile||{},allowances=programme?.allowances,route=(scenario?.routeSnapshots||[]).find(item=>item.id===profile.route?.snapshotId);
-  const departure=text(route?.origin?.label),destination=text(route?.destination?.label);
-  const routeAvailable=!!departure&&!!destination&&amount(route?.durationMinutes)!==null&&(!route.manuallyOverridden||!!text(route.overrideReason));
+  const programme=scenario?.installationProgramme,allowances=programme?.allowances;
   document.installation={
     scenarioId:scenario?.id||null,scenarioRevision:scenario?.revisionNumber??null,
     teamName:text(scenario?.selectedInstallationTeam?.name),companyName:text(scenario?.selectedInstallationTeam?.companyName),
@@ -55,7 +54,7 @@ export function projectInstallationDocument({audience,revision,scenario,qualific
     allowances:pick(allowances,['nights','accommodationPersonNights','accommodationRate','foodDays','costedPersonDays','cillApplicableQuantity','cillInstallationRate']),
     foodAllowance:amount(programme?.costs?.food),accommodationAllowance:amount(programme?.costs?.accommodation),cillAllowance:amount(programme?.costs?.cillInstallation),
     inclusions:Object.fromEntries(['food','accommodation','cillInstallation','liftingEquipment','skipHire'].map(key=>[key,typeof programme?.componentInclusions?.[key]==='boolean'?programme.componentInclusions[key]:null])),
-    travel:{status:routeAvailable?'Retained route estimate':'Travel time not confirmed',departure,destination,oneWayMinutes:routeAvailable?amount(route.durationMinutes):null,returnMinutes:null,pattern:['daily_travel','stay_away'].includes(profile.travelMode)?profile.travelMode:null,basis:routeAvailable?(route.manuallyOverridden?text(route.overrideReason):text(route.integration)):null,capturedAt:routeAvailable?text(route.calculatedAt):null},
+    travel:projectInstallerTravel(scenario,revision),
     qualificationSummary:installationQualificationSummary(qualificationCheck),
     materials:projectInstallationMaterials(scenario?.installationMaterials),
   };
