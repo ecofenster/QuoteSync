@@ -6,7 +6,13 @@ const text=value=>typeof value==='string'?value.trim():'';
 const amount=value=>value===null||value===undefined||value===''||!Number.isFinite(Number(value))||Number(value)<0?null:Number(value);
 const pick=(object,keys)=>Object.fromEntries(keys.map(key=>[key,amount(object?.[key])]));
 const category=position=>{
-  const value=text(position.productClass||position.productType).toLowerCase().replaceAll('_',' ');
+  const imported=position.origin==='supplier_imported'||position.sourceProvenance?.kind==='supplier_quote_position';
+  // Imported positionType historically defaults to Window even for supplier doors.
+  // Only an explicit product label may fill the absent category; descriptions and
+  // product-system marketing names are not classification evidence.
+  const sourceProduct=text(position.product).toLowerCase().replaceAll('_',' ');
+  const explicitProduct=/^(?:window|door|single door|double door|sliding door|lift[ -](?:and[ -])?slide door|bifold(?: door)?)$/.test(sourceProduct)?sourceProduct:'';
+  const value=text(position.productClass||position.productType||(imported?explicitProduct:'')).toLowerCase().replaceAll('_',' ');
   if(/lift[ -]?(?:and[ -]?)?slide/.test(value))return 'liftAndSlideDoors';
   if(/bi[ -]?fold/.test(value))return 'bifolds';
   if(/sliding|gliding/.test(value))return 'slidingDoors';

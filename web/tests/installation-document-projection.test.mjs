@@ -36,6 +36,22 @@ test('missing calculation and route remain unknown; wrong Estimate or repeated P
   assert.throws(()=>projectInstallationDocument({audience:'client',revision:{...revision,positions:[revision.positions[0],revision.positions[0]]}}),/repeated Position/);
   assert.equal(revision.positions.length,6,'Source schedule remains unchanged');
 });
+test('canonical source product labels populate totals without trusting imported default Window or guessing descriptions',()=>{
+  const positions=[
+    {id:'window',origin:'supplier_imported',product:'Window',positionType:'Window',quantity:2},
+    {id:'door',origin:'supplier_imported',product:'Door',positionType:'Window',quantity:3},
+    {id:'slide',origin:'supplier_imported',product:'Sliding door',positionType:'Window',quantity:1},
+    {id:'unknown',origin:'supplier_imported',product:'Special assembly',positionType:'Window',description:'window door',quantity:4},
+    {id:'manual',positionType:'Door',quantity:1},
+    {id:'authoritative',origin:'supplier_imported',productClass:'Bifold',product:'Door',quantity:2},
+  ];
+  const before=structuredClone(positions);
+  for(const audience of ['client','installer']){
+    const result=projectInstallationDocument({audience,revision:{...revision,positions}});
+    assert.deepEqual(result.totals,{windows:2,doors:3,slidingDoors:1,liftAndSlideDoors:0,bifolds:2,notConfirmed:5});
+  }
+  assert.deepEqual(positions,before,'Classification must not rewrite source or issued schedules');
+});
 test('separate printable PDFs retain explicit unknowns without emitting commercial or client installer allowances',async()=>{
   for(const audience of ['client','installer']){
     const model=projectInstallationDocument({audience,revision});
