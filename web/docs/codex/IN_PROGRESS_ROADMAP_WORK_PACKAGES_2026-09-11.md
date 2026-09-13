@@ -1,5 +1,13 @@
 # In-progress Roadmap completion programme
 
+## 13 September — actual retained glazing-field contract correction
+
+Read-only extraction of the genuine EKO WinPro source showed canonical glazing points to Glazing required in the Glazing section, not the Glazing label used by the initial fallback fixture. The installation fallback now accepts that exact source field contract while preserving field ID, raw value, source page and source-row checks. A similarly labelled message is rejected. Manufacturer weight still takes precedence; no source field, issued snapshot or live import is modified.
+
+Twelve focused weight/fallback tests and full application typecheck pass. Actual PDF extraction proves the first Position has two uniform glazing units, 1227 × 1265 mm envelope and three 4 mm panes: the fallback helper produces 46.56465 kg glass only once, while the normal projection retains the stated 68 kg unit weight. The initial assertion contained a hand-calculation typo, corrected without changing calculator arithmetic. A controlled missing-weight copy exercises fallback selection and wrong-section rejection; this is explicitly service fault coverage, not a byte-identical missing-weight import/browser pass. No browser/API infrastructure was started this turn and no new normal-route acceptance is claimed.
+
+Existing survey-delivery-installation remains partial/unaccepted with unchanged original-73 mapping and totals. Next: source-backed fallback normal-route acceptance where genuine missing-weight evidence exists, then mixed-field/laminate review, remaining manufacturer/opening projections, material area/support, drawings, travel/crew, survey approval and reviewed delivery. Existing AGENTS rules already cover this source-preserving correction. Local checkpoint only; the prior push permission restriction remains unresolved.
+
 ## 13 September — retained supplier categories in installation schedules
 
 Follow-on inspection found the document projection reads productClass/productType, while imported canonical Positions retain the explicit source product marker in product. A bounded fallback now accepts recognised explicit supplier product labels from source-owned Positions, with existing explicit categories taking precedence. It never classifies from prose/system names or the historical positionType default, which the importer sets to Window even for doors. Missing category evidence remains visible instead of becoming an invented Window. No source schedule, Order or issued PDF is rewritten.
