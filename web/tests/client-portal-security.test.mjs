@@ -456,6 +456,11 @@ test("one tracked supplier revision draft reopens, sends once and follows up onc
   const followup=await lifecycle.processDueSupplierRevisionFollowups();assert.deepEqual(followup,{processed:1,sent:1,failed:0});assert.equal(sendCount,2);
   assert.deepEqual(await lifecycle.processDueSupplierRevisionFollowups(),{processed:0,sent:0,failed:0});assert.equal(sendCount,2);
   const portal=await source.service.getProjectPortal(auth.session,"project-a1");assert.equal(portal.revisionRequests[0].status,"Updated Estimate being prepared");assert.equal(JSON.stringify(portal.revisionRequests).includes("factory@example.test"),false);
+  const acknowledgement=await communications.save({id:'tracked-acknowledgement',direction:'inbound',provider:'fixture',folder:'inbox',status:'received',subject:'Acknowledged',bodyText:'We are reviewing your request.'});
+  await lifecycle.linkManufacturerResponse('project-a1',{estimateId:parent.successorEstimateId,supplierEnquiryId:sent.id,communicationMessageId:acknowledgement.id,createdBy:'staff-1'});
+  await lifecycle.updateSupplierResponseDue(sent.id,{responseDueAt:'2026-09-20T10:00:00.000Z'});
+  assert.equal((await source.db.get('SELECT workflow_state FROM supplier_revision_requests WHERE id=?',parent.id)).workflow_state,'supplier_reply_received');
+  assert.equal((await source.db.get('SELECT followup_due_at FROM supplier_enquiry_drafts WHERE id=?',sent.id)).followup_due_at,null,'Adjusting expected return requeued a cancelled follow-up');
   const second=await lifecycle.prepareSupplierEnquiry("project-a1",{...payload,subject:"Second supplier request",idempotencyKey:"second-tracked-request",send:true});
   await source.db.run("UPDATE supplier_revision_requests SET status='cancelled',workflow_state='cancelled' WHERE id=?",parent.id);
   clock+=8*24*60*60*1000;

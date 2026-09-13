@@ -3,10 +3,16 @@ import {createHash,randomUUID} from 'node:crypto';
 // Test-only provider transport. No network fallback; delivery is refused by
 // default and can only be simulated for explicitly configured test recipients.
 // Production Gmail/Drive adapters still perform their normal mapping and IO.
-export function createDisposableGoogleTransport({messages=[],attachments=new Map(),files=[],pageSize=2,delivery=null}={}){
+export function createDisposableGoogleTransport({messages=[],attachments=new Map(),files=[],pageSize=2,delivery=null,receiptState=null}={}){
  const stored=new Map(files.map(file=>[file.id,{...file}])),binaries=new Map(),calls=[];
  const deliveryEvidence={attempts:0,sent:[]};
  if(delivery&&(!delivery.allowedRecipients?.length||delivery.allowedRecipients.some(value=>!/^[-\w.+]+@example\.test$/.test(value))))throw new Error('Disposable delivery requires explicit example.test recipients.');
+ if(receiptState){
+  if(!delivery||receiptState.version!==1||!Array.isArray(receiptState.evidence?.sent)||receiptState.evidence.sent.some(item=>!item.recipients?.length||item.recipients.some(value=>!delivery.allowedRecipients.includes(value))))throw new Error('Retained disposable receipts require the same explicit test recipient boundary.');
+  Object.assign(deliveryEvidence,structuredClone(receiptState.evidence));
+  messages.push(...structuredClone(receiptState.messages));
+  for(const [id,data] of receiptState.attachments)attachments.set(id,Buffer.from(data,'base64'));
+ }
  const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});
  const fetchImpl=async(raw,options={})=>{
   const url=new URL(String(raw)),method=String(options.method||'GET').toUpperCase();calls.push({method,path:url.pathname});
@@ -76,5 +82,6 @@ export function createDisposableGoogleTransport({messages=[],attachments=new Map
   }
   throw new Error(`Unsupported disposable provider operation: ${method} ${url.origin}${url.pathname}`);
  };
- return {fetchImpl,files:stored,binaries,calls,deliveryEvidence};
+ const snapshotReceipts=()=>{const sent=messages.filter(message=>deliveryEvidence.sent.some(item=>item.id===message.id));const ids=new Set(sent.map(item=>item.id));return {version:1,evidence:structuredClone(deliveryEvidence),messages:structuredClone(sent),attachments:[...attachments].filter(([id])=>ids.has(id.split(':')[0])).map(([id,bytes])=>[id,bytes.toString('base64')])}};
+ return {fetchImpl,files:stored,binaries,calls,deliveryEvidence,snapshotReceipts};
 }

@@ -38,9 +38,11 @@ const OUTPUT = path.resolve("test-output/complete-customer-order-journey");
 const sourceFactoryReconcile=process.argv.includes('--stop-after-source-backed-factory-reconcile');
 const supplierPartial=process.argv.includes('--stop-after-supplier-send-partial');
 const supplierReconcile=process.argv.includes('--stop-after-supplier-reconcile');
-const followupReconcile=process.argv.includes('--stop-after-followup-reconcile');
+const followupRestart=process.argv.includes('--stop-after-followup-restart');
+const followupCancellation=process.argv.includes('--stop-after-followup-cancellation');
+const followupReconcile=followupRestart||process.argv.includes('--stop-after-followup-reconcile');
 const legacyCorrespondenceReview=process.argv.includes('--stop-after-legacy-supplier-correspondence');
-const supplierFollowup=followupReconcile||supplierReconcile||supplierPartial||process.argv.includes('--stop-after-supplier-followup');
+const supplierFollowup=followupCancellation||followupReconcile||supplierReconcile||supplierPartial||process.argv.includes('--stop-after-supplier-followup');
 const sourceFactorySend=sourceFactoryReconcile||process.argv.includes('--stop-after-source-backed-factory-send');
 const sourceStaffOrder=sourceFactorySend||process.argv.includes('--stop-after-source-backed-staff-order');
 const sourceCustomerOrder=sourceStaffOrder||process.argv.includes('--stop-after-source-backed-customer-order');
@@ -196,7 +198,8 @@ async function run() {
     const providerJourney=providerJourneyRequested,providerKey=createHash('sha256').update(randomUUID()).digest('hex');
     if(providerJourney)await writeFile(path.join(root,'provider-source.pdf'),await readFile(path.resolve('docs/Supplier_Quotes/John_Wingfield/web-26-1133450.pdf')));
     if(receivedSupplierReviews)await writeFile(path.join(root,'provider-second-source.docx'),await readFile(path.resolve('docs/Supplier_Quotes/343117-3_EF-EST-2026-004 - Luke.docx')));
-api = spawn(process.execPath, ["--import",pathToFileURL(path.resolve('tests/fixtures/isolatedJourneyExchangeRate.mjs')).href,...(providerJourney?['--import',pathToFileURL(path.resolve('tests/fixtures/isolatedJourneyGoogle.mjs')).href]:[]),"server/index.js"], { cwd: process.cwd(), env: { ...process.env, ...(providerJourney?{QUOTESUITE_INTEGRATION_ENCRYPTION_KEY:providerKey}:{}), QUOTESUITE_DB_PATH: databasePath, QUOTESYNC_ATTACHMENT_ROOT: attachmentRoot, PORT: "3104", NODE_ENV: "development", QUOTESUITE_APP_ORIGINS: APP_URL, QUOTESUITE_TEST_JOURNEY: "1", QUOTESUITE_TEST_DELIVERY_ENABLED: (sourceCustomerReissue||supplierFollowup)?"1":"0", QUOTESUITE_DISPOSABLE_PROVIDER_DELIVERY:followupReconcile?'followup-reconcile':supplierReconcile?'supplier-reconcile':supplierFollowup?'supplier-followup':sourceFactoryReconcile?'factory-reconcile':sourceFactorySend?'factory-send':sourceCustomerReissue?'customer-reissue':'', QUOTESUITE_TEST_CUSTOMER_EMAIL: CUSTOMER, QUOTESUITE_TEST_FACTORY_EMAIL: FACTORY }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+const startApi=()=>spawn(process.execPath, ["--import",pathToFileURL(path.resolve('tests/fixtures/isolatedJourneyExchangeRate.mjs')).href,...(providerJourney?['--import',pathToFileURL(path.resolve('tests/fixtures/isolatedJourneyGoogle.mjs')).href]:[]),"server/index.js"], { cwd: process.cwd(), env: { ...process.env, ...(providerJourney?{QUOTESUITE_INTEGRATION_ENCRYPTION_KEY:providerKey}:{}), QUOTESUITE_DB_PATH: databasePath, QUOTESYNC_ATTACHMENT_ROOT: attachmentRoot, PORT: "3104", NODE_ENV: "development", QUOTESUITE_APP_ORIGINS: APP_URL, QUOTESUITE_TEST_JOURNEY: "1", QUOTESUITE_TEST_DELIVERY_ENABLED: (sourceCustomerReissue||supplierFollowup)?"1":"0", QUOTESUITE_DISPOSABLE_PROVIDER_DELIVERY:followupReconcile?'followup-reconcile':supplierReconcile?'supplier-reconcile':supplierFollowup?'supplier-followup':sourceFactoryReconcile?'factory-reconcile':sourceFactorySend?'factory-send':sourceCustomerReissue?'customer-reissue':'', QUOTESUITE_TEST_CUSTOMER_EMAIL: CUSTOMER, QUOTESUITE_TEST_FACTORY_EMAIL: FACTORY }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    api=startApi();
     let apiStartupLog='';for(const stream of [api.stdout,api.stderr])stream.on('data',chunk=>{apiStartupLog=(apiStartupLog+String(chunk)).slice(-5000)});
     vite = spawn(process.execPath, [path.resolve("node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", "5276"], { cwd: process.cwd(), env: { ...process.env, VITE_API_BASE_URL: API_URL }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     try{await waitFor(() => reachable(`${API_URL}/api/health`), "Disposable journey API did not start")}catch(error){throw new Error(`${error.message}: ${apiStartupLog}`)} await waitFor(() => reachable(APP_URL), "Disposable journey UI did not start");
@@ -368,6 +371,15 @@ api = spawn(process.execPath, ["--import",pathToFileURL(path.resolve('tests/fixt
         try{
           const sent=await followupDb.get('SELECT * FROM supplier_enquiry_drafts WHERE id=?',preparedContext.enquiries[0].id);assert.equal(sent.status,'sent');assert.equal(Date.parse(sent.response_due_at)-Date.parse(sent.sent_at),7*24*60*60*1000);
           await click(tab,'Done');await click(tab,'Request supplier estimate / revision');
+          if(followupCancellation){
+            await waitFor(()=>tab.evaluate("[...document.querySelectorAll('summary')].some(item=>item.textContent==='Review an incoming supplier reply')"),'Incoming supplier review missing');
+            await tab.evaluate("[...document.querySelectorAll('summary')].find(item=>item.textContent==='Review an incoming supplier reply').click()");
+            await tab.evaluate("[...document.querySelectorAll('.supplier-rfq__history button')].find(item=>item.textContent.includes('EKO-OKNA')&&item.textContent.includes('request 1')).click()");
+            await click(tab,'Find replies');await waitFor(()=>tab.evaluate("document.body.innerText.includes('Disposable supplier PDF response')"),'Exact supplier reply missing');
+            await click(tab,'Disposable supplier PDF response');await waitFor(()=>tab.evaluate("document.body.innerText.includes('Link as acknowledgement')"),'Exact message could not be reviewed');
+            await click(tab,'Link as acknowledgement');await waitFor(()=>tab.evaluate("document.body.innerText.includes('Reply linked for staff review')"),'Acknowledgement outcome missing');
+            await click(tab,'Back to supplier requests');await click(tab,'Close');await click(tab,'Request supplier estimate / revision');
+          }
           await waitFor(()=>tab.evaluate("[...document.querySelectorAll('summary')].some(item=>item.textContent.startsWith('View or reopen previous requests'))"),'Supplier history did not load');
           await tab.evaluate("[...document.querySelectorAll('summary')].find(item=>item.textContent.startsWith('View or reopen previous requests')).click()");
           await waitFor(()=>tab.evaluate("document.body.innerText.includes('Adjust response deadline')"),'Sent supplier history did not reopen');
@@ -375,8 +387,30 @@ api = spawn(process.execPath, ["--import",pathToFileURL(path.resolve('tests/fixt
           await tab.evaluate("(()=>{const input=document.querySelector('input[type=datetime-local]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'2026-01-01T09:00');input.dispatchEvent(new Event('input',{bubbles:true}))})()");
           await click(tab,'Save reviewed deadline');
           await waitFor(()=>tab.evaluate("document.body.innerText.includes('Supplier response deadline updated')"),'Reviewed deadline did not save');
+          if(followupCancellation){
+            const before=await followupDb.get('SELECT * FROM supplier_enquiry_drafts WHERE id=?',sent.id);assert.equal(before.response_state,'acknowledgement_received');assert.equal(before.followup_due_at,null);assert.equal(before.followup_attempted_at,null);
+            assert.equal((await followupDb.get('SELECT workflow_state FROM supplier_revision_requests WHERE id=?',before.revision_request_id)).workflow_state,'supplier_reply_received');
+            assert.equal((await followupDb.get('SELECT COUNT(*) count FROM manufacturer_response_links WHERE supplier_enquiry_id=? AND canonical_document_id IS NOT NULL',sent.id)).count,0,'An acknowledgement incorrectly filed or completed the revised document');
+            const priorRuntime=await(await fetch(`${API_URL}/api/health`)).json();assert.equal((await terminateOwnedProcessTree(api,{platformName:process.platform})).exited,true);api=null;
+            await waitFor(async()=>!await reachable(`${API_URL}/api/health`),'Owned test listener did not stop');api=startApi();for(const stream of [api.stdout,api.stderr])stream.on('data',chunk=>{apiStartupLog=(apiStartupLog+String(chunk)).slice(-5000)});
+            await waitFor(()=>reachable(`${API_URL}/api/health`),'Owned test API did not restart');
+            await waitFor(async()=>{const health=await(await fetch(`${API_URL}/api/health`)).json();assert.notEqual(health.instanceId,priorRuntime.instanceId);return health.uptimeSeconds>=62},'Restarted scheduled-worker observation did not complete',80000);
+            const after=await followupDb.get('SELECT * FROM supplier_enquiry_drafts WHERE id=?',sent.id);assert.equal(after.followup_attempted_at,null);assert.equal(after.response_state,'acknowledgement_received');
+            assert.equal(JSON.parse(await readFile(path.join(root,'disposable-delivery-evidence.json'),'utf8')).sent.length,1);
+            console.log(JSON.stringify({scope:'Normal exact reply acknowledgement → reviewed expected-return date → actual API restart → scheduled-worker observation',followupCancelled:true,revisedDocumentOutstanding:true,providerMessages:1,liveDelivery:false}));return;
+          }
           if(followupReconcile){
             await waitFor(async()=>(await followupDb.get('SELECT followup_delivery_state FROM supplier_enquiry_drafts WHERE id=?',sent.id)).followup_delivery_state==='uncertain','Persistent worker did not retain the uncertain follow-up',100000);
+            if(followupRestart){
+              const priorRuntime=await(await fetch(`${API_URL}/api/health`)).json(),priorClaim=await followupDb.get('SELECT followup_attempted_at,followup_receipt_message_id FROM supplier_enquiry_drafts WHERE id=?',sent.id),priorPid=api.pid;
+              const stopped=await terminateOwnedProcessTree(api,{platformName:process.platform});assert.equal(stopped.exited,true);api=null;
+              await waitFor(async()=>!await reachable(`${API_URL}/api/health`),'Owned test API listener remained after stopping');
+              api=startApi();for(const stream of [api.stdout,api.stderr])stream.on('data',chunk=>{apiStartupLog=(apiStartupLog+String(chunk)).slice(-5000)});
+              await waitFor(()=>reachable(`${API_URL}/api/health`),'Owned test API did not restart');
+              const resumedRuntime=await(await fetch(`${API_URL}/api/health`)).json();assert.notEqual(resumedRuntime.instanceId,priorRuntime.instanceId);assert.equal(resumedRuntime.runtimeVersion,QUOTESUITE_RUNTIME_CONTRACT.version);
+              assert.deepEqual(await followupDb.get('SELECT followup_attempted_at,followup_receipt_message_id FROM supplier_enquiry_drafts WHERE id=?',sent.id),priorClaim);
+              console.log(JSON.stringify({actualTestApiRestart:{oldPid:priorPid,newPid:api.pid,instanceChanged:true,claimPreserved:true}}));
+            }
             await click(tab,'Close');await click(tab,'Request supplier estimate / revision');
             await waitFor(()=>tab.evaluate("document.body.innerText.includes('Check follow-up outcome')"),'Uncertain follow-up recovery action missing');
             await click(tab,'Check follow-up outcome');await waitFor(()=>tab.evaluate("document.body.innerText.includes('exact sent follow-up is confirmed')"),'Follow-up receipt was not confirmed');
@@ -390,7 +424,7 @@ api = spawn(process.execPath, ["--import",pathToFileURL(path.resolve('tests/fixt
           await tab.evaluate("[...document.querySelectorAll('summary')].find(item=>item.textContent.startsWith('View or reopen previous requests')).click()");
           await waitFor(()=>tab.evaluate("document.body.innerText.includes('Follow-up sent')"),'Persisted follow-up outcome was not visible after reopen');
           assert.equal(await tab.evaluate("document.body.innerText.includes('Retry follow-up safely')"),false);
-          console.log(JSON.stringify({scope:'Normal supplier composer → confirmed test send → seven-calendar-day deadline → reviewed due adjustment → persistent scheduled worker → reopened outcome',provider:'no-network disposable transport',providerMessages:2,partialSaveRecoveredWithoutResend:supplierPartial,liveDelivery:false,restartVerified:false,uncertainRecoveryVerified:followupReconcile}));
+          console.log(JSON.stringify({scope:'Normal supplier composer → confirmed test send → seven-calendar-day deadline → reviewed due adjustment → persistent scheduled worker → reopened outcome',provider:'no-network disposable transport',providerMessages:2,partialSaveRecoveredWithoutResend:supplierPartial,liveDelivery:false,restartVerified:followupRestart,uncertainRecoveryVerified:followupReconcile}));
         }finally{await followupDb.close()}
         return;
       }

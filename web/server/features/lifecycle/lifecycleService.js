@@ -574,8 +574,8 @@ export function createLifecycleService(db, options = {}) {
     const dueAt=text(input.responseDueAt),parsedDue=new Date(dueAt);if(!dueAt||Number.isNaN(parsedDue.getTime()))throw problem('Choose a valid revised supplier response date.',422,'supplier_response_due_invalid');
     const row=await db.get("SELECT * FROM supplier_enquiry_drafts WHERE id=? AND request_kind='revision' AND status='sent'",supplierEnquiryId);if(!row)throw problem('The sent supplier revision request was not found.',404,'supplier_revision_dispatch_not_found');
     if(row.response_state==='revised_document_received'||row.completed_at)throw problem('This supplier revision has already been received or completed.',409,'supplier_revision_already_received');
-    const at=stamp();await db.run("UPDATE supplier_enquiry_drafts SET response_due_at=?,followup_due_at=?,updated_at=? WHERE id=?",parsedDue.toISOString(),parsedDue.toISOString(),at,row.id);
-    if(row.revision_request_id)await db.run("UPDATE supplier_revision_requests SET response_due_at=?,workflow_state='sent_to_supplier',updated_at=? WHERE id=?",parsedDue.toISOString(),at,row.revision_request_id);
+    const at=stamp();await db.run("UPDATE supplier_enquiry_drafts SET response_due_at=?,followup_due_at=CASE WHEN response_state='outstanding' THEN ? ELSE followup_due_at END,updated_at=? WHERE id=?",parsedDue.toISOString(),parsedDue.toISOString(),at,row.id);
+    if(row.revision_request_id)await db.run("UPDATE supplier_revision_requests SET response_due_at=?,updated_at=? WHERE id=?",parsedDue.toISOString(),at,row.revision_request_id);
     return supplierEnquiryView(await db.get("SELECT se.*,s.supplier_name FROM supplier_enquiry_drafts se LEFT JOIN supplier_commercial_defaults s ON s.supplier_code=se.supplier_id WHERE se.id=?",row.id));
   }
 

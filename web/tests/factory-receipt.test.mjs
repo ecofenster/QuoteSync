@@ -18,4 +18,11 @@ for(const kind of ['Factory','Supplier'])test(`lost ${kind} response is verified
  assert.equal(await provider.findFactoryReceipt('<quotesuite-factory-dead@delivery.quotesuite.invalid>'),null);
  assert.equal(await provider.findFactoryReceipt('unsafe search'),null);
  const ambiguous=createGmailProvider({googleFetch:async()=>new Response(JSON.stringify({messages:[{id:'one'},{id:'two'}]}))});assert.equal(await ambiguous.findFactoryReceipt(attempt.receipt_message_id),null);
+ const snapshot=JSON.parse(JSON.stringify(transport.snapshotReceipts()));
+ const restored=createDisposableGoogleTransport({receiptState:snapshot,delivery:{allowedRecipients:saved.to}}),restoredProvider=createGmailProvider({googleFetch:restored.fetchImpl});
+ const restoredRaw=await restoredProvider.findFactoryReceipt(attempt.receipt_message_id);
+ assert.deepEqual(await verifyFactoryReceipt({raw:restoredRaw,attempt,saved,readAttachment:restoredProvider.attachment,kind}),await verify());
+ assert.equal(restored.deliveryEvidence.sent.length,1);assert.ok(restored.calls.every(call=>call.method==='GET'));
+ assert.throws(()=>createDisposableGoogleTransport({receiptState:snapshot,delivery:{allowedRecipients:['different@example.test']}}),/same explicit test recipient boundary/);
+ assert.throws(()=>createDisposableGoogleTransport({receiptState:snapshot}),/same explicit test recipient boundary/);
 });
