@@ -8,10 +8,12 @@ export async function verifyOrderInstallationDocuments({tab,click,waitFor,databa
   await tab.evaluate("(()=>{for(const input of document.querySelectorAll('.portal-external__position-check input'))if(!input.checked)input.click();const overall=document.querySelector('.portal-external__overall-check input');if(!overall.checked)overall.click()})()");
   await click(tab,'Submit Estimate acceptance');await waitFor(()=>tab.evaluate("document.body.innerText.includes('Estimate accepted')"),'Customer acceptance was not recorded');
   const db=await open({filename:databasePath,driver:sqlite3.Database,mode:sqlite3.OPEN_READONLY});let order;try{order=await db.get('SELECT * FROM orders WHERE source_estimate_id=?',fixture.estimateId)}finally{await db.close()}assert.ok(order);
-  await tab.send('Page.navigate',{url:appUrl});await waitFor(()=>tab.evaluate("document.body.innerText.includes('Client Portal')"),'Staff app did not open');await click(tab,'Client Portal');
-  await waitFor(()=>tab.evaluate(`[...document.querySelectorAll('.client-portal-directory__list article')].some(item=>item.textContent.includes(${JSON.stringify(fixture.clientReference)}))`),'Accepted Client did not appear in staff Portal');
-  await tab.evaluate(`[...document.querySelectorAll('.client-portal-directory__list article')].find(item=>item.textContent.includes(${JSON.stringify(fixture.clientReference)})).querySelector('button').click()`);
-  await waitFor(()=>tab.evaluate("document.body.innerText.includes('Open Order journey')"),'Accepted Order was not offered');await click(tab,'Open Order journey');
+  await tab.send('Page.navigate',{url:appUrl});await waitFor(()=>tab.evaluate("document.body.innerText.includes('Client Portal')"),'Staff app did not open');await click(tab,'Orders');
+  await waitFor(()=>tab.evaluate("document.querySelector('.accepted-orders-workspace')?.textContent.includes('Open Order journey')"),'Accepted Order did not appear in Orders');
+  assert.equal(await tab.evaluate(`document.querySelector('.accepted-orders-workspace').textContent.includes(${JSON.stringify(order.order_ref)})`),true);
+  await click(tab,'Estimates marked as Order');await waitFor(()=>tab.evaluate("document.querySelector('.accepted-orders-workspace')?.textContent.includes('Status-driven view')"),'Legacy Order outcome view was lost');await click(tab,'Accepted Orders');
+  await tab.send('Network.setBlockedURLs',{urls:['*lifecycle/orders/*']});await click(tab,'Open Order journey');
+  await waitFor(()=>tab.evaluate("document.body.innerText.includes('Retry loading Order')"),'Order load failure did not expose recovery');await tab.send('Network.setBlockedURLs',{urls:[]});await click(tab,'Retry loading Order');
   await waitFor(()=>tab.evaluate("document.body.innerText.includes('Prepare / review installation documents')"),'Order installation documents were not offered');await click(tab,'Prepare / review installation documents');
   await waitFor(()=>tab.evaluate("document.querySelectorAll('.installation-documents select').length===3"),'Order source choices did not load');
   assert.deepEqual(await tab.evaluate("(()=>{const select=document.querySelectorAll('.installation-documents select')[1];return {value:select.value,disabled:select.disabled}})()"),{value:order.id,disabled:true});

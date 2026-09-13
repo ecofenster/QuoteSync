@@ -1,4 +1,5 @@
 import express from 'express';
+import {readOrderDirectory} from '../features/lifecycle/orderDirectory.js';
 import { CURRENT_APP_USER } from '../currentUser.js';
 import { createLifecycleService } from '../features/lifecycle/lifecycleService.js';
 import { deriveRevisionCheck } from '../features/lifecycle/lifecycleService.js';
@@ -11,6 +12,13 @@ export function createLifecycleRouter({ databasePromise, serviceOptions } = {}) 
   if (!databasePromise) throw new Error('createLifecycleRouter requires databasePromise.');
   const router = express.Router(), service = async () => createLifecycleService(await databasePromise, serviceOptions);
   router.get('/test-delivery', async (_req,res) => res.json((await service()).deliveryStatus()));
+  router.get('/orders',async(req,res)=>{
+    // This application still supplies a development staff identity. Do not expose a new directory as production authentication.
+    let originAllowed=true;try{if(req.get('Origin'))originAllowed=['localhost','127.0.0.1','[::1]'].includes(new URL(req.get('Origin')).hostname);}catch{originAllowed=false;}
+    res.set('Cache-Control','private, no-store');
+    if(process.env.NODE_ENV==='production'||!['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress)||!originAllowed)return res.status(403).json({error:'The accepted Order directory is restricted to local staff development until production access is approved.'});
+    try{res.json(await readOrderDirectory(await databasePromise,req.query));}catch(error){fail(res,error);}
+  });
   router.get('/changes-requested', async (_req,res) => { try { res.json(await (await service()).changesRequestedQueue()); } catch (error) { fail(res,error); } });
   router.get('/changes-requested/:reviewId', async (req,res) => { try { res.json(await (await service()).changeRequestDetail(req.params.reviewId)); } catch (error) { fail(res,error); } });
   router.get('/projects/:projectId/supplier-enquiries',async(req,res)=>{try{res.json(await(await service()).supplierEnquiryContext(req.params.projectId,req.query.estimate_id));}catch(error){fail(res,error);}});

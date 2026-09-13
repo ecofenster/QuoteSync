@@ -1,5 +1,15 @@
 # In-progress Roadmap completion programme
 
+## 13 September — canonical Orders entry and full application typecheck correction
+
+Packages 4/6 now provide an Accepted Orders view in the normal Orders sidebar. The previous Estimate-outcome view remains separately available as Estimates marked as Order; acceptance does not rewrite that legacy outcome to manufacture list visibility. The new read-only canonical query uses accepted Order IDs, Client/Project context, literal search and twenty-item pages. Opening an item reuses the existing staff Order journey and exact accepted-revision installation documents. Order load errors now expose a retry instead of an indefinite loading message. The new directory is local-development-only pending production staff authentication; it is not tenant-isolation evidence.
+
+Disposable normal-browser run `b46dcad5-6d2a-4164-b1aa-fa31a3415538` exits 0 through customer acceptance → Orders sidebar → preserved legacy view → accepted Order → forced load failure/retry → locked retained-revision client schedule/PDF. Canonical accepted Position IDs, Order/revision/PDF linkage and zero factory requests pass. Exact browser/profile remnants are zero and user API `808c11b8-5f4c-4894-bc5d-940d2622244d` remains unchanged during acceptance; its watched supervisor is preserved. Two focused SQL/access tests cover twenty-two accepted records across bounded pages, literal wildcard search, inconsistent Project ownership, invalid inputs and untrusted-origin denial. These are query-layer fixtures, not an additional twenty-two-case browser journey.
+
+Validation correction: earlier plain `npx tsc --noEmit` reports did not traverse this repository's project references and therefore were not full application typecheck evidence. The proper `npm run typecheck` (`tsc -b --noEmit`) exposed missing declarations for the recently introduced qualification date/summary JavaScript helpers. Added accurate declaration contracts; the full check now passes. Earlier browser/runtime checks remain valid, but the earlier narrow compiler claims must not be reused as application typecheck proof.
+
+Existing canonical-order and survey-delivery-installation entries are updated, with no completion/count/user-acceptance promotion. Next: accepted-Order installation-calculation scope, missing operational pack content and reviewed attachments/delivery. No live communications, business record changes, order-size changes or issued-document rewrites occurred. No new permanent rule is necessary; AGENTS already requires correct validation depth and shared canonical workflow entry.
+
 ## 13 September — exact bounded document choices and history recovery
 
 Package 6 now retains the exact open Order or selected saved calculation even when older than the twenty recent choices. A scoped lookup replaces one recent choice, keeping each response at twenty; unavailable or unrelated identities fail explicitly rather than falling back. This does not yet provide browsing/search for all older choices. Document history has immediate loading feedback, duplicate page-submit protection, a retained previous page after failure and a clear retry instruction.

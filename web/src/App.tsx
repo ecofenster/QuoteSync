@@ -128,6 +128,7 @@ import EstimateCollectionView from "./features/estimateCollection/EstimateCollec
 import type { EstimateCollectionViewMode } from "./features/estimateCollection/EstimateCollectionView";
 import mapGlobalEstimateToCollectionItem from "./features/estimateCollection/adapters/mapGlobalEstimateToCollectionItem";
 import ClientPortalStaffWorkspace from "./features/clientPortal/ClientPortalStaffWorkspace";
+import AcceptedOrdersWorkspace from "./features/clientPortal/AcceptedOrdersWorkspace";
 import ServiceWorkspace from "./features/service/ServiceWorkspace";
 import { INTERNAL_PORTAL_NAVIGATION_EVENT, type InternalPortalNavigationDetail } from "./features/clientPortal/portalInternalNavigation";
 
@@ -5094,11 +5095,11 @@ return (
               "No estimates found."
             )}
 
-            {menu === "orders" && view === "customers" && renderGlobalEstimateMenu(
+            {menu === "orders" && view === "customers" && <AcceptedOrdersWorkspace legacy={renderGlobalEstimateMenu(
               "Orders",
               "orders",
               "No orders found."
-            )}
+            )}/>}
 
             {menu === "lost" && view === "customers" && renderGlobalEstimateMenu(
               "Lost",
