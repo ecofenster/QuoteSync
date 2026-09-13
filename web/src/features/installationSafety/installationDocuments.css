@@ -1,0 +1,8 @@
+.installation-documents,.installation-documents>.ui-card{display:grid;gap:var(--space-3);min-width:0}
+.installation-documents{margin-block:var(--space-3)}
+.installation-documents>.ui-card{padding:var(--space-4)}
+.installation-documents label{display:grid;gap:var(--space-1);min-width:0}
+.installation-documents p,.installation-documents h3{margin:0}
+.installation-documents select{width:100%;min-width:0}
+.installation-documents a{overflow-wrap:anywhere}
+.installation-documents details{display:grid;gap:var(--space-2)}

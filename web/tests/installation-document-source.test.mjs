@@ -27,7 +27,7 @@ test('actual isolated schema resolves exact working revision read-only and refus
     db=await open({filename:databasePath,driver:sqlite3.Database});
     const at=new Date().toISOString();
     await db.run("INSERT INTO clients(id,name,email,client_ref,created_at,updated_at) VALUES('test-client','Disposable client','disposable@example.test','TEST-CL',?,?)",at,at);
-    await db.run("INSERT INTO estimates(id,client_id,estimate_ref,base_estimate_ref,revision_no,status,positions_json,created_at,updated_at) VALUES('test-estimate','test-client','TEST-EST-2','TEST-EST',2,'Draft',?,?,?)",JSON.stringify([{id:'position-a',reference:'W01',quantity:1,widthMm:1200,heightMm:1400}]),at,at);
+    await db.run("INSERT INTO estimates(id,client_id,estimate_ref,base_estimate_ref,revision_no,status,positions_json,created_at,updated_at) VALUES('test-estimate','test-client','TEST-EST-2','TEST-EST',2,'Draft',?,?,?)",JSON.stringify([{id:'position-a',reference:'W01',qty:1,widthMm:1200,heightMm:1400}]),at,at);
     const scenario=await createProjectCalculatorLabService(db).createScenario({estimateId:'test-estimate',origin:'estimate',name:'Disposable installation calculation',packageCode:'full_installation'});
     await initializeInstallationDocumentStore(db);
     await db.exec('PRAGMA query_only=ON');

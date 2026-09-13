@@ -12,6 +12,7 @@ import { initializeEstimateProcurementActionSchema } from './features/estimates/
 import { initializeLifecycleSchema } from './features/lifecycle/lifecycleSchema.js';
 import { initializeServiceSchema } from './features/service/serviceSchema.js';
 import { initializeInstallationSafetySchema } from './features/installationSafety/installationSafetySchema.js';
+import {initializeInstallationDocumentStore} from './features/installationSafety/installationDocumentStore.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1484,6 +1485,7 @@ export const dbPromise = openDatabaseWithRecovery(dbPath).then(async (db) => {
   await initializeLifecycleSchema(db);
   await initializeServiceSchema(db);
   await initializeInstallationSafetySchema(db);
+  await initializeInstallationDocumentStore(db);
 
   await ensureTable(
     db,

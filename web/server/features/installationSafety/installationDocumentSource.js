@@ -24,6 +24,9 @@ export async function loadInstallationDocumentRevision(db,{estimateId,revision,o
   const projection=release?parse(release.customer_projection_json):null;
   let positions=release?projection?.positions:parse(estimate.positions_json);
   if(!Array.isArray(positions))throw fail('The selected revision has no readable schedule.');
+  // Working canonical Positions use qty; released customer projections use quantity.
+  // An explicitly missing quantity stays missing rather than borrowing another field.
+  positions=positions.map(item=>Object.hasOwn(item,'quantity')||!Object.hasOwn(item,'qty')?item:{...item,quantity:item.qty});
   if(acceptedIds){positions=positions.filter(item=>acceptedIds.has(item.id));if(!acceptedIds.size||positions.length!==acceptedIds.size)throw fail('Every accepted Order Position must be present in its retained schedule.');}
   const ids=positions.map(item=>item.id);if(ids.some(id=>!id)||new Set(ids).size!==ids.length)throw fail('The retained schedule has missing or repeated Position identities.');
   return {estimateId,estimateReference:projection?.estimateReference||estimate.estimate_ref,revision,orderId:order?.id||null,orderReference:order?.order_ref||null,clientId:estimate.client_id,projectId:estimate.project_id||null,clientName:release?projection.clientName:estimate.client_name,projectName:release?projection.projectName:estimate.project_name,siteAddress:release?(typeof projection.siteAddress==='string'?projection.siteAddress:''):estimate.project_address,positions,sourceReleaseId:release?.id||null,sourceUpdatedAt:release?null:estimate.updated_at};

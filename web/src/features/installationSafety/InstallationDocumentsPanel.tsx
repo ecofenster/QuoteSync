@@ -1,0 +1,38 @@
+import {useEffect,useRef,useState} from 'react';
+import {apiFetch,apiUrl} from '../../services/api/apiClient';
+import './installationDocuments.css';
+
+type Saved={id:string;fileName:string;audience:string;revision:number;createdAt:string};
+type Context={clientId:string;estimateReference:string;revision:number;scenarios:Array<{id:string;name:string;revision:number}>;orders:Array<{id:string;reference:string;revision:number}>;documents:Saved[];total:number;offset:number;limit:number};
+export default function InstallationDocumentsPanel({estimateId,selectedScenarioId}:{estimateId:string;selectedScenarioId?:string}){
+  const [open,setOpen]=useState(false),[context,setContext]=useState<Context|null>(null),[audience,setAudience]=useState('installer'),[orderId,setOrderId]=useState(''),[scenarioId,setScenarioId]=useState(selectedScenarioId||''),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[error,setError]=useState(false),[saved,setSaved]=useState<Saved|null>(null);
+  const running=useRef(false),loadSequence=useRef(0),request=useRef<{choices:string;key:string}|null>(null),base=`/api/installation-documents/estimates/${encodeURIComponent(estimateId)}`;
+  const load=async(offset=0)=>{const sequence=++loadSequence.current;const value=await apiFetch(`${base}?offset=${offset}`) as Context;if(sequence===loadSequence.current)setContext(value);return value;};
+  useEffect(()=>{if(!selectedScenarioId)return;setScenarioId(current=>current||selectedScenarioId);if(open){setMessage('Refreshing the saved calculation choices…');void load().then(()=>setMessage('Saved calculation choices refreshed. Nothing has been sent.')).catch(()=>{setError(true);setMessage('Saved calculation choices could not refresh. Retry loading to continue.');});}},[selectedScenarioId]);
+  const show=async()=>{if(running.current)return;setOpen(true);setBusy(true);setError(false);setMessage('Loading saved document choices…');try{await load();setMessage('Choose the document and source revision. Nothing will be sent.');}catch(reason){setError(true);setMessage(`${reason instanceof Error?reason.message:'Document choices could not be loaded.'} Retry loading to continue.`);}finally{setBusy(false)}};
+  const prepare=async()=>{
+    if(running.current||!context)return;
+    const order=context.orders.find(item=>item.id===orderId),scenario=context.scenarios.find(item=>item.id===scenarioId);
+    const body={clientId:context.clientId,audience,revision:order?.revision??context.revision,orderId:order?.id||null,scenarioId:audience==='installer'?scenario?.id:null,scenarioRevision:audience==='installer'?scenario?.revision:null};
+    const choices=JSON.stringify(body);if(request.current?.choices!==choices)request.current={choices,key:crypto.randomUUID()};
+    running.current=true;setBusy(true);setError(false);setSaved(null);setMessage('Preparing document…');
+    try{
+      const result=await apiFetch(base,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,requestKey:request.current.key})}) as Saved&{reused:boolean};setSaved(result);setMessage(`${result.reused?'Reopened':'Prepared'} ${result.fileName} in this Estimate’s installation documents. Not sent. Open the PDF and review its missing information.`);
+      try{await load();}catch{setMessage(`${result.fileName} was prepared and is available below. The history list could not refresh; reload it when ready. Nothing was sent.`);}
+    }catch(reason){setError(true);setMessage(`${reason instanceof Error?reason.message:'Document preparation failed.'} Your selected choices are retained.`);}finally{running.current=false;setBusy(false)}
+  };
+  const link=(id:string)=>apiUrl(`${base}/documents/${encodeURIComponent(id)}`);
+  return <section className="installation-documents"><button className="ui-button" type="button" onClick={()=>open?setOpen(false):void show()} disabled={busy}>Prepare / review installation documents</button>{open?<div className="ui-card">
+    <h3>Installation documents</h3><p>Prepare a draft from the selected revision. Drawings, remaining operational details and reviewed delivery are not yet available here; nothing is sent.</p>
+    {message?<p role={error?'alert':'status'} className="ui-status">{message}</p>:null}
+    {!context?<button type="button" className="ui-button" disabled={busy} onClick={()=>void show()}>Retry loading</button>:<>
+      <label>Document<select className="ui-input" value={audience} disabled={busy} onChange={event=>setAudience(event.currentTarget.value)}><option value="installer">Installer pack — draft</option><option value="client">Client schedule without prices — draft</option></select></label>
+      <label>Source revision<select className="ui-input" value={orderId} disabled={busy} onChange={event=>setOrderId(event.currentTarget.value)}><option value="">{context.estimateReference} · Revision {context.revision}</option>{context.orders.map(item=><option key={item.id} value={item.id}>{item.reference} · accepted Estimate revision {item.revision}</option>)}</select></label>
+      {audience==='installer'?<label>Saved installation calculation<select className="ui-input" value={scenarioId} disabled={busy} onChange={event=>setScenarioId(event.currentTarget.value)}><option value="">Choose the saved calculation</option>{context.scenarios.map(item=><option key={item.id} value={item.id}>{item.name} · Revision {item.revision}</option>)}</select></label>:null}
+      {audience==='installer'&&!context.scenarios.length?<p>No saved calculation is available yet. <button type="button" className="ui-button" disabled={busy} onClick={()=>void show()}>Refresh choices</button></p>:null}
+      <button type="button" className="ui-button ui-button--primary" disabled={busy||(audience==='installer'&&!context.scenarios.some(item=>item.id===scenarioId))} onClick={()=>void prepare()}>{busy?'Preparing…':'Prepare draft PDF'}</button>
+      {saved?<p><a className="ui-button" href={link(saved.id)} target="_blank" rel="noreferrer">Open prepared PDF</a></p>:null}
+      <details><summary>Prepared documents — not sent ({context.total})</summary>{context.documents.map(item=><p key={item.id}><a href={link(item.id)} target="_blank" rel="noreferrer">{item.fileName}</a> · Revision {item.revision}</p>)}<p>Showing {context.total?context.offset+1:0}–{context.offset+context.documents.length} of {context.total}</p><button className="ui-button" disabled={busy||context.offset===0} onClick={()=>void load(Math.max(0,context.offset-10)).catch(()=>{setError(true);setMessage('History could not load. Saved documents are unchanged; retry.');})}>Previous</button><button className="ui-button" disabled={busy||context.offset+10>=context.total} onClick={()=>void load(context.offset+10).catch(()=>{setError(true);setMessage('History could not load. Saved documents are unchanged; retry.');})}>Next</button></details>
+    </>}
+  </div>:null}</section>;
+}
