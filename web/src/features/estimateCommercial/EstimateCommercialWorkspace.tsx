@@ -23,6 +23,7 @@ import type { SupplierCommercialResult } from "../projectCalculatorLab/SupplierC
 import EstimateCommercialHeaderRows from "./EstimateCommercialHeaderRows";
 import { projectCalculatorLabApi } from "../projectCalculatorLab/api/projectCalculatorLabApi";
 import SupplierRfqDialog from "./SupplierRfqDialog";
+import InstallationSafetyPanel from "../installationSafety/InstallationSafetyPanel";
 
 type CommercialTab = "costing" | "import";
 
@@ -240,7 +241,7 @@ export default function EstimateCommercialWorkspace({
           onWorkflowChanged={()=>void refreshWorkflow()}
         />
       ) : null}
-      {documentsOpen ? createPortal(<div className="estimate-commercial__modal-scrim" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)setDocumentsOpen(false)}}><section className="estimate-commercial__modal ui-card" role="dialog" aria-modal="true" aria-label="Estimate Files and Documents"><header><div><h2>Files / Documents</h2><p>Canonical documents and retained supplier quotation evidence linked to {estimateRef}.</p></div><button className="ui-button" onClick={()=>setDocumentsOpen(false)}>Close</button></header><CanonicalDocumentsPanel estimateId={estimateId}/><details><summary>Supplier quotation evidence</summary><EstimateSupplierDocuments estimateId={estimateId} estimateRef={estimateRef}/></details></section></div>,document.body) : null}
+      {documentsOpen ? createPortal(<div className="estimate-commercial__modal-scrim" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)setDocumentsOpen(false)}}><section className="estimate-commercial__modal ui-card" role="dialog" aria-modal="true" aria-label="Estimate Files and Documents"><header><div><h2>Files / Documents</h2><p>Canonical documents and retained supplier quotation evidence linked to {estimateRef}.</p></div><button className="ui-button" onClick={()=>setDocumentsOpen(false)}>Close</button></header><InstallationSafetyPanel key={estimateId} estimateId={estimateId} recordKind={estimate?.outcome==="Order"?"Order":"Estimate"}/><CanonicalDocumentsPanel estimateId={estimateId}/><details><summary>Supplier quotation evidence</summary><EstimateSupplierDocuments estimateId={estimateId} estimateRef={estimateRef}/></details></section></div>,document.body) : null}
       {supplierRfqOpen&&estimate?.projectId?createPortal(<SupplierRfqDialog projectId={String(estimate.projectId)} estimateId={estimateId} estimateRef={estimateRef} onClose={()=>setSupplierRfqOpen(false)}/>,document.body):null}
     </section>
   );

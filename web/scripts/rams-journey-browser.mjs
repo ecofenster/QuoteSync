@@ -1,0 +1,45 @@
+import assert from 'node:assert/strict';
+import {writeFile} from 'node:fs/promises';
+import path from 'node:path';
+import sqlite3 from 'sqlite3';
+import {open} from 'sqlite';
+
+// Called only inside the fresh-database runner's owned browser/API lifecycle.
+export async function verifyRamsJourney({tab,click,waitFor,databasePath,output,inspectPdf}){
+  const panel="document.querySelector('.installation-safety')";
+  const fill=async(label,value)=>{assert.equal(await tab.evaluate(`(()=>{const input=[...(${panel}).querySelectorAll('label')].find(item=>([...item.childNodes].filter(node=>node.nodeType===Node.TEXT_NODE).map(node=>node.textContent).join('').trim())===${JSON.stringify(label)})?.querySelector('input,textarea');if(!input)return false;const proto=input instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value').set.call(input,${JSON.stringify(value)});input.dispatchEvent(new Event('input',{bubbles:true}));return true})()`),true,`Missing RAMS field: ${label}`)};
+  const value=label=>tab.evaluate(`[...(${panel}).querySelectorAll('label')].find(item=>([...item.childNodes].filter(node=>node.nodeType===Node.TEXT_NODE).map(node=>node.textContent).join('').trim())===${JSON.stringify(label)})?.querySelector('input,textarea')?.value`);
+  const openRams=async()=>{await click(tab,'Files / Documents');await waitFor(()=>tab.evaluate("document.body.innerText.includes('Create / review RAMS')"),'RAMS is absent from normal Files / Documents');await click(tab,'Create / review RAMS');await waitFor(()=>tab.evaluate("Boolean(document.querySelector('.installation-safety__summary'))"),'RAMS did not open its retained schedule')};
+  await openRams();
+  await fill('Document title','Disposable installation RAMS');await fill('Actual work','Disposable test installation: retain the reviewed schedule.');await fill('Site conditions','Disposable closed test site; segregated work and storage areas.');await fill('Method, one step per line','Brief the test team\nReview the retained drawings\nControl access before installation');
+  await tab.send('Network.setBlockedURLs',{urls:['*installation-safety/rams/*/draft*']});await click(tab,'Save and review hazards');await waitFor(()=>tab.evaluate("document.querySelector('.installation-safety [role=alert]')?.textContent.includes('entries')"),'Save failure did not explain retained entries');assert.equal(await value('Document title'),'Disposable installation RAMS');
+  await tab.send('Network.setBlockedURLs',{urls:[]});await click(tab,'Save and review hazards');await waitFor(()=>tab.evaluate("document.querySelectorAll('.installation-safety__hazard').length===9"),'Hazards did not open after safe retry');
+  for(let index=0;index<9;index++){
+    await tab.evaluate(`(()=>{const select=document.querySelectorAll('.installation-safety__hazard')[${index}].querySelector('select');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,'yes');select.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+    await tab.evaluate(`(()=>{const input=document.querySelectorAll('.installation-safety__hazard')[${index}].querySelector('textarea');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(input,'Disposable exercise: competent-person review and controlled exclusion area for this activity.');input.dispatchEvent(new Event('input',{bubbles:true}))})()`);
+    await tab.evaluate(`document.querySelectorAll('.installation-safety__hazard')[${index}].querySelector('input[type=checkbox]').click()`);
+  }
+  await click(tab,'Save and review document');await waitFor(()=>tab.evaluate("document.body.innerText.includes('Attendance start')"),'Responsible-person review did not open');
+  for(const [label,text] of [['Public protection','Keep the disposable test area closed to the public.'],['Waste arrangements','Test-only agreed collection point.'],['Emergency arrangements','Test exercise: named site contact and designated meeting point.'],['Reviewer name','Disposable responsible reviewer'],['Role / competence basis','Test-only competent-person review'],['Attendance start','2026-10-01'],['Attendance end','2026-10-03']])await fill(label,text);
+  await tab.evaluate("[...document.querySelectorAll('.installation-safety summary')].find(item=>([...item.childNodes].filter(node=>node.nodeType===Node.TEXT_NODE).map(node=>node.textContent).join('').trim())==='Required qualifications for this work').click()");
+  const cscs="[...document.querySelectorAll('.installation-safety label')].find(item=>item.textContent.trim()==='CSCS card')?.querySelector('input[type=checkbox]')";
+  await waitFor(()=>tab.evaluate(`Boolean(${cscs})`),'Configured CSCS choice is unavailable');await tab.evaluate(`${cscs}.click()`);await click(tab,'Save draft');await waitFor(()=>tab.evaluate("document.body.innerText.includes('Draft saved. Nothing has been issued')"),'Draft save did not report its outcome');
+  await tab.evaluate("document.querySelector('[aria-label=\"Estimate Files and Documents\"] > header button').click()");await openRams();await click(tab,'3. Review and issue');
+  assert.equal(await value('Attendance start'),'2026-10-01');assert.equal(await value('Attendance end'),'2026-10-03');assert.equal(await tab.evaluate(`${cscs}.checked`),true,'Reopen lost the qualification requirement');
+  for(const [width,height] of [[1440,900],[960,600]]){
+    await tab.send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:false});
+    const reachable=await tab.evaluate(`(()=>{const button=[...document.querySelectorAll('.installation-safety button')].find(item=>item.textContent==='Issue RAMS PDF');button.scrollIntoView({block:'center'});const bounds=button.getBoundingClientRect();return{visible:bounds.top>=0&&bounds.bottom<=innerHeight&&bounds.left>=0&&bounds.right<=innerWidth,overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth}})()`);
+    assert.equal(reachable.visible,true,`Final RAMS action is unreachable at ${width}x${height}`);assert.ok(reachable.overflow<=1,'RAMS causes page overflow');
+    const screen=await tab.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await writeFile(path.join(output,`rams-review-${width}x${height}.png`),Buffer.from(screen.data,'base64'));
+  }
+  await tab.send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
+  await click(tab,'Issue RAMS PDF');await waitFor(()=>tab.evaluate("document.body.innerText.includes('competent responsible person must review')"),'Missing competent-person confirmation did not block issue');
+  await tab.evaluate("[...document.querySelectorAll('.installation-safety label')].find(item=>item.textContent.includes('I am competent')).querySelector('input').click()");await click(tab,'Issue RAMS PDF');await waitFor(()=>tab.evaluate("document.body.innerText.includes('Choose the installation team and attendance dates')"),'Saved CSCS requirement was ignored when team was unavailable');
+  // Deliberate test-scope review: no qualification requirement is claimed for this exercise.
+  await tab.evaluate(`${cscs}.click()`);await click(tab,'Issue RAMS PDF');await waitFor(()=>tab.evaluate("document.body.innerText.includes('Current issued version: R1')"),'Reviewed RAMS did not issue');
+  const href=await tab.evaluate("document.querySelector('.installation-safety__issued a').href"),response=await fetch(href);assert.equal(response.status,200,'Normal issued RAMS link did not download');assert.match(response.headers.get('content-type')||'',/application\/pdf/);
+  const file=path.join(output,'rams-reviewed.pdf');await writeFile(file,Buffer.from(await response.arrayBuffer()));const pdf=await inspectPdf(file,['2026-10-01 to 2026-10-03','Disposable responsible reviewer','Disposable installation RAMS']);
+  await click(tab,'Create new revision');await waitFor(()=>tab.evaluate("document.body.innerText.includes('New editable RAMS revision created')"),'RAMS successor did not report its preserved history');await click(tab,'3. Review and issue');assert.equal(await value('Attendance end'),'2026-10-03');
+  const db=await open({filename:databasePath,driver:sqlite3.Database,mode:sqlite3.OPEN_READONLY});try{const rows=await db.all('SELECT * FROM installation_rams_versions ORDER BY version');assert.equal(rows.length,2);assert.equal(rows[0].state,'issued');assert.equal(rows[1].state,'draft');assert.equal(rows[0].pdf_sha256,pdf.sha256);assert.deepEqual(JSON.parse(rows[0].source_snapshot_json).attendanceReview,JSON.parse(rows[1].source_snapshot_json).attendanceReview);assert.equal((await db.get('SELECT COUNT(*) count FROM issued_quotations')).count,1)}finally{await db.close()}
+  console.log(JSON.stringify({scope:'Normal Estimate → Files / Documents → RAMS review → failed-save recovery → reopen → issue/PDF → preserved revision',attendanceRestored:true,qualificationGapBlocked:true,pdf,liveDelivery:false}));
+}

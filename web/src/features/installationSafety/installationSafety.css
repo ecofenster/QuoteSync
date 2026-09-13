@@ -1,5 +1,5 @@
 .installation-safety{display:grid;gap:var(--space-2);margin-block:var(--space-3)}
-.installation-safety__workspace{display:grid;gap:var(--space-4);max-height:min(78vh,840px);overflow:auto}
+.installation-safety__workspace{display:grid;gap:var(--space-4)}
 .installation-safety__workspace>header,.installation-safety__hazard>div,.installation-safety__issued{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-3)}
 .installation-safety__workspace h3,.installation-safety__workspace p{margin:0}.installation-safety__step{display:grid;gap:var(--space-3)}
 .installation-safety__step label{display:grid;gap:var(--space-1)}.installation-safety__summary{display:grid;gap:var(--space-1);padding:var(--space-3);border:1px solid var(--qs-border-standard);border-radius:var(--radius-control);background:var(--qs-bg-surface)}

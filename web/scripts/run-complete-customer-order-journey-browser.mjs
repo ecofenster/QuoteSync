@@ -29,6 +29,7 @@ import {GOOGLE_WORKSPACE_SCOPES} from '../server/features/integrations/googleWor
 import {extractSupplierDocument} from '../server/features/supplierImportLab/documentExtraction.js';
 import {parsePdfSupplierFields} from '../server/features/supplierImportLab/pdfSupplierAdapters.js';
 import mammoth from 'mammoth';
+import {verifyRamsJourney} from './rams-journey-browser.mjs';
 
 const APP_URL = "http://127.0.0.1:5276";
 const API_URL = "http://127.0.0.1:3104";
@@ -242,6 +243,7 @@ const startApi=()=>spawn(process.execPath, ["--import",pathToFileURL(path.resolv
     await click(tab, "Create working revision"); await waitFor(() => tab.evaluate("document.body.innerText.includes('Working revision created')"), "Staff UI did not create the working revision");
     await click(tab, "Open working Estimate");
     await waitFor(()=>tab.evaluate("[...document.querySelectorAll('button')].some(item=>item.textContent.includes('Request supplier estimate / revision'))"),'Working Estimate did not expose the consolidated supplier composer');
+    if(process.argv.includes('--stop-after-rams-review')){await verifyRamsJourney({tab,click,waitFor,databasePath,output:OUTPUT,inspectPdf});return;}
     if(legacyCorrespondenceReview){
       const context=await staff(`/api/lifecycle/projects/${fixture.projectId}/supplier-enquiries`,null,'GET'),legacyDb=await open({filename:databasePath,driver:sqlite3.Database});
       try{
