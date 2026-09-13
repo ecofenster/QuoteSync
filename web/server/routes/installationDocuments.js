@@ -21,6 +21,18 @@ export function createInstallationDocumentsRouter({databasePromise,environment=p
     const count=await db.get('SELECT COUNT(*) total FROM installation_prepared_documents WHERE estimate_id=? AND client_id=?',estimate.id,estimate.client_id);
     const scenarios=await db.all('SELECT id,name,revision_number revision FROM project_calculator_lab_scenarios WHERE estimate_id=? ORDER BY updated_at DESC LIMIT 20',estimate.id);
     const orders=await db.all('SELECT id,order_ref reference,source_estimate_revision revision FROM orders WHERE source_estimate_id=? AND client_id=? ORDER BY created_at DESC LIMIT 20',estimate.id,estimate.client_id);
+    // Keep the exact open record available without unbounding the recent-choice query.
+    for(const [key,items,sql,args] of [
+      ['scenarioId',scenarios,'SELECT id,name,revision_number revision FROM project_calculator_lab_scenarios WHERE id=? AND estimate_id=?',[estimate.id]],
+      ['orderId',orders,'SELECT id,order_ref reference,source_estimate_revision revision FROM orders WHERE id=? AND source_estimate_id=? AND client_id=?',[estimate.id,estimate.client_id]],
+    ]){
+      const id=req.query[key];if(id===undefined)continue;
+      if(typeof id!=='string'||!id.trim()||id.length>200)throw problem('The selected document source is invalid. Reopen the record.',400);
+      if(items.some(item=>item.id===id))continue;
+      const selected=await db.get(sql,id,...args);
+      if(!selected)throw problem('The selected Order or calculation is unavailable for this Estimate. Reopen the correct record; no alternative has been selected.',404);
+      items.unshift(selected);if(items.length>20)items.pop();
+    }
     res.json({capability:'installation-document-preparation-v1',access:'local_development_only',clientId:estimate.client_id,estimateReference:estimate.estimate_ref,revision:estimate.revision_no,scenarios,orders,documents,total:count.total,offset,limit:10});
   }catch(error){fail(res,error)}});
   router.post('/estimates/:estimateId',async(req,res)=>{try{const {db,estimate}=await context(req.params.estimateId);if(req.body?.clientId!==estimate.client_id)throw problem('The selected Client does not own this Estimate.',403);const result=await(await store(db)).prepare({...req.body,estimateId:estimate.id},{clientId:estimate.client_id,actorId:CURRENT_APP_USER.id});res.status(result.reused?200:201).json(result);}catch(error){fail(res,error)}});

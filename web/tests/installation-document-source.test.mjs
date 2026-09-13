@@ -10,6 +10,8 @@ import {loadInstallationDocumentRevision} from '../server/features/installationS
 import {loadInstallationDocumentPreparation} from '../server/features/installationSafety/installationDocumentPreparation.js';
 import {createProjectCalculatorLabService} from '../server/features/projectCalculatorLab/projectCalculatorLabService.js';
 import {createInstallationDocumentStore,initializeInstallationDocumentStore} from '../server/features/installationSafety/installationDocumentStore.js';
+import express from 'express';
+import {createInstallationDocumentsRouter} from '../server/routes/installationDocuments.js';
 
 test('Order source uses retained accepted Positions instead of the amended working schedule (selection unit check)',async()=>{
   const estimate={id:'estimate-a',client_id:'client-a',project_id:'project-a',revision_no:3,positions_json:JSON.stringify([{id:'new-working-position'}])};
@@ -19,6 +21,30 @@ test('Order source uses retained accepted Positions instead of the amended worki
   assert.deepEqual(source.positions,[{id:'accepted-position',widthMm:1200}]);assert.equal(source.clientName,'Retained client');assert.equal(source.sourceReleaseId,'release-a');assert.equal(source.siteAddress,'','Do not silently take an amended site address for a retained release');
   order.estimate_snapshot_json=JSON.stringify({projectAddress:'Retained original site'});estimate.project_address='Changed working site';assert.equal((await loadInstallationDocumentRevision(db,{estimateId:'estimate-a',revision:2,orderId:'order-a'})).siteAddress,'Retained original site');
   order.release_client_id='another-client';await assert.rejects(()=>loadInstallationDocumentRevision(db,{estimateId:'estimate-a',revision:2,orderId:'order-a'}),/relationships/);
+});
+
+test('actual schema choice queries retain an explicitly selected older record within bounded and owned results',async()=>{
+  const root=await mkdtemp(path.join(os.tmpdir(),'qs-installation-choices-')),databasePath=path.join(root,'test.db');let db,server;
+  try{
+    await initializeIsolatedJourneyDatabase({databasePath,attachmentRoot:path.join(root,'attachments')});db=await open({filename:databasePath,driver:sqlite3.Database});
+    const at=new Date().toISOString();
+    await db.run("INSERT INTO clients(id,name,email,client_ref,created_at,updated_at) VALUES('choices-client','Disposable','choices@example.test','TEST-CHOICES',?,?)",at,at);
+    await db.run("INSERT INTO projects(id,client_id,name,created_at,updated_at) VALUES('choices-project','choices-client','Disposable site',?,?)",at,at);
+    for(const id of ['choices-estimate','other-estimate'])await db.run('INSERT INTO estimates(id,client_id,estimate_ref,base_estimate_ref,revision_no,status,positions_json,created_at,updated_at) VALUES(?,?,?,?,1,\'Draft\',\'[]\',?,?)',id,'choices-client',id,id,at,at);
+    const service=createProjectCalculatorLabService(db),scenarioIds=[];
+    for(let index=0;index<21;index++){
+      const scenario=await service.createScenario({estimateId:'choices-estimate',origin:'estimate',name:`Disposable ${index}`,packageCode:'full_installation'});scenarioIds.push(scenario.id);
+      const date=new Date(Date.UTC(2026,0,index+1)).toISOString();await db.run('UPDATE project_calculator_lab_scenarios SET updated_at=? WHERE id=?',date,scenario.id);
+      await db.run("INSERT INTO orders(id,order_ref,client_id,project_id,source_estimate_id,source_estimate_revision,accepted_commercial_snapshot_json,created_at,updated_at) VALUES(?,?,'choices-client','choices-project','choices-estimate',?,'{}',?,?)",`order-${index}`,`TEST-ORDER-${index}`,index+1,date,date);
+    }
+    const other=await service.createScenario({estimateId:'other-estimate',origin:'estimate',name:'Other Estimate calculation',packageCode:'full_installation'});
+    const app=express();app.use(createInstallationDocumentsRouter({databasePromise:Promise.resolve(db),environment:{NODE_ENV:'development'}}));server=await new Promise(resolve=>{const owned=app.listen(0,'127.0.0.1',()=>resolve(owned));});
+    const base=`http://127.0.0.1:${server.address().port}/estimates/choices-estimate`;
+    const recent=await(await fetch(base)).json();assert.equal(recent.scenarios.length,20);assert.equal(recent.orders.length,20);assert.equal(recent.orders.some(item=>item.id==='order-0'),false);assert.equal(recent.scenarios.some(item=>item.id===scenarioIds[0]),false);
+    const chosen=await(await fetch(`${base}?orderId=order-0&scenarioId=${scenarioIds[0]}`)).json();assert.equal(chosen.orders.length,20);assert.equal(chosen.scenarios.length,20);assert.equal(chosen.orders[0].id,'order-0');assert.equal(chosen.scenarios[0].id,scenarioIds[0]);
+    for(const query of [`scenarioId=${other.id}`,'orderId=unavailable']){const response=await fetch(`${base}?${query}`);assert.equal(response.status,404);assert.match((await response.json()).error,/no alternative/);}
+    assert.equal((await fetch(`${base}?orderId=a&orderId=b`)).status,400);
+  }finally{if(server){server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}await db?.close();await rm(root,{recursive:true,force:true});}
 });
 
 test('actual isolated schema resolves exact working revision read-only and refuses stale selection',async()=>{

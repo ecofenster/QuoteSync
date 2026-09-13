@@ -1,5 +1,13 @@
 # In-progress Roadmap completion programme
 
+## 13 September — exact bounded document choices and history recovery
+
+Package 6 now retains the exact open Order or selected saved calculation even when older than the twenty recent choices. A scoped lookup replaces one recent choice, keeping each response at twenty; unavailable or unrelated identities fail explicitly rather than falling back. This does not yet provide browsing/search for all older choices. Document history has immediate loading feedback, duplicate page-submit protection, a retained previous page after failure and a clear retry instruction.
+
+An actual fresh-schema test creates twenty-one disposable Orders/calculations and proves bounded older selection, unrelated calculation denial and malformed selection rejection. Normal-browser run `329e0bee-173c-4b31-9428-02edd96bbcdd` exits 0 after preparation failure/retry, installer/client PDF download, eleven real prepared PDFs, history failure/retained page/retry/previous page and reachable 960×600 controls. Additional history was seeded through the production preparation API in the owned disposable database, not through live writes. Both exact owned browser/profile counts are zero. The user's watched API restarted automatically after the route edit and remained at instance `a1ba7a3c-0d8b-4615-93bc-09a28fdd2a89` throughout browser acceptance; supervisor ownership is unchanged. No emails were sent.
+
+Existing `survey-delivery-installation` evidence and next action are updated without changing counts or user acceptance. AGENTS already supplies the ownership, bounded loading and recovery rules; no new permanent rule is needed. Continuation: accepted-Order installation-calculation scope and direct Orders entry, followed by complete operational contents, reviewed drawings/RAMS/certificates and delivery. Do not alter the sold baseline to make a mismatched calculation pass.
+
 ## 13 September — accepted Order document entry and retained site address
 
 Package 6 now exposes the shared installation-document panel in the staff Order journey, using the canonical source Estimate ID and locking the selected Order. If that Order is absent from available choices, preparation fails instead of falling back to an editable Estimate. The new normal-route gate performs customer Position acceptance, opens the canonical Order through staff Portal, prepares its client price-free draft and verifies persisted accepted Position IDs, release/Order/revision linkage and PDF hash. No factory request is created.
