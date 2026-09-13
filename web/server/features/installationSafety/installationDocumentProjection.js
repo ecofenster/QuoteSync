@@ -1,5 +1,6 @@
 import {installationQualificationSummary} from '../../../shared/installationQualificationSummary.js';
 import {projectInstallationMaterials} from './installationMaterialProjection.js';
+import {projectInstallationPositionWeight} from './installationPositionWeight.js';
 
 const text=value=>typeof value==='string'?value.trim():'';
 const amount=value=>value===null||value===undefined||value===''||!Number.isFinite(Number(value))||Number(value)<0?null:Number(value);
@@ -30,6 +31,7 @@ export function projectInstallationDocument({audience,revision,scenario,qualific
   if(!positions.length)throw new Error('The selected revision has no included Positions.');
   const document={schemaVersion:1,audience,estimateId:revision.estimateId,orderId:revision.orderId||null,reference:text(revision.orderReference||revision.estimateReference),revision:revision.revision,clientName:text(revision.clientName),projectName:text(revision.projectName),siteAddress:text(revision.siteAddress),positions,totals};
   if(audience==='client')return document;
+  for(const position of positions)position.weight=projectInstallationPositionWeight(position,scenario);
   const programme=scenario?.installationProgramme,profile=scenario?.options?.installationProfile||{},allowances=programme?.allowances,route=(scenario?.routeSnapshots||[]).find(item=>item.id===profile.route?.snapshotId);
   const departure=text(route?.origin?.label),destination=text(route?.destination?.label);
   const routeAvailable=!!departure&&!!destination&&amount(route?.durationMinutes)!==null&&(!route.manuallyOverridden||!!text(route.overrideReason));
