@@ -48,7 +48,8 @@ const sourceStaffOrder=sourceFactorySend||process.argv.includes('--stop-after-so
 const sourceCustomerOrder=sourceStaffOrder||process.argv.includes('--stop-after-source-backed-customer-order');
 const sourceCustomerReissue=sourceCustomerOrder||process.argv.includes('--stop-after-source-backed-customer-reissue');
 const sourceCustomerPreparation=sourceCustomerReissue||process.argv.includes('--stop-after-source-backed-customer-preparation');
-const overallSourceReview=sourceCustomerPreparation||process.argv.includes('--stop-after-source-backed-overall-review');
+const sourceReviewCorrection=process.argv.includes('--stop-after-source-review-correction');
+const overallSourceReview=sourceReviewCorrection||sourceCustomerPreparation||process.argv.includes('--stop-after-source-backed-overall-review');
 const receivedSupplierReviews=process.argv.includes('--stop-after-received-supplier-reviews');
 const multiSupplierReview=receivedSupplierReviews||process.argv.includes('--stop-after-multi-supplier-review');
 const providerJourneyRequested=supplierFollowup||overallSourceReview||receivedSupplierReviews||['--stop-after-supplier-filing','--stop-after-supplier-review','--stop-after-multi-supplier-review'].some(flag=>process.argv.includes(flag));
@@ -471,6 +472,13 @@ const startApi=()=>spawn(process.execPath, ["--import",pathToFileURL(path.resolv
         await waitFor(()=>tab.evaluate(`Boolean(${overall})`),'Overall customer checks are unavailable after source filing');
         await fillLabels(`${overall}.querySelectorAll('article')[0]`,{'Field':'external_finish','Before':'White','Requested':finish,'After':finish,'Before source':'Disposable issued Estimate, Position 001, External finish','After source':'web-26-1133450.pdf, page 1, Window 001, Colour'});
         await fillLabels(`${overall}.querySelectorAll('article')[1]`,{'Field':'quotation_reference','Before':'Not confirmed','Requested':'WEB/26/1133450','After':'WEB/26/1133450','Before source':'Disposable customer request, general reference confirmation','After source':'web-26-1133450.pdf, page 1, Price details'});
+        if(sourceReviewCorrection){
+          await fillLabels(`${overall}.querySelectorAll('article')[0]`,{'Requested':'Disposable mistaken transcription','Before source':'Disposable source reference awaiting correction'});
+          await click(tab,'Verify changes');await waitFor(()=>tab.evaluate("document.body.innerText.includes('item(s) still need attention')"),'Mistaken review entry did not remain unresolved');
+          const correctionDb=await open({filename:databasePath,driver:sqlite3.Database,mode:sqlite3.OPEN_READONLY});try{assert.equal((await correctionDb.get("SELECT status FROM revision_change_checks WHERE field_key='external_finish'")).status,'needs_review');assert.equal((await correctionDb.get('SELECT verified_at FROM supplier_revision_requests')).verified_at,null)}finally{await correctionDb.close()}
+          const externalArticle=`[...${overall}.querySelectorAll('article')].find(article=>[...article.querySelectorAll('label')].some(label=>label.textContent==='Field'&&label.querySelector('input')?.value==='external_finish'))`;
+          await fillLabels(externalArticle,{'Requested':finish,'Before source':'Disposable issued Estimate, Position 001, External finish — corrected reference'});
+        }
         if(sourceCustomerPreparation){
           await click(tab,'Add unrelated material change');
           await fillLabels(`${overall}.querySelectorAll('article')[2]`,{'Field':'additional_positions','Before':'001 only','Requested':'001 only','After':'001, 002, 003, 004, 005','Before source':'Disposable issued Estimate schedule','After source':'WEB/26/1133450, pages 1–7, complete position schedule','Resolution note':'Staff explicitly accepts four additional source Positions for this disposable successor offer; the original one-Position issued offer remains unchanged.'});
@@ -480,6 +488,7 @@ const startApi=()=>spawn(process.execPath, ["--import",pathToFileURL(path.resolv
         const evidenceDb=await open({filename:databasePath,driver:sqlite3.Database,mode:sqlite3.OPEN_READONLY});
         try{
           const request=await evidenceDb.get('SELECT * FROM supplier_revision_requests');assert.ok(request.verified_at);
+          if(sourceReviewCorrection){const corrected=await evidenceDb.get("SELECT * FROM revision_change_checks WHERE field_key='external_finish'");assert.equal(corrected.expected_value,finish);assert.match(corrected.before_source_reference,/corrected reference/);assert.equal(corrected.status,'implemented');const history=await evidenceDb.all('SELECT checks_json FROM supplier_revision_review_history');assert.ok(history.some(row=>JSON.parse(row.checks_json).some(check=>check.expected_value==='Disposable mistaken transcription')));}
           const working=await evidenceDb.get('SELECT positions_json FROM estimates WHERE id=?',request.successor_estimate_id),positions=JSON.parse(working.positions_json),matched=positions.find(item=>item.id==='test-position-w01');
           assert.ok(matched?.supplierEvidenceLinks?.length,'Genuine source Position did not map to the exact issued Position: '+JSON.stringify(positions.map(item=>({id:item.id,ref:item.positionRef,width:item.widthMm,height:item.heightMm}))));
           assert.equal(positions.length,5,'Source-matched issued Position was duplicated');
