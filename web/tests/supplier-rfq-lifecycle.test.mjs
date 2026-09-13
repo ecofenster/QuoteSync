@@ -105,3 +105,14 @@ test('supplier sending claims before IO, blocks concurrent/restarted uncertain s
   await assert.rejects(()=>communications.save({...prepared,status:'draft',providerMessageId:null}),/late draft save/);
   await assert.rejects(()=>db.run('DELETE FROM supplier_delivery_attempts'),/cannot be deleted/);
 });
+
+test('ordinary Email cannot create, replace or send tracked supplier follow-ups with body-forged context',async t=>{
+  const {db}=await fixture(t),direct=createCommunicationsService(db,{environment:{}}),communications=createCommunicationRepository(db);
+  const message={id:'supplier-followup-test-request',subject:'Retained follow-up',to:['factory@example.test'],bodyText:'Original',status:'failed',direction:'outbound',provider:'fixture',folder:'sent'};
+  await communications.save(message);
+  await assert.rejects(()=>direct.createDraft({...message,bodyText:'Replaced'}),error=>error.code==='supplier_followup_context_required');
+  await assert.rejects(()=>direct.sendMessage({...message,supplierFollowupRequestId:'test-request',supplierFollowupAttemptedAt:'forged'}),error=>error.code==='supplier_followup_context_required'&&error.deliveryOutcome==='not_sent');
+  await assert.rejects(()=>direct.sendMessage(message,{supplierFollowupRequestId:'test-request',supplierFollowupAttemptedAt:'stale'}),error=>error.code==='supplier_followup_context_required');
+  assert.equal((await communications.get(message.id)).bodyText,'Original');
+  assert.equal((await communications.get(message.id)).status,'failed');
+});

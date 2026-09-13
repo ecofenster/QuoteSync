@@ -1,5 +1,15 @@
 # In-progress Roadmap completion programme
 
+## 13 September — follow-up Email boundary
+
+The scheduled supplier follow-up now passes its exact request and persisted attempted-at claim as server-only command context. Ordinary Email cannot replace or send its reserved message identity, including body-forged claim fields. Communications checks the current sending claim, outstanding response, due date, parent completion/cancellation and superseding requests before preparation and again immediately before provider IO. A reply arriving during preparation prevents delivery and is classified as confirmed not sent, not uncertain.
+
+Five RFQ tests, the 22-test lifecycle suite and TypeScript pass. An additional focused lifecycle regression proves an acknowledgement arriving during provider preparation prevents the provider call. The first normal scheduled-worker rerun completed the functional path with two no-network provider messages and zero browser/profile leaks, but FAILED its final user-API-instance stability assertion; it is not a full acceptance pass. A stable-baseline rerun is required. No live Email or business-data mutation was performed.
+
+The stable-baseline rerun passes the complete normal composer → genuine-source import/reload → controlled send → reviewed deadline → scheduled worker → reopened outcome gate, with exactly two no-network provider messages. Exit 0 includes zero owned browser processes/profiles and unchanged user API instance. The pre-existing watcher retains parent PID 29604 and API PID 31628; no manual API restart or unrelated process termination was performed. The preceding failed stability gate is retained above rather than erased.
+
+This advances existing `manufacturer-rfq-lifecycle` and `manufacturer-rfq-lifecycle-4`, not a new requirement or user acceptance. Next: evidence-backed supplier/follow-up uncertain receipt recovery, actual test-API restart and complete normal-route incoming cancellation. No original-73 status is promoted. Isolated user checklist: reopen the working Estimate supplier request; confirm prepared versus sent; review the response deadline; inspect the one follow-up outcome; confirm Email cannot replace/resend that tracked follow-up. Live sending remains outside automated acceptance.
+
 ## 13 September — retained supplier correspondence consolidation
 
 The older `prepareSupplierRevisionCorrespondence` command previously maintained separate correspondence rather than the consolidated supplier RFQ. It now delegates to the canonical request composer/service and requires an explicitly reviewed supplier; it does not guess one. Preparation remains distinct from sending and from creating the working Estimate revision. Historical messages are not migrated, overwritten or automatically resent.

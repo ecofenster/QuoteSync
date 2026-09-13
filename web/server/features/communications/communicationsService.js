@@ -458,6 +458,7 @@ export function createCommunicationsService(db, options = {}) {
 
   async function createDraft(input) {
     guardTestRecipients(input);
+    if(String(input.id||'').startsWith('supplier-followup-'))throw Object.assign(new Error('This is a tracked supplier follow-up. Review its outcome and any safe retry from the Estimate supplier request; do not replace it in Email.'),{status:409,code:'supplier_followup_context_required'});
     if(input.id&&await retainedSupplierMessage(String(input.id)))throw Object.assign(new Error('Edit this saved supplier request in the reviewed Estimate composer. Its retained message cannot be replaced through ordinary Email.'),{status:409,code:'supplier_draft_context_required'});
     const status = await requireGmailCapability();
     const attachments = await Promise.all((input.attachments || []).map((item) => decodeAttachment(item, attachmentRoot, workspace)));
@@ -470,8 +471,20 @@ export function createCommunicationsService(db, options = {}) {
   async function sendMessage(input, commandContext = {}) {
     let status,attachments,sent,factoryReceipt;
     const id = String(input.id || randomUUID());
+    const checkFollowupClaim=async()=>{
+      if(!id.startsWith('supplier-followup-'))return;
+      const requestId=id.slice('supplier-followup-'.length);
+      const eligible=commandContext.supplierFollowupRequestId===requestId&&commandContext.supplierFollowupAttemptedAt&&await db.get(`SELECT se.id FROM supplier_enquiry_drafts se JOIN supplier_revision_requests sr ON sr.id=se.revision_request_id
+        WHERE se.id=? AND se.followup_attempted_at=? AND se.followup_delivery_state='sending'
+        AND se.status='sent' AND se.response_state='outstanding' AND se.completed_at IS NULL AND se.followup_sent_at IS NULL
+        AND se.followup_due_at<=? AND sr.status<>'cancelled' AND sr.completed_at IS NULL
+        AND sr.workflow_state NOT IN ('cancelled','superseded','revised_customer_estimate_issued')
+        AND NOT EXISTS(SELECT 1 FROM supplier_enquiry_drafts successor WHERE successor.supersedes_id=se.id AND successor.status<>'cancelled')`,requestId,commandContext.supplierFollowupAttemptedAt,new Date().toISOString());
+      if(!eligible)throw Object.assign(new Error('This tracked follow-up cannot be sent from Email or its request has changed. Reopen the Estimate supplier request to review the outcome; only a confirmed unsent failure may be retried.'),{status:409,code:'supplier_followup_context_required'});
+    };
     try {
       guardTestRecipients(input);
+      await checkFollowupClaim();
       const supplierSchema=await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='supplier_delivery_attempts'");
       if(supplierSchema){
         const supplierRequest=await db.get('SELECT id FROM supplier_enquiry_drafts WHERE communication_message_id=?',id);
@@ -495,6 +508,7 @@ export function createCommunicationsService(db, options = {}) {
         if(!retained.changes)throw new Error('The factory delivery claim changed. Reopen the request before sending.');
       }
       await repository.save({ ...input, id, provider: "google_workspace", mailboxId: "me", direction: "outbound", folder: "sent", status: "sending", attachments: attachments.map(({ bytes, ...item }) => ({ ...item, sizeBytes: item.sizeBytes ?? bytes.length })) });
+      await checkFollowupClaim();
     } catch(error) { error.deliveryOutcome='not_sent'; throw error; }
     try {
       sent = await gmail.send({ ...input, attachments, factoryReceipt });

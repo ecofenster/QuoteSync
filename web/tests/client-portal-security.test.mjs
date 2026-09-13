@@ -474,6 +474,16 @@ test("one tracked supplier revision draft reopens, sends once and follows up onc
   assert.deepEqual(await restarted.processDueSupplierRevisionFollowups(),{processed:0,sent:0,failed:0});
   assert.equal(sendCount,4,'Uncertain follow-up sent another copy after service restart');
   assert.equal((await lifecycle.supplierEnquiryContext('project-a1',parent.successorEstimateId)).enquiries.find(row=>row.id===uncertain.id).followupDeliveryState,'uncertain');
+  const followupMessage={id:`supplier-followup-${uncertain.id}`,to:['factory@example.test'],subject:'Disposable follow-up',bodyText:'Request an update',attachments:[]};
+  const attemptAt='2026-01-01T09:00:00.000Z',commandContext={supplierFollowupRequestId:uncertain.id,supplierFollowupAttemptedAt:attemptAt};let providerCalls=0;
+  const guarded=createCommunicationsService(source.db,{environment:{},workspace:{status:async()=>{
+    await source.db.run("UPDATE supplier_enquiry_drafts SET response_state='acknowledged' WHERE id=?",uncertain.id);
+    return {connected:true,capabilities:{gmail:{available:true}},account:{id:'disposable-account'}};
+  }},gmail:{send:async()=>{providerCalls++;throw new Error('Provider must not be reached')}}});
+  await assert.rejects(()=>guarded.sendMessage(followupMessage,commandContext),error=>error.code==='supplier_followup_context_required');
+  await source.db.run("UPDATE supplier_enquiry_drafts SET followup_delivery_state='sending',followup_attempted_at=?,followup_due_at='2026-01-01T09:00:00.000Z' WHERE id=?",attemptAt,uncertain.id);
+  await assert.rejects(()=>guarded.sendMessage(followupMessage,commandContext),error=>error.code==='supplier_followup_context_required'&&error.deliveryOutcome==='not_sent');
+  assert.equal(providerCalls,0,'A reply arriving during provider preparation did not cancel follow-up delivery');
 });
 
 test("HTTP boundary is fail-closed by default and requires authentication plus CSRF when explicitly test-enabled",async t=>{
