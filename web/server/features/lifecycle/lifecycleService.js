@@ -9,6 +9,7 @@ import { recordSupplierResponseState, outstandingSupplierRevisionRequests, outst
 import {factoryAttachmentOptions,savedFactoryAttachments,reviewFactoryAttachments,assertFactoryAttachmentsCurrent,factoryCommunicationAttachments} from './factoryAttachmentReview.js';
 import {factoryDeliveryState,sendFactoryOnce} from './factoryDelivery.js';
 import {sendSupplierOnce} from './supplierDelivery.js';
+import {readLegacySupplierCorrespondence} from './legacySupplierCorrespondence.js';
 
 const text = (value) => String(value ?? '').trim();
 const hash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -153,6 +154,7 @@ export function createLifecycleService(db, options = {}) {
       FROM estimate_procurement_actions a LEFT JOIN supplier_quotes q ON q.id=a.supplier_quote_id
       WHERE a.estimate_id=? AND a.action_type='request_supplier_revision' ORDER BY a.created_at DESC LIMIT 20`, selectedEstimateId).catch(()=>[]) : [];
     const recommendedDocumentIds = documents.filter((item) => /drawing|schedule|price.?free|without.?prices/i.test(`${item.document_type} ${item.file_name}`)).map((item) => item.id);
+    const legacyCorrespondence=revisionRequest?await readLegacySupplierCorrespondence(db,revisionRequest.id):{items:[],total:0};
     return {
       project: { id: project.id, clientId: project.client_id, clientName: project.client_name, clientReference: project.client_ref, name: project.name },
       selectedEstimateId: selectedEstimateId || null,
@@ -163,6 +165,7 @@ export function createLifecycleService(db, options = {}) {
       requestMode: revisionRequest ? 'revision' : 'initial',
       revisionRequest: revisionRequest ? { id:revisionRequest.id,status:revisionWorkflowState(revisionRequest),sourceReleaseId:revisionRequest.source_release_id,summary:parse(revisionRequest.summary_json,{}),submittedAt:revisionRequest.submitted_at,responseDueAt:revisionRequest.response_due_at||null } : null,
       legacyPrepared: legacyPrepared.map((item)=>({id:item.id,status:item.status,supplierName:item.supplier_name||null,request:parse(item.request_json,{}),createdAt:item.created_at})),
+      legacyCorrespondence: legacyCorrespondence.items,legacyCorrespondenceTotal:legacyCorrespondence.total,
       recommendedDocumentIds,
       delivery: delivery.publicStatus(),
     };
@@ -262,32 +265,18 @@ export function createLifecycleService(db, options = {}) {
     await event('supplier.revision_request.prepared', id, [{ kind: 'estimate_release', id: review.release_id }, { kind: 'estimate', id: successor.id }, { kind: 'project', id: review.project_id }]);
     return { id, status: 'draft', recipient, subject, summary, documentIds: input.documentIds || [], successorEstimateId: successor.id };
   }
-
   async function prepareSupplierRevisionCorrespondence(requestId, input = {}) {
-    const request = await supplierRevisionDetail(requestId), actor = text(input.reviewedBy), recipient = text(input.recipient), subject = text(input.subject) || request.subject;
-    if (!actor || !recipient || !subject) throw problem('Staff review, supplier recipient and subject are required.');
-    if (input.send === true) delivery.assertRecipient(recipient, 'factory');
-    const documentIds = [...new Set((input.documentIds || request.documentIds || []).map(text).filter(Boolean))];
-    const documents = documentIds.length ? await db.all(`SELECT id,file_name,mime_type,size_bytes,provider_file_id FROM canonical_documents WHERE project_id=? AND removed_at IS NULL AND trashed=0 AND id IN (${documentIds.map(() => '?').join(',')})`, request.projectId, ...documentIds) : [];
-    if (documents.length !== documentIds.length) throw problem('Every supplier revision attachment must be a current canonical document for this Project.', 422, 'supplier_revision_document_invalid');
-    const bodyText = text(input.bodyText) || [
+    const request=await supplierRevisionDetail(requestId),supplierId=text(input.supplierId);
+    if(!supplierId)throw problem('Choose the supplier in Request supplier estimate / revision on the working Estimate. The older correspondence is retained for review; nothing has been sent.',409,'supplier_revision_supplier_review_required');
+    const bodyText=text(input.bodyText)||[
       `Please review the requested changes for ${request.projectName}.`,
-      ...request.summary.positions.map((position) => `${position.reference}: ${position.request}`),
-      ...(request.summary.generalComment ? [`General: ${request.summary.generalComment}`] : []),
-      `Please return a revised quotation/document which identifies the changed values.`,
+      ...(request.summary.positions||[]).map(position=>`${position.reference}: ${position.request}`),
+      ...(request.summary.generalComment?[`General: ${request.summary.generalComment}`]:[]),
+      'Please return a revised quotation/document which identifies the changed values.',
     ].join('\n');
-    const review = await changeRequestDetail(request.reviewSubmissionId);
-    const changeDocument = await supplierChangeDocuments.create(requestId, {
-      clientName: request.clientName, projectName: request.projectName, estimateReference: request.summary.sourceEstimateRef,
-      estimateRevision: request.summary.sourceRevision, submittedAt: review.submittedAt, generalComment: review.generalComment,
-      generalResponse: review.generalResponse, positions: review.positions,
-    });
-    const communicationId = request.communicationMessageId || randomUUID(), at = stamp();
-    const communication=await deliverOrSave({ id: communicationId, provider: input.send===true?'google_workspace':'quotesuite_preview', direction: 'outbound', folder: input.send===true?'sent':'drafts', status: input.send===true?'sending':'draft', from: [], to: [recipient], cc: [], bcc: [], subject, bodyText, bodyHtml: `<p>${bodyText.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('\n','<br>')}</p>`, links: [{ kind: 'project', id: request.projectId }, { kind: 'estimate', id: request.successorEstimateId }, { kind: 'supplier_revision_request', id: requestId }], attachments: [{ id: randomUUID(), fileName: changeDocument.fileName, mediaType: changeDocument.mediaType, sizeBytes: changeDocument.sizeBytes, storageKey: changeDocument.storageKey, sha256: changeDocument.sha256 }, ...documents.map((document) => ({ id: randomUUID(), fileName: document.file_name, mediaType: document.mime_type, sizeBytes: Number(document.size_bytes || 0), driveFileId: document.provider_file_id }))] },input.send);
-    const correspondenceStatus=input.send===true?'sent':'approved';
-    await db.run("UPDATE supplier_revision_requests SET recipient=?,subject=?,body_text=?,document_ids_json=?,communication_message_id=?,status=?,updated_at=? WHERE id=?", recipient, subject, bodyText, JSON.stringify(documentIds), communication.id, correspondenceStatus, at, requestId);
-    await event(input.send===true?'supplier.revision.correspondence_sent':'supplier.revision.correspondence_reviewed', `${requestId}:${hash({ recipient, subject, bodyText, documentIds })}`, [{ kind: 'supplier_revision_request', id: requestId }, { kind: 'communication', id: communication.id }, { kind: 'estimate', id: request.successorEstimateId }]);
-    return { ...(await supplierRevisionDetail(requestId)), communicationMessageId: communicationId, changeDocument: { id: changeDocument.id, fileName: changeDocument.fileName }, delivery: delivery.publicStatus() };
+    const rfq=await prepareSupplierEnquiry(request.projectId,{...input,createdBy:input.reviewedBy,estimateId:request.successorEstimateId,supplierId,subject:text(input.subject)||request.subject,bodyText,documentIds:input.documentIds||request.documentIds,requestKind:'revision',revisionRequestId:requestId});
+    const changeDocument=await supplierChangeDocuments.getByRequest(requestId);
+    return {...(await supplierRevisionDetail(requestId)),supplierRequest:rfq,communicationMessageId:rfq.communicationMessageId,changeDocument:changeDocument?{id:changeDocument.id,fileName:changeDocument.fileName}:null,delivery:delivery.publicStatus()};
   }
 
   async function attachSupplierRevisionDocument(requestId, input = {}) {

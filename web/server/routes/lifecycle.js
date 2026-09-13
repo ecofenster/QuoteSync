@@ -2,6 +2,8 @@ import express from 'express';
 import { CURRENT_APP_USER } from '../currentUser.js';
 import { createLifecycleService } from '../features/lifecycle/lifecycleService.js';
 import { deriveRevisionCheck } from '../features/lifecycle/lifecycleService.js';
+import {readLegacySupplierCorrespondence} from '../features/lifecycle/legacySupplierCorrespondence.js';
+import {createCommunicationsService} from '../features/communications/communicationsService.js';
 import { supplierResponseReviewContext, supplierResponseReviewHistory, saveSupplierResponseReview } from '../features/lifecycle/supplierResponseReviews.js';
 
 const fail = (res, error) => res.status(Number(error?.status) || 500).json({ error: error instanceof Error ? error.message : 'Lifecycle request failed.', code: error?.code || 'lifecycle_error' });
@@ -18,6 +20,15 @@ export function createLifecycleRouter({ databasePromise, serviceOptions } = {}) 
   router.post('/supplier-enquiries/:supplierEnquiryId/followup-retry',async(req,res)=>{try{res.json(await(await service()).retrySupplierRevisionFollowup(req.params.supplierEnquiryId));}catch(error){fail(res,error);}});
   router.post('/changes-requested/:reviewId/supplier-revision', async (req,res) => { try { res.status(201).json(await (await service()).prepareSupplierRevision({ ...req.body, reviewSubmissionId:req.params.reviewId, createdBy:CURRENT_APP_USER.id, createdByName:CURRENT_APP_USER.name })); } catch(error){ fail(res,error); } });
   router.get('/supplier-revisions/:requestId', async (req,res) => { try { res.json(await (await service()).supplierRevisionDetail(req.params.requestId)); } catch(error){ fail(res,error); } });
+  router.get('/supplier-revisions/:requestId/earlier-correspondence',async(req,res)=>{try{res.json(await readLegacySupplierCorrespondence(await databasePromise,req.params.requestId,req.query.offset??0));}catch(error){fail(res,error)}});
+  router.get('/supplier-revisions/:requestId/earlier-correspondence/:messageId/attachments/:attachmentId',async(req,res)=>{
+    try{
+      const db=await databasePromise,page=await readLegacySupplierCorrespondence(db,req.params.requestId,0,req.params.messageId),file=page.items[0]?.attachments.find(item=>item.id===req.params.attachmentId);
+      if(!file?.downloadUrl)return res.status(404).json({error:'The retained attachment does not belong to this request or its version is unconfirmed.'});
+      const retained=await createCommunicationsService(db,serviceOptions?.communicationOptions).readRetainedAttachment(req.params.messageId,req.params.attachmentId);
+      res.set('Cache-Control','private, no-store');res.set('X-Content-Type-Options','nosniff');res.type('application/octet-stream');res.set('Content-Disposition',`attachment; filename="${retained.fileName.replace(/[\r\n"\\/]/g,'_')}"`);res.send(retained.bytes);
+    }catch(error){fail(res,error)}
+  });
   router.get('/supplier-revisions/:requestId/review-history', async (req,res) => { try { res.json(await (await service()).supplierReviewHistory(req.params.requestId,req.query.offset??0)); } catch(error){ fail(res,error); } });
   router.get('/supplier-revisions/:requestId/supplier-reviews', async (req,res) => { try { res.json(await supplierResponseReviewContext(await databasePromise,req.params.requestId)); } catch(error){ fail(res,error); } });
   router.get('/supplier-revisions/:requestId/supplier-reviews/:supplierId/history', async (req,res) => { try { res.json(await supplierResponseReviewHistory(await databasePromise,req.params.requestId,req.params.supplierId,req.query.offset??0)); } catch(error){ fail(res,error); } });

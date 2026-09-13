@@ -16,6 +16,7 @@ import { createCustomerQuotationDocumentService } from "../server/features/custo
 import { createIssuedQuotationService } from "../server/features/customerQuotations/issuedQuotationService.js";
 import { initializeWorkflowSchema } from "../server/features/workflow/workflowSchema.js";
 import { initializeLifecycleSchema } from "../server/features/lifecycle/lifecycleSchema.js";
+import {createCommunicationRepository} from '../server/features/communications/communicationRepository.js';
 import { pdfJsRuntimeOptions } from "../server/features/supplierImportLab/pdfJsRuntime.js";
 import { createBrowserRunController, countBrowserRunProfiles } from "./browser-run-lifecycle.mjs";
 import { terminateOwnedProcessTree } from "./e2e-owned-process.mjs";
@@ -36,6 +37,7 @@ const FACTORY = "factory.journey@example.test";
 const OUTPUT = path.resolve("test-output/complete-customer-order-journey");
 const sourceFactoryReconcile=process.argv.includes('--stop-after-source-backed-factory-reconcile');
 const supplierPartial=process.argv.includes('--stop-after-supplier-send-partial');
+const legacyCorrespondenceReview=process.argv.includes('--stop-after-legacy-supplier-correspondence');
 const supplierFollowup=supplierPartial||process.argv.includes('--stop-after-supplier-followup');
 const sourceFactorySend=sourceFactoryReconcile||process.argv.includes('--stop-after-source-backed-factory-send');
 const sourceStaffOrder=sourceFactorySend||process.argv.includes('--stop-after-source-backed-staff-order');
@@ -217,8 +219,33 @@ api = spawn(process.execPath, ["--import",pathToFileURL(path.resolve('tests/fixt
     await click(tab, "Create working revision"); await waitFor(() => tab.evaluate("document.body.innerText.includes('Working revision created')"), "Staff UI did not create the working revision");
     await click(tab, "Open working Estimate");
     await waitFor(()=>tab.evaluate("[...document.querySelectorAll('button')].some(item=>item.textContent.includes('Request supplier estimate / revision'))"),'Working Estimate did not expose the consolidated supplier composer');
+    if(legacyCorrespondenceReview){
+      const context=await staff(`/api/lifecycle/projects/${fixture.projectId}/supplier-enquiries`,null,'GET'),legacyDb=await open({filename:databasePath,driver:sqlite3.Database});
+      try{
+        const legacyBytes=Buffer.from('Original retained supplier instructions for disposable review.');await writeFile(path.join(attachmentRoot,'legacy-instructions.txt'),legacyBytes);
+        await createCommunicationRepository(legacyDb).save({id:'test-legacy-correspondence',provider:'quotesuite_preview',direction:'outbound',folder:'drafts',status:'draft',to:[FACTORY],subject:'TEST Earlier supplier correspondence',bodyText:'Please review the original retained request for the black external finish.',attachments:[{id:'test-legacy-file',fileName:'Legacy instructions.txt',mediaType:'text/plain',storageKey:'legacy-instructions.txt',sha256:sha256(legacyBytes)},{id:'test-unconfirmed-file',fileName:'Unconfirmed old drawing.pdf',mediaType:'application/pdf',driveFileId:'unconfirmed-file'}],links:[]});
+        await legacyDb.run("INSERT INTO workflow_events(id,event_name,evidence_id,occurred_at,links_json,created_at) VALUES('test-legacy-event','supplier.revision.correspondence_reviewed','test-legacy-evidence','2026-09-01',?,'2026-09-01')",JSON.stringify([{kind:'supplier_revision_request',id:context.revisionRequest.id},{kind:'communication',id:'test-legacy-correspondence'}]));
+        for(let index=0;index<20;index++){
+          const id=`test-older-correspondence-${index}`;await createCommunicationRepository(legacyDb).save({id,provider:'quotesuite_preview',direction:'outbound',folder:'drafts',status:'draft',to:[FACTORY],subject:`TEST historical message ${index}`,bodyText:'Retained older test wording',createdAt:'2020-01-01T09:00:00Z',attachments:[],links:[]});
+          await legacyDb.run("INSERT INTO workflow_events(id,event_name,evidence_id,occurred_at,links_json,created_at) VALUES(?,'supplier.revision.correspondence_reviewed',?,'2020-01-01',?,'2020-01-01')",id,id,JSON.stringify([{kind:'supplier_revision_request',id:context.revisionRequest.id},{kind:'communication',id}]));
+        }
+      }finally{await legacyDb.close()}
+    }
     await click(tab,'Request supplier estimate / revision');
     await waitFor(()=>tab.evaluate("document.querySelector('.supplier-rfq input[type=email]')&&!document.body.innerText.includes('Loading supplier request context')"),'Supplier composer did not load');
+    if(legacyCorrespondenceReview){
+      await waitFor(()=>tab.evaluate("[...document.querySelectorAll('summary')].some(item=>item.textContent.startsWith('Earlier supplier correspondence'))"),'Earlier correspondence was inaccessible');
+      await tab.evaluate("[...document.querySelectorAll('summary')].find(item=>item.textContent.startsWith('Earlier supplier correspondence')).click()");
+      await click(tab,'Older messages');await waitFor(()=>tab.evaluate("document.body.innerText.includes('Showing 21–21 of 21')"),'Bounded older correspondence page did not open');
+      await click(tab,'Newer messages');await waitFor(()=>tab.evaluate("document.body.innerText.includes('Showing 1–20 of 21')"),'Newer correspondence page did not return');
+      const legacyDownload=await tab.evaluate("(async()=>{const link=[...document.querySelectorAll('.supplier-rfq a')].find(item=>item.textContent==='Download Legacy instructions.txt');if(!link)throw new Error('Retained download missing');const response=await fetch(link.href);return {status:response.status,text:await response.text(),href:link.href}})()");assert.equal(legacyDownload.status,200);assert.equal(legacyDownload.text,'Original retained supplier instructions for disposable review.');
+      const retainedDownloadResponse=await fetch(legacyDownload.href);assert.equal(retainedDownloadResponse.status,200);assert.match(retainedDownloadResponse.headers.get('content-disposition'),/attachment/);await retainedDownloadResponse.arrayBuffer();
+      const foreignDownload=await fetch(legacyDownload.href.replace('/test-legacy-correspondence/','/unrelated-message/'));assert.equal(foreignDownload.status,404);
+      assert.equal(await tab.evaluate("[...document.querySelectorAll('.supplier-rfq a')].some(item=>item.textContent.includes('Unconfirmed old drawing'))"),false);
+      await click(tab,'Continue earlier message');
+      assert.equal(await tab.evaluate("document.querySelector('.supplier-rfq textarea').value"),'Please review the original retained request for the black external finish.');
+      assert.equal(await tab.evaluate("document.querySelector('.supplier-rfq select').value"),'','Earlier request inferred an unreviewed supplier');
+    }
     await input(tab,'.supplier-rfq select','EKO');await input(tab,'.supplier-rfq input[type=email]',FACTORY);
     assert.equal(await tab.evaluate("document.querySelectorAll('.supplier-rfq input[name=supplier-request-kind]')[1]?.checked"),true,'Customer context did not preselect revision mode');
     assert.equal(await tab.evaluate((sourceCustomerReissue||supplierFollowup)?"document.querySelector('.supplier-rfq__send input')?.checked===false":"document.querySelector('.supplier-rfq')?.innerText.includes('Preview only')"),true);
@@ -238,7 +265,11 @@ api = spawn(process.execPath, ["--import",pathToFileURL(path.resolve('tests/fixt
       const secondContext=await staff(`/api/lifecycle/projects/${fixture.projectId}/supplier-enquiries`,null,'GET');assert.equal(secondContext.enquiries.length,2);assert.ok(secondContext.enquiries.every(item=>item.status!=='sent'));
       await click(tab,'Continue editing');
     }
-    if(process.argv.includes('--stop-after-supplier-draft')){
+    if(legacyCorrespondenceReview){
+      const context=await staff(`/api/lifecycle/projects/${fixture.projectId}/supplier-enquiries`,null,'GET');assert.equal(context.legacyCorrespondence.length,20);assert.equal(context.legacyCorrespondenceTotal,21);assert.equal(context.legacyCorrespondence[0].status,'draft');assert.equal(context.legacyCorrespondence[0].bodyText,context.enquiries[0].bodyText);assert.notEqual(context.legacyCorrespondence[0].id,context.enquiries[0].communicationMessageId);
+      console.log(JSON.stringify({scope:'Normal working Estimate → retained legacy correspondence → explicit supplier review → canonical prepared request → reopen',legacyMessagePreserved:true,preparedNotSent:true,liveDelivery:false}));
+    }
+    if(legacyCorrespondenceReview||process.argv.includes('--stop-after-supplier-draft')){
       console.log(JSON.stringify({scope:'Normal application customer changes → working revision → reviewed supplier draft/reopen only',supplierRequests:1,preparedNotSent:true,sourceImportAndReissueVerified:false}));return;
     }
 

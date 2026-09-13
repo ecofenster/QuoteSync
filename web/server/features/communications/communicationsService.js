@@ -448,9 +448,17 @@ export function createCommunicationsService(db, options = {}) {
     }
   }
 
+  async function retainedSupplierMessage(id){
+    if(!await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='supplier_delivery_attempts'"))return false;
+    return Boolean(await db.get(`SELECT id FROM supplier_enquiry_drafts WHERE communication_message_id=?
+      UNION SELECT id FROM supplier_revision_requests WHERE communication_message_id=?
+      UNION SELECT evidence_id FROM workflow_events WHERE event_name IN ('supplier.revision.correspondence_reviewed','supplier.revision.correspondence_sent')
+      AND EXISTS(SELECT 1 FROM json_each(links_json) link WHERE json_extract(link.value,'$.kind')='communication' AND json_extract(link.value,'$.id')=?) LIMIT 1`,id,id,id));
+  }
+
   async function createDraft(input) {
     guardTestRecipients(input);
-    if(input.id&&await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='supplier_delivery_attempts'")&&await db.get('SELECT id FROM supplier_enquiry_drafts WHERE communication_message_id=?',String(input.id)))throw Object.assign(new Error('Edit this saved supplier request in the reviewed Estimate composer. Its retained message cannot be replaced through ordinary Email.'),{status:409,code:'supplier_draft_context_required'});
+    if(input.id&&await retainedSupplierMessage(String(input.id)))throw Object.assign(new Error('Edit this saved supplier request in the reviewed Estimate composer. Its retained message cannot be replaced through ordinary Email.'),{status:409,code:'supplier_draft_context_required'});
     const status = await requireGmailCapability();
     const attachments = await Promise.all((input.attachments || []).map((item) => decodeAttachment(item, attachmentRoot, workspace)));
     const localId = String(input.id || randomUUID()), provider = await gmail.createDraft({ ...input, attachments, factoryReceipt:null });
@@ -467,6 +475,7 @@ export function createCommunicationsService(db, options = {}) {
       const supplierSchema=await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='supplier_delivery_attempts'");
       if(supplierSchema){
         const supplierRequest=await db.get('SELECT id FROM supplier_enquiry_drafts WHERE communication_message_id=?',id);
+        if(!supplierRequest&&await retainedSupplierMessage(id))throw Object.assign(new Error('Open the working Estimate and continue this earlier supplier message through Request supplier estimate / revision. Choose and review its supplier before sending; the original remains retained.'),{status:409,code:'supplier_revision_supplier_review_required'});
         if(supplierRequest&&!await db.get("SELECT id FROM supplier_delivery_attempts WHERE id=? AND supplier_enquiry_id=? AND communication_message_id=? AND state='sending'",commandContext.supplierDeliveryAttemptId||'',supplierRequest.id,id))throw Object.assign(new Error('Send this saved supplier request from its reviewed Estimate composer so its delivery and duplicate protection are retained.'),{status:409,code:'supplier_delivery_context_required'});
       }
       const factorySchema=await db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='factory_order_requests'");
@@ -523,6 +532,11 @@ export function createCommunicationsService(db, options = {}) {
   }
 
   async function readAttachment(providerMessageId, attachmentId) { await requireGmailCapability(); return gmail.attachment(providerMessageId, attachmentId); }
+  async function readRetainedAttachment(messageId,attachmentId){
+    const message=await repository.get(messageId),file=message?.attachments.find(item=>item.id===attachmentId);
+    if(!file||!file.sha256)throw Object.assign(new Error('The exact retained file version could not be confirmed. Review the current Project file separately.'),{status:409});
+    return {...file,bytes:(await decodeAttachment(file,attachmentRoot,workspace)).bytes};
+  }
 
   async function enquiryIntake(providerMessageId) {
     const message = await repository.findByProviderId("google_workspace", providerMessageId) || await readMessage(providerMessageId);
@@ -571,5 +585,5 @@ export function createCommunicationsService(db, options = {}) {
     return { enquiryId: enquiry.id, enquiryRef: enquiry.enquiryRef, idempotentReplay: false, resumedIncomplete, selectedAttachmentCount: attachments.length, storageStatus: attachments.length ? "pending_reviewed_storage" : "no_attachments_selected", driveStatus: enquiry.driveTransitionStatus };
   }
 
-  return { reconcileFactoryDelivery, status: workspace.status, mailbox, listMailbox, syncMailbox, readMessage, readThread, relationshipContext, linkRelationship, unlinkRelationship, assignmentOptions, reviewSupplierDocumentAssignment, assignSupplierDocument, prepareAssignedDocumentImport, changeState, maintainWatch, stopWatch, receiveNotification, command, createDraft, sendMessage, reply, forward, readAttachment, enquiryIntake, createEnquiryFromMessage, repository };
+return { readRetainedAttachment, reconcileFactoryDelivery, status: workspace.status, mailbox, listMailbox, syncMailbox, readMessage, readThread, relationshipContext, linkRelationship, unlinkRelationship, assignmentOptions, reviewSupplierDocumentAssignment, assignSupplierDocument, prepareAssignedDocumentImport, changeState, maintainWatch, stopWatch, receiveNotification, command, createDraft, sendMessage, reply, forward, readAttachment, enquiryIntake, createEnquiryFromMessage, repository };
 }
