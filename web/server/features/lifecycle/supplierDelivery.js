@@ -14,6 +14,8 @@ export async function initializeSupplierDeliverySchema(db){
     BEGIN SELECT RAISE(ABORT,'Supplier delivery is retained; a late draft save cannot overwrite it'); END;`);
   const columns=new Set((await db.all('PRAGMA table_info(supplier_delivery_attempts)')).map(row=>row.name));
   for(const column of ['receipt_message_id','receipt_manifest_sha256','provider_account_id','reconciled_by','reconciled_at'])if(!columns.has(column))await db.exec(`ALTER TABLE supplier_delivery_attempts ADD COLUMN ${column} TEXT`);
+  const followupColumns=new Set((await db.all('PRAGMA table_info(supplier_enquiry_drafts)')).map(row=>row.name));
+  for(const column of ['followup_receipt_message_id','followup_receipt_manifest_sha256','followup_provider_account_id','followup_provider_message_id','followup_reconciled_by','followup_reconciled_at'])if(!followupColumns.has(column))await db.exec(`ALTER TABLE supplier_enquiry_drafts ADD COLUMN ${column} TEXT`);
 }
 
 export async function sendSupplierOnce(db,{requestId,message,send,now=()=>new Date().toISOString()}){

@@ -500,6 +500,12 @@ export function createCommunicationsService(db, options = {}) {
       }
       status = await requireGmailCapability();
       attachments = await Promise.all((input.attachments || []).map((item) => decodeAttachment(item, attachmentRoot, workspace)));
+      if(commandContext.supplierFollowupRequestId){
+        const accountId=status.account?.id||status.account?.email;if(!accountId)throw new Error('The connected mailbox account identity is unavailable. Reconnect before sending.');
+        factoryReceipt={kind:'Supplier',messageId:`<quotesuite-supplier-${randomUUID()}@delivery.quotesuite.invalid>`,manifestSha256:factoryManifest(input)};
+        const retained=await db.run("UPDATE supplier_enquiry_drafts SET followup_receipt_message_id=?,followup_receipt_manifest_sha256=?,followup_provider_account_id=? WHERE id=? AND followup_attempted_at=? AND followup_delivery_state='sending'",factoryReceipt.messageId,factoryReceipt.manifestSha256,accountId,commandContext.supplierFollowupRequestId,commandContext.supplierFollowupAttemptedAt);
+        if(!retained.changes)throw new Error('The supplier follow-up claim changed. Reopen the request before sending.');
+      }
       if(commandContext.supplierDeliveryAttemptId){
         const accountId=status.account?.id||status.account?.email;if(!accountId)throw new Error('The connected mailbox account identity is unavailable. Reconnect before sending.');
         factoryReceipt={kind:'Supplier',messageId:`<quotesuite-supplier-${commandContext.supplierDeliveryAttemptId}@delivery.quotesuite.invalid>`,manifestSha256:factoryManifest(input)};
@@ -525,7 +531,7 @@ export function createCommunicationsService(db, options = {}) {
     } catch (error) {
       error.deliveryOutcome=sent?.providerMessageId?'sent':'uncertain';
       if(sent?.providerMessageId)error.providerMessageId=sent.providerMessageId;
-      else if(!commandContext.factoryDeliveryAttemptId&&!commandContext.supplierDeliveryAttemptId)await repository.save({ ...input, id, provider: "google_workspace", mailboxId: "me", direction: "outbound", folder: "sent", status: "failed", error: error instanceof Error ? error.message : "Provider send failed.", attachments: attachments.map(({ bytes, ...item }) => ({ ...item, sizeBytes: item.sizeBytes ?? bytes.length })) }).catch(()=>{});
+      else if(!commandContext.factoryDeliveryAttemptId&&!commandContext.supplierDeliveryAttemptId&&!commandContext.supplierFollowupRequestId)await repository.save({ ...input, id, provider: "google_workspace", mailboxId: "me", direction: "outbound", folder: "sent", status: "failed", error: error instanceof Error ? error.message : "Provider send failed.", attachments: attachments.map(({ bytes, ...item }) => ({ ...item, sizeBytes: item.sizeBytes ?? bytes.length })) }).catch(()=>{});
       // Factory uncertainty belongs to its persistent attempt. A late error must
       // not overwrite a message concurrently confirmed by receipt reconciliation.
       throw error;

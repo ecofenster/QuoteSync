@@ -484,6 +484,15 @@ test("one tracked supplier revision draft reopens, sends once and follows up onc
   await source.db.run("UPDATE supplier_enquiry_drafts SET followup_delivery_state='sending',followup_attempted_at=?,followup_due_at='2026-01-01T09:00:00.000Z' WHERE id=?",attemptAt,uncertain.id);
   await assert.rejects(()=>guarded.sendMessage(followupMessage,commandContext),error=>error.code==='supplier_followup_context_required'&&error.deliveryOutcome==='not_sent');
   assert.equal(providerCalls,0,'A reply arriving during provider preparation did not cancel follow-up delivery');
+  let receipt=null,checks=0;
+  const recovery=createLifecycleService(source.db,{...source.options,communications,communicationService:{...communicationService,reconcileFactoryDelivery:async(attempt,kind)=>{checks++;assert.equal(kind,'Supplier');assert.equal(attempt.communication_message_id,followupMessage.id);return receipt}},deliveryPolicy,now:()=>new Date(clock)});
+  assert.equal((await recovery.reconcileSupplierDelivery(uncertain.id,'staff-1',true)).status,'unconfirmed');
+  assert.equal((await source.db.get('SELECT followup_delivery_state FROM supplier_enquiry_drafts WHERE id=?',uncertain.id)).followup_delivery_state,'sending');
+  receipt={providerMessageId:'retained-followup-receipt',sentAt:'2026-09-13T10:00:00.000Z',threadId:'retained-followup-thread'};
+  assert.equal((await recovery.reconcileSupplierDelivery(uncertain.id,'staff-1',true)).status,'sent');
+  const recovered=await source.db.get('SELECT * FROM supplier_enquiry_drafts WHERE id=?',uncertain.id);assert.equal(recovered.response_state,'acknowledged');assert.equal(recovered.followup_reconciled_by,'staff-1');assert.equal(recovered.followup_sent_at,receipt.sentAt);
+  assert.equal((await recovery.reconcileSupplierDelivery(uncertain.id,'staff-1',true)).status,'sent');assert.equal(checks,2,'Confirmed replay unnecessarily queried or sent again');
+  await assert.rejects(()=>recovery.retrySupplierRevisionFollowup(uncertain.id),error=>error.code==='supplier_revision_response_recorded');
 });
 
 test("HTTP boundary is fail-closed by default and requires authentication plus CSRF when explicitly test-enabled",async t=>{

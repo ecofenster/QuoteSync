@@ -618,18 +618,30 @@ export function createLifecycleService(db, options = {}) {
         const sent=await communicationService.sendMessage({id:followupId,provider:'google_workspace',direction:'outbound',folder:'sent',status:'sending',from:[],to:[current.recipient],cc:[],bcc:[],subject:`Follow-up: ${current.subject}`,bodyText,bodyHtml:`<p>${bodyText.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')}</p>`,threadId:original.threadId||null,inReplyToProviderMessageId:original.providerMessageId||null,links:[{kind:'project',id:current.project_id},{kind:'estimate',id:current.estimate_id},{kind:'supplier_enquiry',id:current.id},...(current.revision_request_id?[{kind:'supplier_revision_request',id:current.revision_request_id}]:[])]},{supplierFollowupRequestId:current.id,supplierFollowupAttemptedAt:current.followup_attempted_at});
         if(!sent?.providerMessageId)throw new Error('The provider did not confirm the follow-up message identity.');
         confirmed=sent;
-        const sentAt=sent.sentAt||stamp();await db.run("UPDATE supplier_enquiry_drafts SET followup_sent_at=?,followup_message_id=?,followup_delivery_state='sent',followup_failure='',updated_at=? WHERE id=?",sentAt,sent.id,sentAt,current.id);await event('supplier.revision.followup_sent',current.id,[{kind:'supplier_enquiry',id:current.id},{kind:'communication',id:sent.id}]);sentCount+=1;
+        const sentAt=sent.sentAt||stamp();await db.run("UPDATE supplier_enquiry_drafts SET followup_sent_at=?,followup_message_id=?,followup_delivery_state='sent',followup_failure='',updated_at=? WHERE id=? AND followup_delivery_state='sending'",sentAt,sent.id,sentAt,current.id);await event('supplier.revision.followup_sent',current.id,[{kind:'supplier_enquiry',id:current.id},{kind:'communication',id:sent.id}]);sentCount+=1;
       }catch(error){
         const providerConfirmed=confirmed?.providerMessageId||(error.deliveryOutcome==='sent'&&error.providerMessageId),state=providerConfirmed?'sent':!providerStarted||error.deliveryOutcome==='not_sent'?'not_sent':'uncertain';
         const message=state==='sent'?'The provider confirmed the follow-up, but local completion needs review. Do not resend.':state==='not_sent'?`Nothing was sent. ${error.message||'Correct the reported issue and retry.'}`:'Follow-up delivery could not be confirmed. Do not resend; check the connected mailbox and request delivery review.';
-        failed+=1;await db.run("UPDATE supplier_enquiry_drafts SET followup_delivery_state=?,followup_sent_at=COALESCE(followup_sent_at,?),followup_message_id=COALESCE(followup_message_id,?),followup_failure=?,updated_at=? WHERE id=?",state,providerConfirmed?confirmed?.sentAt||stamp():null,providerConfirmed?`supplier-followup-${candidate.id}`:null,message,stamp(),candidate.id);
+        failed+=1;await db.run("UPDATE supplier_enquiry_drafts SET followup_delivery_state=?,followup_sent_at=COALESCE(followup_sent_at,?),followup_message_id=COALESCE(followup_message_id,?),followup_failure=?,updated_at=? WHERE id=? AND followup_delivery_state='sending'",state,providerConfirmed?confirmed?.sentAt||stamp():null,providerConfirmed?`supplier-followup-${candidate.id}`:null,message,stamp(),candidate.id);
       }
     }
     return{processed:rows.length,sent:sentCount,failed};
   }
 
-  async function reconcileSupplierDelivery(requestId,actor){
+  async function reconcileSupplierDelivery(requestId,actor,followup=false){
     const request=await db.get('SELECT * FROM supplier_enquiry_drafts WHERE id=?',requestId);
+    if(followup){
+      if(!request||!['sending','uncertain','sent'].includes(request.followup_delivery_state))throw problem('No matching follow-up delivery attempt is available to check.',409,'supplier_followup_delivery_unconfirmed');
+      const messageId=`supplier-followup-${requestId}`,attempt={communication_message_id:messageId,receipt_message_id:request.followup_receipt_message_id,receipt_manifest_sha256:request.followup_receipt_manifest_sha256,provider_account_id:request.followup_provider_account_id};
+      const proof=request.followup_delivery_state==='sent'&&request.followup_provider_message_id?{providerMessageId:request.followup_provider_message_id,sentAt:request.followup_sent_at}:await communicationService.reconcileFactoryDelivery(attempt,'Supplier');
+      if(!proof)return {status:'unconfirmed',message:'No exact sent follow-up was confirmed. This does not prove delivery failed. Nothing was resent; keep this follow-up blocked and check again later.'};
+      const at=stamp();
+      const changed=await db.run("UPDATE supplier_enquiry_drafts SET followup_delivery_state='sent',followup_sent_at=?,followup_message_id=?,followup_provider_message_id=?,followup_reconciled_by=?,followup_reconciled_at=?,followup_failure='',updated_at=? WHERE id=? AND followup_attempted_at=? AND followup_receipt_message_id IS ?",proof.sentAt,messageId,proof.providerMessageId,text(actor),at,at,requestId,request.followup_attempted_at,request.followup_receipt_message_id);
+      if(!changed.changes)throw problem('The follow-up changed during review. Reopen its current delivery outcome; nothing was resent.',409,'supplier_followup_changed');
+      const prior=await communications.get(messageId);if(prior)await communications.save({...prior,provider:'google_workspace',providerMessageId:proof.providerMessageId,threadId:proof.threadId||prior.threadId,status:'sent',folder:'sent',sentAt:proof.sentAt,error:null});
+      await event('supplier.followup.delivery_reconciled',`${requestId}:${request.followup_attempted_at}`,[{kind:'supplier_enquiry',id:requestId},{kind:'communication',id:messageId}]);
+      return {status:'sent',message:'The exact sent follow-up is confirmed. No additional email was sent. The supplier response still needs review when it arrives.'};
+    }
     const attempt=await db.get("SELECT * FROM supplier_delivery_attempts WHERE supplier_enquiry_id=? AND state IN ('sending','uncertain','sent') ORDER BY created_at DESC LIMIT 1",requestId);
     if(!request||!attempt||attempt.communication_message_id!==request.communication_message_id)throw problem('No matching supplier delivery attempt is available to check.',409,'supplier_delivery_unconfirmed');
     const proof=attempt.state==='sent'&&attempt.provider_message_id?{providerMessageId:attempt.provider_message_id,sentAt:attempt.sent_at}:await communicationService.reconcileFactoryDelivery(attempt,'Supplier');

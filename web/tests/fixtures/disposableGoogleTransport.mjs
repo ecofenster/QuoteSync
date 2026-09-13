@@ -27,7 +27,7 @@ export function createDisposableGoogleTransport({messages=[],attachments=new Map
      return {mimeType,body:{data:Buffer.from(body).toString('base64url')}};
     });
     messages.push({id,threadId,labelIds:['SENT'],internalDate:String(Date.now()),payload:{mimeType:'multipart/mixed',headers:headers.split('\r\n').map(line=>({name:line.slice(0,line.indexOf(':')),value:line.slice(line.indexOf(':')+1).trim()})),parts}});
-    if(delivery.loseFactoryResponse&&recipients.includes('factory.journey@example.test'))return json({error:{message:'Disposable response lost after provider acceptance'}},503);
+    if((delivery.loseFactoryResponse&&recipients.includes('factory.journey@example.test'))||delivery.loseResponseAt===deliveryEvidence.attempts)return json({error:{message:'Disposable response lost after provider acceptance'}},503);
     return json({id,threadId});
    }
    if(method!=='GET')throw new Error('Disposable provider refuses Gmail writes and delivery.');

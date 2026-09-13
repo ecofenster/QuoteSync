@@ -38,8 +38,9 @@ const OUTPUT = path.resolve("test-output/complete-customer-order-journey");
 const sourceFactoryReconcile=process.argv.includes('--stop-after-source-backed-factory-reconcile');
 const supplierPartial=process.argv.includes('--stop-after-supplier-send-partial');
 const supplierReconcile=process.argv.includes('--stop-after-supplier-reconcile');
+const followupReconcile=process.argv.includes('--stop-after-followup-reconcile');
 const legacyCorrespondenceReview=process.argv.includes('--stop-after-legacy-supplier-correspondence');
-const supplierFollowup=supplierReconcile||supplierPartial||process.argv.includes('--stop-after-supplier-followup');
+const supplierFollowup=followupReconcile||supplierReconcile||supplierPartial||process.argv.includes('--stop-after-supplier-followup');
 const sourceFactorySend=sourceFactoryReconcile||process.argv.includes('--stop-after-source-backed-factory-send');
 const sourceStaffOrder=sourceFactorySend||process.argv.includes('--stop-after-source-backed-staff-order');
 const sourceCustomerOrder=sourceStaffOrder||process.argv.includes('--stop-after-source-backed-customer-order');
@@ -195,7 +196,7 @@ async function run() {
     const providerJourney=providerJourneyRequested,providerKey=createHash('sha256').update(randomUUID()).digest('hex');
     if(providerJourney)await writeFile(path.join(root,'provider-source.pdf'),await readFile(path.resolve('docs/Supplier_Quotes/John_Wingfield/web-26-1133450.pdf')));
     if(receivedSupplierReviews)await writeFile(path.join(root,'provider-second-source.docx'),await readFile(path.resolve('docs/Supplier_Quotes/343117-3_EF-EST-2026-004 - Luke.docx')));
-api = spawn(process.execPath, ["--import",pathToFileURL(path.resolve('tests/fixtures/isolatedJourneyExchangeRate.mjs')).href,...(providerJourney?['--import',pathToFileURL(path.resolve('tests/fixtures/isolatedJourneyGoogle.mjs')).href]:[]),"server/index.js"], { cwd: process.cwd(), env: { ...process.env, ...(providerJourney?{QUOTESUITE_INTEGRATION_ENCRYPTION_KEY:providerKey}:{}), QUOTESUITE_DB_PATH: databasePath, QUOTESYNC_ATTACHMENT_ROOT: attachmentRoot, PORT: "3104", NODE_ENV: "development", QUOTESUITE_APP_ORIGINS: APP_URL, QUOTESUITE_TEST_JOURNEY: "1", QUOTESUITE_TEST_DELIVERY_ENABLED: (sourceCustomerReissue||supplierFollowup)?"1":"0", QUOTESUITE_DISPOSABLE_PROVIDER_DELIVERY:supplierReconcile?'supplier-reconcile':supplierFollowup?'supplier-followup':sourceFactoryReconcile?'factory-reconcile':sourceFactorySend?'factory-send':sourceCustomerReissue?'customer-reissue':'', QUOTESUITE_TEST_CUSTOMER_EMAIL: CUSTOMER, QUOTESUITE_TEST_FACTORY_EMAIL: FACTORY }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+api = spawn(process.execPath, ["--import",pathToFileURL(path.resolve('tests/fixtures/isolatedJourneyExchangeRate.mjs')).href,...(providerJourney?['--import',pathToFileURL(path.resolve('tests/fixtures/isolatedJourneyGoogle.mjs')).href]:[]),"server/index.js"], { cwd: process.cwd(), env: { ...process.env, ...(providerJourney?{QUOTESUITE_INTEGRATION_ENCRYPTION_KEY:providerKey}:{}), QUOTESUITE_DB_PATH: databasePath, QUOTESYNC_ATTACHMENT_ROOT: attachmentRoot, PORT: "3104", NODE_ENV: "development", QUOTESUITE_APP_ORIGINS: APP_URL, QUOTESUITE_TEST_JOURNEY: "1", QUOTESUITE_TEST_DELIVERY_ENABLED: (sourceCustomerReissue||supplierFollowup)?"1":"0", QUOTESUITE_DISPOSABLE_PROVIDER_DELIVERY:followupReconcile?'followup-reconcile':supplierReconcile?'supplier-reconcile':supplierFollowup?'supplier-followup':sourceFactoryReconcile?'factory-reconcile':sourceFactorySend?'factory-send':sourceCustomerReissue?'customer-reissue':'', QUOTESUITE_TEST_CUSTOMER_EMAIL: CUSTOMER, QUOTESUITE_TEST_FACTORY_EMAIL: FACTORY }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     let apiStartupLog='';for(const stream of [api.stdout,api.stderr])stream.on('data',chunk=>{apiStartupLog=(apiStartupLog+String(chunk)).slice(-5000)});
     vite = spawn(process.execPath, [path.resolve("node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", "5276"], { cwd: process.cwd(), env: { ...process.env, VITE_API_BASE_URL: API_URL }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     try{await waitFor(() => reachable(`${API_URL}/api/health`), "Disposable journey API did not start")}catch(error){throw new Error(`${error.message}: ${apiStartupLog}`)} await waitFor(() => reachable(APP_URL), "Disposable journey UI did not start");
@@ -374,7 +375,13 @@ api = spawn(process.execPath, ["--import",pathToFileURL(path.resolve('tests/fixt
           await tab.evaluate("(()=>{const input=document.querySelector('input[type=datetime-local]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'2026-01-01T09:00');input.dispatchEvent(new Event('input',{bubbles:true}))})()");
           await click(tab,'Save reviewed deadline');
           await waitFor(()=>tab.evaluate("document.body.innerText.includes('Supplier response deadline updated')"),'Reviewed deadline did not save');
-          await waitFor(async()=>Boolean((await followupDb.get('SELECT followup_sent_at FROM supplier_enquiry_drafts WHERE id=?',sent.id)).followup_sent_at),'Persistent worker did not send due follow-up',100000);
+          if(followupReconcile){
+            await waitFor(async()=>(await followupDb.get('SELECT followup_delivery_state FROM supplier_enquiry_drafts WHERE id=?',sent.id)).followup_delivery_state==='uncertain','Persistent worker did not retain the uncertain follow-up',100000);
+            await click(tab,'Close');await click(tab,'Request supplier estimate / revision');
+            await waitFor(()=>tab.evaluate("document.body.innerText.includes('Check follow-up outcome')"),'Uncertain follow-up recovery action missing');
+            await click(tab,'Check follow-up outcome');await waitFor(()=>tab.evaluate("document.body.innerText.includes('exact sent follow-up is confirmed')"),'Follow-up receipt was not confirmed');
+            const recovered=await followupDb.get('SELECT * FROM supplier_enquiry_drafts WHERE id=?',sent.id);assert.ok(recovered.followup_reconciled_at);assert.equal(recovered.followup_delivery_state,'sent');assert.equal(recovered.response_state,'outstanding');
+          }else await waitFor(async()=>Boolean((await followupDb.get('SELECT followup_sent_at FROM supplier_enquiry_drafts WHERE id=?',sent.id)).followup_sent_at),'Persistent worker did not send due follow-up',100000);
           const completed=await followupDb.get('SELECT * FROM supplier_enquiry_drafts WHERE id=?',sent.id);assert.equal(completed.followup_delivery_state,'sent');assert.ok(completed.followup_attempted_at);
           const evidence=JSON.parse(await readFile(path.join(root,'disposable-delivery-evidence.json'),'utf8'));assert.equal(evidence.sent.length,2);assert.deepEqual(evidence.sent.map(item=>item.recipients),[[FACTORY],[FACTORY]]);
           assert.match(Buffer.from(evidence.sent[1].raw,'base64url').toString(),/Please could you provide an update/);
@@ -383,7 +390,7 @@ api = spawn(process.execPath, ["--import",pathToFileURL(path.resolve('tests/fixt
           await tab.evaluate("[...document.querySelectorAll('summary')].find(item=>item.textContent.startsWith('View or reopen previous requests')).click()");
           await waitFor(()=>tab.evaluate("document.body.innerText.includes('Follow-up sent')"),'Persisted follow-up outcome was not visible after reopen');
           assert.equal(await tab.evaluate("document.body.innerText.includes('Retry follow-up safely')"),false);
-          console.log(JSON.stringify({scope:'Normal supplier composer → confirmed test send → seven-calendar-day deadline → reviewed due adjustment → persistent scheduled worker → reopened outcome',provider:'no-network disposable transport',providerMessages:2,partialSaveRecoveredWithoutResend:supplierPartial,liveDelivery:false,restartVerified:false,uncertainRecoveryVerified:false}));
+          console.log(JSON.stringify({scope:'Normal supplier composer → confirmed test send → seven-calendar-day deadline → reviewed due adjustment → persistent scheduled worker → reopened outcome',provider:'no-network disposable transport',providerMessages:2,partialSaveRecoveredWithoutResend:supplierPartial,liveDelivery:false,restartVerified:false,uncertainRecoveryVerified:followupReconcile}));
         }finally{await followupDb.close()}
         return;
       }
