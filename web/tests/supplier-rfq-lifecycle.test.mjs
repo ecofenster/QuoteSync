@@ -104,6 +104,15 @@ test('supplier sending claims before IO, blocks concurrent/restarted uncertain s
   assert.equal((await communications.get(prepared.id)).subject,prepared.subject);
   await assert.rejects(()=>communications.save({...prepared,status:'draft',providerMessageId:null}),/late draft save/);
   await assert.rejects(()=>db.run('DELETE FROM supplier_delivery_attempts'),/cannot be deleted/);
+  const uncertainRequest=await db.get('SELECT * FROM supplier_enquiry_drafts WHERE idempotency_key=?',uncertain.idempotencyKey);
+  communicationService.reconcileFactoryDelivery=async()=>null;
+  assert.equal((await restarted.reconcileSupplierDelivery(uncertainRequest.id,'test-staff')).status,'unconfirmed');
+  assert.equal((await db.get('SELECT state FROM supplier_delivery_attempts WHERE supplier_enquiry_id=?',uncertainRequest.id)).state,'uncertain');
+  communicationService.reconcileFactoryDelivery=async(attempt,kind)=>{assert.equal(kind,'Supplier');return {providerMessageId:'confirmed-uncertain',sentAt:'2026-09-13T10:00:00.000Z',threadId:'confirmed-thread'}};
+  assert.equal((await restarted.reconcileSupplierDelivery(uncertainRequest.id,'test-staff')).status,'sent');
+  assert.equal((await restarted.reconcileSupplierDelivery(uncertainRequest.id,'test-staff')).status,'sent');
+  assert.equal((await communications.get(uncertainRequest.communication_message_id)).providerMessageId,'confirmed-uncertain');
+  assert.equal((await db.get('SELECT reconciled_by FROM supplier_delivery_attempts WHERE supplier_enquiry_id=?',uncertainRequest.id)).reconciled_by,'test-staff');
 });
 
 test('ordinary Email cannot create, replace or send tracked supplier follow-ups with body-forged context',async t=>{

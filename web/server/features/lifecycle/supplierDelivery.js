@@ -12,6 +12,8 @@ export async function initializeSupplierDeliverySchema(db){
   await db.exec(`CREATE TRIGGER IF NOT EXISTS trg_supplier_delivery_draft_overwrite BEFORE UPDATE ON communication_messages
     WHEN NEW.status='draft' AND EXISTS(SELECT 1 FROM supplier_delivery_attempts WHERE communication_message_id=OLD.id AND state IN ('sending','sent','uncertain'))
     BEGIN SELECT RAISE(ABORT,'Supplier delivery is retained; a late draft save cannot overwrite it'); END;`);
+  const columns=new Set((await db.all('PRAGMA table_info(supplier_delivery_attempts)')).map(row=>row.name));
+  for(const column of ['receipt_message_id','receipt_manifest_sha256','provider_account_id','reconciled_by','reconciled_at'])if(!columns.has(column))await db.exec(`ALTER TABLE supplier_delivery_attempts ADD COLUMN ${column} TEXT`);
 }
 
 export async function sendSupplierOnce(db,{requestId,message,send,now=()=>new Date().toISOString()}){
@@ -30,10 +32,11 @@ export async function sendSupplierOnce(db,{requestId,message,send,now=()=>new Da
     // Recover previously confirmed local evidence without another provider call.
     confirmed=message.status==='sent'&&message.providerMessageId?message:await send({attemptId:id});
     if(!confirmed?.providerMessageId)throw failure('The provider did not confirm a supplier message identity. Do not send another copy.');
-    await db.run("UPDATE supplier_delivery_attempts SET state='sent',provider_message_id=?,sent_at=?,updated_at=? WHERE id=?",confirmed.providerMessageId,confirmed.sentAt||now(),now(),id);
+    await db.run("UPDATE supplier_delivery_attempts SET state='sent',provider_message_id=?,sent_at=?,updated_at=? WHERE id=? AND state='sending'",confirmed.providerMessageId,confirmed.sentAt||now(),now(),id);
   }catch(error){
     const providerId=confirmed?.providerMessageId||(error.deliveryOutcome==='sent'&&error.providerMessageId),state=providerId?'sent':error.deliveryOutcome==='not_sent'?'not_sent':'uncertain';
-    await db.run('UPDATE supplier_delivery_attempts SET state=?,provider_message_id=?,sent_at=?,error_message=?,updated_at=? WHERE id=?',state,providerId||null,providerId?confirmed?.sentAt||now():null,error.message,now(),id);
+    await db.run("UPDATE supplier_delivery_attempts SET state=?,provider_message_id=?,sent_at=?,error_message=?,updated_at=? WHERE id=? AND state='sending'",state,providerId||null,providerId?confirmed?.sentAt||now():null,error.message,now(),id);
+    const retained=await db.get('SELECT * FROM supplier_delivery_attempts WHERE id=?',id);if(retained?.state==='sent')return retained;
     if(!providerId)throw failure(state==='not_sent'?`Nothing was sent. ${error.message} Correct the issue and retry the same reviewed request.`:'Supplier delivery could not be confirmed. Do not resend; check the connected mailbox and retain this request for delivery review.',state==='not_sent'?'supplier_delivery_not_sent':'supplier_delivery_unconfirmed');
   }
   return db.get('SELECT * FROM supplier_delivery_attempts WHERE id=?',id);

@@ -37,8 +37,9 @@ const FACTORY = "factory.journey@example.test";
 const OUTPUT = path.resolve("test-output/complete-customer-order-journey");
 const sourceFactoryReconcile=process.argv.includes('--stop-after-source-backed-factory-reconcile');
 const supplierPartial=process.argv.includes('--stop-after-supplier-send-partial');
+const supplierReconcile=process.argv.includes('--stop-after-supplier-reconcile');
 const legacyCorrespondenceReview=process.argv.includes('--stop-after-legacy-supplier-correspondence');
-const supplierFollowup=supplierPartial||process.argv.includes('--stop-after-supplier-followup');
+const supplierFollowup=supplierReconcile||supplierPartial||process.argv.includes('--stop-after-supplier-followup');
 const sourceFactorySend=sourceFactoryReconcile||process.argv.includes('--stop-after-source-backed-factory-send');
 const sourceStaffOrder=sourceFactorySend||process.argv.includes('--stop-after-source-backed-staff-order');
 const sourceCustomerOrder=sourceStaffOrder||process.argv.includes('--stop-after-source-backed-customer-order');
@@ -194,7 +195,7 @@ async function run() {
     const providerJourney=providerJourneyRequested,providerKey=createHash('sha256').update(randomUUID()).digest('hex');
     if(providerJourney)await writeFile(path.join(root,'provider-source.pdf'),await readFile(path.resolve('docs/Supplier_Quotes/John_Wingfield/web-26-1133450.pdf')));
     if(receivedSupplierReviews)await writeFile(path.join(root,'provider-second-source.docx'),await readFile(path.resolve('docs/Supplier_Quotes/343117-3_EF-EST-2026-004 - Luke.docx')));
-api = spawn(process.execPath, ["--import",pathToFileURL(path.resolve('tests/fixtures/isolatedJourneyExchangeRate.mjs')).href,...(providerJourney?['--import',pathToFileURL(path.resolve('tests/fixtures/isolatedJourneyGoogle.mjs')).href]:[]),"server/index.js"], { cwd: process.cwd(), env: { ...process.env, ...(providerJourney?{QUOTESUITE_INTEGRATION_ENCRYPTION_KEY:providerKey}:{}), QUOTESUITE_DB_PATH: databasePath, QUOTESYNC_ATTACHMENT_ROOT: attachmentRoot, PORT: "3104", NODE_ENV: "development", QUOTESUITE_APP_ORIGINS: APP_URL, QUOTESUITE_TEST_JOURNEY: "1", QUOTESUITE_TEST_DELIVERY_ENABLED: (sourceCustomerReissue||supplierFollowup)?"1":"0", QUOTESUITE_DISPOSABLE_PROVIDER_DELIVERY:supplierFollowup?'supplier-followup':sourceFactoryReconcile?'factory-reconcile':sourceFactorySend?'factory-send':sourceCustomerReissue?'customer-reissue':'', QUOTESUITE_TEST_CUSTOMER_EMAIL: CUSTOMER, QUOTESUITE_TEST_FACTORY_EMAIL: FACTORY }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+api = spawn(process.execPath, ["--import",pathToFileURL(path.resolve('tests/fixtures/isolatedJourneyExchangeRate.mjs')).href,...(providerJourney?['--import',pathToFileURL(path.resolve('tests/fixtures/isolatedJourneyGoogle.mjs')).href]:[]),"server/index.js"], { cwd: process.cwd(), env: { ...process.env, ...(providerJourney?{QUOTESUITE_INTEGRATION_ENCRYPTION_KEY:providerKey}:{}), QUOTESUITE_DB_PATH: databasePath, QUOTESYNC_ATTACHMENT_ROOT: attachmentRoot, PORT: "3104", NODE_ENV: "development", QUOTESUITE_APP_ORIGINS: APP_URL, QUOTESUITE_TEST_JOURNEY: "1", QUOTESUITE_TEST_DELIVERY_ENABLED: (sourceCustomerReissue||supplierFollowup)?"1":"0", QUOTESUITE_DISPOSABLE_PROVIDER_DELIVERY:supplierReconcile?'supplier-reconcile':supplierFollowup?'supplier-followup':sourceFactoryReconcile?'factory-reconcile':sourceFactorySend?'factory-send':sourceCustomerReissue?'customer-reissue':'', QUOTESUITE_TEST_CUSTOMER_EMAIL: CUSTOMER, QUOTESUITE_TEST_FACTORY_EMAIL: FACTORY }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     let apiStartupLog='';for(const stream of [api.stdout,api.stderr])stream.on('data',chunk=>{apiStartupLog=(apiStartupLog+String(chunk)).slice(-5000)});
     vite = spawn(process.execPath, [path.resolve("node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", "5276"], { cwd: process.cwd(), env: { ...process.env, VITE_API_BASE_URL: API_URL }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     try{await waitFor(() => reachable(`${API_URL}/api/health`), "Disposable journey API did not start")}catch(error){throw new Error(`${error.message}: ${apiStartupLog}`)} await waitFor(() => reachable(APP_URL), "Disposable journey UI did not start");
@@ -343,6 +344,16 @@ api = spawn(process.execPath, ["--import",pathToFileURL(path.resolve('tests/fixt
         }
         await tab.evaluate("document.querySelector('.supplier-rfq__send input').click()");
         await click(tab,'Send supplier request');
+        if(supplierReconcile){
+          await waitFor(()=>tab.evaluate("document.body.innerText.includes('Check delivery outcome')"),'Uncertain supplier send did not expose recovery');
+          await click(tab,'Check delivery outcome');
+          await waitFor(()=>tab.evaluate("document.body.innerText.includes('exact sent message and reviewed contents are confirmed')"),'Exact supplier receipt was not recovered');
+          const receiptDb=await open({filename:databasePath,driver:sqlite3.Database,mode:sqlite3.OPEN_READONLY});
+          try{const saved=await receiptDb.get('SELECT * FROM supplier_enquiry_drafts WHERE id=?',preparedContext.enquiries[0].id),attempt=await receiptDb.get('SELECT * FROM supplier_delivery_attempts WHERE supplier_enquiry_id=?',saved.id);assert.equal(saved.status,'sent');assert.equal(attempt.state,'sent');assert.ok(attempt.reconciled_at);assert.equal(Date.parse(saved.response_due_at)-Date.parse(saved.sent_at),7*24*60*60*1000);const parent=await receiptDb.get('SELECT * FROM supplier_revision_requests WHERE id=?',saved.revision_request_id);assert.equal(parent.workflow_state,'sent_to_supplier');assert.equal(parent.status,'sent')}finally{await receiptDb.close()}
+          await click(tab,'Close');await click(tab,'Request supplier estimate / revision');
+          assert.equal(JSON.parse(await readFile(path.join(root,'disposable-delivery-evidence.json'),'utf8')).sent.length,1,'Recovery sent another supplier copy');
+          console.log(JSON.stringify({scope:'Normal supplier send loses response → Check delivery outcome → exact receipt recovered → reopen',liveDelivery:false,providerMessages:1,restartVerified:false}));return;
+        }
         if(supplierPartial){
           await waitFor(()=>tab.evaluate("document.querySelector('.supplier-rfq [role=alert]')?.textContent.includes('provider confirmed')"),'Confirmed partial-send result was not explained');
           await waitFor(()=>tab.evaluate("[...document.querySelectorAll('.supplier-rfq__history')].some(item=>item.textContent.includes('sent — local result needs completion'))"),'Persisted sent receipt was not shown after local failure');

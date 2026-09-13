@@ -628,5 +628,21 @@ export function createLifecycleService(db, options = {}) {
     return{processed:rows.length,sent:sentCount,failed};
   }
 
-  return { deliveryStatus: () => delivery.publicStatus(), changesRequestedQueue, changeRequestDetail, supplierRevisionDetail, supplierReviewHistory, supplierEnquiryContext, prepareSupplierEnquiry, linkManufacturerResponse, prepareSupplierRevision, prepareSupplierRevisionCorrespondence, attachSupplierRevisionDocument, verifySupplierRevision, updateSupplierResponseDue, retrySupplierRevisionFollowup, processDueSupplierRevisionFollowups, orderJourney, approveOrder, prepareFactoryOrder, recordFactoryConfirmation, releaseFactoryConfirmation, recordReviewedSignedApproval, customerDocuments };
+  async function reconcileSupplierDelivery(requestId,actor){
+    const request=await db.get('SELECT * FROM supplier_enquiry_drafts WHERE id=?',requestId);
+    const attempt=await db.get("SELECT * FROM supplier_delivery_attempts WHERE supplier_enquiry_id=? AND state IN ('sending','uncertain','sent') ORDER BY created_at DESC LIMIT 1",requestId);
+    if(!request||!attempt||attempt.communication_message_id!==request.communication_message_id)throw problem('No matching supplier delivery attempt is available to check.',409,'supplier_delivery_unconfirmed');
+    const proof=attempt.state==='sent'&&attempt.provider_message_id?{providerMessageId:attempt.provider_message_id,sentAt:attempt.sent_at}:await communicationService.reconcileFactoryDelivery(attempt,'Supplier');
+    if(!proof)return {status:'unconfirmed',message:'No exact sent-message confirmation was found. This does not prove delivery failed. Nothing was sent by this check; keep the request blocked and check again later.'};
+    const at=stamp(),sentAt=proof.sentAt||attempt.sent_at,due=request.request_kind==='revision'?plusCalendarDays(sentAt,7):null;
+    await db.run("UPDATE supplier_delivery_attempts SET state='sent',provider_message_id=?,sent_at=?,reconciled_by=?,reconciled_at=?,updated_at=? WHERE id=?",proof.providerMessageId,sentAt,text(actor),at,at,attempt.id);
+    const prior=await communications.get(attempt.communication_message_id);
+    if(prior)await communications.save({...prior,provider:'google_workspace',providerMessageId:proof.providerMessageId,threadId:proof.threadId||prior.threadId,status:'sent',folder:'sent',sentAt,error:null});
+    await db.run("UPDATE supplier_enquiry_drafts SET status='sent',sent_at=?,response_due_at=COALESCE(response_due_at,?),followup_due_at=CASE WHEN response_state='outstanding' AND completed_at IS NULL THEN COALESCE(followup_due_at,?) ELSE followup_due_at END,updated_at=? WHERE id=? AND status='draft'",sentAt,due,due,at,requestId);
+    if(request.revision_request_id)await db.run("UPDATE supplier_revision_requests SET status='sent',workflow_state='sent_to_supplier',sent_at=COALESCE(sent_at,?),response_due_at=COALESCE(response_due_at,?),updated_at=? WHERE id=? AND workflow_state='prepared_for_review' AND status<>'cancelled' AND completed_at IS NULL",sentAt,due,at,request.revision_request_id);
+    await event('supplier.delivery.reconciled',attempt.id,[{kind:'supplier_enquiry',id:requestId},{kind:'communication',id:attempt.communication_message_id}]);
+    return {status:'sent',message:'The exact sent message and reviewed contents are confirmed. No additional email was sent. Review the supplier response deadline and wait for the revised document.'};
+  }
+
+  return { reconcileSupplierDelivery, deliveryStatus: () => delivery.publicStatus(), changesRequestedQueue, changeRequestDetail, supplierRevisionDetail, supplierReviewHistory, supplierEnquiryContext, prepareSupplierEnquiry, linkManufacturerResponse, prepareSupplierRevision, prepareSupplierRevisionCorrespondence, attachSupplierRevisionDocument, verifySupplierRevision, updateSupplierResponseDue, retrySupplierRevisionFollowup, processDueSupplierRevisionFollowups, orderJourney, approveOrder, prepareFactoryOrder, recordFactoryConfirmation, releaseFactoryConfirmation, recordReviewedSignedApproval, customerDocuments };
 }

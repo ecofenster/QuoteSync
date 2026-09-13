@@ -35,7 +35,7 @@ function buildMime(input) {
   const boundary = `quotesuite_${randomUUID().replaceAll("-", "")}`;
   const headers = [`To: ${(input.to || []).map(cleanHeader).join(", ")}`, input.cc?.length ? `Cc: ${input.cc.map(cleanHeader).join(", ")}` : null, input.bcc?.length ? `Bcc: ${input.bcc.map(cleanHeader).join(", ")}` : null, `Subject: ${cleanHeader(input.subject)}`, "MIME-Version: 1.0", input.inReplyTo ? `In-Reply-To: ${cleanHeader(input.inReplyTo)}` : null, input.references ? `References: ${cleanHeader(input.references)}` : null, `Content-Type: multipart/mixed; boundary=\"${boundary}\"`].filter(Boolean);
   const parts = [`--${boundary}`, "Content-Type: text/html; charset=UTF-8", "Content-Transfer-Encoding: 8bit", "", String(input.bodyHtml || "")];
-  if(input.factoryReceipt){headers.push(`Message-ID: ${cleanHeader(input.factoryReceipt.messageId)}`,`X-QuoteSuite-Factory-Manifest: ${cleanHeader(input.factoryReceipt.manifestSha256)}`)}
+  if(input.factoryReceipt){headers.push(`Message-ID: ${cleanHeader(input.factoryReceipt.messageId)}`,`X-QuoteSuite-${input.factoryReceipt.kind==='Supplier'?'Supplier':'Factory'}-Manifest: ${cleanHeader(input.factoryReceipt.manifestSha256)}`)}
   for (const attachment of input.attachments || []) parts.push(`--${boundary}`, `Content-Type: ${cleanHeader(attachment.mediaType || "application/octet-stream")}; name=\"${cleanHeader(attachment.fileName)}\"`, `Content-Disposition: attachment; filename=\"${cleanHeader(attachment.fileName)}\"`, "Content-Transfer-Encoding: base64", "", Buffer.from(attachment.bytes).toString("base64").replace(/.{1,76}/g, "$&\r\n").trim());
   parts.push(`--${boundary}--`, "");
   return toBase64Url(`${headers.join("\r\n")}\r\n\r\n${parts.join("\r\n")}`);
@@ -146,7 +146,7 @@ export function createGmailProvider(googleWorkspace, { pageSize = 30 } = {}) {
   }
   async function attachment(messageId, attachmentId) { const body = await json(await googleWorkspace.googleFetch(`${API}/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`)); return fromBase64Url(body.data); }
   async function findFactoryReceipt(messageId){
-    if(!/^<quotesuite-factory-[a-f0-9-]+@delivery\.quotesuite\.invalid>$/.test(messageId))return null;
+    if(!/^<quotesuite-(?:factory|supplier)-[a-f0-9-]+@delivery\.quotesuite\.invalid>$/.test(messageId))return null;
     const query=new URLSearchParams({q:`in:sent rfc822msgid:${messageId}`,maxResults:'2'});
     const matches=await json(await googleWorkspace.googleFetch(`${API}/messages?${query}`));
     if(matches.nextPageToken||matches.messages?.length!==1)return null;

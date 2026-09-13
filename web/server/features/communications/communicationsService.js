@@ -500,6 +500,12 @@ export function createCommunicationsService(db, options = {}) {
       }
       status = await requireGmailCapability();
       attachments = await Promise.all((input.attachments || []).map((item) => decodeAttachment(item, attachmentRoot, workspace)));
+      if(commandContext.supplierDeliveryAttemptId){
+        const accountId=status.account?.id||status.account?.email;if(!accountId)throw new Error('The connected mailbox account identity is unavailable. Reconnect before sending.');
+        factoryReceipt={kind:'Supplier',messageId:`<quotesuite-supplier-${commandContext.supplierDeliveryAttemptId}@delivery.quotesuite.invalid>`,manifestSha256:factoryManifest(input)};
+        const retained=await db.run("UPDATE supplier_delivery_attempts SET receipt_message_id=?,receipt_manifest_sha256=?,provider_account_id=? WHERE id=? AND communication_message_id=? AND state='sending'",factoryReceipt.messageId,factoryReceipt.manifestSha256,accountId,commandContext.supplierDeliveryAttemptId,id);
+        if(!retained.changes)throw new Error('The supplier delivery claim changed. Reopen the request before sending.');
+      }
       if(commandContext.factoryDeliveryAttemptId){
         const accountId=status.account?.id||status.account?.email;
         if(!accountId)throw new Error('The connected mailbox account identity is unavailable. Reconnect before sending.');
@@ -519,7 +525,7 @@ export function createCommunicationsService(db, options = {}) {
     } catch (error) {
       error.deliveryOutcome=sent?.providerMessageId?'sent':'uncertain';
       if(sent?.providerMessageId)error.providerMessageId=sent.providerMessageId;
-      else if(!commandContext.factoryDeliveryAttemptId)await repository.save({ ...input, id, provider: "google_workspace", mailboxId: "me", direction: "outbound", folder: "sent", status: "failed", error: error instanceof Error ? error.message : "Provider send failed.", attachments: attachments.map(({ bytes, ...item }) => ({ ...item, sizeBytes: item.sizeBytes ?? bytes.length })) }).catch(()=>{});
+      else if(!commandContext.factoryDeliveryAttemptId&&!commandContext.supplierDeliveryAttemptId)await repository.save({ ...input, id, provider: "google_workspace", mailboxId: "me", direction: "outbound", folder: "sent", status: "failed", error: error instanceof Error ? error.message : "Provider send failed.", attachments: attachments.map(({ bytes, ...item }) => ({ ...item, sizeBytes: item.sizeBytes ?? bytes.length })) }).catch(()=>{});
       // Factory uncertainty belongs to its persistent attempt. A late error must
       // not overwrite a message concurrently confirmed by receipt reconciliation.
       throw error;
@@ -531,12 +537,12 @@ export function createCommunicationsService(db, options = {}) {
     return sendMessage({ ...input, threadId: original.threadId, to: input.to?.length ? input.to : original.from, subject: /^re:/i.test(input.subject || "") ? input.subject : `Re: ${input.subject || original.subject}`, inReplyTo: original.providerMessageId, references: original.providerMessageId, inReplyToProviderMessageId: original.providerMessageId });
   }
 
-  async function reconcileFactoryDelivery(attempt){
+  async function reconcileFactoryDelivery(attempt,kind='Factory'){
     const status=await requireGmailCapability();
     if(!attempt.receipt_message_id||!attempt.receipt_manifest_sha256||!attempt.provider_account_id||attempt.provider_account_id!==(status.account?.id||status.account?.email))return null;
     const saved=await repository.get(attempt.communication_message_id);if(!saved)return null;
     const raw=await gmail.findFactoryReceipt(attempt.receipt_message_id);
-    return verifyFactoryReceipt({raw,attempt,saved,readAttachment:gmail.attachment});
+    return verifyFactoryReceipt({raw,attempt,saved,readAttachment:gmail.attachment,kind});
   }
 
   async function forward(input) {

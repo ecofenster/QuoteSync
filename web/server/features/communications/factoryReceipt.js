@@ -4,8 +4,8 @@ export const factoryManifest=input=>createHash('sha256').update(JSON.stringify({
 const header=(message,name)=>message.payload?.headers?.find(item=>item.name.toLowerCase()===name.toLowerCase())?.value||'';
 const address=value=>String(value).trim().toLowerCase().replace(/^.*<([^>]+)>$/,'$1');
 
-export async function verifyFactoryReceipt({raw,attempt,saved,readAttachment}){
-  if(!raw?.id||!raw.labelIds?.includes('SENT')||header(raw,'Message-ID')!==attempt.receipt_message_id||header(raw,'X-QuoteSuite-Factory-Manifest')!==attempt.receipt_manifest_sha256||factoryManifest(saved)!==attempt.receipt_manifest_sha256)return null;
+export async function verifyFactoryReceipt({raw,attempt,saved,readAttachment,kind='Factory'}){
+  if(!raw?.id||!raw.labelIds?.includes('SENT')||header(raw,'Message-ID')!==attempt.receipt_message_id||header(raw,`X-QuoteSuite-${kind}-Manifest`)!==attempt.receipt_manifest_sha256||factoryManifest(saved)!==attempt.receipt_manifest_sha256)return null;
   if(!raw.internalDate||!Number.isFinite(new Date(Number(raw.internalDate)).getTime()))return null;
   const message=mapGmailMessage(raw);
   if(message.subject!==saved.subject||message.bodyHtml.replaceAll('\r\n','\n')!==String(saved.bodyHtml).replaceAll('\r\n','\n')||['to','cc','bcc'].some(key=>JSON.stringify(message[key].map(address).sort())!==JSON.stringify((saved[key]||[]).map(address).sort())))return null;
