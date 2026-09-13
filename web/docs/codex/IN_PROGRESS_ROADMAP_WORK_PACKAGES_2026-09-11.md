@@ -1,5 +1,13 @@
 # In-progress Roadmap completion programme
 
+## 13 September — concise renewal-aware summary and issued-review reload
+
+Package 6's safe qualification summary now collapses only explicit same-type renewal chains. It preserves unrelated cards, retains earlier verified evidence when a future/unverified renewal cannot cover attendance, and retains malformed cyclic lineage for review. No qualification rows, retained source snapshots or previously issued PDF bytes are modified. Validity and evidence verification remain independent; certificate identifiers, filenames and private notes stay excluded.
+
+Eleven focused date/summary/provider/foundation tests, TypeScript and 28 Roadmap checks pass. The normal qualified-team RAMS browser gate now performs a full page reload after issue, reopens the exact Estimate's issued review, downloads the PDF and creates a separate editable successor. Run `92520bf9-83c1-4f1d-a139-dd5236737ede` exits 0; both browser/profile remnants are zero, and user API `40986ac3-737a-4ffb-b572-351bb2ca23af` remains unchanged during acceptance. PDF visual inspection confirms one relevant CSCS entry per test installer with readable independent verification wording. The first reload test failed only because its open condition expected the draft-only summary; it now recognises the issued panel too. That failed run also completed owned cleanup.
+
+Existing `survey-delivery-installation-basic-rams` evidence/next action is updated; no Roadmap status or user acceptance is promoted. AGENTS already governs immutable history and concise safe projection; no duplicate rule is needed. Next bounded implementation is the missing installer-pack generation/review/delivery from saved installation values and exact revision identity, reusing existing safe schedules, Files and reviewed Email. Include the Order route, selected certificate copies and RAMS handoff; do not treat the current RAMS-only gate as delivery of that pack. Broader workforce themes/zoom, uncertain-upload reconciliation, briefing UI and ordinary-user acceptance remain open.
+
 ## 13 September — normal qualified-team to RAMS integration gate
 
 Package 6 now has a joined normal-browser gate: `node scripts/run-complete-customer-order-journey-browser.mjs --stop-after-qualified-team-rams --require-existing-user-api`. It first exercises the existing Administration upload/replacement/renewal/failure-retry journey, then creates two explicitly disposable, separately evidenced installers and a two-person team through Administration. The normal Estimates list opens the working Estimate directly; the test selects that Company/Team in Installation and continues through Files / Documents into RAMS without clearing the retained required-CSCS choice.
