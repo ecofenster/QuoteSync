@@ -1,0 +1,27 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import sqlite3 from 'sqlite3';
+import {open} from 'sqlite';
+import {mkdtemp,rm} from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import {initializeSupplierCommercialSchema} from '../server/schema/supplierCommercialSchema.js';
+import {persistRouteSnapshot} from '../server/features/projectCalculatorLab/routeSnapshotPersistence.js';
+import {createProjectCalculatorLabService} from '../server/features/projectCalculatorLab/projectCalculatorLabService.js';
+test('actual-schema route retries preserve endpoint fields and identity across connections',async t=>{
+  const root=await mkdtemp(path.join(os.tmpdir(),'qs-route-retry-')),filename=path.join(root,'test.db'),db=await open({filename,driver:sqlite3.Database});
+  let second;t.after(async()=>{await second?.close();await db.close();await rm(root,{recursive:true,force:true});});
+  await db.exec('CREATE TABLE estimates(id TEXT PRIMARY KEY);CREATE TABLE clients(id TEXT PRIMARY KEY);');await initializeSupplierCommercialSchema(db);
+  const service=createProjectCalculatorLabService(db,{exchangeRateProvider:async()=>({rawRate:'1',provider:'disposable',quotedAt:'2026-09-13'})});
+  const scenario=await service.createScenario({origin:'manual',name:'Disposable routes',currency:'GBP',packageType:'full_installation'}),otherScenario=await service.createScenario({origin:'manual',name:'Other disposable routes',currency:'GBP',packageType:'full_installation'});
+  const input={requestKey:'reviewed-outward',direction:'office_to_site',origin:{label:'Installer base',lat:51,lng:-1},destination:{label:'Site',lat:52,lng:-2},distanceKm:'100',durationMinutes:90,integration:'test_route'};
+  const first=await persistRouteSnapshot(db,scenario.id,input);assert.equal(first.reused,false);
+  assert.deepEqual(await db.get('SELECT origin_label,destination_label,origin_lat,origin_lng,destination_lat,destination_lng FROM project_calculator_lab_route_snapshots WHERE id=?',first.id),{origin_label:'Installer base',destination_label:'Site',origin_lat:'51',origin_lng:'-1',destination_lat:'52',destination_lng:'-2'});
+  second=await open({filename,driver:sqlite3.Database});const replay=await persistRouteSnapshot(second,scenario.id,input);assert.equal(replay.id,first.id);assert.equal(replay.reused,true);
+  const serviceReplay=await service.appendRouteSnapshot(scenario.id,input);assert.equal(serviceReplay.savedRouteSnapshotId,first.id);assert.equal(serviceReplay.routeSnapshotReused,true);assert.equal(serviceReplay.routeSnapshots.find(item=>item.id===first.id).destination.label,'Site');
+  await assert.rejects(()=>persistRouteSnapshot(second,scenario.id,{...input,durationMinutes:95}),/different route/);
+  assert.equal((await db.get('SELECT COUNT(*) count FROM project_calculator_lab_route_snapshots')).count,1);assert.equal((await db.get('SELECT duration_minutes FROM project_calculator_lab_route_snapshots WHERE id=?',first.id)).duration_minutes,90);
+  const other=await persistRouteSnapshot(db,otherScenario.id,input);assert.notEqual(other.id,first.id);
+  const back=await persistRouteSnapshot(db,scenario.id,{...input,requestKey:'reviewed-return',direction:'site_to_office',origin:input.destination,destination:input.origin,durationMinutes:110});assert.notEqual(back.id,first.id);
+  const concurrent=await Promise.all([persistRouteSnapshot(db,scenario.id,{...input,requestKey:'concurrent'}),persistRouteSnapshot(second,scenario.id,{...input,requestKey:'concurrent'})]);assert.equal(concurrent[0].id,concurrent[1].id);assert.equal(concurrent.filter(item=>!item.reused).length,1);
+});

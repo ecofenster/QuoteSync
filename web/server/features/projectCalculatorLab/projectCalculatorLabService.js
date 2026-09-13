@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import {validateRouteSnapshot} from './routeSnapshotValidation.js';
+import {persistRouteSnapshot} from './routeSnapshotPersistence.js';
 import { applyMarkup, calculateAdjustedRate, convertSupplierAmountToGbp, createProjectCostingFx, ESTIMATE_FX_BASIS } from './exchangeRateModel.js';
 import { fetchCentralExchangeRate } from './exchangeRateProvider.js';
 import { createCalculatorAdminService, snapshotCalculatorAdminConfiguration } from './calculatorAdminService.js';
@@ -429,10 +431,8 @@ export function createProjectCalculatorLabService(db, { exchangeRateProvider = f
     async appendRouteSnapshot(id,input) {
       validateRouteSnapshot(input);
       const scenario=await db.get('SELECT id FROM project_calculator_lab_scenarios WHERE id=?',id); if(!scenario)return null;
-      const snapshotId=randomUUID(), now=new Date().toISOString();
-      await db.run('INSERT INTO project_calculator_lab_route_snapshots(id,scenario_id,direction,origin_label,destination_label,origin_lat,origin_lng,destination_lat,destination_lng,distance_km,duration_minutes,traffic_duration_minutes,calculated_at,integration,manually_overridden,override_reason,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',snapshotId,id,input.direction,input.origin.label,String(input.origin.lat),String(input.origin.lng),input.destination.label,String(input.destination.lat),String(input.destination.lng),input.distanceKm==null?null:String(input.distanceKm),input.durationMinutes??null,input.trafficDurationMinutes??null,input.calculatedAt||now,input.integration,input.manuallyOverridden?1:0,input.overrideReason||null,now);
-      return getScenario(id);
+      const receipt=await persistRouteSnapshot(db,id,input);
+      return {...await getScenario(id),savedRouteSnapshotId:receipt.id,routeSnapshotReused:receipt.reused};
     },
   };
 }
-import {validateRouteSnapshot} from './routeSnapshotValidation.js';

@@ -1,5 +1,15 @@
 # In-progress Roadmap completion programme
 
+## 13 September — corrected endpoint persistence and retry receipts
+
+Save-path inspection exposed a concrete SQL mapping defect: destination_label received origin latitude, origin_lat received origin longitude, and origin_lng received the destination label. New route writes now bind every label/coordinate to its proper column. Existing route evidence is not repaired or overwritten automatically; invalid historical routes remain review-required through the previously added binding guard and need reviewed recalculation.
+
+The same boundary now accepts an optional stable requestKey scoped to the scenario. A confirmed same-payload retry returns the original snapshot; a conflicting payload under that key preserves the first save and fails with a review action. Atomic primary-key insertion protects concurrent retries without a new parallel route store. The scenario response includes savedRouteSnapshotId and routeSnapshotReused, with typed client receipt fields, so the forthcoming review UI need not infer identity from list ordering. Calls without a key retain separate-new-snapshot semantics.
+
+Seven focused route/source/PDF tests and full typecheck pass. Actual schema tests use real disposable scenarios with foreign keys intact and verify all persisted endpoint fields, service receipt, reopened connection, concurrent reuse, changed-payload rejection, scenario isolation and a distinct return leg. Initial test setup omitted its required scenario/package; the fixture was corrected rather than weakening foreign keys. This is service/persistence verification, not completed paired-route browser acceptance. No live route records, provider data, emails or issued evidence changed.
+
+Existing survey-delivery-installation remains partial/unaccepted with unchanged counts and original-73 mapping. Exact continuation: reviewed two-leg UI/action submits stable per-leg keys, uses savedRouteSnapshotId, preserves confirmed first-leg work on failure, then explicitly adopts the validated pair and installer travel policy into an editable revision. Preserve unrelated ConfigureInstallation edits. Existing AGENTS retry/source/immutable rules apply; local checkpoint only while push remains permission-blocked.
+
 ## 13 September — installer document directional route binding
 
 Installer travel projection now requires the selected saved team ID/base postcode, the selected revision's site postcode, exact scenario-owned outward snapshot and installer-route provenance or explained manual evidence. Generic office routes, changed sites, wrong bases, duplicate IDs and invalid evidence cannot supply confirmed installer travel. A distinct returnSnapshotId must resolve to a valid reversed route with matching labelled coordinates; return duration is taken from that leg, never copied from outward. Journey pattern is retained only when explicitly daily_travel or stay_away. Current support follows the existing UK postcode route contract; other address formats and company-base fallback require explicit canonical binding, not guessing.
