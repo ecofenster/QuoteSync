@@ -25,5 +25,8 @@ export function bindInstallationRoutePair({scenarioId,profile,team,snapshots}) {
     returnMiles:(Number(back.distanceKm)*0.621371192).toFixed(2),returnDurationMinutes:Number(back.durationMinutes),
     distanceUnit:'miles',sitePostcode:profile.sitePostcode,installerBasePostcode:team.basePostcode,
     calculationSource:outward.integration,returnCalculationSource:back.integration,
+    calculationMethod:outward.manuallyOverridden?'reviewed_manual':'google_routes',
+    manuallyOverridden:outward.manuallyOverridden===true,overrideReason:outward.overrideReason??null,
+    returnManuallyOverridden:back.manuallyOverridden===true,returnOverrideReason:back.overrideReason??null,
     capturedAt:outward.calculatedAt,returnCapturedAt:back.calculatedAt};
 }

@@ -1230,7 +1230,7 @@
 
 :root[data-qs-design="v2"] .costing-sheet__installation-context > :is(div, label) > span,
 :root[data-qs-design="v2"] .calculator-lab__installation-groups label {
-  color: #bac4c0;
+  color: var(--qs-theme-text-secondary);
   font-size: var(--qs-type-label);
   font-weight: 590;
 }

@@ -8,7 +8,7 @@ import {createProjectCalculatorLabService} from '../server/features/projectCalcu
 import {INSTALLATION_CAPABILITIES} from '../server/features/projectCalculatorLab/installationProgramme.js';
 
 // Uses only the parent's fresh disposable database and owned browser lifecycle.
-export async function verifyInstallationRouteRetry({tab,click,waitFor,databasePath,output}) {
+export async function verifyInstallationRouteRetry({tab,click,waitFor,databasePath,output,manualReview=false}) {
   await waitFor(()=>tab.evaluate("Boolean(document.querySelector('.costing-sheet__section--installation .costing-sheet__section-label'))"),'Working costing did not open');
   const db=await open({filename:databasePath,driver:sqlite3.Database});
   try {
@@ -49,7 +49,7 @@ export async function verifyInstallationRouteRetry({tab,click,waitFor,databasePa
     await tab.evaluate("document.querySelector('.installation-travel-review summary').click()");
     await click(tab,'Calculate both directions');
     await waitFor(()=>tab.evaluate("document.querySelector('.installation-travel-review select')!==null"),'Two-leg review did not open');
-    await tab.evaluate("const pattern=document.querySelector('.installation-travel-review select');pattern.value='daily_travel';pattern.dispatchEvent(new Event('change',{bubbles:true}))");
+    assert.equal(await tab.evaluate("(()=>{const pattern=document.querySelector('.installation-travel-review select');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(pattern,'daily_travel');pattern.dispatchEvent(new Event('change',{bubbles:true}));return true})()"),true);
     await tab.send('Network.setBlockedURLs',{urls:['*installation-profile*']});await click(tab,'Apply reviewed journey');
     await waitFor(()=>tab.evaluate("document.querySelector('.installation-travel-review [role=alert]')?.textContent.includes('2 route leg(s) were retained')"),'Pair partial-success recovery was not visible');
     assert.equal((await costing.getScenario(scenario.id)).routeSnapshots.length,3,'Both new directional drafts must be saved once');
@@ -59,6 +59,32 @@ export async function verifyInstallationRouteRetry({tab,click,waitFor,databasePa
     assert.equal(paired.routeSnapshots.length,3);assert.equal(journey.distanceBasis,'retained_directions_v1');assert.notEqual(journey.snapshotId,journey.returnSnapshotId);
     assert.equal(journey.oneWayDurationMinutes,180);assert.equal(journey.returnDurationMinutes,210);assert.equal(journey.returnMiles,'161.56');
     assert.equal(paired.installationProgramme.travel.chargeableMiles,((Number(journey.oneWayMiles)+Number(journey.returnMiles))*paired.installationProgramme.programmeDays).toFixed(2));
+    if(manualReview){
+      await tab.evaluate("window.__manualTravelRequests=[];window.fetch=async(input,init)=>{if(String(input).includes('/installation-profile'))window.__manualTravelRequests.push(JSON.parse(init.body));return window.__routeTestFetch(input,init)}");
+      await tab.send('Network.setBlockedURLs',{urls:['*googleMaps/*']});await click(tab,'Calculate both directions');
+      await waitFor(()=>tab.evaluate("document.querySelector('.installation-travel-review [role=alert]')!==null"),'Routing failure was not visible');
+      await tab.evaluate("document.querySelector('.installation-travel-review__manual summary').click()");
+      const fill=async(label,value)=>tab.evaluate(`(()=>{const control=document.querySelector('[aria-label=${JSON.stringify(label)}]');const proto=control.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value').set.call(control,${JSON.stringify(value)});control.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+      await fill('Outward distance (miles)','160');await fill('Outward time (minutes)','180');await fill('Return distance (miles)','170');await fill('Manual travel source and basis','Disposable reviewed planner estimate');
+      await click(tab,'Review manual journey');await waitFor(()=>tab.evaluate("document.querySelector('.installation-travel-review [role=alert]')?.textContent.includes('Return time is not confirmed')"),'Blank return time was not rejected');
+      assert.equal(await tab.evaluate("document.querySelector('[aria-label=\"Outward distance (miles)\"]').value"),'160');
+      await fill('Return time (minutes)','210');await click(tab,'Review manual journey');
+      await waitFor(()=>tab.evaluate("document.querySelector('.installation-travel-review [role=status]')?.textContent.includes('Manual travel is ready')"),'Manual review could not reuse retained coordinates without routing');
+      assert.equal(await tab.evaluate("(()=>{const pattern=document.querySelector('.installation-travel-review select');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(pattern,'stay_away');pattern.dispatchEvent(new Event('change',{bubbles:true}));return true})()"),true);
+      assert.equal(await tab.evaluate("document.querySelector('.installation-travel-review select').value"),'stay_away','Reviewed pattern did not remain selected');
+      await tab.send('Network.setBlockedURLs',{urls:['*googleMaps/*','*installation-profile*']});await click(tab,'Apply reviewed journey');
+      await waitFor(()=>tab.evaluate("document.querySelector('.installation-travel-review [role=alert]')?.textContent.includes('2 route leg(s) were retained')"),'Manual partial-save result missing');
+      await tab.send('Network.setBlockedURLs',{urls:['*googleMaps/*']});await click(tab,'Apply reviewed journey');
+      await waitFor(()=>tab.evaluate("document.querySelector('.installation-travel-review [role=status]')?.textContent.includes('Outward and return travel saved')"),'Manual retry did not complete');
+      const requests=await tab.evaluate('window.__manualTravelRequests');assert.equal(requests.length,2);assert.ok(requests.every(request=>request.travelMode==='stay_away'));assert.equal(requests[0].travelReviewKey,requests[1].travelReviewKey);
+      const reviewed=await costing.getScenario(scenario.id);assert.equal(reviewed.routeSnapshots.length,5);assert.equal(reviewed.installationProgramme.travel.chargeableMiles,'330.00');assert.equal(reviewed.installationProgramme.travel.mode,'stay_away');
+      const manualRows=reviewed.routeSnapshots.filter(row=>row.manuallyOverridden);assert.equal(manualRows.length,2);assert.ok(manualRows.every(row=>row.overrideReason==='Disposable reviewed planner estimate'));
+      assert.equal(reviewed.options.installationProfile.route.calculationMethod,'reviewed_manual');assert.equal(reviewed.options.installationProfile.route.overrideReason,'Disposable reviewed planner estimate');
+      assert.equal(await tab.evaluate("document.querySelector('.costing-sheet__installation-context').textContent.includes('160.0 miles')"),true,'Company overview did not show the saved manual distance');
+      assert.equal(await tab.evaluate("[...document.querySelectorAll('.costing-sheet__installation-context button')].some(button=>button.textContent==='Current Company / Team'&&button.disabled)"),true,'Cached recommendation incorrectly offered to replace the approved Team');
+      console.log(JSON.stringify({scope:'Blocked route provider → missing manual time rejection → retained entries → reviewed manual pair using known coordinates → failed adoption → safe retry → overnight costing',manualRoutes:2,allRetainedRoutes:5,chargeableMiles:'330.00',inventedCoordinates:false}));
+      await tab.send('Network.setBlockedURLs',{urls:[]});
+    }
     await tab.evaluate("document.querySelector('.installation-travel-review').scrollIntoView({block:'center'})");
     const screen=await tab.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await writeFile(path.join(output,'installation-route-retry.png'),Buffer.from(screen.data,'base64'));
     console.log(JSON.stringify({scope:'Normal Installation reviewed route → real route save → blocked profile save → retained selection → retry → exact saved route adoption → paired direction review → blocked adoption → retry → directional costing',scenarioId:scenario.id,savedRouteId:saved[0].id,routeRows:3,pairedRoute:journey,routing:'controlled no-network provider responses',liveDelivery:false}));

@@ -17,5 +17,6 @@ test('wrong owner, base, site, company, direction, provenance and unresolved evi
 test('explained manual directions are retained, including genuine zero-time routes',()=>{
   const input=fixture();Object.assign(input.snapshots[1],{integration:'manual',manuallyOverridden:true,overrideReason:'Reviewed return route estimate',distanceKm:0,durationMinutes:0});
   assert.equal(bindInstallationRoutePair(input).returnDurationMinutes,0);
+  assert.equal(bindInstallationRoutePair(input).returnManuallyOverridden,true);assert.equal(bindInstallationRoutePair(input).returnOverrideReason,'Reviewed return route estimate');
   input.snapshots[1].overrideReason='';assert.throws(()=>bindInstallationRoutePair(input));
 });

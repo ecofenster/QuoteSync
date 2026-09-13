@@ -3,7 +3,7 @@ import {writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import sqlite3 from 'sqlite3';
 import {open} from 'sqlite';
-export async function verifyInstallationDocuments({tab,click,waitFor,databasePath,output,inspectPdf,confirmedTravel=false}){
+export async function verifyInstallationDocuments({tab,click,waitFor,databasePath,output,inspectPdf,confirmedTravel=false,manualTravel=false}){
   await waitFor(()=>tab.evaluate("document.querySelector('.costing-sheet__section--materials .costing-sheet__section-label')!==null"),'Normal Project Costing material section did not load');
   await tab.evaluate("document.querySelector('.costing-sheet__section--materials .costing-sheet__section-label').click()");
   await waitFor(()=>tab.evaluate("document.querySelector('.costing-sheet__materials-simple')!==null"),'Material choices did not open');
@@ -22,7 +22,7 @@ export async function verifyInstallationDocuments({tab,click,waitFor,databasePat
   await tab.send('Network.setBlockedURLs',{urls:[]});await click(tab,'Prepare draft PDF');
   await waitFor(()=>tab.evaluate("document.querySelector('.installation-documents [role=status]')?.textContent.includes('Not sent')"),'Prepared document did not show its outcome');
   const href=await tab.evaluate("[...document.querySelectorAll('.installation-documents a')].find(item=>item.textContent==='Open prepared PDF').href"),response=await fetch(href);assert.equal(response.status,200);
-  const file=path.join(output,'installer-pack-draft.pdf');await writeFile(file,Buffer.from(await response.arrayBuffer()));const pdf=await inspectPdf(file,['Installer pack','DRAFT',...(confirmedTravel?['SW1A 1AA','CF10 1AA','One-way travel time\\s+180 minutes','Return travel time\\s+210 minutes','Daily return travel']:['Travel time not confirmed']),'ME508','250 mm','15% linear contingency'],['Gross profit','Customer selling price']);
+  const file=path.join(output,'installer-pack-draft.pdf');await writeFile(file,Buffer.from(await response.arrayBuffer()));const pdf=await inspectPdf(file,['Installer pack','DRAFT',...(confirmedTravel?['SW1A 1AA','CF10 1AA','One-way travel time\\s+180 minutes','Return travel time\\s+210 minutes',...(manualTravel?['Outward and return around an overnight stay','Disposable reviewed planner estimate']:['Daily return travel'])]:['Travel time not confirmed']),'ME508','250 mm','15% linear contingency'],['Gross profit','Customer selling price']);
   await tab.evaluate("document.querySelector('[aria-label=\"Estimate Files and Documents\"] > header button').click()");await click(tab,'Files / Documents');await click(tab,'Prepare / review installation documents');
   await waitFor(()=>tab.evaluate("document.querySelector('.installation-documents summary')?.textContent.includes('(1)')"),'Reopen lost retained preparation');
   await tab.evaluate("document.querySelector('.installation-documents summary').click()");assert.equal(await tab.evaluate("document.querySelector('.installation-documents details a').href"),href);

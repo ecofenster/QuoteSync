@@ -107,11 +107,12 @@ export default function ConfigureInstallation({ scenario }: { scenario: Calculat
   const selectedTeam = workforce?.teams.find((item) => item.id === selectedTeamId && item.companyId === selectedCompanyId && item.active) ?? null;
   const selectedRecommendationCandidate = recommendations?.candidates.find((item) => item.id === selectedTeamId) ?? null;
   const selectedRoute = routes[selectedTeamId] ?? routes[selectedCompanyId];
-  const savedDistance = Boolean(selectedCompanyId) && selectedCompanyId === effectiveSavedCompanyId && Number.isFinite(Number(savedRoute.oneWayMiles))
-    ? { distanceMiles: Number(savedRoute.oneWayMiles), durationMinutes: Number(savedRoute.oneWayDurationMinutes ?? 0), source: text(savedRoute.calculationSource ?? savedRoute.source) || "saved route snapshot" }
+  const hasSavedRouteEvidence = [savedRoute.oneWayMiles,savedRoute.oneWayDurationMinutes].every(value=>value!==null&&value!==undefined&&String(value).trim()!==""&&Number.isFinite(Number(value))&&Number(value)>=0);
+  const savedDistance = Boolean(selectedCompanyId) && selectedCompanyId === effectiveSavedCompanyId && selectedTeamId === savedTeamId && hasSavedRouteEvidence
+    ? { distanceMiles: Number(savedRoute.oneWayMiles), durationMinutes: Number(savedRoute.oneWayDurationMinutes), source: text(savedRoute.calculationSource ?? savedRoute.source) || "saved route snapshot" }
     : null;
-  const displayRoute = selectedRoute ?? savedDistance;
-  const selectedChoiceIsCurrent = Boolean(selectedCompanyId && selectedCompanyId === effectiveSavedCompanyId && selectedTeamId === savedTeamId && !selectedRoute);
+  const selectedChoiceIsCurrent = Boolean(selectedCompanyId && selectedCompanyId === effectiveSavedCompanyId && selectedTeamId === savedTeamId);
+  const displayRoute = selectedChoiceIsCurrent ? savedDistance ?? selectedRoute : selectedRoute ?? savedDistance;
   const companyActionLabel = busy ? "Saving…" : selectedChoiceIsCurrent ? "Current Company / Team" : selectedCompanyId && selectedCompanyId === effectiveSavedCompanyId ? "Use Selected Team" : "Use Installation Company";
   const savedRouteUsesCurrentPostcode = !savedDistance || !text(savedRoute.sitePostcode) || normalizedPostcode(savedRoute.sitePostcode) === normalizedPostcode(resolvedPostcode);
 
