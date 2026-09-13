@@ -1,5 +1,9 @@
 # In-progress Roadmap completion programme
 
+## 13 September — user-requested shutdown checkpoint / programme paused
+
+Stop after the completed installer mileage-policy checkpoint `8ef01e28cedce4fc568cc271f35ada425e1fc6e5`. Full-address travel has only been investigated read-only; no implementation has started. Exact restart instructions, evidence, pending acceptance, runtime ownership and local-only work are in [PAUSE_HANDOVER_2026-09-13.md](PAUSE_HANDOVER_2026-09-13.md). Resume only when the user returns. Existing survey-delivery-installation and workforce-domain remain partial and unaccepted; no totals or original-73 mappings change. Earlier push-blocked notes are historical; consult the shutdown checkpoint report for the final push outcome.
+
 ## 13 September — configured installer mileage policy and explicit adoption
 
 Administration → Installation → Edit Company now stores a nullable company-owned vehicle-mileage policy: charge per vehicle mile, or vehicle mileage included in the agreed installer cost. The agreed basis is required; unknown rates stay unconfigured, with no seeded tariff or Ecofenster-specific policy. Other Company edits preserve existing policy configuration. Migration adds only nullable metadata, never business copies or historical repricing. Labour, food, accommodation and separately reviewed attendance expenses remain distinct.
