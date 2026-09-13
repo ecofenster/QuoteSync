@@ -1,5 +1,13 @@
 # In-progress Roadmap completion programme
 
+## 13 September — reviewed Order-plan persistence boundary
+
+Package 6 now has a backend-only persistent Order-plan store with owned SQLite connections/transactions. Preview exposes only the safe document, scope changes and review warnings. Save requires explicit review, a reason and the exact preview fingerprint; source is reloaded inside the write transaction and changed evidence fails closed. Immutable numbered versions retain the operational proposal and its provenance, actor and reason. Request identities reuse completed saves across retries/restarts; reads require exact Client/Order/Estimate scope. The store does not edit sold Project Costing or issued evidence.
+
+Three proposal/storage tests and full application typecheck pass. The storage fixture exercises concurrent duplicate saves, new service connections, stale preview, conflicting retry choices, cross-Order read denial, immutable update/delete guards, injected insert failure/rollback and successful retry, plus preserved earlier versions. It deliberately injects a proposal loader into a disposable relational fixture: this is persistence-layer evidence, not actual-source/API/browser acceptance. No application startup or live database schema was changed, and no normal-route integration is claimed.
+
+Continuation: initialise the schema through governed startup and the clean disposable inventory; expose preview/save/read behind the existing local staff boundary; connect the Order review UI with retained input/failure feedback; allow installer-document preparation to select the immutable saved plan, checking exact source relationships. Then run actual-schema normal Order review → save → prepare → reload, including stale-source and failed-save recovery. Existing survey-delivery-installation remains partial and unaccepted. No new permanent rule is needed. User API ownership/state remains unchanged; no live emails, storage uploads or business-data mutations occurred.
+
 ## 13 September — Order operational calculation proposal boundary
 
 Package 6 now has an internal deterministic Order installation proposal builder. It requires an exact retained release and matching saved scenario revision, enabled installation and retained rules; each accepted Position must match exactly one saved product row with unchanged quantity/dimensions. The proposed operational scope explicitly activates accepted historically excluded rows and removes non-accepted rows, records both changes, and recalculates with the existing installation engine and saved rule/profile/team evidence. It never edits the sold scenario or clones its customer pricing. Source and proposal fingerprints support the upcoming reviewed persistence boundary.
