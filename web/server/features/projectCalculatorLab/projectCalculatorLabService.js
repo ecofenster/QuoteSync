@@ -427,10 +427,7 @@ export function createProjectCalculatorLabService(db, { exchangeRateProvider = f
       if(!result.changes)return null;await recordEdit(id,'package_item_edited');return getScenario(id);
     },
     async appendRouteSnapshot(id,input) {
-      if(!['office_to_site','site_to_office'].includes(input.direction)) throw Object.assign(new Error('Invalid route direction.'),{code:'invalid_route'});
-      const decimal=/^\d+(?:\.\d+)?$/;
-      if(input.distanceKm!=null&&!decimal.test(String(input.distanceKm))) throw Object.assign(new Error('Invalid route distance.'),{code:'invalid_route'});
-      if(input.manuallyOverridden&&!String(input.overrideReason||'').trim()) throw Object.assign(new Error('Manual route overrides require a reason.'),{code:'invalid_route'});
+      validateRouteSnapshot(input);
       const scenario=await db.get('SELECT id FROM project_calculator_lab_scenarios WHERE id=?',id); if(!scenario)return null;
       const snapshotId=randomUUID(), now=new Date().toISOString();
       await db.run('INSERT INTO project_calculator_lab_route_snapshots(id,scenario_id,direction,origin_label,destination_label,origin_lat,origin_lng,destination_lat,destination_lng,distance_km,duration_minutes,traffic_duration_minutes,calculated_at,integration,manually_overridden,override_reason,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',snapshotId,id,input.direction,input.origin.label,String(input.origin.lat),String(input.origin.lng),input.destination.label,String(input.destination.lat),String(input.destination.lng),input.distanceKm==null?null:String(input.distanceKm),input.durationMinutes??null,input.trafficDurationMinutes??null,input.calculatedAt||now,input.integration,input.manuallyOverridden?1:0,input.overrideReason||null,now);
@@ -438,3 +435,4 @@ export function createProjectCalculatorLabService(db, { exchangeRateProvider = f
     },
   };
 }
+import {validateRouteSnapshot} from './routeSnapshotValidation.js';

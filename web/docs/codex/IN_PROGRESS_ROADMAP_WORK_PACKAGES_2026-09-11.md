@@ -1,5 +1,13 @@
 # In-progress Roadmap completion programme
 
+## 13 September — directional route persistence validation
+
+The existing route table supports outward and return directions, so no parallel travel store is needed. Its append endpoint previously accepted missing/invalid coordinates and durations. A shared validation boundary now rejects unnamed/unresolved endpoints, out-of-range coordinates, missing/nonfinite/negative distance or duration, invalid optional traffic time, absent source and unexplained manual override before any database access. Errors explain what to resolve; legitimate zero coordinates/distance/time are accepted. Existing stored evidence is not rewritten.
+
+Four focused route/evidence tests and full typecheck pass, including both directions, whitespace coordinates, manual basis and proof that invalid requests cannot reach database lookup/persistence. No new browser or full-route acceptance is claimed. Existing user API ownership was captured before changes: PID 39260 under watcher 29604, runtime v15 / 82321a51-6239-44bd-a3a7-c0489c11983e. No API/browser infrastructure, live business/provider writes or communications were initiated.
+
+Existing survey-delivery-installation stays partial/unaccepted, with unchanged counts and original-73 mapping. Exact continuation: reviewed paired snapshots bound to the selected installer/team base and site, a manual override path with retained basis, and versioned travel policy adoption without silently repricing historical calculations. Snapshot validation alone does not prove the chosen address belongs to the installer or supply the return journey. Preserve unrelated ConfigureInstallation edits. Existing AGENTS rules apply; checkpoint local only while push remains permission-blocked.
+
 ## 13 September — travel evidence audit and incomplete-route warning
 
 The saved programme currently substitutes zero for absent route values and uses outward distance twice for return mileage. Changing that arithmetic directly could reprice existing calculations. The bounded correction adds an explicit Travel time not confirmed / Travel costing is incomplete review warning unless outward time/distance have a retained route identity or explained manual override. Additive travelEvidence uses nullable values and explicitly leaves return confirmation unresolved. Existing cost arithmetic and historical snapshots remain unchanged; this is not completion of reviewed return-route costing.
