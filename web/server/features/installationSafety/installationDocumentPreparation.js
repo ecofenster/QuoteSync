@@ -59,6 +59,16 @@ export async function loadInstallationDocumentPreparation(db,input){
   const revision=await loadInstallationDocumentRevision(db,input);
   if(input.audience==='client')return {document:projectInstallationDocument({audience:'client',revision}),source:revision,calculation:null};
   if(input.audience!=='installer')throw fail('Choose installer pack or client price-free schedule.');
+  if(input.orderPlanId){
+    if(!revision.orderId)throw fail('Select the exact Order for this reviewed installation plan.');
+    const row=await db.get('SELECT * FROM order_installation_plans WHERE id=? AND order_id=? AND client_id=? AND estimate_id=?',input.orderPlanId,revision.orderId,revision.clientId,revision.estimateId);
+    if(!row)throw fail('The reviewed installation plan is unavailable for this Order.');
+    const plan=JSON.parse(row.plan_json);
+    if(plan.binding.sourceReleaseId!==revision.sourceReleaseId||plan.binding.estimateRevision!==revision.revision)throw fail('The reviewed installation plan belongs to a different accepted revision.');
+    validateInstallationDocumentCalculation(revision,plan.proposedScenario,plan.binding.scenarioRevision);
+    if(plan.document.orderId!==revision.orderId||fingerprint(plan.document.positions.map(item=>item.id).sort())!==fingerprint(revision.positions.map(item=>item.id).sort()))throw fail('The retained plan document does not cover this accepted Order.');
+    return {document:plan.document,source:revision,calculation:{...plan.binding,orderPlanId:row.id,orderPlanVersion:row.version,reviewedBy:row.reviewed_by,reviewedAt:row.reviewed_at,reviewReason:row.review_reason}};
+  }
   if(!input.scenarioId)throw fail('Select the saved installation calculation to review for this pack.');
   const selected=await db.get('SELECT estimate_id,revision_number FROM project_calculator_lab_scenarios WHERE id=?',input.scenarioId);
   if(!selected||selected.estimate_id!==revision.estimateId||Number(selected.revision_number)!==input.scenarioRevision)throw fail('The selected installation calculation is missing or has changed. Reopen it for review.');

@@ -13,6 +13,7 @@ import { initializeLifecycleSchema } from './features/lifecycle/lifecycleSchema.
 import { initializeServiceSchema } from './features/service/serviceSchema.js';
 import { initializeInstallationSafetySchema } from './features/installationSafety/installationSafetySchema.js';
 import {initializeInstallationDocumentStore} from './features/installationSafety/installationDocumentStore.js';
+import {initializeOrderInstallationPlanStore} from './features/installationSafety/orderInstallationPlanStore.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1486,6 +1487,7 @@ export const dbPromise = openDatabaseWithRecovery(dbPath).then(async (db) => {
   await initializeServiceSchema(db);
   await initializeInstallationSafetySchema(db);
   await initializeInstallationDocumentStore(db);
+  await initializeOrderInstallationPlanStore(db);
 
   await ensureTable(
     db,

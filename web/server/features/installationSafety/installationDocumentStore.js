@@ -42,6 +42,7 @@ export function createInstallationDocumentStore({databasePath,attachmentRoot=res
   async function prepare(input,{clientId,actorId}){
     if(!clientId||!actorId||!input.requestKey)throw fail('The selected Client, staff identity and preparation request are required.');
     const request={estimateId:input.estimateId,revision:input.revision,orderId:input.orderId||null,audience:input.audience,scenarioId:input.audience==='installer'?input.scenarioId:null,scenarioRevision:input.audience==='installer'?input.scenarioRevision:null};
+    if(input.audience==='installer'&&input.orderPlanId)request.orderPlanId=input.orderPlanId;
     const identity=hash(JSON.stringify([clientId,input.estimateId,input.orderId||null,input.requestKey])),requestSha=hash(JSON.stringify(request));
     const db=await connect();let target=null,newId=null,ownedFile=false;
     try{

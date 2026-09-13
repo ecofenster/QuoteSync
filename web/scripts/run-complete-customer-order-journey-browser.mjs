@@ -32,6 +32,7 @@ import mammoth from 'mammoth';
 import {verifyRamsJourney} from './rams-journey-browser.mjs';
 import {verifyInstallationDocuments} from './installation-documents-journey-browser.mjs';
 import {verifyOrderInstallationDocuments} from './order-installation-documents-journey-browser.mjs';
+import {createProjectCalculatorLabService} from '../server/features/projectCalculatorLab/projectCalculatorLabService.js';
 import {verifyInstallerQualifications} from './installer-qualification-journey-browser.mjs';
 
 const APP_URL = "http://127.0.0.1:5276";
@@ -133,10 +134,12 @@ async function seed(databasePath, attachmentRoot) {
   ]) await db.run("INSERT INTO canonical_documents(id,provider,provider_account_id,provider_file_id,client_id,project_id,document_type,file_name,checksum,discovered_at,last_seen_at,updated_at) VALUES(?,'test_adapter','test-account',?,?,?,?,?,'test-source-sha',?,?,?)", id, providerFileId, clientId, projectId, documentType, fileName, now, now, now);
   const portal = createPortalSecurityService(db, { documentOptions: { attachmentRoot } });
   for (const featureKey of CLIENT_PORTAL_FEATURES) await portal.setFeatureControl(featureKey, true, "test-staff");
+  let orderInstallationScenarioId=null;
+  if(process.argv.includes('--stop-after-order-installation-documents')){const costing=createProjectCalculatorLabService(db);let scenario=await costing.createScenario({estimateId,origin:'estimate',name:'Disposable pre-release installation',packageCode:'full_installation'});scenario=await costing.updateOptions(scenario.id,{installationRequired:true});orderInstallationScenarioId=scenario.id;}
   const release = await portal.releaseIssuedEstimate({ issuedQuotationId: issuedId, releasedBy: "test-staff" });
   const invitation = await portal.createInvitation({ clientId, projectId, email: CUSTOMER, displayName: "TEST Customer Journey", createdBy: "test-staff" });
   await db.close();
-  return { suffix, clientId, clientReference, projectId, estimateId, estimateReference, issuedId, document, projection: customerProjection, release, invitation, projectDrawingId: `test-project-drawing-${suffix}`, returnedRevisionId: `test-returned-revision-${suffix}`, factoryConfirmationDocumentId: `test-factory-confirmation-${suffix}`, signedConfirmationDocumentId: `test-signed-confirmation-${suffix}` };
+  return { suffix, clientId, clientReference, projectId, estimateId, estimateReference, issuedId, document, projection: customerProjection, release, invitation, orderInstallationScenarioId, projectDrawingId: `test-project-drawing-${suffix}`, returnedRevisionId: `test-returned-revision-${suffix}`, factoryConfirmationDocumentId: `test-factory-confirmation-${suffix}`, signedConfirmationDocumentId: `test-signed-confirmation-${suffix}` };
 }
 
 async function connect() {
@@ -234,7 +237,7 @@ const startApi=()=>spawn(process.execPath, ["--import",pathToFileURL(path.resolv
     await input(tab, "input[type=email]", CUSTOMER); await click(tab, "Continue securely"); await waitFor(() => tab.evaluate(`document.body.innerText.includes(${JSON.stringify(fixture.estimateReference)})`), "Customer session did not open the issued Estimate");
     const originalPortalEstimateHash = await tab.evaluate(`(async()=>{const link=[...document.querySelectorAll('a')].find(item=>item.textContent.includes('View issued Estimate'));const response=await fetch(link.href,{credentials:'include'}),bytes=await response.arrayBuffer(),digest=await crypto.subtle.digest('SHA-256',bytes);return {status:response.status,type:response.headers.get('content-type'),hash:[...new Uint8Array(digest)].map(value=>value.toString(16).padStart(2,'0')).join('')}})()`);
     assert.deepEqual({ status: originalPortalEstimateHash.status, type: originalPortalEstimateHash.type, hash: originalPortalEstimateHash.hash }, { status: 200, type: "application/pdf", hash: fixture.document.sha256 });
-    if(process.argv.includes('--stop-after-order-installation-documents')){await verifyOrderInstallationDocuments({tab,click,waitFor,databasePath,output:OUTPUT,inspectPdf,fixture,appUrl:APP_URL});return;}
+    if(process.argv.includes('--stop-after-order-installation-documents')){try{await verifyOrderInstallationDocuments({tab,click,waitFor,databasePath,output:OUTPUT,inspectPdf,fixture,appUrl:APP_URL});}catch(error){console.error(apiStartupLog);throw error;}return;}
     await click(tab, "Review Estimate"); await waitFor(() => tab.evaluate("document.body.innerText.includes('Review every Position')"), "Customer Position review did not open");
     await input(tab, ".portal-external__positions fieldset:first-child select", "amendment_requested"); await input(tab, ".portal-external__positions fieldset:first-child textarea", overallSourceReview?"Change the external finish from White to RAL: 7016 (Anthracite grey) Matt.":"Change the external finish from white to black.");
     if(multiCustomerReissue){await input(tab,'.portal-external__positions fieldset:nth-child(2) select','amendment_requested');await input(tab,'.portal-external__positions fieldset:nth-child(2) textarea','Change the external finish from White to ALU painted matt color RAL 7003.');}
