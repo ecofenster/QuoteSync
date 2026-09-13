@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import {validateRouteSnapshot} from './routeSnapshotValidation.js';
 import {persistRouteSnapshot} from './routeSnapshotPersistence.js';
+import {bindInstallationRoutePair} from './installationRoutePair.js';
+import {withInstallationReviewTransaction} from './installationReviewTransaction.js';
 import { applyMarkup, calculateAdjustedRate, convertSupplierAmountToGbp, createProjectCostingFx, ESTIMATE_FX_BASIS } from './exchangeRateModel.js';
 import { fetchCentralExchangeRate } from './exchangeRateProvider.js';
 import { createCalculatorAdminService, snapshotCalculatorAdminConfiguration } from './calculatorAdminService.js';
@@ -65,7 +67,7 @@ const manualCostMap = (row) => ({id:row.id,scenarioId:row.scenario_id,sourceAddi
 const packageMap = (row) => ({ id:row.id,scenarioId:row.scenario_id,packageCode:row.package_code,catalogueCode:row.catalogue_code,label:row.label,included:!!row.included,unitCost:row.unit_cost_amount,currency:row.currency });
 const routeMap = (row) => ({ id:row.id,scenarioId:row.scenario_id,direction:row.direction,origin:{label:row.origin_label,lat:row.origin_lat,lng:row.origin_lng},destination:{label:row.destination_label,lat:row.destination_lat,lng:row.destination_lng},distanceKm:row.distance_km,durationMinutes:row.duration_minutes,trafficDurationMinutes:row.traffic_duration_minutes,calculatedAt:row.calculated_at,integration:row.integration,manuallyOverridden:!!row.manually_overridden,overrideReason:row.override_reason });
 
-export function createProjectCalculatorLabService(db, { exchangeRateProvider = fetchCentralExchangeRate } = {}) {
+export function createProjectCalculatorLabService(db, { exchangeRateProvider = fetchCentralExchangeRate, installationReviewTransaction = false } = {}) {
   async function loadGlobalImportCustomsDefaults() {
     let setting=null;
     try { setting=await db.get("SELECT value FROM settings WHERE key='projectCalculator.importCustomsDefaults'"); }
@@ -301,8 +303,20 @@ export function createProjectCalculatorLabService(db, { exchangeRateProvider = f
     async updateImportCustoms(id,input){const existing=await db.get('SELECT options_json FROM project_calculator_lab_options WHERE scenario_id=?',id);if(!existing)return null;const details=parseJson(existing.options_json),current=normalizeImportCustomsSnapshot(details.importCustoms);if(!current)return null;const candidate=validateImportCustomsConfiguration({...current,...input}),updatedAt=new Date().toISOString(),next=calculateImportCustoms({...current,...candidate,included:Object.hasOwn(input,'included')?Boolean(input.included):Boolean(current.included),updatedAt},candidate.markupPercent);await db.exec('BEGIN IMMEDIATE');try{details.importCustoms=next;await db.run('UPDATE project_calculator_lab_options SET options_json=?,updated_at=? WHERE scenario_id=?',JSON.stringify(details),updatedAt,id);await recordEdit(id,'import_customs_choice_changed');await db.exec('COMMIT');}catch(error){await db.exec('ROLLBACK');throw error;}return getScenario(id);},
     async useCurrentImportCustomsDefaults(id){const existing=await db.get('SELECT options_json FROM project_calculator_lab_options WHERE scenario_id=?',id);if(!existing)return null;const details=parseJson(existing.options_json),defaults=await loadGlobalImportCustomsDefaults(),updatedAt=new Date().toISOString(),snapshot=createImportCustomsSnapshot(defaults,{capturedAt:updatedAt,source:'explicit_current_global_default_adoption'});await db.exec('BEGIN IMMEDIATE');try{details.importCustoms=snapshot;await db.run('UPDATE project_calculator_lab_options SET options_json=?,updated_at=? WHERE scenario_id=?',JSON.stringify(details),updatedAt,id);await db.run('UPDATE project_calculator_lab_markup_rules SET duties_percent=?,updated_at=? WHERE scenario_id=?',defaults.markupPercent,updatedAt,id);await recordEdit(id,'import_customs_current_defaults_adopted');await db.exec('COMMIT');}catch(error){await db.exec('ROLLBACK');throw error;}return getScenario(id);},
     async updateInstallationProfile(id,input){
+      if(input.travelReviewKey!==undefined&&!installationReviewTransaction)return withInstallationReviewTransaction(db,owned=>createProjectCalculatorLabService(owned,{exchangeRateProvider,installationReviewTransaction:true}).updateInstallationProfile(id,input));
       const existing=await db.get('SELECT options_json FROM project_calculator_lab_options WHERE scenario_id=?',id);
       if(!existing)return null;
+      if(input.travelReviewKey!==undefined){
+        const current=parseJson(existing.options_json).installationProfile||{},key=input.travelReviewKey;
+        if(typeof key!=='string'||!key.trim()||key.length>200)throw Object.assign(new Error('The travel review identity is invalid. Reopen the journey review.'),{code:'invalid_options'});
+        if(current.travelReviewKey===key){
+          if(current.route?.snapshotId===input.route?.snapshotId&&current.route?.returnSnapshotId===input.route?.returnSnapshotId&&current.route?.distanceBasis===input.route?.distanceBasis&&current.travelMode===input.travelMode&&String(current.mileageRate)===String(input.mileageRate)&&Number(current.vehicleCount)===Number(input.vehicleCount))return getScenario(id);
+          throw Object.assign(new Error('This travel review was already saved with different choices. Review the current journey before starting a new change.'),{code:'invalid_options'});
+        }
+        const revision=await db.get('SELECT revision_number FROM project_calculator_lab_scenarios WHERE id=?',id);
+        if(!Number.isInteger(input.expectedRevisionNumber)||revision?.revision_number!==input.expectedRevisionNumber)throw Object.assign(new Error('The costing changed during travel review. Reload it and review both directions before applying.'),{code:'invalid_options'});
+        const {expectedRevisionNumber,...reviewInput}=input;input=reviewInput;
+      }
       const details=parseJson(existing.options_json),current=details.installationProfile||{},candidate={...current,...input,componentInclusions:input.componentInclusions===undefined?current.componentInclusions:{...(current.componentInclusions||{}),...input.componentInclusions}};
       if(input.crewSize!=null&&input.productivityCrewSize==null)candidate.productivityCrewSize=input.crewSize;
       if(input.crewSize!=null&&input.costedCrewSize==null)candidate.costedCrewSize=input.crewSize;
@@ -313,6 +327,10 @@ export function createProjectCalculatorLabService(db, { exchangeRateProvider = f
       if(Number(candidate.costedCrewSize??candidate.crewSize??2)<Number(candidate.productivityCrewSize??candidate.crewSize??2))throw Object.assign(new Error('Costed crew size cannot be smaller than productivity crew size.'),{code:'invalid_options'});
       if(candidate.componentInclusions!=null){if(typeof candidate.componentInclusions!=='object'||Array.isArray(candidate.componentInclusions))throw Object.assign(new Error('Installation component choices are invalid.'),{code:'invalid_options'});const allowed=new Set(['mileage','food','accommodation','support','cillInstallation']);for(const [key,value] of Object.entries(candidate.componentInclusions))if(!allowed.has(key)||typeof value!=='boolean')throw Object.assign(new Error('Installation component choices are invalid.'),{code:'invalid_options'});}
       if(candidate.selectedTeamId&&!(await db.get('SELECT id FROM installation_teams WHERE id=? AND active=1',candidate.selectedTeamId)))throw Object.assign(new Error('Selected Installation Team is unavailable.'),{code:'invalid_options'});
+      if(candidate.route?.returnSnapshotId||candidate.route?.distanceBasis==='retained_directions_v1'){
+        const team=await db.get('SELECT id,company_id companyId,base_postcode basePostcode,active FROM installation_teams WHERE id=?',candidate.selectedTeamId);
+        candidate.route=bindInstallationRoutePair({scenarioId:id,profile:candidate,team:team?{...team,active:!!team.active}:null,snapshots:(await getScenario(id)).routeSnapshots});
+      }
       if(candidate.liftingEquipment!=null){
         if(typeof candidate.liftingEquipment!=='object'||Array.isArray(candidate.liftingEquipment))throw Object.assign(new Error('Equipment Hire selection is invalid.'),{code:'invalid_options'});
         const selection={...(current.liftingEquipment||{}),...candidate.liftingEquipment},required=selection.required===true;

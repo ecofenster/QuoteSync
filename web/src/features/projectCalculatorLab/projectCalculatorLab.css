@@ -684,6 +684,9 @@
 .costing-sheet__simple-source-choices > div > span:first-child { display:grid; min-width:0; }
 .costing-sheet__simple-source-choices small { color:var(--qs-theme-text-muted); }
 .costing-sheet__simple-source-choices .costing-sheet__choice-error { grid-column:1 / -1; color:var(--qs-semantic-error); }
+.installation-travel-review { padding:var(--qs-space-3); margin-block-end:var(--qs-space-3); }
+.installation-travel-review > summary { cursor:pointer; }
+.installation-travel-review > label { display:grid; gap:var(--qs-space-1); margin-block:var(--qs-space-3); }
 .costing-sheet__installation-context { display:grid; grid-template-columns:minmax(9rem,.7fr) minmax(14rem,1.15fr) minmax(11rem,.75fr) minmax(13rem,1fr); gap:var(--qs-space-3) var(--qs-space-4); margin-bottom:var(--qs-space-3); padding:var(--qs-space-3); border:var(--qs-border-width) solid var(--qs-border-standard); border-radius:var(--radius-md); background:var(--qs-bg-card); }
 .costing-sheet__installation-context > div:not(.costing-sheet__installation-context-actions),
 .costing-sheet__installation-context > label { min-width:0; display:grid; align-content:start; gap:var(--qs-space-1); }

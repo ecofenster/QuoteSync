@@ -125,7 +125,10 @@ export function calculateInstallationProgramme({ positions = [], rules = {}, pro
   const travelMode = profile.travelMode === 'daily_travel' || profile.travelMode === 'stay_away' || profile.travelMode === 'manual' ? profile.travelMode : routeMinutes > number(rules.stayAwayThresholdMinutes, 90) ? 'stay_away' : 'daily_travel';
   const vehicleCount = clampInt(profile.vehicleCount, 1);
   const oneWayMiles = Math.max(0, number(profile.route?.oneWayMiles));
-  const chargeableMiles = travelMode === 'daily_travel' ? oneWayMiles * 2 * programmeDays : oneWayMiles * 2;
+  const directionalTravel=profile.route?.distanceBasis==='retained_directions_v1'&&!!profile.route?.returnSnapshotId&&suppliedRouteNumber(profile.route.returnMiles)&&suppliedRouteNumber(profile.route.returnDurationMinutes)&&['daily_travel','stay_away'].includes(profile.travelMode);
+  const returnMiles=directionalTravel?Number(profile.route.returnMiles):oneWayMiles;
+  const journeyMiles=oneWayMiles+returnMiles;
+  const chargeableMiles = travelMode === 'daily_travel' ? journeyMiles * programmeDays : journeyMiles;
   const baseMileageCost = chargeableMiles * vehicleCount * number(profile.mileageRate ?? rules.mileageRate, 0.55);
   const additionalAttendanceTravelCost = Math.max(0, number(profile.additionalAttendanceTravelCost));
   const mileageCost = baseMileageCost + additionalAttendanceTravelCost;
@@ -175,7 +178,7 @@ export function calculateInstallationProgramme({ positions = [], rules = {}, pro
     skipHire: skipRequired ? calculatedCosts.skipHire : '0.00',
   };
   const purchaseCost = Object.values(activeCosts).reduce((total, value) => total + number(value), 0);
-  const returnByMinutes = 17 * 60 + routeMinutes;
+  const returnByMinutes = 17 * 60 + (directionalTravel?Number(profile.route.returnDurationMinutes):routeMinutes);
   if (returnByMinutes > number(rules.latestReturnHomeMinutes, 23 * 60)) reviewRequired.push('Final return is forecast after 23:00 and requires programme review.');
   if (['refurbishment','refurbishment_rip_out_replace'].includes(profile.projectType) && !profile.skipDecision) reviewRequired.push('Skip Hire is recommended for retrofit and requires selection/pricing review.');
   if (liftingRequired && (!lifting.productId || !lifting.productName)) reviewRequired.push('Lifting equipment product selection is required.');
@@ -187,7 +190,7 @@ export function calculateInstallationProgramme({ positions = [], rules = {}, pro
     workingPattern: { days: ['monday','tuesday','wednesday','thursday','friday'], start: '08:00', finish: '17:00' },
     standardUnits: derived.standardUnits, standardUnitsPerDay: derived.capacity, recommendFourPersonTeam: derived.standardUnits > number(rules.fourPersonRecommendationThresholdUnits, 28),
     tasks: derived.tasks, days: days.map((day, index) => ({ day: index + 1, capacityHours: day.capacityHours, tasks: day.tasks })), requiredCapabilities,
-    travelEvidence:{outwardStatus:outwardRouteConfirmed?'retained_route':'not_confirmed',oneWayDurationMinutes:outwardRouteConfirmed?routeMinutes:null,oneWayMiles:outwardRouteConfirmed?money(oneWayMiles):null,returnStatus:'not_confirmed',returnDurationMinutes:null,returnBasis:'Legacy costing assumes symmetric return distance; a separately reviewed return route is not retained.'},
+    travelEvidence:{outwardStatus:outwardRouteConfirmed?'retained_route':'not_confirmed',oneWayDurationMinutes:outwardRouteConfirmed?routeMinutes:null,oneWayMiles:outwardRouteConfirmed?money(oneWayMiles):null,returnStatus:directionalTravel?'retained_route':'not_confirmed',returnDurationMinutes:directionalTravel?Number(profile.route.returnDurationMinutes):null,returnBasis:directionalTravel?'Explicitly reviewed separate return route; one return per daily visit or one around the overnight stay.':'Legacy costing assumes symmetric return distance; a separately reviewed return route is not retained.'},
     travel: { mode: travelMode, recommendation: routeMinutes > number(rules.stayAwayThresholdMinutes, 90) ? 'stay_away' : 'daily_travel', oneWayMiles: money(oneWayMiles), oneWayDurationMinutes: routeMinutes, vehicleCount, chargeableMiles: money(chargeableMiles), mileageRate: money(profile.mileageRate ?? rules.mileageRate ?? 0.55), baseMileageCost: money(baseMileageCost), additionalAttendanceTravelCost: money(additionalAttendanceTravelCost), cost: money(mileageCost), finalReturnBy: `${String(Math.floor(returnByMinutes / 60)).padStart(2,'0')}:${String(returnByMinutes % 60).padStart(2,'0')}`, returnsBy2300: returnByMinutes <= number(rules.latestReturnHomeMinutes, 23 * 60) },
     componentInclusions, calculatedCosts, costs: { ...activeCosts, purchaseCost: money(purchaseCost) },
     allowances: { nights, accommodationRooms: travelMode === 'stay_away' ? costedCrewSize : 0, accommodationPersonNights, accommodationRate: money(profile.accommodationPerPersonNight ?? rules.accommodationPerPersonNight ?? 125), foodDays: programmeDays, costedPersonDays, baseProgrammePersonDays, additionalInstallationPersonDays, additionalAttendanceTravelDays, additionalTravelPersonDays, deliveryOffloadSetOutDays, installationDays, snaggingDays, supportDays, surveyDays, cillApplicableQuantity: cillQuantity, cillInstallationRate: money(cillInstallationRate), liftingEquipment: liftingRequired?{...lifting,hireCost:money(liftingHire),deliveryCost:money(liftingDelivery),collectionCost:money(liftingCollection),totalCost:money(liftingCost)}:{required:false},skipHire:skipRequired?{...skip,quantity:skipQuantity,hireCost:money(skipUnitHire),deliveryCost:money(skipDelivery),collectionCost:money(skipCollection),totalCost:money(skipCost)}:{required:false,quantity:Number(skip.quantity??1)||1} },
