@@ -58,7 +58,8 @@ const multiSourceFields=process.argv.includes('--stop-after-multi-source-field-r
 const twoSupplierImports=multiCustomerReissue||process.argv.includes('--stop-after-two-supplier-imports');
 const receivedSupplierReviews=twoSupplierImports||multiSourceFields||process.argv.includes('--stop-after-received-supplier-reviews');
 const multiSupplierReview=receivedSupplierReviews||process.argv.includes('--stop-after-multi-supplier-review');
-const qualificationJourney=process.argv.includes('--stop-after-installer-qualifications');
+const qualifiedRamsJourney=process.argv.includes('--stop-after-qualified-team-rams');
+const qualificationJourney=qualifiedRamsJourney||process.argv.includes('--stop-after-installer-qualifications');
 const providerJourneyRequested=qualificationJourney||supplierFollowup||overallSourceReview||receivedSupplierReviews||['--stop-after-supplier-filing','--stop-after-supplier-review','--stop-after-multi-supplier-review'].some(flag=>process.argv.includes(flag));
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const reachable = async (url) => { try { return (await fetch(url)).ok; } catch { return false; } };
@@ -250,7 +251,19 @@ const startApi=()=>spawn(process.execPath, ["--import",pathToFileURL(path.resolv
       const providerDb=await open({filename:databasePath,driver:sqlite3.Database});
       try{const workspace=createGoogleWorkspaceService(providerDb,{environment:{},encryptionKey:providerKey,fetchImpl:async url=>new Response(JSON.stringify(String(url).includes('oauth2.googleapis.com')?{access_token:'disposable-access',refresh_token:'disposable-refresh',expires_in:3600,scope:GOOGLE_WORKSPACE_SCOPES.join(' ')}:{sub:'disposable-account',email:CUSTOMER,name:'Disposable acceptance mailbox'}),{status:200,headers:{'Content-Type':'application/json'}})});await workspace.configure({clientId:'disposable-client',clientSecret:'disposable-secret',redirectUri:'http://127.0.0.1:3104/disposable-callback',workforceRootFolderId:'disposable-root'});const oauth=await workspace.beginOAuth();assert.equal((await workspace.completeOAuth({state:oauth.state,code:'disposable-code'})).connected,true)}finally{await providerDb.close()}
       const evidenceFile=path.join(root,'DISPOSABLE-evidence-not-a-real-certificate.pdf');await writeFile(evidenceFile,await readFile(path.join(attachmentRoot,fixture.document.storageKey)));
-      await verifyInstallerQualifications({tab,click,waitFor,databasePath,evidenceFile,output:OUTPUT});return;
+      await verifyInstallerQualifications({tab,click,waitFor,databasePath,evidenceFile,output:OUTPUT,prepareRamsTeam:qualifiedRamsJourney});
+      if(qualifiedRamsJourney){
+        const inspect=await open({filename:databasePath,driver:sqlite3.Database,mode:sqlite3.OPEN_READONLY});let working;try{working=await inspect.get('SELECT id,estimate_ref FROM estimates WHERE id<>? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1',fixture.estimateId)}finally{await inspect.close()}
+        await click(tab,'Home');await click(tab,'Estimates');await waitFor(()=>tab.evaluate(`Boolean(document.querySelector('button[aria-label=${JSON.stringify(`Open ${working.estimate_ref}`)}]'))`),'Working Estimate did not appear in the normal list');
+        await tab.evaluate(`document.querySelector('button[aria-label=${JSON.stringify(`Open ${working.estimate_ref}`)}]').click()`);
+        await waitFor(()=>tab.evaluate("Boolean(document.querySelector('.costing-sheet__section--installation .costing-sheet__section-label'))"),'Working Estimate costing did not open');await tab.evaluate("document.querySelector('.costing-sheet__section--installation .costing-sheet__section-label').click()");
+        await waitFor(()=>tab.evaluate("Boolean(document.querySelector('[aria-label=\"Installation required\"]'))"),'Installation inclusion control did not open');await tab.evaluate("const control=document.querySelector('[aria-label=\"Installation required\"]');if(control.getAttribute('aria-checked')!=='true')control.click()");
+        await waitFor(()=>tab.evaluate("[...document.querySelectorAll('select[aria-label=\"Installation Company\"] option')].some(item=>item.textContent.includes('Disposable Qualification Company'))"),'Configured installation company was not offered');
+        const selectNamed=async(label,name)=>{const selected=await tab.evaluate(`[...document.querySelectorAll('select[aria-label=${JSON.stringify(label)}] option')].find(item=>item.textContent.includes(${JSON.stringify(name)}))?.value`);assert.ok(selected);await input(tab,`select[aria-label="${label}"]`,selected)};
+        await selectNamed('Installation Company','Disposable Qualification Company');await selectNamed('Installation Team','Disposable RAMS Team');await click(tab,'Use Installation Company');await waitFor(()=>tab.evaluate("document.body.innerText.includes('Current Company / Team')"),'Selected Company/Team did not persist');
+        await verifyRamsJourney({tab,click,waitFor,databasePath,output:OUTPUT,inspectPdf,qualifiedTeam:true});
+      }
+      return;
     }
     if(legacyCorrespondenceReview){
       const context=await staff(`/api/lifecycle/projects/${fixture.projectId}/supplier-enquiries`,null,'GET'),legacyDb=await open({filename:databasePath,driver:sqlite3.Database});

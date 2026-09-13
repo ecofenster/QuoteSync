@@ -5,7 +5,7 @@ import {readFile,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 
 // Uses the parent fresh-database runner's owned browser; never starts an API or browser.
-export async function verifyInstallerQualifications({tab,click,waitFor,databasePath,evidenceFile,output}){
+export async function verifyInstallerQualifications({tab,click,waitFor,databasePath,evidenceFile,output,prepareRamsTeam=false}){
   await click(tab,'Admin');
   await waitFor(()=>tab.evaluate("Boolean([...document.querySelectorAll('.admin-nav-button')].find(item=>item.querySelector('.admin-nav-button-label')?.textContent==='Installation'))"),'Administration Installation route is unavailable');
   await tab.evaluate("[...document.querySelectorAll('.admin-nav-button')].find(item=>item.querySelector('.admin-nav-button-label')?.textContent==='Installation').click()");
@@ -39,4 +39,14 @@ export async function verifyInstallerQualifications({tab,click,waitFor,databaseP
   }finally{await db.close()}
   const screen=await tab.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await writeFile(path.join(output,'installer-qualification-renewal.png'),Buffer.from(screen.data,'base64'));
   console.log(JSON.stringify({scope:'Normal Administration Add/Edit Installer → blocked upload → safe retry → same-name changed-content replacement → attendance boundaries → renewal → later failure/retry → history',qualifications:4,evidenceUploads:2,attendanceBoundaryCases:6,liveDelivery:false,provider:'no-network disposable Google transport'}));
+  if(prepareRamsTeam){
+    for(const second of [false,true]){
+      if(second){await click(tab,'Add Installer');await fill('.workforce-admin__modal input[name=name]','Disposable Second Installer');await fill('.workforce-admin__modal input[name=postcode]','SW1A 1AA')}
+      await field('Valid from','2026-01-01');await field('Expiry date','2027-01-01');
+      const document=await tab.send('DOM.getDocument'),fileNode=await tab.send('DOM.querySelector',{nodeId:document.root.nodeId,selector:'.workforce-admin__qualification input[type=file]'});await tab.send('DOM.setFileInputFiles',{nodeId:fileNode.nodeId,files:[evidenceFile]});
+      await tab.evaluate("var selection=document.querySelector('.workforce-admin__qualification select');selection.value='verified';selection.dispatchEvent(new Event('change',{bubbles:true}));document.querySelectorAll('.workforce-admin__modal input[name=capabilities]').forEach(input=>{if(!input.checked)input.click()})");await save();await saved();
+    }
+    await tab.evaluate("[...document.querySelectorAll('.workforce-admin__tabs button')].find(item=>item.textContent.startsWith('Teams')).click()");await click(tab,'Add Team');await fill('.workforce-admin__modal input[name=name]','Disposable RAMS Team');await fill('.workforce-admin__modal input[name=postcode]','SW1A 1AA');await fill('.workforce-admin__modal input[name=crewSize]','2');
+    await tab.evaluate("document.querySelectorAll('.workforce-admin__modal input[name=installerIds],.workforce-admin__modal input[name=capabilities]').forEach(input=>{if(!input.checked)input.click()})");await click(tab,'Save Team');await waitFor(()=>tab.evaluate("!document.querySelector('.workforce-admin__modal')&&document.body.innerText.includes('Disposable RAMS Team')"),'Named qualified team did not save');
+  }
 }

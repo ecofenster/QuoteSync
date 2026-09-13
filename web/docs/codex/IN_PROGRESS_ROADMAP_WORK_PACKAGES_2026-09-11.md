@@ -1,5 +1,17 @@
 # In-progress Roadmap completion programme
 
+## 13 September — normal qualified-team to RAMS integration gate
+
+Package 6 now has a joined normal-browser gate: `node scripts/run-complete-customer-order-journey-browser.mjs --stop-after-qualified-team-rams --require-existing-user-api`. It first exercises the existing Administration upload/replacement/renewal/failure-retry journey, then creates two explicitly disposable, separately evidenced installers and a two-person team through Administration. The normal Estimates list opens the working Estimate directly; the test selects that Company/Team in Installation and continues through Files / Documents into RAMS without clearing the retained required-CSCS choice.
+
+The passing run verifies competent-review blocking, saved attendance/requirements on reopen, reachable final actions at two desktop sizes, the issued qualification disclosure, two persisted verified/in-date CSCS members, the downloaded two-page PDF and an editable successor preserving issued evidence. PDF text checks exclude certificate identifiers and evidence filenames; visual inspection confirms readable pages. The summary currently includes earlier renewal-history rows alongside current evidence: concise current-summary selection remains a bounded UX gap, not lost history. Full browser refresh of the issued disclosure, the Order route and installer-pack generation/review/delivery remain outstanding.
+
+The first joined attempt failed because the test incorrectly expected a second Open action after the normal Estimates list had already opened the working Estimate. Correcting that navigation assumption produced exit 0, run `7ac3bd86-aa4b-41b4-a152-c411695c65e3`, with exact owned browser/process/profile counts zero and unchanged user API instance `d49a28a3-3210-4c94-8221-0d0452da66e1`. Fresh isolated schema, test-only evidence and the no-network provider transport were used; no live communications, provider writes or business-record changes occurred. The runner's output now distinguishes the missing-team regression branch from this qualified-team issue branch rather than claiming both checks ran together.
+
+Ten focused qualification/date/provider/foundation tests, 28 Roadmap checks and TypeScript pass. Independent post-run inspection confirms ports 3104/5276/9416 absent and only the unchanged user API on 3001, PID 42828 under watched parent 29604.
+
+Existing `workforce-domain`, `workforce-domain-1` and `survey-delivery-installation-basic-rams` verification evidence is updated. No status/count or user-acceptance promotion; the original 73 mapping is unchanged. Permanent rules already cover this work, so AGENTS needs no duplicate change. Next: concise current qualification summary and reopened issued review, then the missing installer-pack projection/PDF/reviewed delivery from saved installation data and exact revisions. Preserve unrelated ConfigureInstallation edits.
+
 ## 13 September — retained RAMS workforce check and safe qualification projection
 
 Package 6 handoff inspection confirms installer-pack generation is not implemented: the current code only contains an installer_pack qualification snapshot kind, not the requested prepare/review/PDF/delivery workflow. Do not describe this as merely an attachment-picker omission. Its document generation and reviewed delivery remain authorised work under the existing installation package.
