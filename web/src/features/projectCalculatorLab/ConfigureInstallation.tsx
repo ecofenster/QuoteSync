@@ -169,7 +169,7 @@ export default function ConfigureInstallation({ scenario }: { scenario: Calculat
     setBusy(true); setStatus("");
     try {
       let snapshotId: string | null = null;
-      if (selectedRoute) { const withSnapshot = await projectCalculatorLabApi.addRouteSnapshot(scenario.id, selectedRoute.raw); snapshotId = withSnapshot.routeSnapshots[0]?.id ?? null; }
+      if (selectedRoute) { const withSnapshot = await projectCalculatorLabApi.addRouteSnapshot(scenario.id, selectedRoute.raw); snapshotId = withSnapshot.savedRouteSnapshotId!; }
       const route = selectedRoute ? { snapshotId, oneWayMiles: selectedRoute.distanceMiles.toFixed(2), oneWayDurationMinutes: selectedRoute.durationMinutes, distanceUnit: "miles", calculationSource: selectedRoute.source, calculationMethod: "google_routes", capturedAt: selectedRoute.capturedAt, sitePostcode: resolvedPostcode, companyId: selectedCompany.id, companyPostcode: selectedCompany.basePostcode } : selectedCompanyId === effectiveSavedCompanyId ? savedRoute : null;
       const updated = await projectCalculatorLabApi.updateInstallationProfile(scenario.id, {
         enabled: installationRequired,

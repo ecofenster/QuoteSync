@@ -1,5 +1,15 @@
 # In-progress Roadmap completion programme
 
+## 13 September — route receipt adoption and safe client retry
+
+Installation selection and Site Visit now use the exact server-confirmed savedRouteSnapshotId, not routeSnapshots[0]. The shared client save boundary validates scenario, direction, labelled coordinates, distance, duration and provider provenance before adoption. A retained draft carries a stable scenario-scoped request identity through uncertain responses and failed subsequent profile saves. Freshly calculated drafts remain new reviewed evidence. This identity is in-memory, not a claim of browser-restart draft recovery.
+
+Four focused client/actual-schema checks and full typecheck pass. Actual disposable persistence verifies a response lost after insertion followed by confirmed reuse of that same row. Normal-browser run c6ff3dfe-805a-459b-9f14-f7df6fc91cc2 exits 0: normal working Estimate → Installation → reviewed Company/Team route → real route save → intentionally blocked profile save → retained selection → retry → one route row and exact saved ID adopted into the profile. Google geocoding/routing responses are controlled no-network values; application saves use the real isolated API. This is not real Google route verification, return-leg review or ordinary-user acceptance. The first run failed a test-only schema assertion and the unchanged-user-API gate after its existing native watcher restarted; the assertion was corrected and the repeat passed without weakening either gate.
+
+Passing-run browser root 18556 and exact profile run-vqmB7f were cleaned from finally; independent remaining process/profile counts both zero. User API instance 9430779a-bf3c-4e49-a780-0c83a64ba37c stayed unchanged during that run; its existing watcher remains user-owned. No live records, issued evidence or deliveries were changed. Unrelated ConfigureInstallation feedback edits are preserved, not included in this checkpoint; only the route receipt line is attributable here.
+
+Existing survey-delivery-installation remains partial/unaccepted; totals and original-73 mapping are unchanged. Next: explicit reviewed return leg and installer travel-policy adoption, including manual/missing evidence, planned daily/overnight pattern and preserved historical costing. Reviewed drawings, survey approval and delivery remain open. Current permanent AGENTS retry/travel/evidence rules already cover this repair; no new permanent rule is needed. Local checkpoint only; previously denied GitHub push remains permission-blocked and has not been retried.
+
 ## 13 September — corrected endpoint persistence and retry receipts
 
 Save-path inspection exposed a concrete SQL mapping defect: destination_label received origin latitude, origin_lat received origin longitude, and origin_lng received the destination label. New route writes now bind every label/coordinate to its proper column. Existing route evidence is not repaired or overwritten automatically; invalid historical routes remain review-required through the previously added binding guard and need reviewed recalculation.

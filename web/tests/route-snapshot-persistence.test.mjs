@@ -8,6 +8,7 @@ import path from 'node:path';
 import {initializeSupplierCommercialSchema} from '../server/schema/supplierCommercialSchema.js';
 import {persistRouteSnapshot} from '../server/features/projectCalculatorLab/routeSnapshotPersistence.js';
 import {createProjectCalculatorLabService} from '../server/features/projectCalculatorLab/projectCalculatorLabService.js';
+import {createRouteSnapshotSaver} from '../shared/routeSnapshotClient.js';
 test('actual-schema route retries preserve endpoint fields and identity across connections',async t=>{
   const root=await mkdtemp(path.join(os.tmpdir(),'qs-route-retry-')),filename=path.join(root,'test.db'),db=await open({filename,driver:sqlite3.Database});
   let second;t.after(async()=>{await second?.close();await db.close();await rm(root,{recursive:true,force:true});});
@@ -24,4 +25,13 @@ test('actual-schema route retries preserve endpoint fields and identity across c
   const other=await persistRouteSnapshot(db,otherScenario.id,input);assert.notEqual(other.id,first.id);
   const back=await persistRouteSnapshot(db,scenario.id,{...input,requestKey:'reviewed-return',direction:'site_to_office',origin:input.destination,destination:input.origin,durationMinutes:110});assert.notEqual(back.id,first.id);
   const concurrent=await Promise.all([persistRouteSnapshot(db,scenario.id,{...input,requestKey:'concurrent'}),persistRouteSnapshot(second,scenario.id,{...input,requestKey:'concurrent'})]);assert.equal(concurrent[0].id,concurrent[1].id);assert.equal(concurrent.filter(item=>!item.reused).length,1);
+  let loseResponse=true;
+  const clientSave=createRouteSnapshotSaver(async(id,value)=>{const result=await service.appendRouteSnapshot(id,value);if(loseResponse){loseResponse=false;throw new Error('Response lost after persistence');}return result;},()=> 'client-retry');
+  const clientDraft={...input,requestKey:undefined};
+  const countBefore=(await db.get('SELECT COUNT(*) count FROM project_calculator_lab_route_snapshots')).count;
+  await assert.rejects(clientSave(scenario.id,clientDraft),/Response lost/);
+  const confirmed=await clientSave(scenario.id,clientDraft);
+  assert.equal(confirmed.routeSnapshotReused,true);
+  assert.equal((await db.get('SELECT COUNT(*) count FROM project_calculator_lab_route_snapshots')).count,countBefore+1);
+  assert.equal((await clientSave(scenario.id,clientDraft)).savedRouteSnapshotId,confirmed.savedRouteSnapshotId);
 });

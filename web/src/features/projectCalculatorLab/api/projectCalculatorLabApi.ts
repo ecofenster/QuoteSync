@@ -2,8 +2,10 @@ import { apiFetch } from "../../../services/api/apiClient";
 import type { CalculatorAdminConfiguration, CalculatorCatalogueRemoval, CalculatorScenario, ImportSource, InstallationQualificationCheck, InstallationRecommendations, InstallationWorkforce, LiveExchangeRateResult, ProductClass } from "../domain/projectCalculatorLab.types";
 import type { ScenarioCreationInput } from "../domain/scenarioCreation";
 import { normalizeCalculatorScenario } from "../domain/normalizeCalculatorScenario";
+import { createRouteSnapshotSaver } from "../../../../shared/routeSnapshotClient.js";
 const base="/api/admin/project-calculator-lab";
 const scenarioResponse=(request:Promise<unknown>)=>request.then(value=>normalizeCalculatorScenario(value as CalculatorScenario));
+const saveRouteSnapshot=createRouteSnapshotSaver((scenarioId:string,input:Record<string,unknown>)=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/route-snapshots`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})));
 const supplierCostResponse=async(scenarioId:string,rowId:string,input:Record<string,unknown>)=>{
   const expected=Object.hasOwn(input,"includedInCurrentEstimate")?Boolean(input.includedInCurrentEstimate):null;
   const scenario=await scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/supplier-costs/${encodeURIComponent(rowId)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)}));
@@ -65,5 +67,5 @@ export const projectCalculatorLabApi={
   updateInstallationMaterials:(scenarioId:string,input:Record<string,unknown>)=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/installation-materials`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
   useCurrentInstallationCatalogue:(scenarioId:string,input:{useCurrentDefaults?:boolean}={})=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/installation-materials/use-current-catalogue`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
   updatePackageItem:(scenarioId:string,itemId:string,input:{included:boolean;unitCost:string})=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/package-items/${encodeURIComponent(itemId)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
-  addRouteSnapshot:(scenarioId:string,input:Record<string,unknown>)=>scenarioResponse(apiFetch(`${base}/scenarios/${encodeURIComponent(scenarioId)}/route-snapshots`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)})),
+  addRouteSnapshot:(scenarioId:string,input:Record<string,unknown>)=>saveRouteSnapshot(scenarioId,input) as Promise<CalculatorScenario>,
 };
