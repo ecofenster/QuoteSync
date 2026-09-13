@@ -988,6 +988,8 @@ export async function initializeSupplierCommercialSchema(db) {
   if (!legacyRequiredSource && !calculatorScenarioColumns.some((column) => column.name === 'source_revision')) await db.exec('ALTER TABLE project_calculator_lab_scenarios ADD COLUMN source_revision TEXT');
   if (!legacyRequiredSource && !calculatorScenarioColumns.some((column) => column.name === 'revision_number')) await db.exec('ALTER TABLE project_calculator_lab_scenarios ADD COLUMN revision_number INTEGER NOT NULL DEFAULT 1');
   const calculatorMarkupColumns = await db.all('PRAGMA table_info(project_calculator_lab_markup_rules)');
+  const installerCompanyColumns=await db.all('PRAGMA table_info(installation_companies)');
+  if(!installerCompanyColumns.some(column=>column.name==='travel_policy_json'))await db.exec('ALTER TABLE installation_companies ADD COLUMN travel_policy_json TEXT');
   for (const column of ['site_visit_percent','equipment_percent','materials_percent','duties_percent']) if (!calculatorMarkupColumns.some((item) => item.name === column)) await db.exec(`ALTER TABLE project_calculator_lab_markup_rules ADD COLUMN ${column} TEXT NOT NULL DEFAULT '0'`);
   for (const table of ['project_calculator_lab_product_rows','project_calculator_lab_manual_product_rows']) {
     const columns = await db.all(`PRAGMA table_info(${table})`);

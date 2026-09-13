@@ -8,7 +8,7 @@ import {createProjectCalculatorLabService} from '../server/features/projectCalcu
 import {INSTALLATION_CAPABILITIES} from '../server/features/projectCalculatorLab/installationProgramme.js';
 
 // Uses only the parent's fresh disposable database and owned browser lifecycle.
-export async function verifyInstallationRouteRetry({tab,click,waitFor,databasePath,output,manualReview=false}) {
+export async function verifyInstallationRouteRetry({tab,click,waitFor,databasePath,output,manualReview=false,companyPolicy=false}) {
   await waitFor(()=>tab.evaluate("Boolean(document.querySelector('.costing-sheet__section--installation .costing-sheet__section-label'))"),'Working costing did not open');
   const db=await open({filename:databasePath,driver:sqlite3.Database});
   try {
@@ -21,6 +21,19 @@ export async function verifyInstallationRouteRetry({tab,click,waitFor,databasePa
     const costing=createProjectCalculatorLabService(db);
     await costing.updateOptions(scenario.id,{installationRequired:true,siteVisitTravel:{sitePostcode:'CF10 1AA',sitePostcodeSource:'manually_corrected'}});
     await costing.updateInstallationProfile(scenario.id,{sitePostcode:'CF10 1AA',projectType:'new_build'});
+    if(companyPolicy){
+      await click(tab,'Admin');await waitFor(()=>tab.evaluate("Boolean([...document.querySelectorAll('.admin-nav-button')].find(item=>item.querySelector('.admin-nav-button-label')?.textContent==='Installation'))"),'Installation Administration missing');
+      await tab.evaluate("[...document.querySelectorAll('.admin-nav-button')].find(item=>item.querySelector('.admin-nav-button-label')?.textContent==='Installation').click()");
+      await waitFor(()=>tab.evaluate("[...document.querySelectorAll('.workforce-admin tbody tr')].some(row=>row.textContent.includes('Disposable Route Company'))"),'Installer company missing');
+      const editCompany=async()=>{await tab.evaluate("[...document.querySelectorAll('.workforce-admin tbody tr')].find(row=>row.textContent.includes('Disposable Route Company')).querySelector('button').click()");await waitFor(()=>tab.evaluate("Boolean(document.querySelector('[name=travelPolicyMode]'))"),'Company policy form missing');};
+      await editCompany();await tab.evaluate("[...document.querySelectorAll('.workforce-admin__modal summary')].find(item=>item.textContent==='Vehicle-mileage policy').click()");
+      await tab.evaluate("(()=>{const select=document.querySelector('[name=travelPolicyMode]');select.value='per_vehicle_mile';select.dispatchEvent(new Event('change',{bubbles:true}));document.querySelector('[name=travelPolicyBasis]').value='Disposable agreed installer mileage';})()");
+      await click(tab,'Save Company');await waitFor(()=>tab.evaluate("document.querySelector('.workforce-admin__modal')&&document.body.innerText.includes('agreed mileage rate')"),'Missing policy rate was not rejected');
+      assert.equal(await tab.evaluate("document.querySelector('[name=travelPolicyBasis]').value"),'Disposable agreed installer mileage');
+      await tab.evaluate("document.querySelector('[name=travelMileageRate]').value='0.65'");await click(tab,'Save Company');await waitFor(()=>tab.evaluate("!document.querySelector('.workforce-admin__modal')"),'Policy save did not finish');
+      await editCompany();assert.equal(await tab.evaluate("document.querySelector('[name=travelMileageRate]').value"),'0.65');await click(tab,'Cancel');
+      assert.equal((await costing.getScenario(scenario.id)).options.installationProfile.mileageRate,'0.55','Administration repriced the existing Estimate');
+    }
     // Controlled routing responses only. All save/profile operations use the real API.
     await tab.evaluate(`(()=>{const original=window.fetch;window.__routeTestFetch=original;window.fetch=async(input,init)=>{const url=String(input);if(url.includes('/api/integrations/googleMaps/geocode')){const query=JSON.parse(init.body).query;return new Response(JSON.stringify(query==='SW1A 1AA'?{lat:51.5,lng:-0.1}:{lat:51.48,lng:-3.18}),{status:200,headers:{'Content-Type':'application/json'}});}if(url.includes('/api/integrations/googleMaps/route'))return new Response(JSON.stringify(JSON.parse(init.body).origin.lat===51.48?{distanceKm:260,durationMinutes:210}:{distanceKm:240,durationMinutes:180}),{status:200,headers:{'Content-Type':'application/json'}});return original(input,init);};})()`);
     await click(tab,'Home');await click(tab,'Estimates');
@@ -50,6 +63,7 @@ export async function verifyInstallationRouteRetry({tab,click,waitFor,databasePa
     await click(tab,'Calculate both directions');
     await waitFor(()=>tab.evaluate("document.querySelector('.installation-travel-review select')!==null"),'Two-leg review did not open');
     assert.equal(await tab.evaluate("(()=>{const pattern=document.querySelector('.installation-travel-review select');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(pattern,'daily_travel');pattern.dispatchEvent(new Event('change',{bubbles:true}));return true})()"),true);
+    if(companyPolicy)assert.equal(await tab.evaluate("document.querySelector('[aria-label=\"Vehicle-mileage basis\"]').value"),'installer_company','Configured installer policy was not proposed for review');
     await tab.send('Network.setBlockedURLs',{urls:['*installation-profile*']});await click(tab,'Apply reviewed journey');
     await waitFor(()=>tab.evaluate("document.querySelector('.installation-travel-review [role=alert]')?.textContent.includes('2 route leg(s) were retained')"),'Pair partial-success recovery was not visible');
     assert.equal((await costing.getScenario(scenario.id)).routeSnapshots.length,3,'Both new directional drafts must be saved once');
@@ -59,6 +73,7 @@ export async function verifyInstallationRouteRetry({tab,click,waitFor,databasePa
     assert.equal(paired.routeSnapshots.length,3);assert.equal(journey.distanceBasis,'retained_directions_v1');assert.notEqual(journey.snapshotId,journey.returnSnapshotId);
     assert.equal(journey.oneWayDurationMinutes,180);assert.equal(journey.returnDurationMinutes,210);assert.equal(journey.returnMiles,'161.56');
     assert.equal(paired.installationProgramme.travel.chargeableMiles,((Number(journey.oneWayMiles)+Number(journey.returnMiles))*paired.installationProgramme.programmeDays).toFixed(2));
+    if(companyPolicy){assert.equal(paired.installationProgramme.travel.mileageRate,'0.65');assert.equal(paired.options.installationProfile.travelPolicySnapshot.companyId,'disposable-route-company');assert.equal(paired.options.installationProfile.travelPolicySnapshot.companyVersion,2);console.log(JSON.stringify({scope:'Normal Administration invalid policy → retained form → configure/reopen → unchanged existing Estimate → explicit travel policy adoption/retry',policyRate:'0.65',companyVersion:2}));}
     if(manualReview){
       await tab.evaluate("window.__manualTravelRequests=[];window.fetch=async(input,init)=>{if(String(input).includes('/installation-profile'))window.__manualTravelRequests.push(JSON.parse(init.body));return window.__routeTestFetch(input,init)}");
       await tab.send('Network.setBlockedURLs',{urls:['*googleMaps/*']});await click(tab,'Calculate both directions');

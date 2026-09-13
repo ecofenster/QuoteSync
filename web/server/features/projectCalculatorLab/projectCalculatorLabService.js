@@ -3,6 +3,7 @@ import {validateRouteSnapshot} from './routeSnapshotValidation.js';
 import {persistRouteSnapshot} from './routeSnapshotPersistence.js';
 import {bindInstallationRoutePair} from './installationRoutePair.js';
 import {withInstallationReviewTransaction} from './installationReviewTransaction.js';
+import {normalizeInstallationTravelPolicy} from '../../../shared/installationTravelPolicy.js';
 import { applyMarkup, calculateAdjustedRate, convertSupplierAmountToGbp, createProjectCostingFx, ESTIMATE_FX_BASIS } from './exchangeRateModel.js';
 import { fetchCentralExchangeRate } from './exchangeRateProvider.js';
 import { createCalculatorAdminService, snapshotCalculatorAdminConfiguration } from './calculatorAdminService.js';
@@ -303,6 +304,8 @@ export function createProjectCalculatorLabService(db, { exchangeRateProvider = f
     async updateImportCustoms(id,input){const existing=await db.get('SELECT options_json FROM project_calculator_lab_options WHERE scenario_id=?',id);if(!existing)return null;const details=parseJson(existing.options_json),current=normalizeImportCustomsSnapshot(details.importCustoms);if(!current)return null;const candidate=validateImportCustomsConfiguration({...current,...input}),updatedAt=new Date().toISOString(),next=calculateImportCustoms({...current,...candidate,included:Object.hasOwn(input,'included')?Boolean(input.included):Boolean(current.included),updatedAt},candidate.markupPercent);await db.exec('BEGIN IMMEDIATE');try{details.importCustoms=next;await db.run('UPDATE project_calculator_lab_options SET options_json=?,updated_at=? WHERE scenario_id=?',JSON.stringify(details),updatedAt,id);await recordEdit(id,'import_customs_choice_changed');await db.exec('COMMIT');}catch(error){await db.exec('ROLLBACK');throw error;}return getScenario(id);},
     async useCurrentImportCustomsDefaults(id){const existing=await db.get('SELECT options_json FROM project_calculator_lab_options WHERE scenario_id=?',id);if(!existing)return null;const details=parseJson(existing.options_json),defaults=await loadGlobalImportCustomsDefaults(),updatedAt=new Date().toISOString(),snapshot=createImportCustomsSnapshot(defaults,{capturedAt:updatedAt,source:'explicit_current_global_default_adoption'});await db.exec('BEGIN IMMEDIATE');try{details.importCustoms=snapshot;await db.run('UPDATE project_calculator_lab_options SET options_json=?,updated_at=? WHERE scenario_id=?',JSON.stringify(details),updatedAt,id);await db.run('UPDATE project_calculator_lab_markup_rules SET duties_percent=?,updated_at=? WHERE scenario_id=?',defaults.markupPercent,updatedAt,id);await recordEdit(id,'import_customs_current_defaults_adopted');await db.exec('COMMIT');}catch(error){await db.exec('ROLLBACK');throw error;}return getScenario(id);},
     async updateInstallationProfile(id,input){
+      if(Object.hasOwn(input,'travelPolicySnapshot'))throw Object.assign(new Error('Installer policy snapshots are created by reviewed travel, not entered directly.'),{code:'invalid_options'});
+      if(input.travelReviewKey===undefined&&Object.hasOwn(input,'travelPolicySource'))throw Object.assign(new Error('Apply a mileage policy through the reviewed installer journey.'),{code:'invalid_options'});
       if(input.travelReviewKey!==undefined&&!installationReviewTransaction)return withInstallationReviewTransaction(db,owned=>createProjectCalculatorLabService(owned,{exchangeRateProvider,installationReviewTransaction:true}).updateInstallationProfile(id,input));
       const existing=await db.get('SELECT options_json FROM project_calculator_lab_options WHERE scenario_id=?',id);
       if(!existing)return null;
@@ -310,14 +313,27 @@ export function createProjectCalculatorLabService(db, { exchangeRateProvider = f
         const current=parseJson(existing.options_json).installationProfile||{},key=input.travelReviewKey;
         if(typeof key!=='string'||!key.trim()||key.length>200)throw Object.assign(new Error('The travel review identity is invalid. Reopen the journey review.'),{code:'invalid_options'});
         if(current.travelReviewKey===key){
-          if(current.route?.snapshotId===input.route?.snapshotId&&current.route?.returnSnapshotId===input.route?.returnSnapshotId&&current.route?.distanceBasis===input.route?.distanceBasis&&current.travelMode===input.travelMode&&String(current.mileageRate)===String(input.mileageRate)&&Number(current.vehicleCount)===Number(input.vehicleCount))return getScenario(id);
+          if(current.route?.snapshotId===input.route?.snapshotId&&current.route?.returnSnapshotId===input.route?.returnSnapshotId&&current.route?.distanceBasis===input.route?.distanceBasis&&current.travelMode===input.travelMode&&String(current.mileageRate)===String(input.mileageRate)&&Number(current.vehicleCount)===Number(input.vehicleCount)&&(current.travelPolicySource??null)===(input.travelPolicySource??null)&&(input.travelPolicySource!=='installer_company'||current.travelPolicySnapshot?.companyVersion===input.expectedCompanyVersion))return getScenario(id);
           throw Object.assign(new Error('This travel review was already saved with different choices. Review the current journey before starting a new change.'),{code:'invalid_options'});
         }
         const revision=await db.get('SELECT revision_number FROM project_calculator_lab_scenarios WHERE id=?',id);
         if(!Number.isInteger(input.expectedRevisionNumber)||revision?.revision_number!==input.expectedRevisionNumber)throw Object.assign(new Error('The costing changed during travel review. Reload it and review both directions before applying.'),{code:'invalid_options'});
+        if(input.travelPolicySource==='installer_company'){
+          if(input.selectedTeamId!==undefined&&input.selectedTeamId!==current.selectedTeamId)throw Object.assign(new Error('Save the selected Team before reviewing its mileage policy.'),{code:'invalid_options'});
+          const company=await db.get('SELECT c.* FROM installation_companies c JOIN installation_teams t ON t.company_id=c.id WHERE t.id=? AND t.active=1 AND c.active=1',current.selectedTeamId);
+          const policy=company?.travel_policy_json?normalizeInstallationTravelPolicy(parseJson(company.travel_policy_json)):null;
+          if(!company||!policy)throw Object.assign(new Error('The saved installer has no active vehicle-mileage policy. Configure it in Administration or deliberately review the saved Estimate rate.'),{code:'invalid_options'});
+          if(!Number.isInteger(input.expectedCompanyVersion)||input.expectedCompanyVersion!==company.version)throw Object.assign(new Error('The installer policy changed during review. Reload the installer settings and review the policy again.'),{code:'invalid_options'});
+          input={...input,mileageRate:policy.mode==='included_mileage'?'0.00':policy.mileageRate,travelPolicySnapshot:{source:'installer_company',companyId:company.id,companyName:company.name,companyVersion:company.version,policy,capturedAt:new Date().toISOString()}};
+        }else if(input.travelPolicySource==='estimate_saved'){
+          const savedRate=(await getScenario(id)).installationProgramme?.travel.mileageRate;
+          if(savedRate==null)throw Object.assign(new Error('The saved Estimate mileage rate is unavailable. Review the Installation calculation first.'),{code:'invalid_options'});
+          input={...input,mileageRate:savedRate,travelPolicySnapshot:{source:'estimate_saved',mileageRate:savedRate,capturedAt:new Date().toISOString()}};
+        }else if(input.travelPolicySource!==undefined)throw Object.assign(new Error('Choose the installer policy or the saved Estimate mileage rate.'),{code:'invalid_options'});
         const {expectedRevisionNumber,...reviewInput}=input;input=reviewInput;
       }
       const details=parseJson(existing.options_json),current=details.installationProfile||{},candidate={...current,...input,componentInclusions:input.componentInclusions===undefined?current.componentInclusions:{...(current.componentInclusions||{}),...input.componentInclusions}};
+      if(input.travelPolicySource===undefined&&input.mileageRate!==undefined&&String(input.mileageRate)!==String(current.mileageRate)&&current.travelPolicySnapshot){candidate.travelPolicySource='estimate_saved';candidate.travelPolicySnapshot={source:'estimate_saved',mileageRate:String(input.mileageRate),basis:'Explicit Estimate mileage-rate change',capturedAt:new Date().toISOString()};}
       if(input.crewSize!=null&&input.productivityCrewSize==null)candidate.productivityCrewSize=input.crewSize;
       if(input.crewSize!=null&&input.costedCrewSize==null)candidate.costedCrewSize=input.crewSize;
       if(!['auto','daily_travel','stay_away','manual'].includes(candidate.travelMode??'auto'))throw Object.assign(new Error('Invalid Installation travel mode.'),{code:'invalid_options'});

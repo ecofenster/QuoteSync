@@ -1,0 +1,30 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtemp,rm} from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import sqlite3 from 'sqlite3';
+import {open} from 'sqlite';
+import {normalizeInstallationTravelPolicy} from '../shared/installationTravelPolicy.js';
+import {initializeSupplierCommercialSchema} from '../server/schema/supplierCommercialSchema.js';
+import {createInstallationWorkforceService} from '../server/features/projectCalculatorLab/installationWorkforceService.js';
+test('policy configuration is explicit and has no invented tariff',()=>{
+  assert.equal(normalizeInstallationTravelPolicy(null),null);
+  assert.deepEqual(normalizeInstallationTravelPolicy({mode:'per_vehicle_mile',mileageRate:'0.65',basis:'Reviewed installer terms'}),{schemaVersion:1,mode:'per_vehicle_mile',mileageRate:'0.65',basis:'Reviewed installer terms'});
+  assert.equal(normalizeInstallationTravelPolicy({mode:'included_mileage',basis:'Included in installer agreement'}).mileageRate,null);
+  for(const value of ['',null,-1,'0.123',true,'NaN'])assert.throws(()=>normalizeInstallationTravelPolicy({mode:'per_vehicle_mile',mileageRate:value,basis:'Reviewed'}));
+  assert.throws(()=>normalizeInstallationTravelPolicy({mode:'per_vehicle_mile',mileageRate:'0.65',basis:''}));
+});
+test('company policy persists across connections, unrelated edits preserve it, other companies stay unconfigured',async t=>{
+  const root=await mkdtemp(path.join(os.tmpdir(),'qs-installer-policy-')),file=path.join(root,'test.db'),db=await open({filename:file,driver:sqlite3.Database});let reopened;
+  t.after(async()=>{await reopened?.close();await db.close();await rm(root,{recursive:true,force:true});});
+  await db.exec('CREATE TABLE clients(id TEXT PRIMARY KEY);CREATE TABLE estimates(id TEXT PRIMARY KEY);CREATE TABLE canonical_documents(id TEXT PRIMARY KEY,web_view_link TEXT,checksum TEXT);');
+  await initializeSupplierCommercialSchema(db);await initializeSupplierCommercialSchema(db);
+  const service=createInstallationWorkforceService(db),policy={mode:'per_vehicle_mile',mileageRate:'0.65',basis:'Disposable agreed rate'};
+  await service.saveCompany({id:'installer',name:'Disposable installer',travelPolicy:policy});await service.saveCompany({id:'other',name:'Other installer'});
+  reopened=await open({filename:file,driver:sqlite3.Database});let companies=(await createInstallationWorkforceService(reopened).list()).companies;
+  assert.equal(companies.find(row=>row.id==='installer').travelPolicy.mileageRate,'0.65');assert.equal(companies.find(row=>row.id==='other').travelPolicy,null);
+  await service.saveCompany({id:'installer',name:'Renamed installer'});companies=(await service.list()).companies;assert.equal(companies.find(row=>row.id==='installer').travelPolicy.mileageRate,'0.65');assert.equal(companies.find(row=>row.id==='installer').version,2);
+  await assert.rejects(service.saveCompany({id:'installer',name:'Invalid change',travelPolicy:{...policy,mileageRate:''}}),/agreed mileage rate/);assert.equal((await service.list()).companies.find(row=>row.id==='installer').name,'Renamed installer');
+  await service.saveCompany({id:'installer',name:'Renamed installer',travelPolicy:null});assert.equal((await service.list()).companies.find(row=>row.id==='installer').travelPolicy,null);
+});

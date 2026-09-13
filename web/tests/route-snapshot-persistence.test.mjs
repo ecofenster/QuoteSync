@@ -53,6 +53,18 @@ test('actual-schema route retries preserve endpoint fields and identity across c
   const concurrentChoice={...reviewedChoice,travelReviewKey:'concurrent-reviewed-pair',expectedRevisionNumber:reviewed.revisionNumber};
   const simultaneous=await Promise.all([service.updateInstallationProfile(scenario.id,concurrentChoice),service.updateInstallationProfile(scenario.id,concurrentChoice)]);
   assert.equal(simultaneous[0].revisionNumber,simultaneous[1].revisionNumber);assert.equal(simultaneous[0].revisionNumber,reviewed.revisionNumber+1);
+  await db.run("UPDATE installation_companies SET travel_policy_json=?,version=2 WHERE id='company'",JSON.stringify({mode:'per_vehicle_mile',mileageRate:'0.70',basis:'Disposable company agreement'}));
+  const policyChoice={...reviewedChoice,travelReviewKey:'company-policy',expectedRevisionNumber:simultaneous[0].revisionNumber,travelPolicySource:'installer_company',expectedCompanyVersion:2,mileageRate:'0.70'};
+  const withPolicy=await service.updateInstallationProfile(scenario.id,policyChoice);assert.equal(withPolicy.options.installationProfile.mileageRate,'0.70');assert.equal(withPolicy.options.installationProfile.travelPolicySnapshot.companyVersion,2);
+  await db.run("UPDATE installation_companies SET travel_policy_json=?,version=3 WHERE id='company'",JSON.stringify({mode:'per_vehicle_mile',mileageRate:'0.80',basis:'Changed agreement'}));
+  assert.equal((await service.getScenario(scenario.id)).options.installationProfile.mileageRate,'0.70');assert.equal((await service.updateInstallationProfile(scenario.id,policyChoice)).revisionNumber,withPolicy.revisionNumber);
+  await assert.rejects(service.updateInstallationProfile(scenario.id,{...policyChoice,travelReviewKey:'stale-policy',expectedRevisionNumber:withPolicy.revisionNumber}),/policy changed/);
+  await assert.rejects(service.updateInstallationProfile(scenario.id,{travelPolicySnapshot:{source:'installer_company'}}),/not entered directly/);
+  await db.run("UPDATE installation_companies SET travel_policy_json=?,version=4 WHERE id='company'",JSON.stringify({mode:'included_mileage',basis:'Vehicle mileage included only'}));
+  const included=await service.updateInstallationProfile(scenario.id,{...policyChoice,travelReviewKey:'included-company-policy',expectedRevisionNumber:withPolicy.revisionNumber,expectedCompanyVersion:4,mileageRate:'9.99'});
+  assert.equal(included.options.installationProfile.mileageRate,'0.00');assert.equal(included.options.installationProfile.travelPolicySnapshot.policy.mode,'included_mileage');
+  assert.equal(included.options.installationProfile.foodPerPersonDay,withPolicy.options.installationProfile.foodPerPersonDay);
+  const override=await service.updateInstallationProfile(scenario.id,{mileageRate:'0.45'});assert.equal(override.options.installationProfile.travelPolicySource,'estimate_saved');assert.equal(override.options.installationProfile.travelPolicySnapshot.mileageRate,'0.45');
   await db.exec("CREATE TRIGGER disposable_reject_travel_revision BEFORE INSERT ON project_calculator_lab_revisions BEGIN SELECT RAISE(ABORT,'Disposable revision failure'); END;");
   const beforeFailure=await service.getScenario(scenario.id);
   await assert.rejects(service.updateInstallationProfile(scenario.id,{...reviewedChoice,travelReviewKey:'rollback-pair',travelMode:'stay_away',expectedRevisionNumber:beforeFailure.revisionNumber}),/Disposable revision failure/);
