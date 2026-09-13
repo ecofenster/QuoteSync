@@ -1,5 +1,13 @@
 # In-progress Roadmap completion programme
 
+## 13 September — exact-source installer manufacturer/system projection
+
+Installer manufacturer details were blank because the basic canonical schedule does not retain manufacturerName, while the saved supplier row does. Manufacturer/system fallback now uses the same shared exact Position ID, quantity and dimension guard as weight, and requires a retained source-row identity. Only the explicit manufacturer role and supplied product system are projected; dealer/issuer names and arbitrary source objects are excluded. Explicit revision values retain precedence. Client price-free output and existing saved documents/Order plans are unchanged.
+
+Eleven focused manufacturer/weight/fallback tests and full typecheck pass. Normal-browser run 8b3a5a79-d604-4276-b246-a9493402b288 exits 0 through genuine PDF upload/review/import/repeat/reload, ME508 selection, document failure/retry, separate audiences, history and 960x600 access. All five imported Positions retain EKO-OKNA, their source weights and category totals. PDF visual review confirms EKO-OKNA / Reynaers MASTER LINE 8. Installer PDF SHA256 827c5f89bfe71a2c337b1791aa07130e0bf288ecbedadf98518c902fc5421c24. Browser/profile cleanup is zero and independently rechecked against exact root 40728 and profile run-rUgBQI; temporary database is absent. User API c599c41c-3934-4ceb-b43b-918fc5024b47 remains unchanged during acceptance under its existing watcher.
+
+Read-only examination also confirms the existing positioned extractor returns no structured sash/opening fields for the WEB layout. Those openings remain Not confirmed, not inferred from neighbouring text or drawings. Existing survey-delivery-installation remains partial/unaccepted with unchanged counts and original-73 mapping. Next: retain deterministic opening evidence where available, complete missing-weight normal-route/field review, then material area/support, drawings, installer travel/crew, survey approval and reviewed delivery. No live records, provider files or emails changed. Existing permanent source/role/immutable/UX rules apply without duplication. Local checkpoint only; push remains permission-blocked.
+
 ## 13 September — actual retained glazing-field contract correction
 
 Read-only extraction of the genuine EKO WinPro source showed canonical glazing points to Glazing required in the Glazing section, not the Glazing label used by the initial fallback fixture. The installation fallback now accepts that exact source field contract while preserving field ID, raw value, source page and source-row checks. A similarly labelled message is rejected. Manufacturer weight still takes precedence; no source field, issued snapshot or live import is modified.
