@@ -7,6 +7,8 @@ import sqlite3 from 'sqlite3';
 import {open} from 'sqlite';
 import {initializeIsolatedJourneyDatabase} from '../scripts/isolated-journey-database.mjs';
 import {loadInstallationDocumentRevision} from '../server/features/installationSafety/installationDocumentSource.js';
+import {loadInstallationDocumentPreparation} from '../server/features/installationSafety/installationDocumentPreparation.js';
+import {createProjectCalculatorLabService} from '../server/features/projectCalculatorLab/projectCalculatorLabService.js';
 
 test('Order source uses retained accepted Positions instead of the amended working schedule (selection unit check)',async()=>{
   const estimate={id:'estimate-a',client_id:'client-a',project_id:'project-a',revision_no:3,positions_json:JSON.stringify([{id:'new-working-position'}])};
@@ -25,11 +27,15 @@ test('actual isolated schema resolves exact working revision read-only and refus
     const at=new Date().toISOString();
     await db.run("INSERT INTO clients(id,name,email,client_ref,created_at,updated_at) VALUES('test-client','Disposable client','disposable@example.test','TEST-CL',?,?)",at,at);
     await db.run("INSERT INTO estimates(id,client_id,estimate_ref,base_estimate_ref,revision_no,status,positions_json,created_at,updated_at) VALUES('test-estimate','test-client','TEST-EST-2','TEST-EST',2,'Draft',?,?,?)",JSON.stringify([{id:'position-a',reference:'W01',quantity:1,widthMm:1200,heightMm:1400}]),at,at);
+    const scenario=await createProjectCalculatorLabService(db).createScenario({estimateId:'test-estimate',origin:'estimate',name:'Disposable installation calculation',packageCode:'full_installation'});
     await db.exec('PRAGMA query_only=ON');
     const source=await loadInstallationDocumentRevision(db,{estimateId:'test-estimate',revision:2});
     assert.equal(source.positions[0].id,'position-a');assert.equal(source.sourceReleaseId,null);assert.equal(source.clientName,'Disposable client');
     await assert.rejects(()=>loadInstallationDocumentRevision(db,{estimateId:'test-estimate',revision:1}),/revision has changed/);
     await assert.rejects(()=>loadInstallationDocumentRevision(db,{estimateId:'test-estimate',revision:2,orderId:'other-order'}),/does not belong/);
     assert.equal((await db.get('SELECT COUNT(*) count FROM estimates')).count,1);
+    const prepared=await loadInstallationDocumentPreparation(db,{audience:'installer',estimateId:'test-estimate',revision:2,scenarioId:scenario.id,scenarioRevision:scenario.revisionNumber});
+    assert.equal(prepared.document.positions[0].id,'position-a');assert.equal(prepared.calculation.scenarioId,scenario.id);assert.equal(prepared.document.installation.installationDays,null,'Disabled installation is unknown, not invented days');
+    await assert.rejects(()=>loadInstallationDocumentPreparation(db,{audience:'installer',estimateId:'test-estimate',revision:2,scenarioId:scenario.id,scenarioRevision:scenario.revisionNumber+1}),/has changed/);
   }finally{await db?.close();await rm(root,{recursive:true,force:true});}
 });
