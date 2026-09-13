@@ -15,6 +15,10 @@ import {createServiceCaseService} from "../server/features/service/serviceCaseSe
 import {createInstallationWorkforceService} from "../server/features/projectCalculatorLab/installationWorkforceService.js";
 import {createInstallationSafetyService} from "../server/features/installationSafety/installationSafetyService.js";
 import {addBusinessMinutes,businessMinutesBetween} from "../server/features/service/serviceLevelCalculator.js";
+import {createInstallationQualificationEvidenceService} from '../server/features/projectCalculatorLab/installationQualificationEvidenceService.js';
+import {createGoogleDriveProvider} from '../server/features/documents/googleDriveProvider.js';
+import {createDisposableGoogleTransport} from './fixtures/disposableGoogleTransport.mjs';
+import {migrateWorkforceDocumentOwnership} from '../server/features/commercialIdentity/workforceDocumentMigration.js';
 
 async function fixture(t){
   const root=await mkdtemp(path.join(tmpdir(),"qs-service-installation-")),db=await open({filename:path.join(root,"test.db"),driver:sqlite3.Database});
@@ -62,6 +66,42 @@ test("installer qualifications remain evidence-backed and are checked against at
   const valid=await workforce.qualificationCheck(team.id,{attendanceStart:"2026-09-15",attendanceEnd:"2026-09-18",requiredTypes:["cscs"]});assert.equal(valid.status,"available");assert.equal(valid.members[0].qualifications[0].status,"expiring");
   const invalid=await workforce.qualificationCheck(team.id,{attendanceStart:"2026-09-21",requiredTypes:["cscs"]});assert.equal(invalid.status,"review_required");assert.match(invalid.gaps[0],/not verified/);
   await assert.rejects(()=>workforce.saveQualification({installerId:installer.id,typeCode:"sssts",verificationStatus:"verified"}),error=>error.code==="invalid_installation_workforce");
+  const original=state.qualifications[0],renewal={id:'retry-safe-renewal',installerId:installer.id,typeCode:'cscs',renewalOfId:original.id,validFromDate:'2026-09-21',expiryDate:'2027-09-20',verificationStatus:'recorded_unverified'};
+  await workforce.saveQualification(renewal);await workforce.saveQualification({...renewal,reference:'Retained on retry'});
+  assert.equal((await db.get('SELECT COUNT(*) count FROM installation_installer_qualifications WHERE supersedes_qualification_id=?',original.id)).count,1);
+  assert.equal((await db.get('SELECT reference FROM installation_installer_qualifications WHERE id=?',renewal.id)).reference,'Retained on retry');
+  assert.equal((await db.get('SELECT evidence_document_id FROM installation_installer_qualifications WHERE id=?',original.id)).evidence_document_id,'evidence-cscs');
+  await assert.rejects(()=>workforce.saveQualification({...renewal,typeCode:'sssts'}),/renewal source was not found|belongs to another/);
+  await assert.rejects(()=>workforce.saveQualification({id:original.id,installerId:installer.id,typeCode:'sssts'}),/belongs to another/);
+});
+
+test('workforce document migration preserves original evidence, indexes and triggers with transactional rollback',async t=>{
+  const {db,at}=await fixture(t);
+  await db.run("INSERT INTO canonical_documents(id,provider,provider_account_id,provider_file_id,client_id,document_type,file_name,checksum,discovered_at,last_seen_at,updated_at) VALUES('original-evidence','fixture','account','original-file','client-a','issued_evidence','Original.pdf','unchanged-checksum',?,?,?)",at,at,at);
+  await db.exec("CREATE INDEX test_preserved_document_index ON canonical_documents(checksum);CREATE TRIGGER test_preserved_document_trigger BEFORE UPDATE OF checksum ON canonical_documents BEGIN SELECT RAISE(ABORT,'Preserve issued evidence');END");
+  const before=await db.get("SELECT * FROM canonical_documents WHERE id='original-evidence'");
+  const failing={get:db.get.bind(db),all:db.all.bind(db),exec:sql=>sql.startsWith('CREATE INDEX test_preserved_document_index')?Promise.reject(Error('Injected post-copy failure')):db.exec(sql)};
+  await assert.rejects(()=>migrateWorkforceDocumentOwnership(failing),/Injected post-copy/);assert.deepEqual(await db.get("SELECT * FROM canonical_documents WHERE id='original-evidence'"),before);assert.equal((await db.get('PRAGMA foreign_keys')).foreign_keys,1);
+  await migrateWorkforceDocumentOwnership(db);const after=await db.get("SELECT * FROM canonical_documents WHERE id='original-evidence'");delete after.installer_id;assert.deepEqual(after,before);
+  await assert.rejects(()=>db.run("UPDATE canonical_documents SET checksum='changed' WHERE id='original-evidence'"),/Preserve issued/);assert.equal((await db.all('PRAGMA foreign_key_check')).length,0);assert.ok(await db.get("SELECT name FROM sqlite_master WHERE name='test_preserved_document_index'"));
+});
+
+test('qualification uploads retain confirmed provider receipts through local failure and block uncertain repeat uploads',async t=>{
+  const {db}=await fixture(t),workforce=createInstallationWorkforceService(db);
+  let state=await workforce.saveCompany({name:'Disposable Evidence Company'});state=await workforce.saveInstaller({companyId:state.companies[0].id,name:'Disposable Evidence Installer'});state=await workforce.saveQualification({id:'evidence-qualification',installerId:state.installers[0].id,typeCode:'cscs'});
+  await migrateWorkforceDocumentOwnership(db);await migrateWorkforceDocumentOwnership(db);
+  await db.run("INSERT INTO integration_provider_config(provider,workforce_root_folder_id,created_at,updated_at) VALUES('google_workspace','test-root',?,?)",new Date().toISOString(),new Date().toISOString());
+  const transport=createDisposableGoogleTransport({files:[{id:'test-root',name:'Disposable Workforce',mimeType:'application/vnd.google-apps.folder',parents:[],trashed:false}]}),workspace={status:async()=>({connected:true,capabilities:{drive:{available:true}},account:{id:'test-account'}}),googleFetch:transport.fetchImpl},provider=createGoogleDriveProvider(workspace),file={originalname:'DISPOSABLE certificate.pdf',mimetype:'application/pdf',buffer:Buffer.from('Disposable evidence bytes'),size:25};
+  const evidence=()=>createInstallationQualificationEvidenceService(db,{workspace,provider});
+  await db.exec("CREATE TEMP TRIGGER fail_evidence BEFORE INSERT ON canonical_documents BEGIN SELECT RAISE(ABORT,'Disposable local save failure');END");
+  await assert.rejects(()=>evidence().upload('evidence-qualification',file),error=>error.code==='qualification_upload_partial');
+  assert.equal(transport.binaries.size,1);assert.equal((await db.get('SELECT COUNT(*) count FROM installation_qualification_evidence_history')).count,0);
+  await db.exec('DROP TRIGGER fail_evidence');const recovered=await evidence().upload('evidence-qualification',file),replayed=await evidence().upload('evidence-qualification',file);assert.equal(recovered.documentId,replayed.documentId);assert.equal(transport.binaries.size,1);assert.equal((await db.get('SELECT COUNT(*) count FROM installation_qualification_evidence_history')).count,1);
+  await workforce.saveQualification({id:'evidence-qualification',installerId:state.installers[0].id,typeCode:'cscs',evidenceDocumentId:null,verificationStatus:'not_supplied'});
+  const retained=await db.get("SELECT evidence_document_id,verification_status FROM installation_installer_qualifications WHERE id='evidence-qualification'");assert.equal(retained.evidence_document_id,recovered.documentId,'Stale form retry must not erase a confirmed upload');assert.equal(retained.verification_status,'recorded_unverified');
+  const second=await workforce.saveInstaller({companyId:state.companies[0].id,name:'Another Installer'}),other=second.installers.find(item=>item.name==='Another Installer');await assert.rejects(()=>workforce.saveQualification({installerId:other.id,typeCode:'cscs',evidenceDocumentId:recovered.documentId}),/another installer/);
+  const uncertain=createInstallationQualificationEvidenceService(db,{workspace,provider:{...provider,uploadFile:async input=>{await provider.uploadFile(input);throw Error('Lost provider reply')}}});
+  const changed={...file,originalname:'Second disposable certificate.pdf'};await assert.rejects(()=>uncertain.upload('evidence-qualification',changed),error=>error.code==='qualification_upload_uncertain');await assert.rejects(()=>evidence().upload('evidence-qualification',changed),error=>error.code==='qualification_upload_uncertain');assert.equal(transport.binaries.size,2,'Uncertain retry must not upload a third file');
 });
 
 test("Basic RAMS preserves issued revisions and detects later schedule changes",async t=>{

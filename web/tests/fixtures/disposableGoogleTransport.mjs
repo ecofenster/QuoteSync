@@ -78,6 +78,7 @@ export function createDisposableGoogleTransport({messages=[],attachments=new Map
    if(headerEnd<0||divider<0||binaryStart<4||binaryEnd<binaryStart)throw new Error('Invalid disposable multipart upload');
    const mimeType=body.subarray(divider,binaryStart).toString().match(/Content-Type: ([^\r]+)/)?.[1]||'application/octet-stream';
    const file={id:randomUUID(),...metadata,mimeType,size:String(bytes.length),version:'1',md5Checksum:createHash('md5').update(bytes).digest('hex'),trashed:false};
+   file.webViewLink=`https://drive.google.com/file/d/${file.id}/view`;
    stored.set(file.id,file);binaries.set(file.id,Buffer.from(bytes));return json(file);
   }
   throw new Error(`Unsupported disposable provider operation: ${method} ${url.origin}${url.pathname}`);

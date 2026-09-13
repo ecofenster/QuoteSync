@@ -30,6 +30,7 @@ import {extractSupplierDocument} from '../server/features/supplierImportLab/docu
 import {parsePdfSupplierFields} from '../server/features/supplierImportLab/pdfSupplierAdapters.js';
 import mammoth from 'mammoth';
 import {verifyRamsJourney} from './rams-journey-browser.mjs';
+import {verifyInstallerQualifications} from './installer-qualification-journey-browser.mjs';
 
 const APP_URL = "http://127.0.0.1:5276";
 const API_URL = "http://127.0.0.1:3104";
@@ -57,7 +58,8 @@ const multiSourceFields=process.argv.includes('--stop-after-multi-source-field-r
 const twoSupplierImports=multiCustomerReissue||process.argv.includes('--stop-after-two-supplier-imports');
 const receivedSupplierReviews=twoSupplierImports||multiSourceFields||process.argv.includes('--stop-after-received-supplier-reviews');
 const multiSupplierReview=receivedSupplierReviews||process.argv.includes('--stop-after-multi-supplier-review');
-const providerJourneyRequested=supplierFollowup||overallSourceReview||receivedSupplierReviews||['--stop-after-supplier-filing','--stop-after-supplier-review','--stop-after-multi-supplier-review'].some(flag=>process.argv.includes(flag));
+const qualificationJourney=process.argv.includes('--stop-after-installer-qualifications');
+const providerJourneyRequested=qualificationJourney||supplierFollowup||overallSourceReview||receivedSupplierReviews||['--stop-after-supplier-filing','--stop-after-supplier-review','--stop-after-multi-supplier-review'].some(flag=>process.argv.includes(flag));
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const reachable = async (url) => { try { return (await fetch(url)).ok; } catch { return false; } };
 const waitFor = async (fn, message, timeout = 60_000) => { const started = Date.now(); while (Date.now() - started < timeout) { const result = await fn().catch(() => false); if (result) return result; await delay(150); } throw new Error(message); };
@@ -244,6 +246,12 @@ const startApi=()=>spawn(process.execPath, ["--import",pathToFileURL(path.resolv
     await click(tab, "Open working Estimate");
     await waitFor(()=>tab.evaluate("[...document.querySelectorAll('button')].some(item=>item.textContent.includes('Request supplier estimate / revision'))"),'Working Estimate did not expose the consolidated supplier composer');
     if(process.argv.includes('--stop-after-rams-review')){await verifyRamsJourney({tab,click,waitFor,databasePath,output:OUTPUT,inspectPdf});return;}
+    if(qualificationJourney){
+      const providerDb=await open({filename:databasePath,driver:sqlite3.Database});
+      try{const workspace=createGoogleWorkspaceService(providerDb,{environment:{},encryptionKey:providerKey,fetchImpl:async url=>new Response(JSON.stringify(String(url).includes('oauth2.googleapis.com')?{access_token:'disposable-access',refresh_token:'disposable-refresh',expires_in:3600,scope:GOOGLE_WORKSPACE_SCOPES.join(' ')}:{sub:'disposable-account',email:CUSTOMER,name:'Disposable acceptance mailbox'}),{status:200,headers:{'Content-Type':'application/json'}})});await workspace.configure({clientId:'disposable-client',clientSecret:'disposable-secret',redirectUri:'http://127.0.0.1:3104/disposable-callback',workforceRootFolderId:'disposable-root'});const oauth=await workspace.beginOAuth();assert.equal((await workspace.completeOAuth({state:oauth.state,code:'disposable-code'})).connected,true)}finally{await providerDb.close()}
+      const evidenceFile=path.join(root,'DISPOSABLE-evidence-not-a-real-certificate.pdf');await writeFile(evidenceFile,await readFile(path.join(attachmentRoot,fixture.document.storageKey)));
+      await verifyInstallerQualifications({tab,click,waitFor,databasePath,evidenceFile,output:OUTPUT});return;
+    }
     if(legacyCorrespondenceReview){
       const context=await staff(`/api/lifecycle/projects/${fixture.projectId}/supplier-enquiries`,null,'GET'),legacyDb=await open({filename:databasePath,driver:sqlite3.Database});
       try{

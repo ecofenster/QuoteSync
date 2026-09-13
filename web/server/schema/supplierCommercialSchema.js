@@ -860,6 +860,13 @@ const tables = [
     FOREIGN KEY(qualification_type_code) REFERENCES installation_qualification_types(code) ON DELETE RESTRICT,
     FOREIGN KEY(supersedes_qualification_id) REFERENCES installation_installer_qualifications(id) ON DELETE RESTRICT
   )`,
+  `CREATE TABLE IF NOT EXISTS installation_qualification_uploads (
+    id TEXT PRIMARY KEY, qualification_id TEXT NOT NULL, provider_account_id TEXT NOT NULL,
+    provider_folder_id TEXT NOT NULL, file_name TEXT NOT NULL, source_sha256 TEXT NOT NULL,
+    provider_receipt_json TEXT, canonical_document_id TEXT, created_at TEXT NOT NULL,
+    UNIQUE(qualification_id,provider_account_id,provider_folder_id,file_name,source_sha256),
+    FOREIGN KEY(qualification_id) REFERENCES installation_installer_qualifications(id) ON DELETE RESTRICT
+  )`,
   `CREATE TABLE IF NOT EXISTS installation_qualification_evidence_history (
     id TEXT PRIMARY KEY, qualification_id TEXT NOT NULL, canonical_document_id TEXT NOT NULL,
     file_name TEXT NOT NULL, provider TEXT NOT NULL, provider_file_id TEXT NOT NULL,
@@ -1169,6 +1176,6 @@ export const supplierCommercialTableNames = Object.freeze([
   'project_calculator_lab_revisions',
   'project_calculator_admin_catalogue_items','project_calculator_admin_catalogue_migrations','project_calculator_admin_rules','project_calculator_admin_package_rules',
   'project_calculator_lab_catalogue_snapshots','project_calculator_lab_options',
-  'installation_qualification_snapshots','installation_qualification_evidence_history','installation_installer_qualifications','installation_qualification_types',
+  'installation_qualification_snapshots','installation_qualification_uploads','installation_qualification_evidence_history','installation_installer_qualifications','installation_qualification_types',
   'installation_team_members','installation_teams','installation_installers','installation_companies',
 ]);
