@@ -9,6 +9,15 @@ const revision={estimateId:'estimate-a',estimateReference:'TEST-EST-1',revision:
   ...['window','door','sliding door','lift and slide door','bifold'].map((productClass,index)=>({id:`p${index}`,reference:`P${index}`,productClass,quantity:2,widthMm:1200,heightMm:1400,customerPrice:'PRIVATE-SELLING',supplierPrice:'PRIVATE-PURCHASE'})),
   {id:'excluded',classification:'alternative',productClass:'door',quantity:4},
 ]};
+test('accepted Order schedule retains accepted alternatives and historic exclusion flags in both PDFs',async()=>{
+  const source={...revision,orderId:'order-a',orderReference:'TEST-ORDER',positions:[{...revision.positions[0],reference:'ACCEPTED-ALTERNATIVE',classification:'alternative',includedInCurrentEstimate:false}]};
+  for(const audience of ['client','installer']){
+    const projection=projectInstallationDocument({audience,revision:source});assert.equal(projection.positions.length,1);assert.equal(projection.totals.windows,2);
+    const bytes=await renderInstallationDocumentPdf(projection),task=getDocument({data:new Uint8Array(bytes),useSystemFonts:true}),pdf=await task.promise;
+    try{let text='';for(let page=1;page<=pdf.numPages;page++)text+=(await(await pdf.getPage(page)).getTextContent()).items.map(item=>item.str).join(' ');assert.match(text,/ACCEPTED-ALTERNATIVE/);}finally{await task.destroy();}
+  }
+  assert.equal(source.positions[0].classification,'alternative');assert.equal(source.positions[0].includedInCurrentEstimate,false);
+});
 test('separate allowlisted client and installer projections use actual programme shape without commercial leakage',()=>{
   const profile={crewSize:4,travelMode:'stay_away',route:{snapshotId:'route-a',oneWayDurationMinutes:45,oneWayMiles:20}};
   const programme=calculateInstallationProgramme({positions:[],profile,rules:{standardUnitsPerDayByCrew:{'4':10},productiveHoursPerDay:8}});

@@ -20,7 +20,7 @@ export function projectInstallationDocument({audience,revision,scenario,qualific
   if(!revision?.estimateId||revision.revision===undefined||!Array.isArray(revision.positions))throw new Error('Select the exact Estimate/Order revision and its retained schedule.');
   if(scenario&&scenario.estimateId!==revision.estimateId)throw new Error('The installation calculation belongs to another Estimate.');
   const ids=new Set(),totals={windows:0,doors:0,slidingDoors:0,liftAndSlideDoors:0,bifolds:0,notConfirmed:0};
-  const positions=revision.positions.filter(item=>item.includedInCurrentEstimate!==false&&item.classification!=='alternative').map(item=>{
+  const positions=revision.positions.filter(item=>revision.orderId||item.includedInCurrentEstimate!==false&&item.classification!=='alternative').map(item=>{
     if(!item.id||ids.has(item.id))throw new Error('The schedule has a missing or repeated Position identity. Review the selected revision.');
     ids.add(item.id);const group=category(item),quantity=amount(item.quantity);
     if(quantity!==null)totals[group]+=quantity;

@@ -12,7 +12,8 @@ export function validateInstallationDocumentCalculation(revision,scenario,expect
   if(!scenario||scenario.estimateId!==revision.estimateId)throw fail('Choose a saved installation calculation for this Estimate.');
   if(!Number.isInteger(expectedRevision)||Number(scenario.revisionNumber)!==expectedRevision)throw fail('The installation calculation changed. Review its current saved revision before preparing the document.');
   if(!Array.isArray(scenario.products))throw fail('The installation calculation has no retained Position coverage.');
-  const positions=included(revision.positions),products=included(scenario.products),byPosition=new Map();
+  // The source loader already selected exact accepted Order Positions. Historical Estimate flags cannot undo acceptance.
+  const positions=revision.orderId?revision.positions:included(revision.positions),products=included(scenario.products),byPosition=new Map();
   for(const item of products){
     // Costing-row IDs and supplier references must never substitute for canonical Position identity.
     if(!item.estimatePositionId||byPosition.has(item.estimatePositionId))throw fail('Installation costing has missing or repeated Position relationships. Review the schedule mapping before preparing this pack.');
