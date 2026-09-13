@@ -1,5 +1,13 @@
 # In-progress Roadmap completion programme
 
+## 13 September — Order operational calculation proposal boundary
+
+Package 6 now has an internal deterministic Order installation proposal builder. It requires an exact retained release and matching saved scenario revision, enabled installation and retained rules; each accepted Position must match exactly one saved product row with unchanged quantity/dimensions. The proposed operational scope explicitly activates accepted historically excluded rows and removes non-accepted rows, records both changes, and recalculates with the existing installation engine and saved rule/profile/team evidence. It never edits the sold scenario or clones its customer pricing. Source and proposal fingerprints support the upcoming reviewed persistence boundary.
+
+Two focused proposal tests and the existing three scope tests pass: accepted alternative inclusion, non-accepted exclusion, costed crew of three without incrementing to four, derived cill quantity, deterministic fingerprints, no customer-pricing projection, unchanged source, and fail-closed missing/ambiguous/different-size/disabled inputs. This is an internal service foundation, not a saved Order programme or normal-browser acceptance. No API/UI path calls it yet, and no new browser run is claimed. It does not complete the Ecoglaze policy, travel or complete pack requirements.
+
+Continuation is precise: add an explicit review/save boundary that freezes this operational proposal, its source fingerprints and actor/reason under the canonical Order; reject changed source at submission, preserve retries/history, then allow the installer document to consume that saved Order calculation. Use disposable normal-route review → save → prepare → reload checks, including changed-source and failed-save recovery. Keep sold costing unchanged. Existing survey-delivery-installation remains partial/unaccepted; no new requirement or permanent-rule duplication is needed.
+
 ## 13 September — read-only installation calculation scope review
 
 Package 6 now offers Check calculation against schedule before draft preparation. It reads the exact selected revision and saved scenario, explains missing/repeated/extra Positions and quantity/dimension differences behind View Position details, and returns an actionable next step. It does not expose commercial prices, modify calculations or create a document. Changed scenario/source identities fail review; preparation independently retains its existing strict validation. Changing document choices clears the displayed review.
