@@ -25,5 +25,11 @@ test('persistent reviewed Order plan saves once, retains history, rejects change
     await db.exec("CREATE TRIGGER forced_order_plan_failure BEFORE INSERT ON order_installation_plans BEGIN SELECT RAISE(ABORT,'Disposable failure'); END");
     const next={...request,requestKey:'save-2',expectedFingerprint:fingerprint};await assert.rejects(()=>store.save(next,scope),/Disposable failure/);assert.equal((await db.get('SELECT COUNT(*) count FROM order_installation_plans')).count,1);await db.exec('DROP TRIGGER forced_order_plan_failure');
     assert.equal((await store.save(next,scope)).version,2);const retained=await store.read(first.id,{...scope,...input});assert.equal(retained.fingerprint,'a'.repeat(64));assert.equal(retained.reviewReason,'Accepted scope reviewed');
+    for(let version=3;version<=22;version++)await store.save({...next,requestKey:`history-${version}`,reason:`Review ${version}`},scope);
+    const historyScope={clientId:'client',orderId:'order',estimateId:'estimate'},firstPage=await store.list(historyScope),lastPage=await make().list({...historyScope,offset:20});
+    assert.equal(firstPage.total,22);assert.equal(firstPage.plans.length,10);assert.deepEqual(firstPage.plans.map(item=>item.version),[22,21,20,19,18,17,16,15,14,13]);assert.deepEqual(lastPage.plans.map(item=>item.version),[2,1]);assert.equal(lastPage.plans[1].id,first.id);
+    assert.doesNotMatch(JSON.stringify(firstPage),/INTERNAL|proposedScenario|fingerprint/);
+    for(const key of ['clientId','orderId','estimateId'])assert.equal((await store.list({...historyScope,[key]:'unrelated'})).total,0);
+    for(const offset of [-1,0.5,Infinity])await assert.rejects(()=>store.list({...historyScope,offset}),/valid plan history page/);
   }finally{await db?.close();await rm(root,{recursive:true,force:true});}
 });

@@ -52,5 +52,16 @@ export function createOrderInstallationPlanStore({databasePath,proposalLoader=lo
     }catch(error){if(transaction)await db.exec('ROLLBACK');throw error;}finally{await db.close();}
   }
   async function read(id,{clientId,orderId,estimateId}){if(!clientId||!orderId||!estimateId)throw fail('Select the Client and exact Order for this plan.',403);const db=await connect();try{const row=await db.get('SELECT * FROM order_installation_plans WHERE id=? AND client_id=? AND order_id=? AND estimate_id=?',id,clientId,orderId,estimateId);if(!row)throw fail('Reviewed plan not found for this Order.',404);return saved(row);}finally{await db.close();}}
-  return {preview,save,read};
+  async function list({clientId,orderId,estimateId,offset=0}){
+    if(!clientId||!orderId||!estimateId)throw fail('Select the Client and exact Order for plan history.',403);
+    if(!Number.isSafeInteger(offset)||offset<0)throw fail('Choose a valid plan history page.',400);
+    const db=await connect();try{
+      await db.exec('BEGIN');
+      const args=[clientId,orderId,estimateId];
+      const total=(await db.get('SELECT COUNT(*) total FROM order_installation_plans WHERE client_id=? AND order_id=? AND estimate_id=?',...args)).total;
+      const plans=await db.all('SELECT id,order_id orderId,version,review_reason reviewReason,reviewed_at reviewedAt FROM order_installation_plans WHERE client_id=? AND order_id=? AND estimate_id=? ORDER BY version DESC LIMIT 10 OFFSET ?',...args,offset);
+      await db.exec('COMMIT');return {plans,total,offset,limit:10};
+    }finally{await db.close();}
+  }
+  return {preview,save,read,list};
 }
