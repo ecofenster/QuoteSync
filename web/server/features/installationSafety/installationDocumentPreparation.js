@@ -8,6 +8,31 @@ const included=items=>items.filter(item=>item.includedInCurrentEstimate!==false&
 const finite=value=>value!==null&&value!==undefined&&value!==''&&Number.isFinite(Number(value))&&Number(value)>0;
 const fingerprint=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
+export function reviewInstallationCalculationScope(revision,scenario,expectedRevision){
+  // Identity and saved revision are prerequisites, not user-resolvable Position differences.
+  if(!scenario||scenario.estimateId!==revision.estimateId||Number(scenario.revisionNumber)!==expectedRevision||!Number.isInteger(expectedRevision))throw fail('The selected installation calculation is missing or has changed. Reopen it for review.');
+  const positions=revision.orderId?revision.positions:included(revision.positions),products=included(scenario.products||[]),ids=new Set(positions.map(item=>item.id));
+  const fields=['quantity','widthMm','heightMm'];
+  const rows=positions.map(position=>{
+    const matches=products.filter(item=>item.estimatePositionId===position.id),product=matches.length===1?matches[0]:null;
+    const differences=product?fields.filter(key=>!finite(position[key])||!finite(product[key])||Number(position[key])!==Number(product[key])).map(key=>({field:key,scheduled:finite(position[key])?Number(position[key]):null,calculated:finite(product[key])?Number(product[key]):null})):[];
+    return {id:position.id,reference:position.reference||position.positionRef||'Position reference not confirmed',status:!matches.length?'missing':matches.length>1?'repeated':differences.length?'different':'matches',differences};
+  });
+  const extra=products.filter(item=>!ids.has(item.estimatePositionId)).map(item=>({reference:item.displayReference||'Position reference not confirmed',status:item.estimatePositionId?'not_in_schedule':'unlinked'}));
+  let ready=true,message='The saved calculation covers this exact schedule. Review the operational details in the draft PDF.';
+  try{validateInstallationDocumentCalculation(revision,scenario,expectedRevision);}catch(error){if(error.code!=='installation_document_calculation_review')throw error;ready=false;message=error.message;}
+  return {ready,message,rows,extra,scenarioRevision:expectedRevision,sourceRevision:revision.revision,orderId:revision.orderId||null,nextAction:ready?'Prepare the draft PDF; nothing will be sent.':revision.orderId?'Select an installation calculation reviewed for these accepted Positions. Do not change the sold Estimate to remove these differences.':'Review and save the installation calculation for this schedule, then check again.'};
+}
+
+export async function loadInstallationCalculationReview(db,input){
+  const source=await loadInstallationDocumentRevision(db,input);
+  const scenario=input.scenarioId?await createProjectCalculatorLabService(db).getScenario(input.scenarioId):null;
+  const review=reviewInstallationCalculationScope(source,scenario,input.scenarioRevision);
+  const current=await loadInstallationDocumentRevision(db,input),saved=await db.get('SELECT revision_number FROM project_calculator_lab_scenarios WHERE id=?',input.scenarioId);
+  if(fingerprint(current)!==fingerprint(source)||Number(saved?.revision_number)!==input.scenarioRevision)throw fail('The schedule or calculation changed during review. Check the current values again.');
+  return review;
+}
+
 export function validateInstallationDocumentCalculation(revision,scenario,expectedRevision){
   if(!scenario||scenario.estimateId!==revision.estimateId)throw fail('Choose a saved installation calculation for this Estimate.');
   if(!Number.isInteger(expectedRevision)||Number(scenario.revisionNumber)!==expectedRevision)throw fail('The installation calculation changed. Review its current saved revision before preparing the document.');

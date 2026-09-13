@@ -7,6 +7,8 @@ export async function verifyInstallationDocuments({tab,click,waitFor,databasePat
   await click(tab,'Files / Documents');await click(tab,'Prepare / review installation documents');
   await waitFor(()=>tab.evaluate("document.querySelectorAll('.installation-documents select').length===3"),'Installation document choices did not load');
   await waitFor(()=>tab.evaluate("[...document.querySelectorAll('.installation-documents button')].some(item=>item.textContent==='Prepare draft PDF'&&!item.disabled)"),'The saved installation calculation did not become available');
+  await click(tab,'Check calculation against schedule');await waitFor(()=>tab.evaluate("document.querySelector('.installation-documents [role=status]')?.textContent.includes('Schedule coverage checked')"),'Read-only calculation review did not confirm coverage');
+  assert.equal(await tab.evaluate("document.querySelector('.installation-documents').textContent.includes('No documents or costings were changed')"),true);
   await tab.send('Network.setBlockedURLs',{urls:['*installation-documents/estimates/*']});await click(tab,'Prepare draft PDF');
   await waitFor(()=>tab.evaluate("document.querySelector('.installation-documents [role=alert]')?.textContent.includes('retained')"),'Failure did not preserve document choices');
   await tab.send('Network.setBlockedURLs',{urls:[]});await click(tab,'Prepare draft PDF');

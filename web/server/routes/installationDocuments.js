@@ -1,6 +1,7 @@
 import express from 'express';
 import {CURRENT_APP_USER} from '../currentUser.js';
 import {createInstallationDocumentStore} from '../features/installationSafety/installationDocumentStore.js';
+import {loadInstallationCalculationReview} from '../features/installationSafety/installationDocumentPreparation.js';
 
 const problem=(message,status=409)=>Object.assign(new Error(message),{status});
 export function createInstallationDocumentsRouter({databasePromise,environment=process.env,attachmentRoot}={}){
@@ -35,6 +36,7 @@ export function createInstallationDocumentsRouter({databasePromise,environment=p
     }
     res.json({capability:'installation-document-preparation-v1',access:'local_development_only',clientId:estimate.client_id,estimateReference:estimate.estimate_ref,revision:estimate.revision_no,scenarios,orders,documents,total:count.total,offset,limit:10});
   }catch(error){fail(res,error)}});
+  router.post('/estimates/:estimateId/calculation-review',async(req,res)=>{try{const {db,estimate}=await context(req.params.estimateId);if(req.body?.clientId!==estimate.client_id)throw problem('The selected Client does not own this Estimate.',403);res.json(await loadInstallationCalculationReview(db,{...req.body,estimateId:estimate.id}));}catch(error){fail(res,error)}});
   router.post('/estimates/:estimateId',async(req,res)=>{try{const {db,estimate}=await context(req.params.estimateId);if(req.body?.clientId!==estimate.client_id)throw problem('The selected Client does not own this Estimate.',403);const result=await(await store(db)).prepare({...req.body,estimateId:estimate.id},{clientId:estimate.client_id,actorId:CURRENT_APP_USER.id});res.status(result.reused?200:201).json(result);}catch(error){fail(res,error)}});
   router.get('/estimates/:estimateId/documents/:documentId',async(req,res)=>{try{const {db,estimate}=await context(req.params.estimateId),result=await(await store(db)).read(req.params.documentId,{clientId:estimate.client_id,estimateId:estimate.id});res.set({'Content-Type':'application/pdf','Content-Length':String(result.bytes.length),'Content-Disposition':`inline; filename="${result.document.fileName.replace(/["\r\n]/g,'')}"`,'ETag':`"${result.document.sha256}"`});res.send(result.bytes);}catch(error){fail(res,error)}});
   return router;

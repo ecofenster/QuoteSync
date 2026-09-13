@@ -1,5 +1,13 @@
 # In-progress Roadmap completion programme
 
+## 13 September — read-only installation calculation scope review
+
+Package 6 now offers Check calculation against schedule before draft preparation. It reads the exact selected revision and saved scenario, explains missing/repeated/extra Positions and quantity/dimension differences behind View Position details, and returns an actionable next step. It does not expose commercial prices, modify calculations or create a document. Changed scenario/source identities fail review; preparation independently retains its existing strict validation. Changing document choices clears the displayed review.
+
+Three focused scope/coverage tests pass, including historical accepted flags, wrong identity, difference values, source preservation and price omission. Full application typecheck passes. Normal fresh-database Files run `0d7bc09f-8383-474c-bdf0-3152da320788` exits 0 after the new matched-schedule review, preparation failure/retry, installer/client PDFs and eleven-document history recovery. Exact browser/profile remnants are zero; user API `18440e0f-d291-4c89-a73a-3dc939fe6a6e` is unchanged during browser acceptance. Mismatch presentation has service-level evidence; the complete Order mismatch-to-new-calculation browser journey is not yet delivered or accepted.
+
+Existing survey-delivery-installation remains partial. Next: an explicit retained Order-specific operational calculation for differing accepted scope, using saved rules/profile evidence and reviewed changes without repricing or editing the sold baseline. This review is diagnostic, not an automatic correction or a full installer-pack completion. No new permanent rule is needed; AGENTS already requires exact revision ownership, clear differences and immutable sold evidence. No live emails or business-data mutations occurred.
+
 ## 13 September — accepted Position authority in installation documents
 
 Packages 4/6 exposed a genuine omission while tracing Order calculation scope: the source loader retained exact accepted Positions, but projection and calculation coverage reapplied historical Estimate alternative/exclusion flags. An accepted alternative could disappear from the PDF, and coverage validation could overlook it. Order projection and coverage now respect the already-selected accepted source set; ordinary Estimate filtering is unchanged. Missing or excluded costing coverage still fails for review, and no source flags, sold costing or issued evidence are rewritten.
