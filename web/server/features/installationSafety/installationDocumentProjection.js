@@ -1,4 +1,5 @@
 import {installationQualificationSummary} from '../../../shared/installationQualificationSummary.js';
+import {projectInstallationMaterials} from './installationMaterialProjection.js';
 
 const text=value=>typeof value==='string'?value.trim():'';
 const amount=value=>value===null||value===undefined||value===''||!Number.isFinite(Number(value))||Number(value)<0?null:Number(value);
@@ -41,6 +42,7 @@ export function projectInstallationDocument({audience,revision,scenario,qualific
     inclusions:Object.fromEntries(['food','accommodation','cillInstallation','liftingEquipment','skipHire'].map(key=>[key,typeof programme?.componentInclusions?.[key]==='boolean'?programme.componentInclusions[key]:null])),
     travel:{status:routeAvailable?'Retained route estimate':'Travel time not confirmed',departure,destination,oneWayMinutes:routeAvailable?amount(route.durationMinutes):null,returnMinutes:null,pattern:['daily_travel','stay_away'].includes(profile.travelMode)?profile.travelMode:null,basis:routeAvailable?(route.manuallyOverridden?text(route.overrideReason):text(route.integration)):null,capturedAt:routeAvailable?text(route.calculatedAt):null},
     qualificationSummary:installationQualificationSummary(qualificationCheck),
+    materials:projectInstallationMaterials(scenario?.installationMaterials),
   };
   return document;
 }

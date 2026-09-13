@@ -21,3 +21,11 @@ test('Order operational proposal uses accepted scope and retained rules without 
 test('Order proposal fails closed for missing source, ambiguous rows, changed size and disabled programme',()=>{
   for(const mutate of [({source})=>delete source.sourceReleaseId,({scenario})=>scenario.products=[],({scenario})=>scenario.products.push(scenario.products[0]),({scenario})=>scenario.products[0].widthMm=999,({scenario})=>scenario.options.installationRequired=false,({scenario})=>scenario.catalogueSnapshot={}]){const data=fixture();mutate(data);assert.throws(()=>buildOrderInstallationPlan(data.source,data.scenario,2));}
 });
+
+test('Order material quantities use accepted operational scope, not the sold non-accepted scope',()=>{
+  const {source,scenario}=fixture();scenario.products[0].framePerimeterMetres=4.4;scenario.products[1].framePerimeterMetres=132;
+  scenario.options.installationMaterials={enabled:true,materialSelections:{ME508:{required:true,productId:'membrane'}}};
+  scenario.catalogueSnapshot.rules.installation_materials_v1={value:{}};scenario.catalogueSnapshot.catalogue=[{id:'membrane',category:'illbruck_me508',label:'ME508',active:true,rateType:'roll',priceAmount:'9876.54',currency:'GBP',variant:{rollLengthM:25}}];
+  const before=JSON.stringify(scenario),plan=buildOrderInstallationPlan(source,scenario,2),membrane=plan.document.installation.materials.rows.find(item=>item.code==='ME508');
+  assert.equal(membrane.linearMetres,5.06);assert.equal(membrane.quantity,1);assert.equal(plan.proposedScenario.installationMaterials.totalPerimeterM,4.4);assert.equal(JSON.stringify(scenario),before);assert.doesNotMatch(JSON.stringify(plan.document),/9876|purchaseCost|unitCost/);
+});

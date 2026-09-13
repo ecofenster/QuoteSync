@@ -1,5 +1,6 @@
 import {createHash} from 'node:crypto';
 import {calculateInstallationProgramme} from '../projectCalculatorLab/installationProgramme.js';
+import {calculateInstallationMaterials} from '../projectCalculatorLab/installationMaterials.js';
 import {validateInstallationDocumentCalculation} from './installationDocumentPreparation.js';
 import {projectInstallationDocument} from './installationDocumentProjection.js';
 
@@ -27,6 +28,8 @@ export function buildOrderInstallationPlan(source,scenario,expectedRevision){
   validateInstallationDocumentCalculation(source,proposed,expectedRevision); // Requires identical quantities/dimensions and saved rules.
   const effectiveProfile={...profile,projectType:profile.projectType??scenario.options.projectType,buildingType:profile.buildingType??scenario.options.installationMaterials?.buildingType??null,sitePostcode:scenario.options.siteVisitTravel?.sitePostcode??profile.sitePostcode??null};
   proposed.installationProgramme=calculateInstallationProgramme({positions:selected,rules,profile:effectiveProfile,selectedTeam:scenario.selectedInstallationTeam||null});
+  const materialRules=proposed.catalogueSnapshot?.rules?.installation_materials_v1?.value,materialOptions=proposed.options.installationMaterials;
+  proposed.installationMaterials=materialRules&&materialOptions&&materialOptions.enabled!==false?calculateInstallationMaterials({positions:selected.map(item=>({...item,frameMaterial:item.sourceSnapshot?.frameMaterial??proposed.options.defaultFrameMaterial??proposed.options.frameMaterial??null})),rules:materialRules,options:{...materialOptions,projectType:proposed.options.projectType,region:proposed.options.region??'England',defaultFrameMaterial:proposed.options.defaultFrameMaterial??proposed.options.frameMaterial??null},catalogue:proposed.catalogueSnapshot.catalogue||[]}):null;
   const scopeChanges={
     included:scenario.products.filter(item=>accepted.has(item.estimatePositionId)&&!included(item)).map(item=>({id:item.estimatePositionId,reference:item.displayReference||'Not confirmed',previousClassification:item.classification,previousIncluded:item.includedInCurrentEstimate})),
     excluded:scenario.products.filter(item=>!accepted.has(item.estimatePositionId)&&included(item)).map(item=>({id:item.estimatePositionId||null,reference:item.displayReference||'Not confirmed'})),
