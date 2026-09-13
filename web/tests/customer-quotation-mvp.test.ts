@@ -12,6 +12,14 @@ import { manufacturerVisualOrientation, manufacturerVisualOrientationLabel } fro
 import { CUSTOMER_SAFE_MANUFACTURER_SPECIFICATION_POLICY, projectCustomerSafeManufacturerSpecification } from "../src/features/customerQuotation/customerSafeManufacturerSpecification";
 
 const configuredContract = { schemaVersion: 1, source: "b92_configurator", product: { systemCode: "B92" } };
+test('timber material never becomes an inferred internal finish',()=>{
+  const evidence={customerSafeSpecification:[{ordinal:3,label:'Timber',value:'Softwood'},{ordinal:4,label:'Surface finishing',value:'Lacquer 7032'}]};
+  const result=projectCustomerSafeManufacturerSpecification(evidence);
+  assert.deepEqual(result.items.find(item=>item.concept==='timber_material'),{concept:'timber_material',category:'frame',label:'Timber',value:'Softwood'});
+  assert.equal(result.items.some(item=>item.concept==='internal_finish'),false);
+  const explicit=projectCustomerSafeManufacturerSpecification({...evidence,customerSafeSpecification:[...evidence.customerSafeSpecification,{ordinal:5,label:'Internal finish',value:'White'}]});
+  assert.equal(explicit.items.find(item=>item.concept==='internal_finish')?.value,'White');
+});
 test('unsided supplier colour remains customer-safe without inventing inside or outside finishes',()=>{
   const colour='RAL: 7016 (Anthracite grey) Matt';
   const result=projectCustomerSafeManufacturerSpecification({canonicalSpecification:{finish:{value:colour}}});
@@ -54,6 +62,18 @@ test("saved Project Costing is the single GBP customer pricing authority", () =>
   const quote = buildCustomerQuotationProjection({ scenario: scenario(), client, estimate, previewDate: "2026-08-17T12:00:00.000Z" });
   assert.equal(quote.currency, "GBP");
   assert.equal(quote.subtotalExVatGbp, "2000.00");
+});
+
+test("customer Position identity survives costing-row replacement and retains canonical alternative links",()=>{
+  const original=scenario(),quote=buildCustomerQuotationProjection({scenario:original,client,estimate});
+  assert.equal(quote.positions.find(position=>position.reference==='W01')?.id,'position-1');
+  assert.equal(quote.positions.find(position=>position.reference==='W01-ALT')?.alternativeToPositionId,'position-1');
+  assert.equal(quote.positions.find(position=>position.reference==='D01')?.id,'row-2','Unmapped legacy evidence must not acquire an invented canonical identity');
+  const replacement=scenario();replacement.products[0].id='replacement-costing-row';
+  const revised=buildCustomerQuotationProjection({scenario:replacement,client,estimate});
+  assert.equal(revised.positions.find(position=>position.reference==='W01')?.id,'position-1');
+  assert.equal(revised.subtotalExVatGbp,quote.subtotalExVatGbp);
+  assert.equal(original.products[0].id,'row-1','Projection must not mutate source costing evidence');
 });
 
 test("customer Estimate front matter is source-backed and includes only systems used in the Estimate", () => {
@@ -363,7 +383,7 @@ test("pagination preserves order and pairs wide positions when half-page readabi
     { ...standard, id: "wide", sequence: 3, widthMm: 5000, heightMm: 2100 },
     { ...standard, id: "standard-4", sequence: 4 },
   ]);
-  assert.deepEqual(pages.map(page => page.positions.map(position => position.id)), [["row-1", "standard-2"], ["wide", "standard-4"]]);
+  assert.deepEqual(pages.map(page => page.positions.map(position => position.id)), [["position-1", "standard-2"], ["wide", "standard-4"]]);
   assert.equal(isWideQuotationPosition({ widthMm: 5000, heightMm: 2100, specification: standard.specification }), false);
   assert.equal(isWideQuotationPosition({ widthMm: 5000, heightMm: 2100, specification: Array.from({length:16},(_,index)=>({label:`Detail ${index}`,value:"Dense"})) }), true);
 });

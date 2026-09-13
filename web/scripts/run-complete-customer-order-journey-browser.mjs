@@ -28,6 +28,7 @@ import {createGoogleWorkspaceService} from '../server/features/integrations/goog
 import {GOOGLE_WORKSPACE_SCOPES} from '../server/features/integrations/googleWorkspaceService.js';
 import {extractSupplierDocument} from '../server/features/supplierImportLab/documentExtraction.js';
 import {parsePdfSupplierFields} from '../server/features/supplierImportLab/pdfSupplierAdapters.js';
+import mammoth from 'mammoth';
 
 const APP_URL = "http://127.0.0.1:5276";
 const API_URL = "http://127.0.0.1:3104";
@@ -46,12 +47,14 @@ const supplierFollowup=followupCancellation||followupReconcile||supplierReconcil
 const sourceFactorySend=sourceFactoryReconcile||process.argv.includes('--stop-after-source-backed-factory-send');
 const sourceStaffOrder=sourceFactorySend||process.argv.includes('--stop-after-source-backed-staff-order');
 const sourceCustomerOrder=sourceStaffOrder||process.argv.includes('--stop-after-source-backed-customer-order');
-const sourceCustomerReissue=sourceCustomerOrder||process.argv.includes('--stop-after-source-backed-customer-reissue');
+const multiCustomerReissue=process.argv.includes('--stop-after-multi-source-customer-reissue');
+const sourceCustomerReissue=multiCustomerReissue||sourceCustomerOrder||process.argv.includes('--stop-after-source-backed-customer-reissue');
 const sourceCustomerPreparation=sourceCustomerReissue||process.argv.includes('--stop-after-source-backed-customer-preparation');
 const sourceReviewCorrection=process.argv.includes('--stop-after-source-review-correction');
 const overallSourceReview=sourceReviewCorrection||sourceCustomerPreparation||process.argv.includes('--stop-after-source-backed-overall-review');
 const multiSourceFields=process.argv.includes('--stop-after-multi-source-field-review');
-const receivedSupplierReviews=multiSourceFields||process.argv.includes('--stop-after-received-supplier-reviews');
+const twoSupplierImports=multiCustomerReissue||process.argv.includes('--stop-after-two-supplier-imports');
+const receivedSupplierReviews=twoSupplierImports||multiSourceFields||process.argv.includes('--stop-after-received-supplier-reviews');
 const multiSupplierReview=receivedSupplierReviews||process.argv.includes('--stop-after-multi-supplier-review');
 const providerJourneyRequested=supplierFollowup||overallSourceReview||receivedSupplierReviews||['--stop-after-supplier-filing','--stop-after-supplier-review','--stop-after-multi-supplier-review'].some(flag=>process.argv.includes(flag));
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
@@ -99,11 +102,17 @@ async function seed(databasePath, attachmentRoot) {
     assert.match(extracted.pages[0].blocks.map(block=>block.text).join(' '),/RAL:\s*7016\s*\(Anthracite grey\)\s*Matt/);
     // Test-owned issued requirement, not a claim about the real customer's prior offer.
     customerProjection.positions=[{...customerProjection.positions[0],reference:first.displayReference,customerReference:first.displayReference,widthMm:first.widthMm,heightMm:first.heightMm,quantity:first.quantity,productSystem:first.productSystem,description:'Disposable window requirement',configurationDescription:'Source-matched test opening',thermal:{},specification:[{label:'External finish',value:'White'}]}];
+    if(multiCustomerReissue){
+      const zyleText=(await mammoth.extractRawText({path:path.resolve('docs/Supplier_Quotes/343117-3_EF-EST-2026-004 - Luke.docx')})).value;
+      const firstZyle=zyleText.split(/\n\s*W1\s*\n/)[1]?.split(/\n\s*W2\s*\n/)[0];assert.ok(firstZyle);assert.match(firstZyle,/ALU painted matt color RAL 7003/);assert.match(firstZyle,/893x1320mm/);assert.match(firstZyle,/Product: 92 Europa window/);
+      customerProjection.positions.push({...customerProjection.positions[0],id:'test-position-zyle-w1',reference:'W1',customerReference:'W1',widthMm:893,heightMm:1320,quantity:1,productSystem:'92 Europa window',description:'Disposable second-supplier window requirement'});
+    }
   }
   await db.run(`INSERT INTO clients(id,name,email,contact_name,company_name,client_ref,project_name,created_at,deleted_at,commercial_lifecycle,reference_namespace,updated_at) VALUES(?,?,?,?,?,?,?,?,NULL,'prospect','test',?)`, clientId, "TEST Customer Journey", CUSTOMER, "TEST Customer Journey", "", clientReference, customerProjection.projectName, now, now);
   await db.run("INSERT INTO projects(id,client_id,name,status,created_at,updated_at) VALUES(?,?,?,'active',?,?)", projectId, clientId, customerProjection.projectName, now, now);
   await db.run("INSERT INTO supplier_commercial_defaults(supplier_code,supplier_name,policy_json,pricing_display_policy_json,updated_at) VALUES('TEST-JOURNEY-SUPPLIER','TEST Journey Supplier','{}','{}',?)",now);
   if(receivedSupplierReviews)await db.run("INSERT INTO supplier_commercial_defaults(supplier_code,supplier_name,policy_json,pricing_display_policy_json,updated_at) VALUES('ZYLE','Zyle Fenster','{}','{}',?)",now);
+  if(twoSupplierImports)await db.run("UPDATE supplier_commercial_defaults SET policy_json=? WHERE supplier_code='ZYLE'",JSON.stringify({pricingMethod:'factory_price',pricingBasis:'factory_price',paidInQuotedCurrency:true,settlementCurrency:'EUR'}));
   await db.run("INSERT INTO supplier_commercial_defaults(supplier_code,supplier_name,policy_json,pricing_display_policy_json,updated_at) VALUES('EKO','EKO-OKNA',?,'{}',?) ON CONFLICT(supplier_code) DO NOTHING",JSON.stringify({pricingMethod:'factory_price',pricingBasis:'factory_price',paidInQuotedCurrency:true,settlementCurrency:'EUR'}),now);
   if(!await db.get("SELECT id FROM configurator_manufacturers WHERE code='EKO' OR name='EKO-OKNA'"))await db.run("INSERT INTO configurator_manufacturers(id,name,code,is_active) VALUES('test-manufacturer-eko','EKO-OKNA','EKO',1)");
   await db.run(`INSERT INTO estimates(id,client_id,project_id,estimate_ref,base_estimate_ref,revision_no,status,estimated_order_month,estimated_order_year,defaults_json,positions_json,order_meta_json,outcome,project_address,project_address_json,postcode,what3words,created_by_user_id,created_by_name,created_by_role,created_at,updated_at,deleted_at) VALUES(?,?,?,?,?,1,'Issued','September',2026,'{}',?,'{}','Open',?,'{}','CF10 1AA','','test-staff','Test Staff','estimator',?,?,NULL)`, estimateId, clientId, projectId, estimateReference, estimateReference, JSON.stringify(customerProjection.positions.map((item) => ({ id: item.id, positionRef: item.reference, qty: item.quantity, widthMm: item.widthMm, heightMm: item.heightMm, roomName: item.roomName }))), customerProjection.projectAddress, now, now);
@@ -158,21 +167,26 @@ async function staff(pathname, body, method = "POST") {
   return text ? JSON.parse(text) : null;
 }
 
-async function inspectPdf(filePath, expected, forbidden = []) {
+async function inspectPdf(filePath, expected, forbidden = [], representativeText = null) {
   const bytes = await readFile(filePath), task = getDocument(pdfJsRuntimeOptions({ data: new Uint8Array(bytes) }));
   try {
-    const pdf = await task.promise; let searchableText = "";
-    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) { const page = await pdf.getPage(pageNumber), content = await page.getTextContent(); searchableText += ` ${content.items.map((item) => item.str).join(" ")}`; page.cleanup(); }
+    const pdf = await task.promise; let searchableText = "", representativePage = null;
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) { const page = await pdf.getPage(pageNumber), content = await page.getTextContent(),pageText=content.items.map((item) => item.str).join(" ");searchableText += ` ${pageText}`;if(representativeText&&representativePage===null&&pageText.includes(representativeText))representativePage=pageNumber;page.cleanup(); }
     for (const term of expected) assert.match(searchableText, new RegExp(term, "i"), `${path.basename(filePath)} is missing ${term}`);
     for (const term of forbidden) assert.ok(!searchableText.includes(term), `${path.basename(filePath)} exposes ${term}`);
     const renderPage = async (pageNumber, suffix) => { const page = await pdf.getPage(pageNumber), viewport = page.getViewport({ scale: 1.25 }), canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height)), context = canvas.getContext("2d"); context.fillStyle = "#fff"; context.fillRect(0, 0, canvas.width, canvas.height); await page.render({ canvasContext: context, canvas, viewport, annotationMode: 0 }).promise; const output = filePath.replace(/\.pdf$/i, suffix); await writeFile(output, await canvas.encode("png")); const size = { width: viewport.width / 1.25, height: viewport.height / 1.25 }; page.cleanup(); return { output, size }; };
     const cover = await renderPage(1, "--cover.png"), schedule = await renderPage(Math.min(3, pdf.numPages), "--schedule.png"), summary = await renderPage(pdf.numPages, "--summary.png");
-    return { filePath, sizeBytes: bytes.length, sha256: sha256(bytes), pageCount: pdf.numPages, searchableCharacters: searchableText.replace(/\s+/g, "").length, firstPage: cover.size, previewPaths: { cover: cover.output, schedule: schedule.output, summary: summary.output } };
+    const representative=representativePage?await renderPage(representativePage,'--supplier-page.png'):null;
+    return { filePath, sizeBytes: bytes.length, sha256: sha256(bytes), pageCount: pdf.numPages, searchableCharacters: searchableText.replace(/\s+/g, "").length, firstPage: cover.size, previewPaths: { cover: cover.output, schedule: schedule.output, summary: summary.output,...(representative?{supplier:representative.output}:{}) } };
   } finally { await task.destroy(); }
 }
 
 async function run() {
-  const userApiBefore=await fetch('http://127.0.0.1:3001/api/health').then(response=>response.ok?response.json():null).catch(()=>null);
+  const readUserApi=()=>fetch('http://127.0.0.1:3001/api/health',{signal:AbortSignal.timeout(2000)}).then(response=>response.ok?response.json():null).catch(()=>null);
+  const userApiBefore=process.argv.includes('--require-existing-user-api')
+    ?await waitFor(async()=>{const health=await readUserApi();return health?.apiAvailable&&health.databaseAvailable&&health.runtimeVersion===QUOTESUITE_RUNTIME_CONTRACT.version&&health.uptimeSeconds>=20?health:false},'Existing user API did not become ready; no acceptance infrastructure was started',60000)
+    :await readUserApi();
+  console.log(JSON.stringify({userApiBaseline:userApiBefore?{instanceId:userApiBefore.instanceId,startedAt:userApiBefore.startedAt,uptimeSeconds:userApiBefore.uptimeSeconds}:null,requiredExistingApi:process.argv.includes('--require-existing-user-api')}));
   for(const port of [3104,5276,DEBUG_PORT]){
     const probe=createPortProbe();await new Promise((resolve,reject)=>{probe.once('error',()=>reject(new Error(`Acceptance port ${port} is already occupied; no existing listener will be replaced.`)));probe.listen(port,'127.0.0.1',resolve)});await new Promise(resolve=>probe.close(resolve));
   }
@@ -215,7 +229,9 @@ const startApi=()=>spawn(process.execPath, ["--import",pathToFileURL(path.resolv
     const originalPortalEstimateHash = await tab.evaluate(`(async()=>{const link=[...document.querySelectorAll('a')].find(item=>item.textContent.includes('View issued Estimate'));const response=await fetch(link.href,{credentials:'include'}),bytes=await response.arrayBuffer(),digest=await crypto.subtle.digest('SHA-256',bytes);return {status:response.status,type:response.headers.get('content-type'),hash:[...new Uint8Array(digest)].map(value=>value.toString(16).padStart(2,'0')).join('')}})()`);
     assert.deepEqual({ status: originalPortalEstimateHash.status, type: originalPortalEstimateHash.type, hash: originalPortalEstimateHash.hash }, { status: 200, type: "application/pdf", hash: fixture.document.sha256 });
     await click(tab, "Review Estimate"); await waitFor(() => tab.evaluate("document.body.innerText.includes('Review every Position')"), "Customer Position review did not open");
-    await input(tab, ".portal-external__positions fieldset:first-child select", "amendment_requested"); await input(tab, ".portal-external__positions fieldset:first-child textarea", overallSourceReview?"Change the external finish from White to RAL: 7016 (Anthracite grey) Matt.":"Change the external finish from white to black."); await input(tab, "section.portal-external__command > label select", "amendment_requested"); await input(tab, "section.portal-external__command > label textarea", overallSourceReview?"Confirm the supplier quotation reference WEB/26/1133450.":"Update the project finish schedule to match."); await click(tab, "Submit reviewed responses"); await waitFor(() => tab.evaluate("document.body.innerText.includes('Response recorded')&&document.body.innerText.includes('project team reviews')"), "Customer changes were not acknowledged");
+    await input(tab, ".portal-external__positions fieldset:first-child select", "amendment_requested"); await input(tab, ".portal-external__positions fieldset:first-child textarea", overallSourceReview?"Change the external finish from White to RAL: 7016 (Anthracite grey) Matt.":"Change the external finish from white to black.");
+    if(multiCustomerReissue){await input(tab,'.portal-external__positions fieldset:nth-child(2) select','amendment_requested');await input(tab,'.portal-external__positions fieldset:nth-child(2) textarea','Change the external finish from White to ALU painted matt color RAL 7003.');}
+    await input(tab, "section.portal-external__command > label select", "amendment_requested"); await input(tab, "section.portal-external__command > label textarea", overallSourceReview?"Confirm the supplier quotation reference WEB/26/1133450.":"Update the project finish schedule to match."); await click(tab, "Submit reviewed responses"); await waitFor(() => tab.evaluate("document.body.innerText.includes('Response recorded')&&document.body.innerText.includes('project team reviews')"), "Customer changes were not acknowledged");
     const reviewDesktop = await tab.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: true }); await writeFile(path.join(OUTPUT, "01-customer-changes-submitted--1920x1080.png"), Buffer.from(reviewDesktop.data, "base64"));
 
     await tab.send("Page.navigate", { url: APP_URL }); await waitFor(() => tab.evaluate("document.body.innerText.includes('Client Portal')"), "Staff application did not render"); await click(tab, "Client Portal");
@@ -458,13 +474,25 @@ const startApi=()=>spawn(process.execPath, ["--import",pathToFileURL(path.resolv
       const supplierSelector="[...document.querySelectorAll('fieldset')].find(item=>item.querySelector('legend')?.textContent==='Supplier response reviews')";
       await tab.evaluate(`(()=>{const select=${supplierSelector}.querySelector('select');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,${JSON.stringify(preparedContext.enquiries[0].id)});select.dispatchEvent(new Event('change',{bubbles:true}))})()`);
       await waitFor(()=>tab.evaluate("document.body.innerText.includes('Save supplier review')"),'Source-backed supplier field form did not open');
-      if(overallSourceReview){
+      const runOverallSourceReview=async()=>{
         const finish='RAL: 7016 (Anthracite grey) Matt';
+        const positionCount=multiCustomerReissue?26:5;
         const fillLabels=async(selector,values)=>{for(const [label,value] of Object.entries(values))await tab.evaluate(`(()=>{const field=[...(${selector}).querySelectorAll('label')].find(item=>item.textContent===${JSON.stringify(label)}).querySelector('input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(field,${JSON.stringify(value)});field.dispatchEvent(new Event('input',{bubbles:true}))})()`)};
-        await tab.evaluate(`(()=>{const select=[...${supplierSelector}.querySelectorAll('label')].find(item=>item.textContent.startsWith('Position')).querySelector('select');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,'test-position-w01');select.dispatchEvent(new Event('change',{bubbles:true}))})()`);
-        await fillLabels(supplierSelector,{'Field':'external_finish','Before':'White','Requested':finish,'Returned':finish,'Before source / page':'Disposable issued Estimate, Position 001, External finish','Returned source / page':'web-26-1133450.pdf, page 1, Window 001, Colour'});
+        if(multiCustomerReissue){await tab.evaluate(`(()=>{const select=${supplierSelector}.querySelector('select'),option=[...select.options].find(item=>item.textContent.includes('EKO-OKNA'));Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,option.value);select.dispatchEvent(new Event('change',{bubbles:true}))})()`);await waitFor(()=>tab.evaluate("document.body.innerText.includes('Save supplier review')"),'EKO field review did not reopen');await click(tab,'Add field');}
+        const supplierField=multiCustomerReissue?`[...${supplierSelector}.querySelectorAll('article')].at(-1)`:supplierSelector;
+        await tab.evaluate(`(()=>{const select=[...(${supplierField}).querySelectorAll('label')].find(item=>item.textContent.startsWith('Position')).querySelector('select');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,'test-position-w01');select.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+        await fillLabels(supplierField,{'Field':'external_finish','Before':'White','Requested':finish,'Returned':finish,'Before source / page':'Disposable issued Estimate, Position 001, External finish','Returned source / page':'web-26-1133450.pdf, page 1, Window 001, Colour'});
         await click(tab,'Save supplier review');await waitFor(()=>tab.evaluate("document.body.innerText.includes('Supplier review saved. Complete')"),'Source-backed supplier Position review did not save');
         const savedDocumentId=await tab.evaluate(`[...${supplierSelector}.querySelectorAll('label')].find(item=>item.textContent.startsWith('Returned supplier document')).querySelector('select').value`);
+        let zyleDocumentId;
+        if(multiCustomerReissue){
+          await tab.evaluate(`(()=>{const select=${supplierSelector}.querySelector('select'),option=[...select.options].find(item=>item.textContent.includes('Zyle Fenster'));Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,option.value);select.dispatchEvent(new Event('change',{bubbles:true}))})()`);await waitFor(()=>tab.evaluate("document.body.innerText.includes('Save supplier review')"),'Zyle field review did not reopen');
+          await click(tab,'Add field');
+          await tab.evaluate(`(()=>{const select=[...(${supplierField}).querySelectorAll('label')].find(item=>item.textContent.startsWith('Position')).querySelector('select');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,'test-position-zyle-w1');select.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+          await fillLabels(supplierField,{'Field':'external_finish','Before':'White','Requested':'ALU painted matt color RAL 7003','Returned':'ALU painted matt color RAL 7003','Before source / page':'Disposable issued Estimate, W1, External finish','Returned source / page':'343117-3 DOCX, W1, specification item 2'});
+          await click(tab,'Save supplier review');await waitFor(()=>tab.evaluate("document.body.innerText.includes('Supplier review saved. Complete')"),'Zyle Position review did not save');
+          zyleDocumentId=await tab.evaluate(`[...${supplierSelector}.querySelectorAll('label')].find(item=>item.textContent.startsWith('Returned supplier document')).querySelector('select').value`);assert.notEqual(zyleDocumentId,savedDocumentId);
+        }
         assert.ok(savedDocumentId,'Exact filed supplier document was not selected');
         await tab.evaluate("(()=>{const select=[...document.querySelectorAll('label')].find(item=>item.textContent.startsWith('Source kind')).querySelector('select');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,'canonical_document');select.dispatchEvent(new Event('change',{bubbles:true}))})()");
         await tab.evaluate(`(()=>{const select=[...document.querySelectorAll('label')].find(item=>item.textContent.startsWith('Reviewed document')).querySelector('select');if(![...select.options].some(option=>option.value===${JSON.stringify(savedDocumentId)}))throw new Error('Filed source absent from overall review choices');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,${JSON.stringify(savedDocumentId)});select.dispatchEvent(new Event('change',{bubbles:true}))})()`);
@@ -472,7 +500,8 @@ const startApi=()=>spawn(process.execPath, ["--import",pathToFileURL(path.resolv
         const overall="[...document.querySelectorAll('fieldset')].find(item=>item.querySelector('legend')?.textContent==='Requested-change verification')";
         await waitFor(()=>tab.evaluate(`Boolean(${overall})`),'Overall customer checks are unavailable after source filing');
         await fillLabels(`${overall}.querySelectorAll('article')[0]`,{'Field':'external_finish','Before':'White','Requested':finish,'After':finish,'Before source':'Disposable issued Estimate, Position 001, External finish','After source':'web-26-1133450.pdf, page 1, Window 001, Colour'});
-        await fillLabels(`${overall}.querySelectorAll('article')[1]`,{'Field':'quotation_reference','Before':'Not confirmed','Requested':'WEB/26/1133450','After':'WEB/26/1133450','Before source':'Disposable customer request, general reference confirmation','After source':'web-26-1133450.pdf, page 1, Price details'});
+        if(multiCustomerReissue)await fillLabels(`${overall}.querySelectorAll('article')[1]`,{'Field':'external_finish','Before':'White','Requested':'ALU painted matt color RAL 7003','After':'ALU painted matt color RAL 7003','Before source':'Disposable issued Estimate, W1, External finish','After source':'343117-3 DOCX, W1, specification item 2'});
+        await fillLabels(`${overall}.querySelectorAll('article')[${multiCustomerReissue?2:1}]`,{'Field':'quotation_reference','Before':'Not confirmed','Requested':'WEB/26/1133450','After':'WEB/26/1133450','Before source':'Disposable customer request, general reference confirmation','After source':'web-26-1133450.pdf, page 1, Price details'});
         if(sourceReviewCorrection){
           await fillLabels(`${overall}.querySelectorAll('article')[0]`,{'Requested':'Disposable mistaken transcription','Before source':'Disposable source reference awaiting correction'});
           await click(tab,'Verify changes');await waitFor(()=>tab.evaluate("document.body.innerText.includes('item(s) still need attention')"),'Mistaken review entry did not remain unresolved');
@@ -482,9 +511,15 @@ const startApi=()=>spawn(process.execPath, ["--import",pathToFileURL(path.resolv
         }
         if(sourceCustomerPreparation){
           await click(tab,'Add unrelated material change');
-          await fillLabels(`${overall}.querySelectorAll('article')[2]`,{'Field':'additional_positions','Before':'001 only','Requested':'001 only','After':'001, 002, 003, 004, 005','Before source':'Disposable issued Estimate schedule','After source':'WEB/26/1133450, pages 1–7, complete position schedule','Resolution note':'Staff explicitly accepts four additional source Positions for this disposable successor offer; the original one-Position issued offer remains unchanged.'});
-          await tab.evaluate(`${overall}.querySelectorAll('article')[2].querySelector('input[type=checkbox]').click()`);
+          const extraIndex=multiCustomerReissue?3:2;
+          await fillLabels(`${overall}.querySelectorAll('article')[${extraIndex}]`,{'Field':'additional_positions','Before':multiCustomerReissue?'001 and W1 only':'001 only','Requested':multiCustomerReissue?'001 and W1 only':'001 only','After':multiCustomerReissue?'26 source Positions from both returned schedules':'001, 002, 003, 004, 005','Before source':'Disposable issued Estimate schedule','After source':multiCustomerReissue?'WEB/26/1133450 pages 1–7 and 343117-3 DOCX complete position schedule':'WEB/26/1133450, pages 1–7, complete position schedule','Resolution note':multiCustomerReissue?'Staff explicitly accepts the 24 additional source Positions from both retained schedules for this disposable successor offer; the original two-Position issued offer remains unchanged.':'Staff explicitly accepts four additional source Positions for this disposable successor offer; the original one-Position issued offer remains unchanged.'});
+          await tab.evaluate(`${overall}.querySelectorAll('article')[${extraIndex}].querySelector('input[type=checkbox]').click()`);
+          if(multiCustomerReissue){
+            await fillLabels(`${overall}.querySelectorAll('article')[3]`,{'Field':'additional_eko_positions','After':'002, 003, 004, 005','After source':'WEB/26/1133450, pages 1–7','Resolution note':'Staff explicitly accepts these four additional EKO source Positions for the disposable successor; the original issued offer is unchanged.'});
+            await click(tab,'Add unrelated material change');await fillLabels(`${overall}.querySelectorAll('article')[4]`,{'Field':'additional_zyle_positions','Before':'W1 only','Requested':'W1 only','After':'All twenty remaining Position rows in 343117-3','Before source':'Disposable issued Estimate schedule','After source':'343117-3 DOCX, complete schedule after W1','Resolution note':'Staff explicitly accepts the twenty additional Zyle source Position rows for the disposable successor; the original issued offer is unchanged.'});await tab.evaluate(`${overall}.querySelectorAll('article')[4].querySelector('input[type=checkbox]').click()`);
+          }
         }
+        if(multiCustomerReissue)for(let index=0;index<5;index++)await tab.evaluate(`(()=>{const select=${overall}.querySelectorAll('select')[${index}];Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,${JSON.stringify(index===1||index===4?zyleDocumentId:savedDocumentId)});select.dispatchEvent(new Event('change',{bubbles:true}))})()`);
         await click(tab,'Verify changes');await waitFor(()=>tab.evaluate("document.body.innerText.includes('ready for customer-document review')"),'Overall source-backed review did not reach customer-document readiness');
         const evidenceDb=await open({filename:databasePath,driver:sqlite3.Database,mode:sqlite3.OPEN_READONLY});
         try{
@@ -492,10 +527,11 @@ const startApi=()=>spawn(process.execPath, ["--import",pathToFileURL(path.resolv
           if(sourceReviewCorrection){const corrected=await evidenceDb.get("SELECT * FROM revision_change_checks WHERE field_key='external_finish'");assert.equal(corrected.expected_value,finish);assert.match(corrected.before_source_reference,/corrected reference/);assert.equal(corrected.status,'implemented');const history=await evidenceDb.all('SELECT checks_json FROM supplier_revision_review_history');assert.ok(history.some(row=>JSON.parse(row.checks_json).some(check=>check.expected_value==='Disposable mistaken transcription')));}
           const working=await evidenceDb.get('SELECT positions_json FROM estimates WHERE id=?',request.successor_estimate_id),positions=JSON.parse(working.positions_json),matched=positions.find(item=>item.id==='test-position-w01');
           assert.ok(matched?.supplierEvidenceLinks?.length,'Genuine source Position did not map to the exact issued Position: '+JSON.stringify(positions.map(item=>({id:item.id,ref:item.positionRef,width:item.widthMm,height:item.heightMm}))));
-          assert.equal(positions.length,5,'Source-matched issued Position was duplicated');
-          assert.equal((await evidenceDb.get('SELECT COUNT(*) count FROM revision_change_checks WHERE status=\'implemented\'')).count,2);
+          assert.equal(positions.length,positionCount,'Source-matched issued Position was duplicated');
+          if(multiCustomerReissue)assert.ok(positions.find(item=>item.id==='test-position-zyle-w1')?.supplierEvidenceLinks?.some(link=>link.supplierCode==='ZYLE'),'Zyle source did not map to its exact issued Position');
+          assert.equal((await evidenceDb.get('SELECT COUNT(*) count FROM revision_change_checks WHERE status=\'implemented\'')).count,multiCustomerReissue?3:2);
           assert.equal((await evidenceDb.get('SELECT COUNT(*) count FROM issued_quotations')).count,1,'Verification automatically issued a customer document');
-          assert.deepEqual(JSON.parse((await evidenceDb.get('SELECT positions_json FROM estimates WHERE id=?',fixture.estimateId)).positions_json).map(item=>item.id),['test-position-w01']);
+          assert.deepEqual(JSON.parse((await evidenceDb.get('SELECT positions_json FROM estimates WHERE id=?',fixture.estimateId)).positions_json).map(item=>item.id),multiCustomerReissue?['test-position-w01','test-position-zyle-w1']:['test-position-w01']);
         }finally{await evidenceDb.close()}
         console.log(JSON.stringify({scope:'Normal source-backed Position review and overall verification',source:'WEB/26/1133450 page 1 Window 001',exactCanonicalPositionRetained:true,automaticCustomerIssue:false,customerReissueVerified:false}));
         if(sourceCustomerPreparation){
@@ -517,9 +553,10 @@ const startApi=()=>spawn(process.execPath, ["--import",pathToFileURL(path.resolv
             const pdfUrl=await tab.evaluate("document.querySelector('.customer-quotation__email-evidence a').href");
             const download=await fetch(pdfUrl);assert.equal(download.status,200);const pdfBytes=Buffer.from(await download.arrayBuffer());assert.equal(sha256(pdfBytes),savedPdf.sha256);
             const emailAttachment=await preparedDb.get('SELECT sha256 FROM communication_attachments WHERE communication_message_id=?',prepared.communication_message_id);assert.equal(emailAttachment.sha256,savedPdf.sha256);
-            const customerProjection=JSON.parse(savedPdf.projection_json);assert.equal(customerProjection.positions.length,5);assert.equal(customerProjection.positions.find(item=>item.reference==='001').specification.find(item=>item.label==='Colour').value,finish);
+            const customerProjection=JSON.parse(savedPdf.projection_json);assert.equal(customerProjection.positions.length,positionCount);assert.equal(customerProjection.positions.find(item=>item.reference==='001').specification.find(item=>item.label==='Colour').value,finish);
+            if(multiCustomerReissue){assert.ok(JSON.stringify(customerProjection.positions.find(item=>item.id==='test-position-zyle-w1')).includes('7003'),'Zyle reviewed finish is absent from the customer projection');const canonical=JSON.parse((await preparedDb.get('SELECT positions_json FROM estimates WHERE id=?',prepared.estimate_id)).positions_json);assert.deepEqual(customerProjection.positions.map(item=>item.id).sort(),canonical.map(item=>item.id).sort(),'Customer release must preserve every canonical Estimate Position identity');}
             const pdfFile=path.join(OUTPUT,'source-backed-prepared-customer-estimate.pdf');await writeFile(pdfFile,pdfBytes);
-            const pdfEvidence=await inspectPdf(pdfFile,['001','002','003','004','005','7016','Disposable acceptance offer only']);console.log(JSON.stringify({preparedPdf:pdfEvidence,emailAttachmentMatchesSavedPdf:true,customerTotal:customerProjection.totalIncVatGbp}));
+            const pdfEvidence=await inspectPdf(pdfFile,['001','002','003','004','005','7016','Disposable acceptance offer only',...(multiCustomerReissue?['W1','7003','Timber: Softwood']:[])],multiCustomerReissue?['Internal: Softwood']:[],multiCustomerReissue?'893':null);console.log(JSON.stringify({preparedPdf:pdfEvidence,emailAttachmentMatchesSavedPdf:true,customerTotal:customerProjection.totalIncVatGbp}));
             if(sourceCustomerReissue){
               await tab.evaluate("(()=>{const button=[...document.querySelectorAll('button')].find(item=>item.textContent.trim()==='Send Estimate');button.click();button.click()})()");
               await waitFor(()=>tab.evaluate("document.body.innerText.includes('Estimate was not sent')&&document.body.innerText.includes('PDF and Email draft are still saved')"),'No-network send interruption did not explain recovery');
@@ -616,10 +653,11 @@ const startApi=()=>spawn(process.execPath, ["--import",pathToFileURL(path.resolv
             }
           }finally{await preparedDb.close()}
           const screenshot=await tab.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});await writeFile(path.join(OUTPUT,sourceStaffOrder?'source-backed-staff-order.png':sourceCustomerOrder?'source-backed-customer-order.png':'source-backed-customer-preparation.png'),Buffer.from(screenshot.data,'base64'));
-          console.log(JSON.stringify({scope:'Source-backed complete-schedule review → normal customer preview → reviewed terms → retained Email/PDF preparation',positions:5,additionalPositionsExplicitlyReviewed:true,sent:sourceCustomerReissue,customerReissueVerified:sourceCustomerReissue,liveDelivery:false}));
+          console.log(JSON.stringify({scope:'Source-backed complete-schedule review → normal customer preview → reviewed terms → retained Email/PDF preparation',positions:positionCount,suppliers:multiCustomerReissue?2:1,additionalPositionsExplicitlyReviewed:true,sent:sourceCustomerReissue,customerReissueVerified:sourceCustomerReissue,liveDelivery:false}));
         }
         return;
-      }
+      };
+      if(overallSourceReview&&!multiCustomerReissue){await runOverallSourceReview();return;}
       await tab.evaluate(`(()=>{const section=${supplierSelector};for(const [label,value] of [['Field','quotation_reference'],['Before','Original disposable issued quotation'],['Requested','A new revised quotation reference'],['Returned','WEB/26/1133450'],['Before source / page','Disposable issued Estimate overview'],['Returned source / page','web-26-1133450.pdf, page 1, quotation reference']]){const field=[...section.querySelectorAll('label')].find(item=>item.textContent===label).querySelector('input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(field,value);field.dispatchEvent(new Event('input',{bubbles:true}))}})()`);
       await click(tab,'Save supplier review');
       await waitFor(()=>tab.evaluate("document.body.innerText.includes('field(s) still need resolution')"),'Unresolved source review did not explain remaining work');
@@ -644,6 +682,28 @@ const startApi=()=>spawn(process.execPath, ["--import",pathToFileURL(path.resolv
         await click(tab,'Disposable Zyle DOCX response');await waitFor(()=>tab.evaluate("document.body.innerText.includes('This exact Zyle response')"),'Second exact message body did not open');
         await click(tab,'Review and file selected document');await waitFor(()=>tab.evaluate("[...document.querySelectorAll('button')].some(item=>item.textContent.trim()==='File selected document'&&!item.disabled)"),'Second source filing was not ready');
         await click(tab,'File selected document');await waitFor(()=>tab.evaluate("document.body.innerText.includes('Import Manufacturer Estimate')"),'Second source was not saved');
+        if(twoSupplierImports){
+          await click(tab,'Import Manufacturer Estimate');
+          await waitFor(()=>tab.evaluate("document.body.innerText.includes('Confirm Manufacturer Quote')"),'Second filed source did not reach identity review',90000);
+          await click(tab,'Confirm & Extract Quote');
+          await waitFor(()=>tab.evaluate("document.body.innerText.includes('Extraction / Commercial Review')"),'Second genuine source did not reach extraction review',90000);
+          await waitFor(()=>tab.evaluate("[...document.querySelectorAll('button')].some(item=>item.textContent.includes('Import to Project Costing')&&!item.disabled)"),'Second-source final import remains blocked; review its actual diagnostics',90000);
+          await click(tab,'Import to Project Costing');
+          await waitFor(()=>tab.evaluate("!document.querySelector('[aria-labelledby=\"manufacturer-import-title\"]')&&document.body.innerText.includes('Project Costing')"),'Second import did not finish its UI handoff',90000);
+          await reloadWorkingEstimate(tab);
+          const combinedDb=await open({filename:databasePath,driver:sqlite3.Database,mode:sqlite3.OPEN_READONLY});
+          try{
+            const positions=await combinedDb.all('SELECT id FROM supplier_quote_positions'),costing=await combinedDb.all('SELECT id,source_position_id,total_price_amount,source_snapshot_json FROM project_calculator_estimate_product_rows');
+            assert.equal(positions.length,26,'Both genuine sources must retain their five and twenty-one positions');assert.equal(costing.length,26,'Both suppliers must remain in Project Costing');
+            for(const original of retainedImportSnapshot.costing)assert.deepEqual(costing.filter(row=>row.id===original.id).map(({source_snapshot_json,...row})=>row),[original],'Second supplier changed the first supplier costing row');
+            for(const original of retainedImportSnapshot.positions)assert.ok(positions.some(row=>row.id===original.id),'Second supplier replaced first-supplier position identity');
+            const suppliers=new Map();for(const row of costing){const supplier=JSON.parse(row.source_snapshot_json).commercialSupplier.supplierCode;suppliers.set(supplier,(suppliers.get(supplier)||0)+1)}assert.deepEqual(Object.fromEntries(suppliers),{EKO:5,ZYLE:21});
+            const sources=await combinedDb.all('SELECT a.sha256,a.storage_key,d.file_name FROM supplier_quote_attachments a JOIN canonical_documents d ON d.id=a.source_canonical_document_id');assert.equal(sources.length,2);
+            for(const source of sources)assert.equal(sha256(await readFile(path.join(attachmentRoot,source.storage_key))),source.sha256,'Retained supplier bytes changed');
+            assert.equal((await combinedDb.get('SELECT COUNT(*) count FROM issued_quotations')).count,1,'Second import issued a customer document');
+          }finally{await combinedDb.close()}
+          console.log(JSON.stringify({scope:'Two exact supplier replies → separate provider filing → genuine final imports → combined Project Costing → reload',supplierPositions:{EKO:5,ZYLE:21},firstSupplierPreserved:true,customerReissue:false,liveDelivery:false}));if(!multiCustomerReissue)return;
+        }
         await tab.evaluate("document.querySelector('[aria-label=\"Supplier reply review\"] button')?.click()");
         // Leave through the normal sidebar; no supplier source is imported here.
         await tab.send('Page.navigate',{url:`${APP_URL}/?journey=review-both`});
@@ -663,6 +723,7 @@ const startApi=()=>spawn(process.execPath, ["--import",pathToFileURL(path.resolv
           const replies=await bothDb.all('SELECT DISTINCT canonical_document_id FROM manufacturer_response_links');assert.equal(replies.length,2);
           assert.equal((await bothDb.get('SELECT verified_at FROM supplier_revision_requests')).verified_at,null);assert.equal((await bothDb.get('SELECT COUNT(*) count FROM issued_quotations')).count,1);
         }finally{await bothDb.close()}
+        if(multiCustomerReissue){await runOverallSourceReview();return;}
         if(multiSourceFields){
           await tab.evaluate("(()=>{const select=[...document.querySelectorAll('label')].find(item=>item.textContent.startsWith('Source kind')||item.textContent.startsWith('Source')).querySelector('select');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,'canonical_document');select.dispatchEvent(new Event('change',{bubbles:true}))})()");
           await tab.evaluate("(()=>{const select=[...document.querySelectorAll('label')].find(item=>item.textContent.startsWith('Reviewed document')).querySelector('select'),option=[...select.options].find(item=>item.textContent.includes('web-26-1133450.pdf'));Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,option.value);select.dispatchEvent(new Event('change',{bubbles:true}))})()");

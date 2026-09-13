@@ -155,7 +155,10 @@ export function buildCustomerQuotationProjection(input: {
       : null;
     return {
       sequence: index + 1,
-      id: row.id,
+      // Customer review/acceptance follows the canonical opening, not the
+      // replaceable costing projection row. Unmapped legacy rows retain their
+      // existing identity; historical issued projections are never rewritten.
+      id: estimatePosition ? String(estimatePosition.id) : row.id,
       manufacturerItemNumber: textValue(evidence.manufacturerItemNumber) || null,
       customerReference: textValue(evidence.customerReference) || row.displayReference,
       reference: row.displayReference,

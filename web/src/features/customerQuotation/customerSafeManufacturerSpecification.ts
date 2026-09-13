@@ -17,7 +17,7 @@ export type CustomerSafeManufacturerSpecification = {
 export const CUSTOMER_SAFE_MANUFACTURER_SPECIFICATION_POLICY = Object.freeze({
   version: "customer-safe-manufacturer-specification-policy-v1",
   customerDefaultConcepts: Object.freeze([
-    "system", "configuration", "finish", "external_finish", "internal_finish", "glazing_build_up", "glass_thickness",
+    "system", "configuration", "finish", "external_finish", "internal_finish", "timber_material", "glazing_build_up", "glass_thickness",
     "spacer", "acoustic", "solar_factor", "light_transmission", "hardware", "operation", "locking", "security",
     "customer_accessory",
   ]),
@@ -116,7 +116,8 @@ function dbValue(value: string) {
 const legacyConcepts: Record<string, Omit<CustomerSafeSpecificationItem, "value">> = {
   "alu cladded": { concept: "external_finish", category: "finishes", label: "External" },
   "external finish": { concept: "external_finish", category: "finishes", label: "External" },
-  timber: { concept: "internal_finish", category: "finishes", label: "Internal" },
+  "internal finish": { concept: "internal_finish", category: "finishes", label: "Internal" },
+  timber: { concept: "timber_material", category: "frame", label: "Timber" },
   material: { concept: "finish_material", category: "finishes", label: "Material" },
   "surface finishing": { concept: "surface_finish", category: "finishes", label: "Surface" },
   "glass unit": { concept: "glazing_build_up", category: "glazing", label: "Glazing" },
