@@ -1,6 +1,5 @@
 import type { PaneBuild, Shape, Dimensions } from "./glassWeight.types";
-
-const DENSITY = 2500; // kg/m3
+import {calculatePaneWeights} from '../../../../shared/glassWeightArithmetic.js';
 
 export function panesForGlazing(glazing: "single"|"double"|"triple"|"quad"): number {
   if (glazing === "single") return 1;
@@ -43,11 +42,5 @@ export function areaFromShape(shape: Shape, d: Dimensions): number {
 }
 
 export function weightForPanes(areaM2: number, panes: PaneBuild[]) {
-  const paneWeights = panes.map(p => {
-    const tM = effectiveThicknessMm(p) / 1000;
-    return areaM2 * tM * DENSITY;
-  });
-  const total = paneWeights.reduce((a, b) => a + b, 0);
-  const avg = paneWeights.length ? total / paneWeights.length : 0;
-  return { paneWeights, total, avg };
+  return calculatePaneWeights(areaM2,panes.map(effectiveThicknessMm));
 }

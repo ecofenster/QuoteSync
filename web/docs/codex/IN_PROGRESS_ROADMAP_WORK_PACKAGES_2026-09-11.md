@@ -1,5 +1,13 @@
 # In-progress Roadmap completion programme
 
+## 13 September — strict glass-weight fallback foundation
+
+The existing glass tool's pane arithmetic now lives in one shared module, with the tool retaining its existing shape, pane and missing-input behaviour. A separate installation-only boundary reuses that arithmetic but rejects absent/zero/nonfinite pane thickness, unknown laminate thickness, missing dimensions, unsupported non-rectangular geometry, empty fields, overlaps and fields outside the unit envelope. Explicit non-overlapping fields are summed once; the outer envelope is not added again. Output is always labelled Estimated glass weight using approximate dimensions and explicitly excludes a verified complete-unit/lifting load. Inputs are not mutated and no pane thickness is guessed from a laminate code or glazing label.
+
+Three focused tests and full application typecheck pass. After a process-spawn restriction, Node's in-process test mode passed without a new server or external access. Floating-point arithmetic remains unchanged; the laminate assertion uses a numerical tolerance rather than changing the calculator to satisfy an exact decimal comparison. This is a shared arithmetic and strict service foundation, not source mapping or installer-document acceptance. No API/UI document path calls the new fallback yet, and no new normal-browser weight claim is made.
+
+Next: bind weight evidence to exact saved Positions/revisions, prefer source-referenced manufacturer unit weight only where its per-unit basis is explicit, retain ambiguous manufacturer weight as review-required, and map complete known glazing/field evidence into the strict fallback. Then project the evidenced/estimated/unknown distinctions into the installer PDF and verify saved/reloaded normal routes. Do not infer per-unit weight from a quotation total or use current mutable evidence to replace a released snapshot. Existing survey-delivery-installation stays partial and unaccepted. Existing AGENTS source/unknown/lifting and industry-module rules apply; no duplicate permanent requirement is added. No live business data, issued records, provider files or communications changed. Push remains permission-blocked; local checkpoints continue.
+
 ## 13 September — material PDF pagination repair
 
 Material heading, specification, quantity, basis and review now form one table group. Compact groups stay on one page; long or multiline retained evidence can flow with a repeated material heading rather than being clipped or discarded. No source text or prior generated PDF is rewritten. A small follow-on wording correction removes internal fixing keys from printed headings, retaining familiar material names and genuine product codes.
