@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import {isQualificationDate,qualificationValidity} from '../../../shared/installationQualificationDates.js';
 import { INSTALLATION_CAPABILITIES } from './installationProgramme.js';
 
 const parse = value => { try { return JSON.parse(value || '{}'); } catch { return {}; } };
@@ -6,13 +7,7 @@ const capabilities = value => [...new Set((Array.isArray(value) ? value : []).fi
 const companyMap = row => row && ({ id:row.id,name:row.name,address:parse(row.address_json),postcode:row.postcode,telephone:row.telephone,email:row.email,notes:row.notes,dayRate:row.day_rate,active:!!row.active,version:row.version });
 const installerMap = row => row && ({ id:row.id,companyId:row.company_id,name:row.name,mobile:row.mobile,email:row.email,address:parse(row.address_json),postcode:row.postcode,dayRate:row.day_rate,capabilities:parse(row.capabilities_json),active:!!row.active,version:row.version });
 const teamMap = row => row && ({ id:row.id,companyId:row.company_id,companyName:row.company_name,name:row.name,normalCrewSize:row.normal_crew_size,baseAddress:parse(row.base_address_json),basePostcode:row.base_postcode,capabilities:parse(row.capabilities_json),active:!!row.active,version:row.version,installerIds:parse(row.installer_ids_json || '[]') });
-const qualificationState = (row, attendanceDate = new Date().toISOString().slice(0,10), expiringDays = 30) => {
-  if (!row.issue_date || !row.expiry_date) return 'dates_missing';
-  if (attendanceDate < row.issue_date) return 'not_yet_valid';
-  if (attendanceDate > row.expiry_date) return 'expired';
-  const expiry = new Date(`${row.expiry_date}T23:59:59Z`), attendance = new Date(`${attendanceDate}T00:00:00Z`);
-  return expiry.getTime() <= attendance.getTime() + expiringDays * 86400000 ? 'expiring' : 'in_date';
-};
+const qualificationState=(row,onDate,expiringDays)=>qualificationValidity(row.issue_date,row.expiry_date,onDate,expiringDays);
 const qualificationMap = (row, attendanceDate) => row && ({
   id:row.id,installerId:row.installer_id,typeCode:row.qualification_type_code,typeLabel:row.qualification_type_label,
   occupationCategory:row.occupation_category||null,reference:row.reference||null,issuer:row.issuer||null,
@@ -34,7 +29,8 @@ export function createInstallationWorkforceService(db) {
       db.all('SELECT * FROM installation_qualification_types ORDER BY active DESC,label'),
       db.all(`SELECT q.*,d.web_view_link evidence_open_url,NOT EXISTS(SELECT 1 FROM installation_installer_qualifications newer WHERE newer.supersedes_qualification_id=q.id) is_current FROM installation_installer_qualifications q LEFT JOIN canonical_documents d ON d.id=q.evidence_document_id ORDER BY q.renewal_sequence DESC,q.updated_at DESC`),
     ]);
-    const qualifications=qualificationRows.map(row=>qualificationMap(row));
+    const evidenceHistory=await db.all("SELECT h.*,d.web_view_link FROM installation_qualification_evidence_history h JOIN canonical_documents d ON d.id=h.canonical_document_id ORDER BY h.recorded_at DESC,h.id");
+    const qualifications=qualificationRows.map(row=>({...qualificationMap(row),evidenceHistory:evidenceHistory.filter(item=>item.qualification_id===row.id).map(item=>({id:item.id,documentId:item.canonical_document_id,fileName:item.file_name,openUrl:item.web_view_link||null,isCurrent:!!item.is_current,recordedAt:item.recorded_at,replacedAt:item.replaced_at||null}))}));
     return { companies:companies.map(companyMap),installers:installers.map(row=>({...installerMap(row),qualificationBadges:qualifications.filter(item=>item.installerId===row.id&&item.isCurrent).map(item=>({typeCode:item.typeCode,label:item.typeLabel,validityStatus:item.validityStatus,verificationStatus:item.verificationStatus,expiryDate:item.expiryDate}))})),teams:teams.map(teamMap),capabilities:INSTALLATION_CAPABILITIES,qualificationTypes:qualificationTypes.map(row=>({code:row.code,label:row.label,occupationSupported:!!row.occupation_supported,active:!!row.active})),qualifications };
   };
   return {
@@ -61,6 +57,7 @@ export function createInstallationWorkforceService(db) {
       if(evidence&&verificationStatus==='not_supplied')verificationStatus='recorded_unverified';
       if(verificationStatus==='verified'&&!evidence)throw Object.assign(new Error('Verified qualifications require retained evidence.'),{code:'invalid_installation_workforce'});
       const validFrom=input.validFromDate||input.issueDate||null;
+      if([validFrom,input.expiryDate].some(value=>value&&!isQualificationDate(value)))throw Object.assign(new Error('Choose valid qualification dates. Saved evidence has not changed.'),{code:'invalid_installation_workforce'});
       if(validFrom&&input.expiryDate&&String(input.expiryDate)<String(validFrom))throw Object.assign(new Error('Expiry date cannot be before the valid-from date.'),{code:'invalid_installation_workforce'});
       let renewalSequence=1;if(renewalOfId){const previous=await db.get('SELECT * FROM installation_installer_qualifications WHERE id=? AND installer_id=? AND qualification_type_code=?',renewalOfId,installerId,typeCode);if(!previous)throw Object.assign(new Error('The qualification renewal source was not found.'),{code:'invalid_installation_workforce'});renewalSequence=Number(previous.renewal_sequence||1)+1;}
       const verifiedAt=verificationStatus==='verified'?(input.verifiedAt||now):null,verifiedBy=verificationStatus==='verified'?(input.verifiedBy||'User'):null;
@@ -72,11 +69,14 @@ export function createInstallationWorkforceService(db) {
     },
     async qualificationCheck(teamId,{attendanceStart,attendanceEnd,requiredTypes=[]}={}) {
       const start=required(attendanceStart,'Attendance start date'),end=required(attendanceEnd||attendanceStart,'Attendance end date');
+      if(!isQualificationDate(start)||!isQualificationDate(end))throw Object.assign(new Error('Choose valid attendance dates.'),{code:'invalid_installation_workforce'});
       if(end<start)throw Object.assign(new Error('Attendance end cannot be before the start date.'),{code:'invalid_installation_workforce'});
-      const team=await db.get('SELECT id,name FROM installation_teams WHERE id=?',teamId);if(!team)throw Object.assign(new Error('Installation Team was not found.'),{code:'invalid_installation_workforce'});
+      const team=await db.get('SELECT t.id,t.name,t.active,c.active company_active FROM installation_teams t JOIN installation_companies c ON c.id=t.company_id WHERE t.id=?',teamId);if(!team)throw Object.assign(new Error('Installation Team was not found.'),{code:'invalid_installation_workforce'});
       const members=await db.all(`SELECT i.* FROM installation_installers i JOIN installation_team_members m ON m.installer_id=i.id WHERE m.team_id=? AND i.active=1 ORDER BY i.name`,teamId),all=await db.all(`SELECT q.* FROM installation_installer_qualifications q JOIN installation_team_members m ON m.installer_id=q.installer_id WHERE m.team_id=?`,teamId);
       const requiredCodes=[...new Set((Array.isArray(requiredTypes)?requiredTypes:[]).map(value=>String(value).trim()).filter(Boolean))],memberResults=members.map(member=>{const qualifications=all.filter(row=>row.installer_id===member.id).map(row=>({...qualificationMap(row,start),attendanceValidity:!row.issue_date||!row.expiry_date?'dates_missing':start<row.issue_date?'not_yet_valid':end>row.expiry_date?'expired':qualificationState(row,start)}));const gaps=requiredCodes.filter(code=>!qualifications.some(item=>item.typeCode===code&&item.verificationStatus==='verified'&&['in_date','expiring'].includes(item.attendanceValidity)));return{id:member.id,name:member.name,qualifications,gaps};});
       const gaps=memberResults.flatMap(member=>member.gaps.map(code=>`${member.name}: ${code.toUpperCase()} is not verified for ${start}.`));
+      if(!team.active||!team.company_active)gaps.push('The selected Installation Company or Team is inactive. Review the attending team.');
+      if(!members.length)gaps.push('No active installers are assigned to this Team. Add the attending installers before confirming qualifications.');
       return {teamId:team.id,teamName:team.name,attendanceStart:start,attendanceEnd:end,members:memberResults,gaps,status:gaps.length?'review_required':'available'};
     },
     async snapshotQualificationCheck(input) {

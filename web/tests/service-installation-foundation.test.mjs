@@ -73,6 +73,10 @@ test("installer qualifications remain evidence-backed and are checked against at
   assert.equal((await db.get('SELECT evidence_document_id FROM installation_installer_qualifications WHERE id=?',original.id)).evidence_document_id,'evidence-cscs');
   await assert.rejects(()=>workforce.saveQualification({...renewal,typeCode:'sssts'}),/renewal source was not found|belongs to another/);
   await assert.rejects(()=>workforce.saveQualification({id:original.id,installerId:installer.id,typeCode:'sssts'}),/belongs to another/);
+  await assert.rejects(()=>workforce.saveQualification({id:original.id,installerId:installer.id,typeCode:'cscs',validFromDate:'2026-02-30'}),/valid qualification dates/);
+  await assert.rejects(()=>workforce.qualificationCheck(team.id,{attendanceStart:'2026-02-30'}),/valid attendance dates/);
+  await db.run('UPDATE installation_teams SET active=0 WHERE id=?',team.id);assert.match((await workforce.qualificationCheck(team.id,{attendanceStart:'2026-09-15'})).gaps.join(' '),/inactive/);
+  await db.run('UPDATE installation_teams SET active=1 WHERE id=?',team.id);await db.run('UPDATE installation_installers SET active=0 WHERE id=?',installer.id);assert.match((await workforce.qualificationCheck(team.id,{attendanceStart:'2026-09-15',requiredTypes:['cscs']})).gaps.join(' '),/No active installers/);
 });
 
 test('workforce document migration preserves original evidence, indexes and triggers with transactional rollback',async t=>{

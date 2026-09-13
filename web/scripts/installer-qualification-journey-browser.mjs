@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {open} from 'sqlite';
 import sqlite3 from 'sqlite3';
-import {writeFile} from 'node:fs/promises';
+import {readFile,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 
 // Uses the parent fresh-database runner's owned browser; never starts an API or browser.
@@ -23,14 +23,20 @@ export async function verifyInstallerQualifications({tab,click,waitFor,databaseP
   assert.equal(await tab.evaluate("document.querySelector('.workforce-admin__modal input[name=name]').value"),'Disposable Qualification Installer');
   await tab.send('Network.setBlockedURLs',{urls:[]});await save();await saved();await edit();assert.equal(await tab.evaluate("Boolean(document.querySelector('.workforce-admin__qualification a'))"),true,'Confirmed evidence cannot be opened');
   assert.ok((await tab.evaluate("document.querySelector('.workforce-admin__qualification').innerText")).includes('Evidence unverified'),'Upload must not verify evidence');
+  await writeFile(evidenceFile,Buffer.concat([await readFile(evidenceFile),Buffer.from('\n% Disposable replacement evidence, not a real certificate\n')]));
+  const replacementDom=await tab.send('DOM.getDocument'),replacementNode=await tab.send('DOM.querySelector',{nodeId:replacementDom.root.nodeId,selector:'.workforce-admin__qualification input[type=file]'});await tab.send('DOM.setFileInputFiles',{nodeId:replacementNode.nodeId,files:[evidenceFile]});await save();await saved();await edit();
+  assert.ok((await tab.evaluate("document.querySelector('.workforce-admin__qualification').innerText")).includes('Previous evidence'),'Replaced same-name document history is inaccessible');
+  for(const [date,status] of [['2025-12-31','Not yet valid'],['2026-01-01','In date'],['2026-12-01','In date'],['2026-12-02','Expiring'],['2027-01-01','Expiring'],['2027-01-02','Expired']]){
+    await fill('.workforce-admin__planned-check input',date);await waitFor(()=>tab.evaluate(`document.querySelector('.workforce-admin__planned-check span')?.textContent.includes(${JSON.stringify(`CSCS: ${status} on`)})`),`Attendance status is wrong on ${date}`);
+  }
   await click(tab,'Add renewal');await field('Card / certificate reference','DISPOSABLE-RENEWAL');await field('Valid from','2027-01-02');await field('Expiry date','2028-01-01');
   // Make a later qualification fail after the CSCS renewal was persisted.
   await tab.evaluate("document.querySelectorAll('.workforce-admin__qualification')[1].querySelector('select').value='verified';document.querySelectorAll('.workforce-admin__qualification')[1].querySelector('select').dispatchEvent(new Event('change',{bubbles:true}))");
   await save();await waitFor(()=>tab.evaluate("document.querySelector('.workforce-admin__modal [role=alert]')?.textContent.includes('Verified qualifications require retained evidence')"),'Later qualification did not fail explicitly');
   await tab.evaluate("document.querySelectorAll('.workforce-admin__qualification')[1].querySelector('select').value='not_supplied';document.querySelectorAll('.workforce-admin__qualification')[1].querySelector('select').dispatchEvent(new Event('change',{bubbles:true}))");await save();await saved();await edit();assert.ok((await tab.evaluate("document.querySelector('.workforce-admin__qualification').innerText")).includes('Renewal history (1)'),'Renewal history was duplicated or hidden');
   const db=await open({filename:databasePath,driver:sqlite3.Database,mode:sqlite3.OPEN_READONLY});try{
-    const rows=await db.all('SELECT * FROM installation_installer_qualifications ORDER BY renewal_sequence');assert.equal(rows.length,4,'Retry created additional qualification rows');assert.equal(rows.filter(row=>row.qualification_type_code==='cscs').length,2);assert.equal((await db.get('SELECT COUNT(*) count FROM installation_qualification_evidence_history')).count,1,'Retry uploaded duplicate evidence');assert.equal((await db.get('SELECT COUNT(*) count FROM installation_installers')).count,1);
+    const rows=await db.all('SELECT * FROM installation_installer_qualifications ORDER BY renewal_sequence');assert.equal(rows.length,4,'Retry created additional qualification rows');assert.equal(rows.filter(row=>row.qualification_type_code==='cscs').length,2);const history=await db.all('SELECT h.*,d.checksum FROM installation_qualification_evidence_history h JOIN canonical_documents d ON d.id=h.canonical_document_id');assert.equal(history.length,2,'Same-name replacement was duplicated or discarded');assert.equal(new Set(history.map(item=>item.checksum)).size,2);assert.equal(history.filter(item=>item.is_current).length,1);assert.equal((await db.get('SELECT COUNT(*) count FROM installation_installers')).count,1);
   }finally{await db.close()}
   const screen=await tab.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await writeFile(path.join(output,'installer-qualification-renewal.png'),Buffer.from(screen.data,'base64'));
-  console.log(JSON.stringify({scope:'Normal Administration Add/Edit Installer → blocked upload → safe retry → retained evidence → renewal → later failure/retry → history',qualifications:4,evidenceUploads:1,liveDelivery:false,provider:'no-network disposable Google transport'}));
+  console.log(JSON.stringify({scope:'Normal Administration Add/Edit Installer → blocked upload → safe retry → same-name changed-content replacement → attendance boundaries → renewal → later failure/retry → history',qualifications:4,evidenceUploads:2,attendanceBoundaryCases:6,liveDelivery:false,provider:'no-network disposable Google transport'}));
 }
